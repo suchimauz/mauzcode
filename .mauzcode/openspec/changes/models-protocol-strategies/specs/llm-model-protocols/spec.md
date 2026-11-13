@@ -77,5 +77,17 @@ Protocol requests SHALL be sent only through the connection's transport-bound fe
 - **THEN** discovery fails with a message containing only the HTTP status and the body is cancelled
 
 #### Scenario: Malformed catalogue
-- **WHEN** the catalogue response lacks the protocol's model array
-- **THEN** discovery fails with an invalid model catalogue error
+- **WHEN** the catalogue response is invalid JSON, is `null`, or lacks an array at the protocol's model collection field
+- **THEN** discovery fails with exactly `Invalid model catalogue`, without exposing response content or parser messages
+- **AND** the response body is released by consuming it or cancelling any unread body
+
+#### Scenario: Malformed catalogue elements
+- **WHEN** a model array contains nulls, non-object elements, or elements with non-string or empty model identifiers
+- **THEN** discovery skips those elements before performing string operations
+- **AND** returns valid non-empty identifiers, normalized by the protocol and de-duplicated in catalogue order
+- **AND** the response body is released
+
+#### Scenario: Response content is not disclosed on JSON parsing failure
+- **WHEN** any of the four protocols receives invalid JSON containing sensitive response text
+- **THEN** the exposed error is exactly `Invalid model catalogue` and contains neither that text nor the JSON parser message
+- **AND** the response body is released

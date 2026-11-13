@@ -29,7 +29,7 @@ Non-Goals: streaming or compaction through shared protocols (custom keeps having
 }
 ```
 
-Protocols receive only the connection's transport-bound `fetch`, never the whole `ResolvedConnection`, so they cannot read secrets or config by construction. `model` is required: `probe` rejects an empty model with "A test model is required" before any request. `customTest` calls `probe` only after successful discovery and when `config.testModel` is non-empty; without a test model it returns `available` / `models-ok` only after successful discovery. Discovery failure always returns `unavailable` / `models-failed` without calling `probe`, exactly as today. Every method takes `ctx` explicitly, so the protocol object returned by `definition` holds no captured state and `get` can return it without rebuilding per call. A single type is used; a separate base contract for Claude/Codex is not introduced because nobody would implement it. `signal` is added now as an optional pass-through to `fetch`; current callers do not pass it yet.
+Protocols receive only the connection's transport-bound `fetch`, never the whole `ResolvedConnection`, so they cannot read secrets or config by construction. `model` is required: `probe` rejects an empty model with "A test model is required" before any request. `customTest` calls `probe` only after successful discovery and when `config.testModel` is non-empty; without a test model it returns `available` / `models-ok` only after successful discovery. Discovery failure always returns `unavailable` / `models-failed` without calling `probe`, exactly as today. Only methods that call runtime procedures (`baseUrl`, `listModels` and `probe`) take `ctx` explicitly. The pure header mappings keep the signatures `defaultHeaders()` and `apiKeyHeaders(key)` without `ctx`. The protocol object returned by `definition` holds no captured state and `get` can return it without rebuilding per call. A single type is used; a separate base contract for Claude/Codex is not introduced because nobody would implement it. `signal` is added now as an optional pass-through to `fetch`; current callers do not pass it yet.
 
 `probe` replaces the `operation: "generation"` branch and `listModels` replaces `operation: "models"`, so no operation string remains. Alternative rejected: pure request builders with the provider doing fetch. That moves HTTP-failure and body-cancel handling into every provider, which duplicates code.
 
@@ -68,6 +68,10 @@ Discovery is `GET <base>/models`; the probe is POST with `Content-Type: applicat
 ### Claude and Codex
 
 Not wrapped in protocols. The single entry point for callers is `ProviderDefinition` (`connections.test` → `definition.test`, `listModels` → `definition.listModels`); a protocol is only an internal helper of a provider. Claude and Codex keep their `*Wire*` procedures; only internal calls to removed root names are renamed. Should a future change route discovery or probing through protocols generically (for example `ProviderDefinition.protocol(ctx, conn) → { protocol, endpoint }`), the contract can gain an `Endpoint` type parameter and Claude/Codex can be expressed then.
+
+### Malformed catalogue handling
+
+For every protocol, invalid JSON, a `null` payload, or a missing or non-array model collection fails with the fixed message `Invalid model catalogue`. Parser messages and response content must not be exposed. Invalid collection elements (including nulls, non-objects and non-string or empty model identifiers) are skipped before any string operations; valid identifiers retain catalogue order and de-duplication. Discovery releases the response body on success and failure by consuming it or cancelling any unread body. Tests cover these cases for all four protocols and assert that parser errors never leak response content.
 
 ### Error messages
 
