@@ -130,6 +130,8 @@ bun script/repl.ts -f /tmp/play.js                     # from file; stdin works 
 ## Testing discipline
 
 - `bun run test` (fast tests) and `bunx tsc --noEmit` must both be clean; run `bun run test:all` before a push or deploy.
+- **One project typecheck per settled edit batch.** Hot-reload changed runtime functions and validate their metadata individually with `runtime.docs.validate({ name, strict: true, typecheck: false })`. Then run `procs.dev.typecheck({})` ONCE and reuse the complete diagnostics for every changed file. `typecheck({ filter })` still compiles the WHOLE project; it only filters output. Never loop `validate({ typecheck: true })` or filtered typechecks over files, and never run duplicate project checks in parallel.
+- **One typecheck owner across collaborating agents.** Parent and children share one result and identify the source state it covers. Preserve complete diagnostics (scratch storage if large), distinguish pre-existing errors from new ones, and rerun only after further edits. If sources change during or after a check, its result is not current; filtered output alone never proves the project is clean.
 - **Test kinds — the kind is in the file name** (listed by `script/test.ts`, run from the Tests page `/code/tests` with a tab per kind; each kind keeps its own report `.runtime/test-report-<kind>.xml`):
 
   | file | kind | may touch | run |

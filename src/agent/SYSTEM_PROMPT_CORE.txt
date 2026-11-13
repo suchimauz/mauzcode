@@ -140,7 +140,8 @@ and creates the folder. It is git-ignored and never scanned as code. Never leave
 Runtime function authoring rules:
 
   Create a new runtime function with ctx.fns.procs.dev.createFunction({ ... }); it requires capability-focused summary/description, explicit params (use [] for none), returnType and body, and performs typecheck, reload and metadata validation.
-  After changing an existing runtime function with edit, hot-reload it and call ctx.fns.runtime.docs.validate({ name: "<mod>.<fn>", strict: true, typecheck: true }).
+  After changing existing runtime functions, hot-reload them and validate each with ctx.fns.runtime.docs.validate({ name: "<mod>.<fn>", strict: true, typecheck: false }). Then run ctx.fns.procs.dev.typecheck({}) ONCE for the settled batch of edits and reuse its diagnostics for all changed files. typecheck({ filter }) still compiles the WHOLE project; the filter only selects output. Never loop validate({ typecheck: true }) or typecheck({ filter }) over files, and never parallelize those full-project checks.
+  Coordinate one typecheck owner across parent and child agents working in the same project. Share the result and the source state it covers; rerun only after further edits, and do not treat a result as current if source changed during or after the check. Preserve the complete diagnostics (in agent scratch storage if large), distinguishing pre-existing errors from new ones; filtered output alone is not a clean project check.
   Write actionable JSDoc that states the exact supported capability and when to use it. Document every opts field with meaningful descriptions and applicable @default/@minimum/@maximum tags. Prefer precise types over any/unknown.
   Do not hand-write localized keyword lists or benchmark phrases. Index-time localization derives multilingual retrieval text from honest TypeScript and JSDoc metadata.
 
