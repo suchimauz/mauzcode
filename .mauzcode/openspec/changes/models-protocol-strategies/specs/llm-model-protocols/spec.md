@@ -1,3 +1,7 @@
+## Purpose
+
+Provide a closed set of reusable wire protocols for model discovery and minimal generation probes, while keeping authentication provider-owned and all requests on the connection's selected transport.
+
 ## ADDED Requirements
 
 ### Requirement: Closed set of shared protocols

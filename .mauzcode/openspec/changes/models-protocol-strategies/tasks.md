@@ -11,15 +11,16 @@
 
 ## 3. Custom provider on the registry
 
-- [ ] 3.1 Add `provider/custom/customEndpoint.ts` (case-insensitive merge via one `Headers`: `Accept`, `defaultHeaders()`, `apiKeyHeaders(key)`); rewrite `customListModels` and `customTest` on protocol methods, keeping manual-models merge and result codes, passing only `conn.fetch` to protocols; without `testModel` `customTest` does discovery only and returns `models-ok` as today; delete `provider/custom/customProtocol.ts` (verify: no `protocol ===` in `src/models/provider/custom`)
-- [ ] 3.2 Rewrite `src/models/custom.test.ts` onto the provider/protocol API with all existing assertions for the four protocols, plus tests that the declaration's select option values and labels equal `models.protocol.list({})` and that an anthropic connection without a key still sends `anthropic-version` (verify: `bun test src/models/custom.test.ts`)
+- [ ] 3.1 Add `provider/custom/customEndpoint.ts` (case-insensitive merge via one `Headers`: `Accept`, `defaultHeaders()`, `apiKeyHeaders(key)`); rewrite `customListModels` and `customTest` on protocol methods, keeping manual-models merge and result codes, passing only `conn.fetch` to protocols; without `testModel` `customTest` does discovery only and returns `available` / `models-ok` only on success; endpoint preparation or discovery failure returns the existing fixed `unavailable` / `models-failed` result without a probe, with or without a test model; delete `provider/custom/customProtocol.ts` (verify: no `protocol ===` in `src/models/provider/custom`)
+- [ ] 3.2 Rewrite `src/models/custom.test.ts` onto the provider/protocol API with all existing assertions for the four protocols, plus tests that the declaration's select option values and labels equal `models.protocol.list({})`, that an anthropic connection without a key still sends `anthropic-version`, and that discovery failure without a test model returns `unavailable` / `models-failed` without a generation request (verify: `bun test src/models/custom.test.ts`)
 
 ## 4. Minimal public facade
 
 - [ ] 4.1 Rewrite every caller inside `src/models` of any root name (the 23 removed and the 13 kept) to full namespace names, using `code.callers` per name (verify: `code.callers` returns no project caller for each removed name)
-- [ ] 4.2 Delete the 23 root forwarding files, run `procs.dev.genTypes` and reload `models` (verify: `code.quality({})` reports no calls to missing names in `src/models`)
+- [ ] 4.2 Delete the 23 root forwarding files and apply the drained-caller hot-reload sequence in design.md: run `procs.dev.genTypes`, explicitly load every affected slash-delimited module directory (shared protocol modules first, implementation modules next, root `models` last), then use `procs.repl.unload({ name })` for all 23 removed root names and `models.provider.custom.customProtocol` (verify: no calls to missing names in `code.quality({})`; all removed names are absent from the actual live registry, and all retained facade targets resolve)
 - [ ] 4.3 Update root tests to full names; reduce `connections/`, `inference/` and `transport/` `compatibility.test.ts` groups to remaining delegates; update `internalCompatibility.test.ts` and `fixtures/public-contract.baseline.json` to the minimal facade plus a test that no other root forwarding procedure exists (verify: `bun test src/models`)
-- [ ] 4.4 Update `docs/models-providers.md`: internal names (e.g. `models.inference.resolveReasoning`, `models.transport.parseSSE`), minimal facade list and a "Wire protocols" section on shared protocols and the provider as the single entry point (verify: `rg` finds no removed root name in `docs`, `docs/skills`, `plugins/*/SKILL.md` or `~/.mauzcode/user`)
+- [ ] 4.4 Update `docs/models-providers.md`: internal names (e.g. `models.inference.resolveReasoning`, `models.transport.parseSSE`), minimal facade list, a "Wire protocols" section on shared protocols and the provider as the single entry point, and the exact reload/unload order, drained-caller precondition and rollback steps from design.md (verify: no stale API guidance presents removed root names as callable; deployment removal inventories may name them explicitly)
+- [ ] 4.5 Add a migration regression with the real scanner, loader and unload operation: start with old procedures loaded, remove their sources, reload the exact changed directories and unload removed names; assert that all 23 wrappers and the old provider-local custom protocol are absent, custom discovery/probing reaches new protocol implementations, and live model procedure names equal a fresh-boot fixture. Keep provider-declaration reload coverage separate (verify: `bun test src/models` includes the live-removal and cold-boot comparison cases)
 
 ## 5. Verification
 
@@ -27,4 +28,4 @@
 
 ## Workflow follow-up
 
-- Archive with `openspec archive models-protocol-strategies --yes` after review.
+- Archive through `openspec.run({ args: ["archive", "models-protocol-strategies", "--yes"] })` only after implementation, verification and review; before archiving, verify that the new `llm-model-protocols` delta starts with a meaningful `## Purpose` of at least 50 characters and rerun strict validation.

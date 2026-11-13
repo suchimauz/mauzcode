@@ -13,6 +13,12 @@ The system SHALL expose a minimal public root model facade consisting of exactly
 - **THEN** no root model procedure other than the minimal facade, `models.providers` and `models.api` is present
 - **AND** no project caller references a removed root name
 
+#### Scenario: Live runtime after facade removal
+- **WHEN** the change is applied without restarting a runtime that previously loaded the removed procedures and its in-flight model operations have drained
+- **THEN** the removed root forwarding procedures and the replaced provider-local custom protocol procedure are absent from the live runtime registry
+- **AND** custom discovery and testing reach the new shared protocol implementations
+- **AND** the remaining model procedure names match those discovered on a fresh boot
+
 #### Scenario: Existing provider compiles against the SDK
 - **WHEN** a provider declaration references existing `types.models.*` contracts
 - **THEN** those names remain available with compatible structure after type generation
