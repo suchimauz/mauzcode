@@ -1,163 +1,41 @@
-## Purpose
-
-Provide authorized, scope-limited evidence of file versions actually delivered by existing read surfaces so later mutations can validate their target, version, and visible content without trusting caller-supplied identity.
-
 ## ADDED Requirements
 
-### Requirement: Preserve reading capabilities while identifying editable evidence
+### Requirement: Issue a readId for delivered text
 
-The existing read tool SHALL preserve text, range, hashline, image, and host-aware reading. Editable text results SHALL identify the delivered content scope and carry an opaque readId only when that scope and its exact source version are verified. Image or unsupported text results MUST NOT confer text-edit authority.
+The `read` tool SHALL keep text, range, hashline, image and host-aware reading. For supported text it SHALL also return a short opaque `readId` identifying the exact file version (hash of raw bytes), host, resolved path and the delivered line range, plus whether the read covered the whole file. Images, binary files and invalid UTF-8 SHALL NOT receive a readId.
 
-#### Scenario: Editable text read
-- **WHEN** an authorized caller reads supported text from a local or SSH file
-- **THEN** the result contains the requested bounded content, its scope metadata, and a readId bound to that snapshot
-- **AND** the result distinguishes complete-file evidence from partial evidence
+#### Scenario: Plain text read
+- **WHEN** an agent reads a text file, with or without hashline
+- **THEN** the result contains the usual content and a readId with its line range and completeness
 
-#### Scenario: Image and unsupported file
-- **WHEN** an authorized caller reads an image or content that cannot safely provide editable text evidence
-- **THEN** the existing supported viewing behavior remains available
-- **AND** the response does not issue authority to edit unseen or unsupported text
+#### Scenario: Image read
+- **WHEN** an agent reads a PNG file
+- **THEN** the image is returned as before and no readId is issued
 
-### Requirement: Bind receipts to server-established ownership and target
+#### Scenario: Range read
+- **WHEN** an agent reads lines 40–80 of a 200-line file
+- **THEN** the readId covers lines 40–80 and is marked as not complete
 
-A receipt SHALL bind the authenticated owner, agent/session context, workspace identity, resolved host, canonical file identity, source version, and delivered scope. These bindings MUST originate from trusted server context. A receipt MUST NOT be transferable to another owner, agent/session, workspace, or host.
+### Requirement: Keep receipts per agent with a bounded lifetime
 
-#### Scenario: Foreign or relocated receipt
-- **WHEN** a receipt is submitted from a different owner, agent/session, workspace, or host context
-- **THEN** it is rejected as unavailable without mutation or disclosure of its target content
+Receipts SHALL be stored in memory per agent with a sliding lifetime of 30 minutes by default, extended on each use, and a bounded per-agent count with least-recently-used eviction. A readId SHALL resolve only for the agent that received it. Receipts are version references, not permissions; normal path and host resolution still applies.
 
-#### Scenario: Target substitution
-- **WHEN** a caller attempts to override the path or host bound to a receipt-backed mutation
-- **THEN** validation rejects the request rather than resolving a second target
+#### Scenario: Unknown or expired readId
+- **WHEN** an edit uses a readId that expired, was evicted, was lost on restart, or belongs to another agent
+- **THEN** nothing is written and the result reports `expired` with guidance to read the file again
 
-### Requirement: Reauthorize receipt use and evidence disclosure
-
-Possession of a readId SHALL NOT replace current authorization. The service MUST recheck access before reading, committing, replaying a recorded result, or returning fresh conflict evidence. Unknown, foreign, and unauthorized receipts MUST NOT disclose target content or protected identity details.
-
-#### Scenario: Access revoked after read
-- **WHEN** access to the file or owning workspace is revoked after a receipt was issued
-- **THEN** a subsequent edit, retry, or refresh cannot mutate the file or return its content
-
-#### Scenario: Guessed receipt
-- **WHEN** a caller submits an unknown token
-- **THEN** the response reveals neither whether a particular protected file exists nor its content
-
-### Requirement: Version exact bytes and file identity
-
-Receipt versions SHALL reflect exact source bytes and stable file identity, independently of display normalization. A same-bytes replacement with a different identity MUST invalidate the receipt. Unsupported or unstable identity resolution MUST fail closed rather than silently weaken version checks.
-
-#### Scenario: New file identity with identical text
-- **WHEN** another writer replaces the file object with a new object containing the same text
-- **THEN** a mutation using the previous readId is rejected as a conflict
-
-#### Scenario: CRLF display normalization
-- **WHEN** CRLF text is displayed with line annotations or normalized visual separators
-- **THEN** the receipt retains the version of the original bytes and the mapping of visible text to those bytes
-- **AND** normalization alone does not grant permission to rewrite line endings
-
-### Requirement: Limit authority to delivered evidence
-
-Receipts SHALL cover only content actually included in the final authorized read response. Partial, clipped, stored-result-preview, or transport-truncated output MUST NOT confer complete-file authority. Retrieving additional content SHALL require a validated read path that issues or expands evidence only for the newly delivered scope.
-
-#### Scenario: Partial range
-- **WHEN** only lines 20 through 40 are delivered from a larger file
-- **THEN** the receipt is partial and cannot authorize edits outside that range or full replacement
-
-#### Scenario: Tool output is truncated after formatting
-- **WHEN** a transport clips a read result or shows a preview while storing the full result elsewhere
-- **THEN** it does not expose an edit-capable receipt covering the hidden content
-- **AND** it either narrows the receipt to verifiably delivered content or withholds edit authority and provides bounded reread guidance
-
-#### Scenario: Additional stored output
-- **WHEN** a caller retrieves more text through an output-history viewer that does not participate in receipt issuance
-- **THEN** that retrieval alone does not upgrade the original receipt to full-file authority
-
-### Requirement: Build complete evidence for large files
-
-Several partial reads of the same unchanged version in the same context MAY be combined into complete-file evidence once their delivered ranges cover the whole file. A version-only read SHALL return a readId bound to the current version without content; it confers evidence for `write` replace only, never anchor or literal edit authority over unseen text.
-
-#### Scenario: Large file covered by sequential range reads
-- **WHEN** a caller reads a large file in several ranges whose union covers every line and the version does not change between them
-- **THEN** the combined receipt is complete-file evidence and can authorize full replacement
-- **AND** a version change between the reads leaves the evidence partial
-
-#### Scenario: Version-only read
-- **WHEN** a caller requests only the version of an existing file
-- **THEN** it receives a readId for full replacement of that exact version without file content
-- **AND** that readId cannot authorize literal or anchor edits
-
-### Requirement: Bound lifecycle and resource use
-
-Receipts SHALL be stored durably per agent/session in the framework Postgres store, so they survive process restart and transcript compaction. Receipts SHALL use a sliding lifetime of 30 minutes by default, extended on each authorized use, with bounded per-agent storage. Expiration or eviction MUST NOT fall back to an unconditional write. A known expired receipt SHALL return expired; an unresolvable receipt SHALL return unavailable without content disclosure.
-
-#### Scenario: Receipt expires
-- **WHEN** a known receipt is used after its lifetime
-- **THEN** no write occurs and the response reports expired status
-
-#### Scenario: Receipt survives restart and compaction
-- **WHEN** the server restarts or the agent transcript is compacted while a receipt is live
-- **THEN** the receipt still resolves for the same agent/session, workspace, and host context
-
-#### Scenario: Eviction or unknown receipt
-- **WHEN** the receipt store no longer resolves the receipt
-- **THEN** the request fails as unavailable and cannot regenerate authority merely from a path or cached hash
-
-#### Scenario: Active use extends lifetime
-- **WHEN** a live receipt is used for an authorized read expansion, a conflict refresh, or a replay
+#### Scenario: Use extends lifetime
+- **WHEN** a live readId is used
 - **THEN** its expiry moves forward by the configured lifetime
 
-### Requirement: Recover from lost receipts in one step
+### Requirement: Refresh evidence on conflict and after success
 
-When the target is still authorized, an expired or unavailable response SHALL include a new readId and bounded current content for the same original scope, so that recovery takes one retry instead of a separate read.
+After a version conflict the old readId SHALL be retired and the result SHALL include a new readId plus fresh content for the same line range, within the normal read limits. After a successful edit the result SHALL include a new readId for the edited range, so consecutive edits do not require another read.
 
-#### Scenario: Expired receipt with authorized target
-- **WHEN** an expired receipt is used and the original scope is still authorized
-- **THEN** the response carries a new readId and bounded fresh content for that scope
+#### Scenario: Conflict returns a fresh snapshot
+- **WHEN** the file changed after the read and an edit is attempted
+- **THEN** the result reports `conflict`, contains the current content of the same range and a new readId, and nothing is written
 
-### Requirement: Refresh conflicts within the original scope
-
-After a version conflict, the old receipt SHALL be retired. Subject to current authorization, the response SHALL include a new receipt and bounded current content no broader than the original delivered coordinates. If those coordinates are unavailable or disclosure cannot be bounded safely, the response SHALL omit fresh evidence and request a new authorized read.
-
-#### Scenario: Visible conflict with hidden neighboring data
-- **WHEN** a partial receipt conflicts and the same coordinates remain readable
-- **THEN** fresh evidence includes only that bounded scope and a new readId
-- **AND** neighboring unshown data is not added to the response
-
-#### Scenario: File shrank or authorization changed
-- **WHEN** the original scope no longer exists or cannot be disclosed under current permissions
-- **THEN** no out-of-range or unauthorized fresh content is returned
-
-#### Scenario: Lines shifted
-- **WHEN** inserted lines change which text occupies the original coordinates
-- **THEN** the refreshed result identifies its current coordinates and version
-- **AND** it does not claim that the previous semantic target or task precondition remains valid
-
-### Requirement: Keep whole-file conflicts cheap
-
-Version checks SHALL remain whole-file in this change. A conflict response SHALL state whether the original delivered scope changed and SHALL list changed line ranges as coordinates only, without content outside the original scope. Per-range versioning is a possible later extension.
-
-#### Scenario: Conflict outside the read scope
-- **WHEN** a partial receipt conflicts only because lines outside its delivered scope changed
-- **THEN** the response reports that the original scope is unchanged, gives a new readId and the bounded fresh scope content
-- **AND** the caller can repeat the same edit with the new readId in one call
-
-### Requirement: Make read limits explicit without inventing authority
-
-Production read limits SHALL be explicit and preserve supported read use cases rather than silently inheriting prototype caps. Large or minified lines, invalid UTF-8, and binary content MUST NOT cause hidden bytes to become editable. Unsupported editable views SHALL fail safely while retaining supported inspection behavior.
-
-#### Scenario: Large minified line
-- **WHEN** a supported long line can be delivered completely within configured read limits
-- **THEN** its complete delivered scope can receive editable evidence without forced line-ending changes
-- **AND** if it is clipped, hidden portions receive no edit authority
-
-#### Scenario: Invalid UTF-8 or binary input
-- **WHEN** a file cannot be represented as supported editable text without lossy decoding
-- **THEN** no text-edit receipt is issued for the lossy representation
-
-### Requirement: Keep editable snapshots stable across cooperating reads and writes
-
-A receipt-bearing snapshot SHALL be captured consistently with participating writers so its version, identity, content, and visible scope refer to the same read. A detected concurrent replacement during snapshot capture MUST trigger retry within bounds or fail without issuing inconsistent evidence.
-
-#### Scenario: Replacement during snapshot capture
-- **WHEN** file identity or content changes while a receipt-bearing read is being assembled
-- **THEN** the service does not issue a receipt pairing old content with a new version or identity
+#### Scenario: Chained edits
+- **WHEN** an edit succeeds
+- **THEN** the returned readId can be used directly for the next edit of that file

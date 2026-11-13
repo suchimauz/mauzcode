@@ -2,37 +2,35 @@
 
 ## Why
 
-The current file tools do not reliably bind an edit to the file version actually read by the agent: local read/transform/write can lose concurrent updates, while matching text or line anchors does not establish surrounding identity or preconditions. Explicit receipt-bound operations and a shared conditional commit path address these gaps without replacing the existing editing engines with a patch-only tool.
+The current file tools do not bind an edit to the file version the agent actually read. `edit` re-reads the file at write time and applies its operations to whatever is on disk now, so a matching literal or a still-valid line anchor does not prove that the surrounding text the agent based its decision on is unchanged. Locally `files.applyEdits → files.write` is a plain read/transform/`Bun.write` with no version check, no lock and no atomic publication, so concurrent writers can lose updates. Source checks also found CRLF defects: an anchored edit silently converts a CRLF file to LF, and a multi-line literal copied from `read` output (which shows LF) finds zero matches in a CRLF file.
+
+Experiments in `.mauzcode/tmp/hp/patch-bench-v3/` (synthetic tasks, one model, two repetitions) compared literal, anchors, context patches, hybrid and dual modes. The best observed candidate was **dual + version guard**: literal or anchor ops with an explicit, unmixed mode, a version check, and a fresh snapshot returned on conflict. It solved 12/12 with 1 632 output tokens versus 6 617 for literal-only and 6.5 s versus 14.6 s mean latency, at the cost of 18 versus 16 requests and about 17% more input tokens. A full switch to patches showed no correctness benefit. This change turns that candidate into the real tools. The goal is a better and safer editing tool, not an access-control barrier.
 
 ## What Changes
 
-- Evolve the current `read`, `edit`, and `write` tools in place; do not introduce a competing permanent tool set. Preserve ordinary text/range, image, and host-aware reading.
-- Text reads return opaque, expiring `readId` receipts bound to the authenticated owner, agent/session, workspace, host, canonical file identity, exact version, and delivered content scope. Receipts never replace authorization.
-- `edit` requires `readId` and an explicit homogeneous `literal` or `anchor` mode, without independent `path`/`host`. Reject blind edits, mixed/no-op/overlapping operations, and incompatible fields.
-- `write` distinguishes create-if-absent from full replacement using a current full-file receipt. Existing-file unconditional overwrite is not a guard bypass.
-- Return structured outcomes, bounded authorized fresh evidence on conflicts, and idempotent receipt-backed success replay within the live receipt lifetime.
-- Serialize participating local and SSH writers under one target identity; validate the version inside the commit path and publish a single file atomically. Include Files and Canvas save paths without weakening their authentication, ownership, or CSRF checks.
-- Migrate schemas, guidelines, callers, and verified live transports together. Legacy path-only edits and path-and-content writes are controlled by a `files.guard` setting: `warn` (rollout default) applies them under coordination with a warning and `verified: false`; `enforce` rejects them. Becoming **BREAKING** only when `enforce` is the default (stage 3).
-- `files.write` keeps its signature; optional `expectedVersion`/`readId`/`ifAbsent` add preconditions, and every call is coordinated and atomically published. The system prompt stops recommending unconditional `files.write` from eval. `bash` and direct filesystem writes are declared nonparticipants.
-- Receipts are stored in Postgres per agent with a 30-minute sliding lifetime; expired receipts return a fresh readId and scope in the same response. Large files can be replaced via combined range reads or a version-only read.
-- Delivery in stages: (1) local tools, `files.write`, Files/Canvas in `warn`; (2) SSH on `remote.writeFile`; (3) measurements and `enforce` by default.
+- Evolve the current `read`, `edit` and `write` tools in place; no parallel tool family. Text, range, hashline, image and host-aware reading keep working.
+- Text reads return a short opaque `readId` naming the exact file version (content hash) and the delivered line range. Receipts are kept in memory per agent with a sliding lifetime; they are a version reference, not a permission.
+- `edit({ readId, mode: 'literal' | 'anchor', edits })`. The explicit mode keeps the two families unmixed, as tested. Literal matches and anchors must lie inside the delivered range.
+- If the file changed since the receipt, nothing is written; the result states the reason and returns a new `readId` with fresh content for the same range, so the agent can retry without a separate read. Success also returns a new `readId`, so consecutive edits chain without rereading.
+- `write` gains explicit `create` (fails if the file exists) and `replace` (needs a `readId` from a complete read).
+- `files.write` keeps its signature and becomes atomic (temp file + rename) under a per-file lock locally, matching `remote.writeFile`. Optional `expectedVersion` is checked inside the lock. SSH uses the existing `remote.writeFile` lock with a version hash.
+- Preserve the original line endings, final newline and BOM. Fix the two CRLF defects.
+- Compatibility: legacy path-only `edit` and path+content `write` keep working. They run under the lock against the current file and return a warning plus a fresh `readId`. Removing them is a later decision based on usage.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `file-read-receipts`: owner- and target-bound evidence of exact file versions and delivered editable ranges, including lifecycle and authorized refresh.
-- `guarded-file-edits`: explicit receipt-bound literal/anchor operations, validation, structured edit outcomes, and retry behavior.
-- `conditional-file-writes`: absence-checked creation, receipt-backed replacement, shared local/SSH commit coordination, writer participation, and publication guarantees.
+- `file-read-receipts`: version-and-range references issued by `read`, their lifetime and refresh.
+- `guarded-file-edits`: receipt-bound literal/anchor edits, validation, conflict refresh and outcomes.
+- `conditional-file-writes`: create vs replace, atomic locked publication, line-ending preservation, legacy compatibility.
 
 ### Modified Capabilities
 
-None. Existing published capabilities do not specify these file-tool behaviors.
+None.
 
 ## Impact
 
-Affected surfaces include tool definitions and validation, file read/edit/write services, SSH writing, Files/Canvas save contracts, and native tool transports/callers. No dependency addition is mandated. A Postgres migration for the receipt store and a declared `files.guard` setting are added. Existing persisted conversations are not rewritten; old mutation requests must fail safely with migration guidance.
+Touches `src/tools/{read,edit,write}.ts`, their `$tool_*.md` schemas and guidance, `src/tools/editValidate.ts`, `src/files/{applyEdits,write,readHashline}.ts`, `src/remote/writeFile.ts`, and the Files/Canvas save routes, which only move their existing `expectedContent` check into the locked commit. No migration, no new setting, no new dependency.
 
-This change currently contains specifications only. Implementation requires separate authorization. No runtime changes, settings changes, commits, pushes, or archive operations are part of preparing these artifacts.
-
-Out of scope: adopting Codex or a patch-only engine, multi-file transactions, arbitrary shell/editor serialization, universal filesystem compare-and-swap, crash-proof exactly-once semantics, and treating benchmark fixtures as production evidence. Unsupported identity/metadata/transport guarantees must fail closed; local or SSH support cannot be claimed before its acceptance gates pass.
+Out of scope: owner/session-bound authorization and durable receipt storage; warn/enforce rollout modes; multi-file transactions; protection against `bash`, direct `Bun.write`/`node:fs` and external editors (these are documented nonparticipants); Codex or a patch language; reworking the Files/Canvas browser protocol.
