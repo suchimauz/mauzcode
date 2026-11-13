@@ -1,7 +1,7 @@
 # git-review-comments Specification
 
 ## Purpose
-TBD - created by archiving change git-review-comments. Update Purpose after archive.
+Let a person attach review comments to line ranges of commit or uncommitted diffs, owned by and isolated to one agent, explicitly send them to that agent, and let the agent list and resolve them through tools; comments are destroyed when the agent is archived or deleted.
 
 ## Requirements
 

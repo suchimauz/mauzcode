@@ -1,7 +1,7 @@
 # git-repository-viewer Specification
 
 ## Purpose
-TBD - created by archiving change git-review-comments. Update Purpose after archive.
+Provide a read-only, live Git repository view in the Canvas — local or over SSH — for browsing working-tree changes, commits and diffs, with keyboard-accessible navigation and inline line commenting, without ever modifying the repository.
 
 ## Requirements
 
