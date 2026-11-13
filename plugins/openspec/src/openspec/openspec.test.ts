@@ -110,3 +110,20 @@ test('validateAll: passing fixture, failing scenario without THEN, no file chang
     expect(item.issues.length).toBeGreaterThan(0);
     expect(item.issues.map((i: any) => i.message).join('\n')).toMatch(/THEN|scenario/i);
 }, 120000);
+
+test('run: archive is refused when a new capability delta has no written Purpose', async () => {
+    const { ctx, dir, os } = await setup();
+    await fixture(os);
+    const deltas = join(os, 'changes', 'add-login', 'specs');
+    const noPurpose = spec().replace(/## Purpose\n\n[^\n]*\n\n/, '');
+    await put(join(deltas, 'user-session', 'spec.md'), noPurpose);
+    await put(join(deltas, 'billing', 'spec.md'), noPurpose.replace('ADDED', 'MODIFIED'));
+    await expect(ctx.fns.openspec.run({ dir, args: ['archive', 'add-login', '--yes'] })).rejects.toThrow(/without a written `## Purpose`.*: user-session\./);
+    await put(join(deltas, 'user-session', 'spec.md'), noPurpose.replace('# Spec\n\n', '# Spec\n\n## Purpose\n\nTBD - created by archiving change add-login. Update Purpose after archive.\n\n'));
+    const before = await tree(os);
+    await expect(ctx.fns.openspec.run({ dir, args: ['archive', 'add-login', '--yes'] })).rejects.toThrow(/: user-session\./);
+    expect(await tree(os)).toEqual(before);
+    await put(join(deltas, 'user-session', 'spec.md'), spec());
+    const r = await ctx.fns.openspec.run({ dir, args: ['archive', 'add-login', '--yes', '--no-validate'] });
+    expect(r.stderr + r.stdout).not.toContain('archive refused');
+}, 120000);

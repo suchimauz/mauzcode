@@ -1,6 +1,6 @@
 ---
 name: openspec
-description: Spec-driven changes with the OpenSpec CLI, stored in the workspace's .mauzcode/openspec instead of the project root.
+description: Spec-driven changes with the bundled OpenSpec CLI, called only through openspec.run (no openspec binary in bash); artifacts live in the workspace's .mauzcode/openspec.
 ---
 
 # OpenSpec
@@ -14,11 +14,13 @@ All artifacts live in `<workspace>/.mauzcode/openspec`, never in a project-root 
 1. `run({ args: ["init"] })` once per project (adds `--tools none`; no assistant skill files are installed).
 2. Propose: `run({ args: ["new", "change", "<kebab-id>"] })`, then `run({ args: ["instructions", "proposal", "--change", "<id>"] })` (likewise `specs`, `design`, `tasks`) and write each artifact with the file tools at the returned path under `.mauzcode/openspec/changes/<id>/`. Agree the proposal with the person before implementing.
 3. Apply: `run({ args: ["instructions", "apply", "--change", "<id>", "--json"] })`, implement `tasks.md` items and tick them `- [x]`. `run({ args: ["status", "--change", "<id>"] })` shows progress.
-4. Check: `run({ args: ["validate", "<id>", "--strict"] })`.
-5. Archive: `run({ args: ["archive", "<id>", "--yes"] })` merges deltas into `specs/`.
+4. Check: `run({ args: ["validate", "<id>", "--strict"] })` — see the validation rule below.
+5. Archive: `run({ args: ["archive", "<id>", "--yes"] })` merges deltas into `specs/`. `run` refuses it while a delta for a new capability lacks a written `## Purpose` (50+ characters); add it to the delta, never write the main spec's Purpose by hand afterwards.
 
 ## Guidance
 
+- Validate after every edit: whenever you create or change any file under `.mauzcode/openspec` (proposing, reviewing, applying review answers, fixing) and before every commit of those files, run `validate <id> --strict` for each touched change; when main `specs/` changed (directly or by `archive`), run `openspec.validateAll({ dir })`. Fix every warning before reporting done or committing. `openspec` does not exist in bash — `command not found` there does not mean the CLI is unavailable.
+- A delta for a new capability (no `specs/<capability>/spec.md` yet) starts with `## Purpose`; a delta for an existing capability has none.
 - Unclear idea: explore first in planning mode (read code, compare options, ask) and create no change until the scope is agreed.
 - Always fetch `instructions <artifact>` right before writing an artifact and follow it — it carries the current rules (ADDED/MODIFIED deltas, `## Purpose` for new capabilities, capability naming, scenario format); do not write artifacts from memory.
 - Before naming capabilities check existing coverage: `list --specs`, then `show <spec-id> --type spec --json --no-scenarios`. With no specs yet, everything the change touches is a new capability named for durable behaviour (`user-auth`, not `add-login`); specs grow change by change.

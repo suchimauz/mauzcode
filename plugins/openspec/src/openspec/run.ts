@@ -8,7 +8,9 @@ import path from 'node:path';
  * and nothing is written to the project root. Use for any OpenSpec step: `init`, `new change <id>`, `list`,
  * `status`, `instructions`, `show`, `validate`, `archive`. Local workspaces only; `store` commands and
  * `--store` are rejected because they would move artifacts elsewhere. `init` without `--tools` gets
- * `--tools none` (no assistant skill files). Output is bounded and ANSI-free.
+ * `--tools none` (no assistant skill files). Output is bounded and ANSI-free. `archive <id>` (unless
+ * `--skip-specs`) is refused before the CLI runs when a delta creates a new capability without a
+ * `## Purpose` of at least 50 characters, because the CLI would otherwise write a `TBD` placeholder.
  */
 export default async function (ctx: Context, session: Session | null, opts: {
     /** CLI arguments after `openspec`, e.g. ["new", "change", "add-login"] or ["list", "--json"]. @minItems 1 */
@@ -28,6 +30,7 @@ export default async function (ctx: Context, session: Session | null, opts: {
     if (!path.isAbsolute(workspace)) throw new Error('openspec.run: an absolute workspace directory is required');
     if (!(await stat(workspace).catch(() => null))?.isDirectory()) throw new Error('openspec.run: workspace directory not found: ' + workspace);
     const cwd = path.join(workspace, '.mauzcode');
+    if (opts.args[0] === 'archive' && !opts.args.includes('--skip-specs')) await checkNewCapabilityPurpose(path.join(cwd, 'openspec'), opts.args);
     await mkdir(cwd, { recursive: true });
     const args = [...opts.args];
     if (args[0] === 'init' && !args.some(a => a === '--tools' || a.startsWith('--tools='))) args.push('--tools', 'none');
@@ -48,4 +51,22 @@ export default async function (ctx: Context, session: Session | null, opts: {
         stdout: stdout.slice(0, LIMIT), stderr: stderr.slice(0, LIMIT),
         truncated: stdout.length > LIMIT || stderr.length > LIMIT,
     };
+}
+
+/** Throws when an archived delta would create a main spec without a written `## Purpose`. */
+async function checkNewCapabilityPurpose(root: string, args: string[]): Promise<void> {
+    const id = args.slice(1).find(a => !a.startsWith('-'));
+    if (!id || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) || id === 'archive') return;
+    const deltas = path.join(root, 'changes', id, 'specs');
+    if (!(await stat(deltas).catch(() => null))?.isDirectory()) return;
+    const missing: string[] = [];
+    for await (const rel of new Bun.Glob('**/spec.md').scan({ cwd: deltas })) {
+        const capability = path.dirname(rel);
+        if (await Bun.file(path.join(root, 'specs', capability, 'spec.md')).exists()) continue;
+        const text = (await Bun.file(path.join(deltas, rel)).text()).replace(/<!--[\s\S]*?-->/g, '');
+        const purpose = /^##[ \t]+Purpose[ \t#]*$([\s\S]*?)(?=^##[ \t]|(?![\s\S]))/m.exec(text)?.[1]?.trim() ?? '';
+        if (purpose.length < 50 || /^(TBD|TODO)\b/i.test(purpose)) missing.push(capability);
+    }
+    if (missing.length) throw new Error('openspec.run: archive refused: new capabilities without a written `## Purpose` (50+ characters) in their delta: '
+        + missing.sort().join(', ') + '. Add `## Purpose` as the first section of changes/' + id + '/specs/<capability>/spec.md, then rerun validate and archive.');
 }
