@@ -23,28 +23,28 @@
 
 ## 4. Connections and inference
 
-- [ ] 4.1 Move connection persistence, validation, projection and resolution implementations; retain ctx.state.models ownership and secret scoping.
-- [ ] 4.2 Move provider action/test dispatch per inventory, retaining action names and login flow semantics.
-- [ ] 4.3 Move stream/compact, request validation, reasoning, error and usage helpers per inventory; preserve all original public root signatures.
-- [ ] 4.4 Verify disabled-state and unsupported-capability pre-network rejection, checkpoint/state identity validation, cancellation, callback event order, error semantics and token/quota observations.
-- [ ] 4.5 Verify connection CRUD, saved values and secret-free projections, including external frontend bridge/LLM callers.
+- [x] 4.1 Move connection persistence, validation, projection and resolution implementations; retain ctx.state.models ownership and secret scoping.
+- [x] 4.2 Move provider action/test dispatch per inventory, retaining action names and login flow semantics.
+- [x] 4.3 Move stream/compact, request validation, reasoning, error and usage helpers per inventory; preserve all original public root signatures.
+- [x] 4.4 Verify disabled-state and unsupported-capability pre-network rejection, checkpoint/state identity validation, cancellation, callback event order, error semantics and token/quota observations.
+- [x] 4.5 Verify connection CRUD, saved values and secret-free projections, including external frontend bridge/LLM callers.
 
 ## 5. Integration and runtime lifecycle
 
-- [ ] 5.1 Audit internal callers and string dispatch for stale targets or facade recursion; keep routes, migrations, declarations, loader and public types at root.
-- [ ] 5.2 Update path-based test fixtures and partial runtime stubs without dropping public compatibility coverage.
-- [ ] 5.3 Regenerate types and explicitly reload new leaves before callers, using full dotted procedure names or exact slash-delimited module directories.
-- [ ] 5.4 Validate changed runtime procedure documentation with strict and typecheck enabled; reload declarations once targets exist.
-- [ ] 5.5 Test clean discovery/boot and declaration/implementation hot reload without stale registry entries or live credentials.
-- [ ] 5.6 Document per-stage rollback, including retained live registry entries and isolated clean-runtime verification.
+- [x] 5.1 Audit internal callers and string dispatch for stale targets or facade recursion; keep routes, migrations, declarations, loader and public types at root.
+- [x] 5.2 Update path-based test fixtures and partial runtime stubs without dropping public compatibility coverage.
+- [x] 5.3 Regenerate types and explicitly reload new leaves before callers, using full dotted procedure names or exact slash-delimited module directories.
+- [x] 5.4 Validate changed runtime procedure documentation strictly, run one full typecheck for the settled batch, and reload declarations once targets exist (see acceptance.md).
+- [x] 5.5 Test clean discovery/boot and declaration/implementation hot reload without stale registry entries or live credentials.
+- [x] 5.6 Document per-stage rollback, including retained live registry entries and isolated clean-runtime verification.
 
 ## 6. Acceptance
 
-- [ ] 6.1 Run `bun test ./src/models/ --timeout 20000` and the affected consumer/loader suites identified in inventory.md.
-- [ ] 6.2 Run repository typecheck and code.quality; confirm no new missing runtime targets, boundary breaks, project-file cross-imports or namespace collisions.
-- [ ] 6.3 Confirm every original file has its documented disposition, every moved public function retains a facade, and all new provider operation targets are documented and tested.
-- [ ] 6.4 Update docs/models-providers.md with internal navigation and reload instructions while retaining all public SDK documentation.
-- [ ] 6.5 Confirm no HTTP, UI, storage, provider id, permission/CSRF, credential or external-plugin migration is required.
-- [ ] 6.6 Run strict OpenSpec validation and present final implementation evidence for review; archive only on separate authorization.
+- [x] 6.1 Run `bun test ./src/models/ --timeout 20000` and the affected consumer/loader suites identified in inventory.md.
+- [x] 6.2 Run repository typecheck and code.quality; confirm no new missing runtime targets, boundary breaks, project-file cross-imports or namespace collisions.
+- [x] 6.3 Confirm every original file has its documented disposition, every moved public function retains a facade, and all new provider operation targets are documented and tested.
+- [x] 6.4 Update docs/models-providers.md with internal navigation and reload instructions while retaining all public SDK documentation.
+- [x] 6.5 Confirm no HTTP, UI, storage, provider id, permission/CSRF, credential or external-plugin migration is required.
+- [x] 6.6 Run strict OpenSpec validation and present final implementation evidence for review; archive only on separate authorization.
 
-All checkboxes describe future implementation. Creating this specification does not complete them and does not authorize executing them.
+Implementation and verification are complete; evidence and pre-existing validation failures are recorded in acceptance.md. No archive was performed; archiving requires separate authorization.

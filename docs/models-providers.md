@@ -6,6 +6,55 @@ The current foundation provides the types, declaration loader and metadata catal
 Connection storage, transport execution, provider operations and the Models settings
 UI are separate implementation stages; do not assume those APIs are available yet.
 
+## Internal implementation navigation
+
+Public procedures remain `ctx.fns.models.<name>`. Existing plugins and callers
+need no migration: root signatures, synchronous helpers, async generators,
+provider ids, HTTP contracts, secret scoping and persisted connection/cache values
+are unchanged. Root files delegate dynamically to these implementation areas:
+
+| Directory / runtime namespace | Responsibility |
+| --- | --- |
+| `models/provider/{claude,codex,custom}` | Provider protocol helpers and declaration operations |
+| `models/transport` | Destination validation, HTTP transport and SSE parsing |
+| `models/catalog` | Model discovery/cache, refresh and per-model availability |
+| `models/connections` | CRUD, configuration validation, secret-free projections, resolution, actions and health/usage cache |
+| `models/inference` | Stream/compact dispatch, disabled-state/input checks, reasoning and error construction |
+
+The singular `provider` directory is intentional: a `models/providers` namespace
+would collide with callable `models.providers`. Public types, declarations,
+routes, migrations, the provider loader, `api`, `providers` and `$start` remain at
+root. Shared runtime state remains `ctx.state.models`, not nested namespace state.
+Internal calls may use the public facade deliberately (including transport and
+provider seams used by offline fixtures); no facade calls itself or duplicates its
+implementation body.
+
+### Reload and rollback
+
+After adding/removing source files, run `ctx.fns.procs.dev.genTypes({})`.
+Reload new leaves before facades, then root declarations. Use a full procedure
+name (`models.connections.resolve`) or an **exact slash-delimited directory**
+(`models/connections`, `models/inference`, `models/provider/codex`).
+`models.provider.codex` is interpreted as a procedure, not a directory, and
+reloading `models` does not recursively reload nested implementations.
+Once leaves exist, `ctx.fns.procs.repl.load({ name: "models" })` reloads root
+facades and declarations. No route reload or service restart is needed when route
+sources are unchanged. Validate each changed procedure's documentation with
+`strict:true, typecheck:false`, then run one complete project typecheck for the
+settled batch (do not compile the whole project separately for each function).
+
+Each stage can be reverted independently: restore that stage's original root
+bodies, declarations and test wiring, remove only its added leaf files, regenerate
+types, then reload restored roots/declarations. Provider rollback restores the
+original declaration operation bodies; transport/catalog rollback restores the
+six delegates without altering `$start` timers; connections/inference rollback
+restores the nineteen delegates without changing storage or state ownership.
+A reload does **not** delete retained registry entries for removed files. Verify
+restored callers no longer reference them and run the isolated fresh-discovery
+and hot-reload tests (`internalCompatibility.test.ts`, `registryReload.test.ts`)
+without live credentials. Registry cleanup or an operational restart requires
+separate review; it is not an implicit rollback step.
+
 ## Declare a provider
 
 Put `$modelProvider_<id>.ts` in a mounted core module or mounted plugin source

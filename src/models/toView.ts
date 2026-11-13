@@ -12,25 +12,5 @@ export default function (
         row: Record<string, unknown>;
     },
 ): types.models.ConnectionView {
-    const row = opts.row;
-    const parse = <T>(value: unknown, fallback: T): T => typeof value === "string" ? (() => { try { return JSON.parse(value) as T; } catch { return fallback; } })() : (value as T) ?? fallback;
-    const provider = String(row.provider);
-    const def = Object.hasOwn(ctx.state.models?.providers ?? {}, provider) ? ctx.state.models!.providers![provider]!.definition : undefined;
-    const stored = parse<Record<string, string>>(row.secrets, {});
-    const secrets: Record<string, boolean> = {};
-    for (const field of def?.fields ?? []) if (field.type === "secret") secrets[field.key] = false;
-    for (const key of Object.keys(stored)) secrets[key] = typeof stored[key] === "string" && stored[key].length > 0;
-    return {
-        id: String(row.id),
-        provider,
-        providerRegistered: !!def,
-        accountName: String(row.account_name),
-        config: parse<types.models.ResolvedConnection["config"]>(row.config, {}),
-        secrets,
-        transport: parse<types.models.TransportSpec>(row.transport, { kind: "direct" }),
-        enabled: row.enabled === true,
-        disabledModels: Array.isArray(row.disabled_models) ? [...new Set((row.disabled_models as unknown[]).filter((m): m is string => typeof m === "string"))].sort() : [],
-        createdAt: Number(row.created_at),
-        updatedAt: Number(row.updated_at),
-    };
+    return ctx.fns.models.connections.toView(opts);
 }

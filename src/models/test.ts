@@ -15,21 +15,5 @@ export default async function (
         cached?: boolean;
     },
 ): Promise<types.models.TestResult> {
-    const view = await ctx.fns.models.get({ id: opts.id });
-    if (!view.enabled) return { status: "disabled", reason: "disabled", message: "Connection is disabled", checkedAt: Date.now() };
-    return await ctx.fns.models.cached({ connection: view, kind: "test", reuse: opts.cached === true, run: async (): Promise<types.models.TestResult> => {
-        const seen: string[] = [];
-        try {
-            const { definition, conn } = await ctx.fns.models.resolve({ id: view.id });
-            const secret = conn.secret;
-            conn.secret = async (key: string) => { const value = await secret(key); if (value) seen.push(value); return value; };
-            const r = await definition.test(ctx, conn);
-            if (!r || !["available", "unavailable", "configured"].includes(r.status) || typeof r.reason !== "string") throw new Error("Provider returned an invalid test result");
-            return { status: r.status, reason: r.reason.slice(0, 64) || "unknown", message: ctx.fns.models.safeMessage({ message: String(r.message ?? ""), secrets: seen, fallback: r.status }), checkedAt: Date.now() };
-        } catch (error) {
-            const code = (error as { code?: unknown } | null)?.code;
-            const reason = code === "TRANSPORT" ? "transport-failed" : code === "UNKNOWN_PROVIDER" ? "unknown-provider" : "test-failed";
-            return { status: "unavailable", reason, message: ctx.fns.models.safeMessage({ message: error, secrets: seen, fallback: "Connection test failed" }), checkedAt: Date.now() };
-        }
-    } }) as types.models.TestResult;
+    return ctx.fns.models.connections.test(opts);
 }

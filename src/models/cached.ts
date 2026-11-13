@@ -24,22 +24,5 @@ export default async function (
         ttlMs?: number;
     },
 ): Promise<types.models.UsageReport | types.models.TestResult> {
-    const health = ((ctx.state.models ??= {}).health ??= {});
-    const { id, updatedAt } = opts.connection;
-    const revision = `${id}:${Bun.hash(`${id}:${updatedAt}`).toString(36)}`;
-    for (const k of Object.keys(health)) if (k.startsWith(`${id}:`) && !k.startsWith(`${revision}:`)) delete health[k];
-    const key = `${revision}:${opts.kind}`;
-    const hit = health[key];
-    if (hit?.pending) return await hit.pending;
-    if (opts.reuse !== false && hit?.result && hit.expiresAt > Date.now()) return hit.result;
-    const pending = opts.run();
-    health[key] = { expiresAt: 0, pending };
-    try {
-        const result = await pending;
-        if (health[key]?.pending === pending) health[key] = { expiresAt: Date.now() + (opts.ttlMs ?? 60000), result };
-        return result;
-    } catch (error) {
-        if (health[key]?.pending === pending) delete health[key];
-        throw error;
-    }
+    return ctx.fns.models.connections.cached(opts);
 }

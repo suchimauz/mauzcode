@@ -18,22 +18,5 @@ export default async function (
         timeoutMs?: number;
     },
 ): Promise<{ view: types.models.ConnectionView; definition: types.models.ProviderDefinition; conn: types.models.ResolvedConnection }> {
-    const view = await ctx.fns.models.get({ id: opts.id });
-    const entry = Object.hasOwn(ctx.state.models?.providers ?? {}, view.provider) ? ctx.state.models!.providers![view.provider] : undefined;
-    if (!entry) throw Object.assign(new Error(`Provider ${view.provider} is not registered`), { code: "UNKNOWN_PROVIDER", status: 409 });
-    const definition = entry.definition;
-    const secretKeys = new Set(definition.fields.filter(f => f.type === "secret").map(f => f.key));
-    const transport = view.transport;
-    const conn: types.models.ResolvedConnection = {
-        id: view.id,
-        provider: view.provider,
-        accountName: view.accountName,
-        config: structuredClone(view.config),
-        secret: async (key: string) => {
-            if (!secretKeys.has(key) || !view.secrets[key]) return null;
-            return await ctx.fns.secrets.getLocal({ namespace: "models", name: `${view.id}.${key}` });
-        },
-        fetch: (url: string, init?: RequestInit) => ctx.fns.models.fetch({ transport, url, init, signal: opts.signal, timeoutMs: opts.timeoutMs ?? 30000 }),
-    };
-    return { view, definition, conn };
+    return ctx.fns.models.connections.resolve(opts);
 }

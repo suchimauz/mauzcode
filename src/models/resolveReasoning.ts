@@ -21,22 +21,5 @@ export default function (
         profile?: types.models.ReasoningCapabilities | null;
     },
 ): types.models.ReasoningResolution {
-    const order: types.models.ReasoningLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
-    const invalid = (message: string) => ctx.fns.models.failure({ message, status: 400, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
-    const requested = (opts.preference ?? "auto") as types.models.ReasoningLevel | "auto";
-    if (requested !== "auto" && !order.includes(requested)) throw invalid(`Unknown reasoning preference ${JSON.stringify(String(opts.preference).slice(0, 40))}`);
-    const raw = opts.metadata ?? opts.profile ?? null;
-    if (!raw) throw ctx.fns.models.failure({ message: `No reasoning capabilities are known for model ${opts.model}`, status: 400, info: { code: "CAPABILITY_UNAVAILABLE", classification: "capability_unavailable", acceptance: "none", retryable: false, replaySafe: true } });
-    const source: types.models.ReasoningCapabilities["source"] = opts.metadata ? "metadata" : "profile";
-    const supported = raw.supported;
-    if (!Array.isArray(supported) || !supported.length || supported.some(l => !order.includes(l)) || new Set(supported).size !== supported.length)
-        throw invalid(`Invalid reasoning ${source} for model ${opts.model}: supported levels must be a nonempty unique SDK enumeration`);
-    const levels = supported as types.models.ReasoningLevel[];
-    if (!levels.includes(raw.default as types.models.ReasoningLevel)) throw invalid(`Invalid reasoning ${source} for model ${opts.model}: default is not supported`);
-    const base = { source, ...(source === "profile" && opts.profile?.profile ? { profile: opts.profile.profile } : {}) };
-    if (requested === "auto") return { requested, applied: raw.default as types.models.ReasoningLevel, fallbackReason: null, ...base };
-    if (levels.includes(requested)) return { requested, applied: requested, fallbackReason: null, ...base };
-    const at = order.indexOf(requested);
-    const applied = order.slice(0, at).reverse().find(l => levels.includes(l)) ?? order.slice(at + 1).find(l => levels.includes(l))!;
-    return { requested, applied, fallbackReason: `${requested} is unsupported by ${opts.model}; using ${applied}`, ...base };
+    return ctx.fns.models.inference.resolveReasoning(opts);
 }

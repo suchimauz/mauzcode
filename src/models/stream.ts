@@ -48,23 +48,5 @@ export default async function (
         signal?: AbortSignal;
     },
 ): Promise<types.models.StreamResult> {
-    const view = await ctx.fns.models.assertModelEnabled({ id: opts.connectionId, model: opts.model });
-        const def = Object.hasOwn(ctx.state.models?.providers ?? {}, view.provider) ? ctx.state.models!.providers![view.provider]!.definition : undefined;
-        if (!def?.stream) throw Object.assign(new Error("Provider " + view.provider + " does not support stream"), { code: "UNSUPPORTED", status: 400, retryable: false });
-        ctx.fns.models.checkInput({ provider: view.provider, connectionId: view.id, model: opts.model, sessionId: opts.sessionId, capabilities: def.capabilities, messages: opts.messages, runId: opts.runId, state: opts.state, signal: opts.signal });
-        let reasoning: types.models.ReasoningResolution | undefined;
-        if (def.capabilities?.reasoning) {
-            // Read the existing catalogue cache only; inference never triggers model discovery.
-            const rows = await ctx.fns.procs.db.select({ sql: "SELECT models_cache FROM llm_connections WHERE id=?", params: [view.id] }) as { models_cache: unknown }[];
-            const cache = typeof rows[0]?.models_cache === "string" ? JSON.parse(rows[0].models_cache) : rows[0]?.models_cache;
-            const info = Array.isArray(cache) ? (cache as types.models.ModelInfo[]).find(m => m?.id === opts.model) : undefined;
-            reasoning = ctx.fns.models.resolveReasoning({ model: opts.model, preference: opts.reasoningEffort, metadata: info?.reasoning ?? null, profile: def.reasoningProfile?.(ctx, opts.model) ?? null });
-        }
-        opts.signal?.throwIfAborted();
-        const { definition, conn } = await ctx.fns.models.resolve({ id: view.id, signal: opts.signal, timeoutMs: 600000 });
-        const { connectionId: _c, ...rest } = opts;
-        const req: types.models.StreamRequest = reasoning ? { ...rest, reasoning } : rest;
-        const result = await definition.stream!(ctx, conn, req);
-        if (result.state && (!def.capabilities?.continuationState || result.state.provider !== view.provider || result.state.connectionId !== view.id || result.state.sessionId !== opts.sessionId || result.state.runId !== opts.runId)) delete result.state;
-        return reasoning ? { ...result, reasoning } : result;
+    return ctx.fns.models.inference.stream(opts);
 }
