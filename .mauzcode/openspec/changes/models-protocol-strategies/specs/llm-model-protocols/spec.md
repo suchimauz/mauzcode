@@ -1,18 +1,26 @@
 ## ADDED Requirements
 
 ### Requirement: Closed set of shared protocols
-The system SHALL provide exactly four shared wire protocols, identified as `openai-chat`, `openai-responses`, `anthropic` and `gemini`. The set SHALL be owned by core; plugins and provider declarations SHALL NOT add, replace or remove shared protocols. Listing the shared protocols SHALL return these four ids in a stable order.
+The system SHALL provide exactly four shared wire protocols, identified as `openai-chat`, `openai-responses`, `anthropic` and `gemini`. The set SHALL be owned by core; plugins and provider declarations SHALL NOT add, replace or remove shared protocols. Listing the shared protocols SHALL return these four protocols as id and label pairs in a stable order.
 
 #### Scenario: Listing shared protocols
 - **WHEN** the shared protocol list is requested
-- **THEN** it returns `openai-chat`, `openai-responses`, `anthropic` and `gemini` in that order
+- **THEN** it returns `openai-chat`, `openai-responses`, `anthropic` and `gemini` in that order, each with its display label
 
 #### Scenario: Unknown protocol id
 - **WHEN** a shared protocol is requested by an id outside the set
 - **THEN** the request fails with an unsupported protocol error and no network request is made
 
 ### Requirement: Protocol strategy contract
-Every protocol, shared or private, SHALL implement one contract consisting of model discovery and a minimal probe, both operating on a provider-supplied endpoint (base URL and request headers) and the resolved connection. A shared protocol SHALL additionally normalize a configured base URL to its versioned API base and map an API key to its standard authentication headers.
+Every shared protocol SHALL implement one contract consisting of model discovery and a minimal probe, both operating on a provider-supplied endpoint (base URL and request headers) and the resolved connection. Both operations SHALL accept an optional abort signal that is passed to the request. It SHALL additionally normalize a configured base URL to its versioned API base, provide its required non-authentication headers, and map an API key to its standard authentication headers.
+
+#### Scenario: Aborted operation
+- **WHEN** discovery or a probe is called with an aborted signal
+- **THEN** the operation rejects and any response body is released
+
+#### Scenario: Base URL with empty query or fragment
+- **WHEN** a base URL whose raw text contains `?` or `#`, even with nothing after it, is normalized
+- **THEN** normalization fails with an invalid base URL error
 
 #### Scenario: Discovery through a shared protocol
 - **WHEN** a provider asks a shared protocol to discover models for an endpoint
@@ -34,11 +42,18 @@ Selecting a shared protocol SHALL be a single lookup by id. Behavior that differ
 - **THEN** it obtains the protocol by id and calls its operations without branching on the id
 
 ### Requirement: Provider-owned authentication
-A protocol SHALL NOT read connection secrets. The provider SHALL build the endpoint headers, including any authentication. A shared protocol's API-key header mapping SHALL be: bearer `Authorization` for both OpenAI protocols, `x-api-key` with `anthropic-version: 2023-06-01` for Anthropic, and `x-goog-api-key` for Gemini.
+A protocol SHALL NOT read connection secrets. The provider SHALL build the endpoint headers, including any authentication. A shared protocol's API-key header mapping SHALL be: bearer `Authorization` for both OpenAI protocols, `x-api-key` for Anthropic, and `x-goog-api-key` for Gemini.
 
 #### Scenario: Provider without an API key
 - **WHEN** a provider builds an endpoint without an API key
 - **THEN** the protocol requests carry no authentication header
+
+### Requirement: Protocol-required headers
+A shared protocol SHALL provide its required non-authentication headers separately from its API-key mapping, and they SHALL be sent whether or not an API key exists. For Anthropic this is `anthropic-version: 2023-06-01`. Header merging SHALL be case-insensitive.
+
+#### Scenario: Anthropic without an API key
+- **WHEN** an `anthropic` endpoint is built without an API key
+- **THEN** requests carry `anthropic-version: 2023-06-01` and no `x-api-key`
 
 ### Requirement: Transport and failure safety
 Protocol requests SHALL be sent only through the connection's transport-bound fetch. A non-success HTTP response or a malformed catalogue SHALL fail the operation without exposing the response body, and the response body SHALL be released.
@@ -50,10 +65,3 @@ Protocol requests SHALL be sent only through the connection's transport-bound fe
 #### Scenario: Malformed catalogue
 - **WHEN** the catalogue response lacks the protocol's model array
 - **THEN** discovery fails with an invalid model catalogue error
-
-### Requirement: Private provider protocols
-A provider MAY implement its own protocol of the same contract inside the provider. Such a protocol SHALL NOT be registered as a shared protocol, listed, or selectable by other providers, and adopting it SHALL NOT change the provider's observable requests or results.
-
-#### Scenario: Provider with a private protocol
-- **WHEN** the shared protocol list is requested while providers with private protocols are mounted
-- **THEN** only the four shared protocols are listed
