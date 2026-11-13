@@ -18,19 +18,18 @@ Non-Goals: streaming or compaction through shared protocols (custom keeps having
 // types.models.ProtocolEndpoint
 { base: string; headers: Record<string, string> }
 
-// types.models.Protocol
+// types.models.Protocol (the only protocol type)
 {
   id: string; label: string;
-  listModels(ctx, opts: { conn: ResolvedConnection; endpoint: ProtocolEndpoint; signal?: AbortSignal }): Promise<ModelInfo[]>;
-  probe(ctx, opts: { conn: ResolvedConnection; endpoint: ProtocolEndpoint; model?: string; signal?: AbortSignal }): Promise<void>;
+  baseUrl(raw: string): string;                         // validate + versioned base
+  defaultHeaders(): Record<string, string>;             // protocol-required, non-auth (anthropic-version)
+  apiKeyHeaders(key: string): Record<string, string>;   // auth only
+  listModels(ctx, opts: { fetch: ResolvedConnection["fetch"]; endpoint: ProtocolEndpoint; signal?: AbortSignal }): Promise<ModelInfo[]>;
+  probe(ctx, opts: { fetch: ResolvedConnection["fetch"]; endpoint: ProtocolEndpoint; model: string; signal?: AbortSignal }): Promise<void>;
 }
-
-// types.models.SharedProtocol = Protocol & {
-//   baseUrl(raw: string): string;              // validate + versioned base
-//   defaultHeaders(): Record<string, string>;  // protocol-required, non-auth (anthropic-version)
-//   apiKeyHeaders(key: string): Record<string, string>;  // auth only
-// }
 ```
+
+Protocols receive only the connection's transport-bound `fetch`, never the whole `ResolvedConnection`, so they cannot read secrets or config by construction. `model` is required: the caller (`customTest`) checks `config.testModel` and throws "A test model is required" before calling `probe`. A single type is used; a separate base contract for Claude/Codex is not introduced because nobody would implement it. `signal` is added now as an optional pass-through to `fetch`; current callers do not pass it yet.
 
 `probe` replaces the `operation: "generation"` branch and `listModels` replaces `operation: "models"`, so no operation string remains. Alternative rejected: pure request builders with the provider doing fetch. That moves HTTP-failure and body-cancel handling into every provider, which duplicates code.
 
@@ -38,18 +37,18 @@ Non-Goals: streaming or compaction through shared protocols (custom keeps having
 
 ```
 src/models/protocol/
-  get.ts            id → SharedProtocol via one object literal; unknown id throws "Unsupported protocol"
+  get.ts            id → Protocol via one object literal; unknown id throws "Unsupported protocol"
   list.ts           { id, label }[] in registry order
   common/normalizeBase.ts   http(s), no credentials/query/fragment, raw string containing "?" or "#" rejected (even empty), trailing slashes trimmed; throws "Invalid base URL"
-  common/checkedFetch.ts    conn.fetch with opts.signal; !ok → cancel body, throw "<what> failed (HTTP n)"
+  common/checkedFetch.ts    opts.fetch with opts.signal; !ok → cancel body, throw "<what> failed (HTTP n)"
   common/openaiModels.ts    parse data[].id with de-duplication (both OpenAI protocols)
-  openaiChat/      definition.ts baseUrl.ts apiKeyHeaders.ts listModels.ts probe.ts
+  openaiChat/      definition.ts listModels.ts probe.ts
   openaiResponses/ …
   anthropic/       …
   gemini/          …
 ```
 
-Each `definition.ts` returns a `SharedProtocol` object whose methods call its sibling procedures through `ctx.fns.models.protocol.<id>.*`. The registry object literal in `get.ts` is the only place that maps id to implementation. Code outside the registry has no `if`, `switch` or ternary on the protocol id. Alternative rejected: a `$modelProtocol_` loader. The set is closed by decision, so a loader would add extension surface that nobody is meant to use.
+Each `definition.ts` returns a `Protocol` object: `baseUrl`, `defaultHeaders` and `apiKeyHeaders` are small inline methods (they use `common/normalizeBase` through `ctx.fns`), while `listModels` and `probe` call the sibling procedures through `ctx.fns.models.protocol.<id>.*`. That gives three files per protocol instead of six. The registry object literal in `get.ts` is the only place that maps id to implementation. Code outside the registry has no `if`, `switch` or ternary on the protocol id. Alternative rejected: a `$modelProtocol_` loader. The set is closed by decision, so a loader would add extension surface that nobody is meant to use.
 
 Per-protocol behavior moved verbatim from `customProtocol`:
 
@@ -60,11 +59,11 @@ Per-protocol behavior moved verbatim from `customProtocol`:
 | anthropic | `/v1` unless present | default `anthropic-version: 2023-06-01` (always, also without key) + key `x-api-key` | `/messages`, messages `Hi`, `max_tokens: 1`, `stream: false` | `data[].id` |
 | gemini | `/v1beta` unless `/v1` or `/v1beta` | `x-goog-api-key` | `/models/<id without models/>:generateContent`, `maxOutputTokens: 1` | `models[].name` without `models/` |
 
-Discovery is `GET <base>/models`; the probe is POST with `Content-Type: application/json`. When a shared protocol's `probe` gets no model, it throws "A test model is required".
+Discovery is `GET <base>/models`; the probe is POST with `Content-Type: application/json`. `probe` requires `model`; the missing-test-model check lives in `customTest`. Gemini discovery keeps today's behavior verbatim: only the id from `models[].name` is returned, `displayName` is ignored.
 
 ### Custom provider
 
-`provider/custom/customEndpoint.ts` resolves `{ protocol, endpoint }`: `protocol = models.protocol.get({ id: config.protocol })`, `base = protocol.baseUrl(config.baseUrl)`, headers are merged through one `Headers` instance in this order, later sources overriding earlier ones case-insensitively: `Accept: application/json`, `protocol.defaultHeaders()`, then `protocol.apiKeyHeaders(key)` when `conn.secret("apiKey")` returns a key; the result is stored as a lowercase-keyed record. Protocols send these headers and set `Content-Type: application/json` for the probe last. `customListModels` and `customTest` keep their merging and result codes and call the protocol methods. `customProtocol.ts` is deleted. `customValidate` stays. The `protocol` select stays static in `$modelProvider_custom.ts`; a test asserts its option values equal `models.protocol.list({})`. Alternative rejected: deriving options at load time, because it would make the declaration depend on runtime state.
+`provider/custom/customEndpoint.ts` resolves `{ protocol, endpoint }`: `protocol = models.protocol.get({ id: config.protocol })`, `base = protocol.baseUrl(config.baseUrl)`, headers are merged through one `Headers` instance in this order, later sources overriding earlier ones case-insensitively: `Accept: application/json`, `protocol.defaultHeaders()`, then `protocol.apiKeyHeaders(key)` when `conn.secret("apiKey")` returns a key; the result is stored as a lowercase-keyed record. Protocols send these headers and set `Content-Type: application/json` for the probe last. `customListModels` and `customTest` keep their merging and result codes and call the protocol methods with `fetch: conn.fetch`; `customTest` throws "A test model is required" when `config.testModel` is empty, before any request. `customProtocol.ts` is deleted. `customValidate` stays. The `protocol` select stays static in `$modelProvider_custom.ts`; a test asserts its option values equal `models.protocol.list({})`. Alternative rejected: deriving options at load time, because it would make the declaration depend on runtime state.
 
 ### Claude and Codex
 
@@ -76,11 +75,11 @@ All shared protocol messages are neutral: "Unsupported protocol", "Invalid base 
 
 ### Minimal facade
 
-The 13 entries listed in the proposal stay, together with `providers.ts` and `api.ts`. The 23 forwarding files are deleted, and every internal `ctx.fns.models.<removed>` call is rewritten to its implementation name (for example `models.get` → `models.connections.get`, `models.failure` → `models.inference.failure`, `models.parseSSE` → `models.transport.parseSSE`, `models.codexReasoningProfile` → `models.provider.codex.codexReasoningProfile`). `code.callers` drives the rewrite, and `code.quality` (missing-name rule) confirms nothing is left.
+The 13 entries listed in the proposal stay, together with `providers.ts` and `api.ts`. The 23 forwarding files are deleted, and every internal call inside `src/models` to a root name — removed or kept in the facade — is rewritten to its implementation name (for example `models.get` → `models.connections.get`, `models.failure` → `models.inference.failure`, `models.parseSSE` → `models.transport.parseSSE`, `models.codexReasoningProfile` → `models.provider.codex.codexReasoningProfile`). The facade is only for consumers outside `src/models`. `code.callers` drives the rewrite, and `code.quality` (missing-name rule) confirms nothing is left.
 
 ### Cancellation and future streaming
 
-`listModels` and `probe` accept an optional `signal` that is passed to `conn.fetch`; an aborted signal rejects the operation and releases the body. Streaming through shared protocols is planned later: the contract keeps object-shaped opts so an optional `stream(ctx, { conn, endpoint, request, signal })` (and later `compact`) can be added to `Protocol` without changing existing methods; SSE framing would come from `models.transport.parseSSE`. This change adds neither.
+`listModels` and `probe` accept an optional `signal` that is passed to the given `fetch`; an aborted signal rejects the operation and releases the body. Streaming through shared protocols is planned later: the contract keeps object-shaped opts so an optional `stream(ctx, { fetch, endpoint, request, signal })` (and later `compact`) can be added to `Protocol` without changing existing methods; SSE framing would come from `models.transport.parseSSE`. This change adds neither.
 
 ## Risks / Trade-offs
 

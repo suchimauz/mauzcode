@@ -12,7 +12,7 @@ The system SHALL provide exactly four shared wire protocols, identified as `open
 - **THEN** the request fails with an unsupported protocol error and no network request is made
 
 ### Requirement: Protocol strategy contract
-Every shared protocol SHALL implement one contract consisting of model discovery and a minimal probe, both operating on a provider-supplied endpoint (base URL and request headers) and the resolved connection. Both operations SHALL accept an optional abort signal that is passed to the request. It SHALL additionally normalize a configured base URL to its versioned API base, provide its required non-authentication headers, and map an API key to its standard authentication headers.
+Every shared protocol SHALL implement model discovery and a minimal probe on a provider-supplied endpoint and the transport-bound fetch. A probe SHALL require a model id. Both SHALL accept an optional abort signal. A protocol SHALL also normalize a configured base URL to its versioned API base, provide its required non-authentication headers, and map an API key to its standard authentication headers.
 
 #### Scenario: Aborted operation
 - **WHEN** discovery or a probe is called with an aborted signal
@@ -42,7 +42,7 @@ Selecting a shared protocol SHALL be a single lookup by id. Behavior that differ
 - **THEN** it obtains the protocol by id and calls its operations without branching on the id
 
 ### Requirement: Provider-owned authentication
-A protocol SHALL NOT read connection secrets. The provider SHALL build the endpoint headers, including any authentication. A shared protocol's API-key header mapping SHALL be: bearer `Authorization` for both OpenAI protocols, `x-api-key` for Anthropic, and `x-goog-api-key` for Gemini.
+A protocol SHALL NOT read connection secrets: it SHALL receive only the transport-bound fetch, not the connection itself. The provider SHALL build the endpoint headers, including any authentication. A shared protocol's API-key header mapping SHALL be: bearer `Authorization` for both OpenAI protocols, `x-api-key` for Anthropic, and `x-goog-api-key` for Gemini.
 
 #### Scenario: Provider without an API key
 - **WHEN** a provider builds an endpoint without an API key

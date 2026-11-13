@@ -7,6 +7,10 @@ The custom provider SHALL send the API key in the selected shared protocol's sta
 - **WHEN** a request is made for a custom connection with protocol `anthropic` and an API key
 - **THEN** it carries `x-api-key` and `anthropic-version` headers and no bearer authorization
 
+#### Scenario: Test without a test model
+- **WHEN** a custom connection without a test model is tested
+- **THEN** the test fails with a test model required error before any request is sent
+
 #### Scenario: Protocol options match the shared set
 - **WHEN** the custom provider fields are inspected
 - **THEN** the protocol select option values and labels equal the listed shared protocol ids and labels in order
