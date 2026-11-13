@@ -14,9 +14,17 @@ The system SHALL provide exactly four shared wire protocols, identified as `open
 ### Requirement: Protocol strategy contract
 Every shared protocol SHALL implement model discovery and a minimal probe on a provider-supplied endpoint and the transport-bound fetch. A probe SHALL require a model id. Both SHALL accept an optional abort signal. A protocol SHALL also normalize a configured base URL to its versioned API base, provide its required non-authentication headers, and map an API key to its standard authentication headers.
 
-#### Scenario: Aborted operation
-- **WHEN** discovery or a probe is called with an aborted signal
-- **THEN** the operation rejects and any response body is released
+#### Scenario: Signal aborted before the request
+- **WHEN** discovery or a probe is called with a signal that is already aborted
+- **THEN** the operation rejects with an abort error and no request is sent
+
+#### Scenario: Signal aborted after the response
+- **WHEN** the signal is aborted after the response has arrived but before the operation completes
+- **THEN** the operation rejects and the response body is cancelled
+
+#### Scenario: Probe without a model
+- **WHEN** a probe is called with an empty model id
+- **THEN** it fails with a test model required error and no request is sent
 
 #### Scenario: Base URL with empty query or fragment
 - **WHEN** a base URL whose raw text contains `?` or `#`, even with nothing after it, is normalized
@@ -31,8 +39,10 @@ Every shared protocol SHALL implement model discovery and a minimal probe on a p
 - **THEN** the protocol sends one minimal non-streaming generation for that model limited to one output token
 
 #### Scenario: Versioned base URL
-- **WHEN** a base URL without a version segment is normalized by `anthropic` or `gemini`
-- **THEN** `/v1` or `/v1beta` respectively is appended, and a base that already ends with an accepted version is kept
+- **WHEN** a base URL is normalized by `anthropic` or `gemini` after trailing slashes are trimmed
+- **THEN** `anthropic` keeps a base ending with `/v1` and appends `/v1` to any other base
+- **AND** `gemini` keeps a base ending with `/v1` or `/v1beta` and appends `/v1beta` to any other base
+- **AND** the OpenAI protocols keep the base unchanged
 
 ### Requirement: Selection without protocol branching
 Selecting a shared protocol SHALL be a single lookup by id. Behavior that differs between protocols SHALL live in the protocol implementations, not in conditional branches of callers.

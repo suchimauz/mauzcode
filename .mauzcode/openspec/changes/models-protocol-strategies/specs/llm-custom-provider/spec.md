@@ -9,7 +9,7 @@ The custom provider SHALL send the API key in the selected shared protocol's sta
 
 #### Scenario: Test without a test model
 - **WHEN** a custom connection without a test model is tested
-- **THEN** the test fails with a test model required error before any request is sent
+- **THEN** only model discovery is requested and the result is `available` with reason `models-ok`, as before
 
 #### Scenario: Protocol options match the shared set
 - **WHEN** the custom provider fields are inspected
