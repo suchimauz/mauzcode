@@ -133,16 +133,24 @@ Within the live unexpired receipt store, an identical authorized retry of a succ
 
 ### Requirement: Migrate current tool callers without an unsafe legacy fallback
 
-The existing tool names SHALL retain their identities while schemas, descriptions, guidelines, and live callers migrate to receipt-bound mutations. Legacy path-only edit requests MUST fail with actionable reread/new-schema guidance. Persisted conversation history MUST NOT be rewritten to fabricate receipts or successful migrations.
-
-#### Scenario: Old session sends path-only edit
-- **WHEN** a pre-change session submits the previous edit shape after the guarded contract is enabled
-- **THEN** the request is rejected without writing and the caller is told to read and use the current schema
+The existing tool names SHALL retain their identities while schemas, descriptions, guidelines, and live callers migrate to receipt-bound mutations. Persisted conversation history MUST NOT be rewritten to fabricate receipts or successful migrations.
 
 #### Scenario: Transport changes schema shape
 - **WHEN** a native provider or compatibility transport presents the edit tool
 - **THEN** its arguments preserve the same mode and receipt restrictions as the server validator
 - **AND** lack of provider-side union enforcement cannot enable a server-side mixed-mode fallback
+
+### Requirement: Handle legacy path-only edits by rollout mode
+
+Legacy path-only edit requests SHALL follow the `files.guard` rollout mode. In `warn` mode they are applied by re-reading the file inside the writer critical section, return a warning and a new readId, and are reported as unverified. In `enforce` mode they MUST fail with actionable reread/new-schema guidance.
+
+#### Scenario: Old session sends path-only edit in warn mode
+- **WHEN** `files.guard` is `warn` and a pre-change session submits the previous edit shape
+- **THEN** the edit is applied under writer coordination against the current file, and the result carries an unverified warning and a new readId
+
+#### Scenario: Old session sends path-only edit in enforce mode
+- **WHEN** `files.guard` is `enforce` and a pre-change session submits the previous edit shape
+- **THEN** the request is rejected without writing and the caller is told to read and use the current schema
 
 ### Requirement: Treat successful edits as consumed evidence
 

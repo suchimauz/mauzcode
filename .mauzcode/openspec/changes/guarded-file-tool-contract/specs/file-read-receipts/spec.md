@@ -72,17 +72,47 @@ Receipts SHALL cover only content actually included in the final authorized read
 - **WHEN** a caller retrieves more text through an output-history viewer that does not participate in receipt issuance
 - **THEN** that retrieval alone does not upgrade the original receipt to full-file authority
 
+### Requirement: Build complete evidence for large files
+
+Several partial reads of the same unchanged version in the same context MAY be combined into complete-file evidence once their delivered ranges cover the whole file. A version-only read SHALL return a readId bound to the current version without content; it confers evidence for `write` replace only, never anchor or literal edit authority over unseen text.
+
+#### Scenario: Large file covered by sequential range reads
+- **WHEN** a caller reads a large file in several ranges whose union covers every line and the version does not change between them
+- **THEN** the combined receipt is complete-file evidence and can authorize full replacement
+- **AND** a version change between the reads leaves the evidence partial
+
+#### Scenario: Version-only read
+- **WHEN** a caller requests only the version of an existing file
+- **THEN** it receives a readId for full replacement of that exact version without file content
+- **AND** that readId cannot authorize literal or anchor edits
+
 ### Requirement: Bound lifecycle and resource use
 
-Receipts SHALL expire after five minutes by default and SHALL have bounded storage. Expiration, eviction, restart, or loss of the issuing service epoch MUST require a new read, never an unconditional-write fallback. A known expired receipt SHALL return expired; an unresolvable receipt SHALL return unavailable without content disclosure.
+Receipts SHALL be stored durably per agent/session in the framework Postgres store, so they survive process restart and transcript compaction. Receipts SHALL use a sliding lifetime of 30 minutes by default, extended on each authorized use, with bounded per-agent storage. Expiration or eviction MUST NOT fall back to an unconditional write. A known expired receipt SHALL return expired; an unresolvable receipt SHALL return unavailable without content disclosure.
 
 #### Scenario: Receipt expires
 - **WHEN** a known receipt is used after its lifetime
-- **THEN** no write occurs and the response requests a new read with expired status
+- **THEN** no write occurs and the response reports expired status
 
-#### Scenario: Restart or eviction
-- **WHEN** the issuing receipt store no longer resolves the receipt after restart or eviction
+#### Scenario: Receipt survives restart and compaction
+- **WHEN** the server restarts or the agent transcript is compacted while a receipt is live
+- **THEN** the receipt still resolves for the same agent/session, workspace, and host context
+
+#### Scenario: Eviction or unknown receipt
+- **WHEN** the receipt store no longer resolves the receipt
 - **THEN** the request fails as unavailable and cannot regenerate authority merely from a path or cached hash
+
+#### Scenario: Active use extends lifetime
+- **WHEN** a live receipt is used for an authorized read expansion, a conflict refresh, or a replay
+- **THEN** its expiry moves forward by the configured lifetime
+
+### Requirement: Recover from lost receipts in one step
+
+When the target is still authorized, an expired or unavailable response SHALL include a new readId and bounded current content for the same original scope, so that recovery takes one retry instead of a separate read.
+
+#### Scenario: Expired receipt with authorized target
+- **WHEN** an expired receipt is used and the original scope is still authorized
+- **THEN** the response carries a new readId and bounded fresh content for that scope
 
 ### Requirement: Refresh conflicts within the original scope
 
@@ -101,6 +131,15 @@ After a version conflict, the old receipt SHALL be retired. Subject to current a
 - **WHEN** inserted lines change which text occupies the original coordinates
 - **THEN** the refreshed result identifies its current coordinates and version
 - **AND** it does not claim that the previous semantic target or task precondition remains valid
+
+### Requirement: Keep whole-file conflicts cheap
+
+Version checks SHALL remain whole-file in this change. A conflict response SHALL state whether the original delivered scope changed and SHALL list changed line ranges as coordinates only, without content outside the original scope. Per-range versioning is a possible later extension.
+
+#### Scenario: Conflict outside the read scope
+- **WHEN** a partial receipt conflicts only because lines outside its delivered scope changed
+- **THEN** the response reports that the original scope is unchanged, gives a new readId and the bounded fresh scope content
+- **AND** the caller can repeat the same edit with the new readId in one call
 
 ### Requirement: Make read limits explicit without inventing authority
 

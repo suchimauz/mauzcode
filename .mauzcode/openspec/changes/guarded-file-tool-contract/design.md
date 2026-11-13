@@ -51,6 +51,9 @@ edit({ readId, mode: 'anchor', edits: [{ op, anchor, endAnchor?, text? }] })
 
 write({ mode: 'create', path, host?, content })
 write({ mode: 'replace', readId, content })
+
+// Internal service keeps its signature; preconditions are optional:
+files.write({ path, host?, content, expectedContent?, expectedVersion?, readId?, ifAbsent? })
 ```
 
 `edit` and replacement `write` have no independent path/host or caller-supplied owner. Agent/session/workspace identity comes from trusted execution context. An empty or foreign session cannot be replaced with a default privileged context. Trusted internal and browser callers use their own authenticated context and the same conditional writer, not forged agent receipts.
@@ -63,7 +66,7 @@ Prefer discriminated schema branches when the provider supports them. For restri
 
 ### 2. Use opaque, scoped, short-lived read receipts
 
-A receipt store entry contains a random opaque identifier, issuing service epoch, principal, agent/session or browser view context, workspace identity, resolved host identity, canonical target identity, original byte revision, displayed scope/mapping, issue/expiry time, and lifecycle state. Default TTL is five minutes. The store is bounded and owned by the issuing service; eviction and restart invalidate unresolved tokens. No database migration or persistence is required for correctness in this change.
+A receipt store entry contains a random opaque identifier, issuing service epoch, principal, agent/session or browser view context, workspace identity, resolved host identity, canonical target identity, original byte revision, displayed scope/mapping, issue/expiry time, and lifecycle state. Default lifetime is 30 minutes, sliding on each authorized use. Receipts are stored in the framework Postgres store (one table keyed by opaque id, owner and agent/session) with a bounded number of live receipts per agent, so they survive restart and transcript compaction. Expired or unavailable receipts on a still-authorized target return a new readId with bounded fresh content of the same scope, so recovery is one retry. Several range reads of one unchanged version combine into complete-file evidence; a version-only read (`read({ path, versionOnly: true })`) yields replace-only evidence without content.
 
 Use a collision-resistant digest of exact file bytes plus stable filesystem identity; do not accept the old path's content hash alone as identity. Same bytes on a replaced inode conflict. A full-file digest is conservative: unrelated changes can cause conflicts. Identical bytes on the same identity after an undetected external ABA are not promised to expose historical intermediate states; this is a snapshot guarantee, not an audit log.
 
@@ -146,7 +149,20 @@ Fresh conflict evidence uses the original delivered coordinates and current perm
 
 Before changing signatures, inspect indexed callers and direct filesystem writes separately. Grep quoted marker syntax is not proof of a live call path. Trusted code generation/internal writers using affected services must be migrated to explicit conditional operations or identified as nonparticipants with guarded guarantees withheld for their bypass path; they cannot inherit an implicit unconditional default from the guarded service.
 
-**Alternative rejected:** shipping a guarded edit while leaving write, browser save, or an advertised compatibility route as an overwrite escape hatch.
+Compatibility of `files.write`: the signature does not change and about thirty existing callers keep working. Every call goes through the shared coordination and atomic publication; calls without preconditions are classified as unverified writes. The system prompt line in `src/agent/buildLlmRequest.ts` that recommends `files.write` for content generated in eval is changed to recommend `write` create/replace. `bash`, direct `Bun.write`/`node:fs` and external editors are declared nonparticipants.
+
+**Alternative rejected:** shipping a guarded edit while leaving write, browser save, or an advertised compatibility route as an overwrite escape hatch. Breaking all `files.write` callers at once was also rejected; coordination plus optional preconditions removes interleaving loss without a mass migration.
+
+### 8. Roll out through a warn/enforce setting in stages
+
+A declared `files.guard` setting (`warn` | `enforce`, default `warn` during rollout) controls legacy forms. In `warn`, path-only `edit` and path-and-content `write` still work: they run inside the writer critical section against the current file, return a warning, a new readId, and `verified: false`. In `enforce` they are rejected with migration guidance. Rollback means switching to `warn`; coordination and atomic publication stay on.
+
+Conflicts remain whole-file. Conflict responses state whether the original scope changed, list changed line ranges as coordinates only, and include a new readId with the bounded fresh scope, so an unaffected edit is repeated in one call. Per-range versioning is deferred.
+
+Stages:
+1. Local `read`/`edit`/`write`, `files.write`, Files/Canvas saves, receipts and `files.guard=warn`.
+2. SSH writers on top of the existing `remote.writeFile` lock and temp-file rename; until then SSH keeps current behavior under `warn` (marked unverified) and fails closed under `enforce`.
+3. Representative measurements of conflict/recovery cost, then default switches to `enforce`.
 
 ## Risks / Trade-offs
 
@@ -166,11 +182,11 @@ Before changing signatures, inspect indexed callers and direct filesystem writes
 1. Only after separate implementation approval, record a current caller/writer inventory and tests of existing text/image/SSH behavior. Confirm actual compatibility transports and current output limits; do not infer them from stale markdown.
 2. Introduce internal receipt, transform, conditional publication, and structured-outcome services with isolated unit/integration tests. Preserve current tool names as the eventual activation target; no permanent duplicate public tools.
 3. Migrate local and SSH participating services and browser save routes, including explicit create/replace and checks inside commit. If a backend cannot meet the contract, expose it as read-only/unavailable for guarded mutation until its gates pass.
-4. Update current read/edit/write metadata, validators, native schemas, documentation, and caller transports together. Existing queued path-only edits and legacy unconditional writes are rejected with reread/new-schema guidance. Do not rewrite prior messages or silently manufacture receipts.
+4. Update current read/edit/write metadata, validators, native schemas, documentation, and caller transports together. Existing queued path-only edits and legacy unconditional writes follow `files.guard`: applied with a warning under coordination in `warn`, rejected with reread/new-schema guidance in `enforce`. Do not rewrite prior messages or silently manufacture receipts.
 5. Validate delivery-scope integration, owner isolation, platform/metadata cases, and every declared writer path. Run concurrency and negative-guarantee tests. Guarded support is not declared active before these gates pass.
 6. Hot-reload the settled runtime changes and refresh touched routes/types as appropriate, using one coordinated full-project typecheck and complete diagnostics. Keep UI architecture/security requirements when changing browser transports.
 7. Observe correctness, safe conflict recovery, and bounded evidence on representative repository tasks. Synthetic benchmark improvements are not rollout criteria by themselves.
-8. If rollback is necessary, disable the affected mutation paths or require an explicit contract migration; never silently reactivate unsafe overwrite semantics behind the guarded schema. Read-only inspection and prior transcripts remain available.
+8. If rollback is necessary, switch `files.guard` to `warn` or disable the affected mutation paths; never reactivate uncoordinated overwrite semantics. Read-only inspection and prior transcripts remain available.
 
 ## Implementation Acceptance Map
 

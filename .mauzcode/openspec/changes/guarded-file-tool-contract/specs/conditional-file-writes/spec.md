@@ -6,7 +6,7 @@ Make supported file creation, replacement, and edit publication conditional on e
 
 ### Requirement: Separate create and replace in the existing write tool
 
-The existing write tool SHALL require an explicit create or replace mode. Create SHALL accept an authorized path and optional host but require absence at commit. Replace SHALL accept a full current readId and content without independent path or host. Unknown, conflicting, or unconditional legacy write forms MUST be rejected before publication.
+The existing write tool SHALL require an explicit create or replace mode. Create SHALL accept an authorized path and optional host but require absence at commit. Replace SHALL accept a full current readId and content without independent path or host. Unknown or conflicting write forms MUST be rejected before publication.
 
 #### Scenario: Create a new file
 - **WHEN** an authorized create request targets an absent file and its parent target can be resolved safely
@@ -20,13 +20,42 @@ The existing write tool SHALL require an explicit create or replace mode. Create
 - **WHEN** replace carries a partial, expired, or foreign receipt
 - **THEN** it cannot perform a full rewrite and returns the corresponding invalid, expired, or unavailable outcome
 
-#### Scenario: Legacy unconditional write
-- **WHEN** a caller submits the former path-and-content form without an explicit safe mode
+### Requirement: Handle legacy path-and-content writes by rollout mode
+
+The former path-and-content write form SHALL follow the `files.guard` setting. In `warn` mode it is accepted as an unverified overwrite that still goes through writer coordination and atomic publication, and its result carries a warning plus a new readId. In `enforce` mode it is rejected.
+
+#### Scenario: Legacy unconditional write in warn mode
+- **WHEN** `files.guard` is `warn` and a caller submits the former path-and-content form
+- **THEN** the write is published under writer coordination with atomic publication, reported as unverified, and returns a warning with guidance to use create or replace
+
+#### Scenario: Legacy unconditional write in enforce mode
+- **WHEN** `files.guard` is `enforce` and a caller submits the former path-and-content form
 - **THEN** validation rejects it with guidance to use create-if-absent or read then replace
+
+### Requirement: Keep the internal file service compatible and coordinated
+
+The `files.write` runtime function SHALL keep its current signature and accept new optional preconditions: `readId` or `expectedVersion` for replacement and `ifAbsent` for creation. Every call, with or without preconditions, SHALL go through the shared writer coordination and atomic single-file publication. A call without preconditions SHALL be reported as unverified: interleaving cannot lose updates, but a change made after the caller's own read can still be overwritten.
+
+#### Scenario: Existing internal caller without preconditions
+- **WHEN** an existing runtime function calls `files.write({ path, content })`
+- **THEN** the call succeeds as before and is serialized with guarded tool writes to the same target
+- **AND** readers never observe partially written bytes
+
+#### Scenario: Internal caller with a precondition
+- **WHEN** a runtime function calls `files.write` with `expectedVersion`, `readId`, or `ifAbsent` and the target no longer matches
+- **THEN** nothing is written and a structured conflict is returned
+
+### Requirement: Steer generated content to guarded writes
+
+The `expectedContent` option of `files.write` SHALL remain supported as a compatibility precondition checked inside the commit path. The agent system prompt SHALL recommend the guarded `write` tool for saving generated content instead of unconditional `files.write`.
+
+#### Scenario: Prompt guidance for generated content
+- **WHEN** the agent system prompt explains how to save content generated in eval
+- **THEN** it recommends `write` in create or replace mode rather than unconditional `files.write`
 
 ### Requirement: Apply full replacement only to current complete evidence
 
-Full replacement SHALL require complete delivered evidence for the current receipt-bound file. Version or identity changes MUST prevent the replacement even if its submitted content resembles the current file. Receipt-backed replacements SHALL obey the same authorization, conflict, retirement, and exact-success replay rules as guarded edits.
+Full replacement SHALL require complete evidence for the current receipt-bound file: a complete-file read, combined range reads covering the whole unchanged version, or a version-only read. Version or identity changes MUST prevent the replacement even if its submitted content resembles the current file. Receipt-backed replacements SHALL obey the same authorization, conflict, retirement, and exact-success replay rules as guarded edits.
 
 #### Scenario: Stale overwrite
 - **WHEN** another writer changes the target after the complete read and before replacement
@@ -35,6 +64,14 @@ Full replacement SHALL require complete delivered evidence for the current recei
 #### Scenario: Exact replacement retry
 - **WHEN** an identical successful replace request is retried with its unexpired consumed receipt
 - **THEN** it returns the recorded authorized outcome without writing twice
+
+### Requirement: Disclose version-only replacement semantics
+
+A replacement backed by a version-only readId SHALL report that the overwritten version was identified but its content was not delivered.
+
+#### Scenario: Replace via version-only receipt
+- **WHEN** a caller replaces a large file using a version-only readId whose version is still current
+- **THEN** the replacement publishes and its result marks the evidence as version-only
 
 ### Requirement: Coordinate all participating writers by target identity
 
@@ -148,19 +185,27 @@ Results SHALL distinguish confirmed nonpublication, confirmed publication, and a
 
 ### Requirement: Preserve local and SSH parity for supported operations
 
-Guarded support SHALL be declared separately for each supported platform and host path only after equivalent identity, authorization, version, coordination, publication, and conflict tests pass. Unsupported SSH guarantees MUST fail closed, not silently reduce to an unconditional remote write. Existing supported host-aware inspection SHALL remain usable.
+Guarded support SHALL be declared separately for each supported platform and host path only after equivalent identity, authorization, version, coordination, publication, and conflict tests pass. Existing supported host-aware inspection SHALL remain usable.
 
 #### Scenario: SSH parity gate fails
-- **WHEN** the remote backend cannot enforce a required guarded mutation guarantee
+- **WHEN** the remote backend cannot enforce a required guarded mutation guarantee and `files.guard` is `enforce`
 - **THEN** it rejects that mutation with explicit support guidance while preserving authorized read-only inspection
 
 #### Scenario: Supported remote conflict
 - **WHEN** a participating remote writer changes a file after a receipt-bearing read
 - **THEN** a stale remote mutation receives the same no-write conflict semantics and scoped authorized refresh as a supported local mutation
 
+### Requirement: Stage SSH support behind the rollout mode
+
+SSH guarded support SHALL be delivered in a later stage built on the existing `remote.writeFile` lock and temporary-file rename. Until that stage passes its gates, SSH mutations SHALL keep current behavior under `warn` with an unverified-write warning and SHALL fail closed under `enforce` rather than reduce to an unconditional remote write.
+
+#### Scenario: SSH before its stage in warn mode
+- **WHEN** SSH guarded support is not yet declared and `files.guard` is `warn`
+- **THEN** the remote mutation behaves as today and its result is marked unverified
+
 ### Requirement: State the limits of nonparticipating writers
 
-The system SHALL document that cooperative coordination and atomic publication are not universal compare-and-swap against arbitrary shell, editor, direct filesystem, rename, or delete operations. Detected external changes before publication MUST cause refusal; an uncoordinated write after the final check remains outside the stated guarantee.
+The system SHALL document that cooperative coordination and atomic publication are not universal compare-and-swap against arbitrary shell, editor, direct filesystem, rename, or delete operations. Declared nonparticipants include the `bash` tool, direct `Bun.write`/`node:fs` calls in eval or runtime code, and external editors. Detected external changes before publication MUST cause refusal; an uncoordinated write after the final check remains outside the stated guarantee.
 
 #### Scenario: External change detected before publication
 - **WHEN** a nonparticipating writer changes the target before a guarded final check
@@ -173,7 +218,7 @@ The system SHALL document that cooperative coordination and atomic publication a
 
 ### Requirement: Gate rollout on complete participating-path coverage
 
-The guarded contract SHALL NOT be advertised as active until all declared participating write entry points use the same conditional commit semantics. Native schemas, caller behavior, and discovered compatibility transports MUST migrate together. Rollback MUST disable unsupported mutation paths or require explicit contract migration rather than silently restore unsafe overwrites.
+Rollout SHALL be controlled by a declared `files.guard` setting with values `warn` (default during rollout) and `enforce`. `enforce` SHALL NOT become the default until all declared participating local write entry points use the same conditional commit semantics. Native schemas, caller behavior, and discovered compatibility transports MUST migrate together.
 
 #### Scenario: A declared save route still bypasses coordination
 - **WHEN** an acceptance audit finds a declared participating route that can write without the common guard
@@ -182,3 +227,28 @@ The guarded contract SHALL NOT be advertised as active until all declared partic
 #### Scenario: Historical transport documentation has no live consumer
 - **WHEN** legacy marker syntax is documented but no runtime consumer exists
 - **THEN** migration does not claim that syntax was implemented or preserved without verifying its current call path
+
+### Requirement: Keep legacy forms working in warn mode
+
+In `warn` mode, receipts, conditional create/replace, writer coordination, and atomic publication SHALL be active, while legacy path-only edits and path-and-content writes keep working with an unverified-write warning.
+
+#### Scenario: Warn mode keeps legacy callers working
+- **WHEN** `files.guard` is `warn` and an old session sends a path-only edit or path-and-content write
+- **THEN** it is applied under writer coordination with a warning and a new readId
+
+### Requirement: Roll back without uncoordinated overwrites
+
+Rollback SHALL switch `files.guard` to `warn`, which keeps coordination and atomic publication; it MUST NOT restore uncoordinated overwrites.
+
+#### Scenario: Rollback from enforce
+- **WHEN** an operator switches `files.guard` from `enforce` back to `warn`
+- **THEN** legacy forms are accepted again but still serialized and atomically published
+
+### Requirement: Deliver in stages
+
+Delivery SHALL proceed in stages: stage 1 covers local read/edit/write tools, the `files.write` service, and Files/Canvas saves in `warn` mode; stage 2 brings SSH writers to the same contract; stage 3 runs representative measurements and switches the default to `enforce`.
+
+#### Scenario: Enforce before stage 3
+- **WHEN** stages 1 and 2 are complete but stage 3 measurements are not
+- **THEN** the default `files.guard` remains `warn`
+

@@ -6,13 +6,16 @@ The current file tools do not reliably bind an edit to the file version actually
 
 ## What Changes
 
-- **BREAKING**: evolve the current `read`, `edit`, and `write` tools in place; do not introduce a competing permanent tool set. Preserve ordinary text/range, image, and host-aware reading.
+- Evolve the current `read`, `edit`, and `write` tools in place; do not introduce a competing permanent tool set. Preserve ordinary text/range, image, and host-aware reading.
 - Text reads return opaque, expiring `readId` receipts bound to the authenticated owner, agent/session, workspace, host, canonical file identity, exact version, and delivered content scope. Receipts never replace authorization.
-- **BREAKING**: `edit` requires `readId` and an explicit homogeneous `literal` or `anchor` mode, without independent `path`/`host`. Reject blind edits, mixed/no-op/overlapping operations, and incompatible fields.
-- **BREAKING**: `write` distinguishes create-if-absent from full replacement using a current full-file receipt. Existing-file unconditional overwrite is not a guard bypass.
+- `edit` requires `readId` and an explicit homogeneous `literal` or `anchor` mode, without independent `path`/`host`. Reject blind edits, mixed/no-op/overlapping operations, and incompatible fields.
+- `write` distinguishes create-if-absent from full replacement using a current full-file receipt. Existing-file unconditional overwrite is not a guard bypass.
 - Return structured outcomes, bounded authorized fresh evidence on conflicts, and idempotent receipt-backed success replay within the live receipt lifetime.
 - Serialize participating local and SSH writers under one target identity; validate the version inside the commit path and publish a single file atomically. Include Files and Canvas save paths without weakening their authentication, ownership, or CSRF checks.
-- Migrate schemas, guidelines, callers, and verified live transports together. Reject stale path-only edits rather than silently accepting the old unsafe contract.
+- Migrate schemas, guidelines, callers, and verified live transports together. Legacy path-only edits and path-and-content writes are controlled by a `files.guard` setting: `warn` (rollout default) applies them under coordination with a warning and `verified: false`; `enforce` rejects them. Becoming **BREAKING** only when `enforce` is the default (stage 3).
+- `files.write` keeps its signature; optional `expectedVersion`/`readId`/`ifAbsent` add preconditions, and every call is coordinated and atomically published. The system prompt stops recommending unconditional `files.write` from eval. `bash` and direct filesystem writes are declared nonparticipants.
+- Receipts are stored in Postgres per agent with a 30-minute sliding lifetime; expired receipts return a fresh readId and scope in the same response. Large files can be replaced via combined range reads or a version-only read.
+- Delivery in stages: (1) local tools, `files.write`, Files/Canvas in `warn`; (2) SSH on `remote.writeFile`; (3) measurements and `enforce` by default.
 
 ## Capabilities
 
@@ -28,7 +31,7 @@ None. Existing published capabilities do not specify these file-tool behaviors.
 
 ## Impact
 
-Affected surfaces include tool definitions and validation, file read/edit/write services, SSH writing, Files/Canvas save contracts, and native tool transports/callers. No dependency addition is mandated. Existing persisted conversations are not rewritten; old mutation requests must fail safely with migration guidance.
+Affected surfaces include tool definitions and validation, file read/edit/write services, SSH writing, Files/Canvas save contracts, and native tool transports/callers. No dependency addition is mandated. A Postgres migration for the receipt store and a declared `files.guard` setting are added. Existing persisted conversations are not rewritten; old mutation requests must fail safely with migration guidance.
 
 This change currently contains specifications only. Implementation requires separate authorization. No runtime changes, settings changes, commits, pushes, or archive operations are part of preparing these artifacts.
 

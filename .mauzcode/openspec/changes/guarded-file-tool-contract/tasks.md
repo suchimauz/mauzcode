@@ -12,7 +12,7 @@ These are future implementation and verification tasks, not authorization to imp
 
 - [ ] 2.1 Add a bounded opaque receipt service using trusted owner/session/workspace/host context, canonical identity, exact-byte version, and service epoch; verify unit tests reject foreign ownership, session/workspace/host changes, guessed tokens, and target substitution without disclosure, and document each field's purpose.
 - [ ] 2.2 Add current authorization checks for issuance, use, replay, and conflict evidence; verify revocation tests and browser-vs-agent scope separation prevent mutation and content leakage after access changes.
-- [ ] 2.3 Implement five-minute default TTL, eviction/epoch invalidation, active/consumed/conflicted states, and exact successful-request replay; verify expiry, restart, changed payload, and concurrent duplicate tests, and document the boundary excluding crash-proof exactly-once.
+- [ ] 2.3 Implement a Postgres-backed receipt store (one migration) with 30-minute sliding lifetime, bounded live receipts per agent, active/consumed/conflicted states, and exact successful-request replay; verify expiry, restart and compaction survival, eviction, changed payload, and concurrent use, and that expired/unavailable responses on an authorized target return a new readId with bounded fresh scope content.
 - [ ] 2.4 Capture stable byte revision and file identity without treating display normalization as content; verify same-bytes replaced identity, mutation during read, and CRLF/Unicode fixtures produce correct receipts or safe failure.
 
 ## 3. Bind evidence to final delivered read scope
@@ -21,6 +21,7 @@ These are future implementation and verification tasks, not authorization to imp
 - [ ] 3.2 Integrate receipt finalization/narrowing with actual model/browser response bounding and tool-result storage; verify late truncation, stored-result previews, and generic history retrieval cannot expose a receipt covering hidden content.
 - [ ] 3.3 Maintain exact mappings from displayed lines/text to source bytes and classify full versus partial evidence; verify hidden/all-match spans, edge visibility, empty text, CRLF, missing final LF, and invalid UTF-8 cases.
 - [ ] 3.4 Preserve documented production limits rather than copying prototype caps, and implement safe long/minified-line handling; verify fully delivered supported lines remain editable while clipped/unsupported content never gains hidden-byte or full-replacement authority, with user-facing reread guidance.
+- [ ] 3.5 Combine several range reads of one unchanged version into complete-file evidence and add `read({ path, versionOnly: true })` issuing replace-only evidence without content; verify a version change between range reads leaves evidence partial and version-only receipts cannot authorize literal/anchor edits.
 
 ## 4. Build the shared local conditional commit path
 
@@ -30,6 +31,7 @@ These are future implementation and verification tasks, not authorization to imp
 - [ ] 4.4 Preserve required permission bits and supported ownership/ACL/xattr metadata or reject before publication; verify the declared platform matrix with executable-file and unsupported-metadata tests, and document unsupported cases.
 - [ ] 4.5 Implement bounded lock waiting, safe cleanup, and conservative crash/orphan handling without age-only lock stealing; verify live-lock timeout and owner-crash tests and deliver operator recovery guidance.
 - [ ] 4.6 Add applied/not-applied/unknown commit-state reporting, durability uncertainty, and success-record timing; verify publication-before-response, fsync failure, and retry reconciliation tests do not cause blind double application.
+- [ ] 4.7 Route every `files.write` call through the shared coordination and atomic publication without changing its signature; add optional `expectedVersion`, `readId`, and `ifAbsent` preconditions, keep `expectedContent` as a compatibility check inside commit, and mark calls without preconditions as unverified; verify existing callers and tests pass unchanged and that unverified writes are serialized with guarded tool writes.
 
 ## 5. Migrate the existing edit and write tools
 
@@ -39,8 +41,14 @@ These are future implementation and verification tasks, not authorization to imp
 - [ ] 5.4 Change current write to explicit create-if-absent and full-receipt replace branches; verify create races, stale overwrite, partial receipt denial, existing-target conflicts, and successful replacement replay without unconditional fallback.
 - [ ] 5.5 Update tool descriptions, schemas, and promptGuidelines to describe the current names' new behavior, compatible batching, and safe recovery; verify transport-specific schema tests and documented examples agree with server validators, including providers without schema-union enforcement.
 - [ ] 5.6 Implement bounded fresh conflict evidence and actionable outcome mapping; verify no automatic semantic rebase, no content outside the original coordinates, no disclosure after revocation, and correct behavior when the file shrinks or lines shift.
+- [ ] 5.7 Declare the `files.guard` setting (`warn` default, `enforce`); in `warn` apply legacy path-only edits and path-and-content writes under coordination with a warning, `verified: false`, and a new readId; in `enforce` reject them with guidance; verify both modes and switching between them at runtime.
+- [ ] 5.8 Add whole-file conflict responses that report whether the original scope changed and list changed line ranges as coordinates only, with a new readId and bounded fresh scope; verify an edit outside the changed lines succeeds on one retry and no outside content is disclosed.
+- [ ] 5.9 Replace the system-prompt guidance in `src/agent/buildLlmRequest.ts` that recommends unconditional `files.write` from eval with `write` create/replace guidance, and document `bash`, direct `Bun.write`/`node:fs`, and external editors as nonparticipants in tool guidelines.
 
-## 6. Bring SSH writers to the same supported contract
+## 6. Bring SSH writers to the same supported contract (stage 2)
+
+Stage 2 starts after stage 1 (sections 1–5, 7.1–7.3) passes. Until then SSH mutations keep current behavior under `warn` with an unverified marker and fail closed under `enforce`.
+
 
 - [ ] 6.1 Extend the remote backend with receipt-compatible host/canonical identity and current-byte checks inside shared coordination; verify host aliases, replaced identities, participating remote writers, and conditional creation do not bypass the guard.
 - [ ] 6.2 Implement supported remote metadata preservation, preparation/publication cleanup, lock timeout/crash behavior, and acknowledgment reconciliation; verify disconnect-before/after-publication and uncertain-result tests never imply confirmed nonapplication without evidence.
@@ -52,9 +60,12 @@ These are future implementation and verification tasks, not authorization to imp
 - [ ] 7.2 Move Canvas saves and relevant browser read evidence to the same commit path; verify save-vs-agent-edit and save-vs-save races preserve the winner and provide authorized bounded conflicts without weakening tab/workspace ownership. For both Files and Canvas, test read → replacement by a different inode with identical bytes → save and require conflict with no overwrite, even when expectedContent matches.
 - [ ] 7.3 Update FilesPage/CanvasFile read/save transports to carry opaque server-established revisions bound to read-time canonical identity, exact-byte version, authenticated viewer, and target context; verify authorization and revision binding, reject save-time reconstruction of missing read evidence, preserve CSRF handling and existing focus/accessibility/theme behavior, and document migration without adding a visual redesign.
 - [ ] 7.4 Migrate all remaining indexed service callers and verified compatibility transports to explicit preconditions; verify no declared participant retains unchecked write fallback and document direct Bun/node, shell/editor, rename/delete, and generator nonparticipants separately.
-- [ ] 7.5 Test current-schema activation with old in-flight calls and persisted conversations; verify legacy path-only edit/unconditional write requests fail with reread guidance, tool metadata refreshes for subsequent turns, and historical messages are not rewritten.
+- [ ] 7.5 Test `files.guard` activation with old in-flight calls and persisted conversations; verify that in `warn` legacy path-only edit/unconditional write requests succeed with a warning under coordination, that in `enforce` they fail with reread guidance, tool metadata refreshes for subsequent turns, and historical messages are not rewritten.
 
-## 8. Integration, validation, and rollout gates
+## 8. Integration, validation, and rollout gates (stage 3)
+
+Switching the `files.guard` default to `enforce` requires 8.1–8.5. Rollback is switching back to `warn`; coordination and atomic publication remain active.
+
 
 - [ ] 8.1 Run an end-to-end scenario matrix across the three specs using real tool handlers and local/SSH/browser participants; verify ownership/scope isolation, retries, image/text regressions, conditional create/replace, and single-file publication guarantees with recorded results.
 - [ ] 8.2 Run repeated multi-process contention tests and an explicit uncoordinated check-to-publication race; verify cooperating updates are preserved while the external-race result is documented as a negative guarantee, not a successful protection claim.
