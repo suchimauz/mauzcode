@@ -54,7 +54,7 @@ Participating local and SSH writers SHALL serialize conditional mutations of the
 
 ### Requirement: Include existing save entry points without weakening security
 
-Tools, file services, Files save routes, and Canvas saves SHALL use the participating conditional commit path. Browser-supplied expected content or revisions MUST be validated again inside that path, not only before calling it. Existing authentication, ownership, authorization, and CSRF checks MUST remain enforced on every applicable entry point.
+Tools, file services, Files save routes, and Canvas saves SHALL use the participating conditional commit path. Browser preconditions MUST be validated again inside that path, not only before calling it. Existing authentication, ownership, authorization, and CSRF checks MUST remain enforced on every applicable entry point.
 
 #### Scenario: Canvas save races with agent edit
 - **WHEN** an authorized Canvas save and agent edit compete using the same old file version
@@ -67,6 +67,20 @@ Tools, file services, Files save routes, and Canvas saves SHALL use the particip
 #### Scenario: Missing browser authorization or CSRF
 - **WHEN** a browser save lacks required ownership, authorization, or CSRF evidence
 - **THEN** writer coordination does not allow the request to bypass those checks
+
+### Requirement: Bind browser replacement to read-time identity and version
+
+Browser reads SHALL issue an opaque server-established revision binding viewer and target context, canonical file identity, and exact-byte version captured together at read time. Replacement saves MUST present that revision and revalidate authorization, identity, and version inside commit. expectedContent MAY be an additional check but MUST NOT substitute for the revision or establish read-time identity from save-time state.
+
+#### Scenario: Same bytes in a replaced file after browser read
+- **WHEN** Files or Canvas reads a file and the target is then replaced by a different inode containing identical bytes before saving
+- **THEN** the commit path detects the read-time identity mismatch and returns conflict without overwriting the replacement
+- **AND** matching expectedContent does not bypass the identity check
+
+#### Scenario: Legacy browser replacement lacks a revision
+- **WHEN** a browser replacement request supplies expectedContent but no server-established read-time revision
+- **THEN** the save is rejected without publication with guidance to read again through the current contract
+- **AND** the server does not manufacture a read-time revision from the target's save-time state
 
 ### Requirement: Resolve identity safely or refuse the operation
 
