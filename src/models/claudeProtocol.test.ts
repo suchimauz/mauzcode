@@ -10,7 +10,7 @@ type Call = { url: string; init: RequestInit };
 async function setup(handler: (call: Call) => Response = end) {
     const ctx = await mkTestCtx({ env: {} });
     const calls: Call[] = []; let marked = false;
-    ctx.state.registry.models.claudeAuth = async (_c: unknown, _s: unknown, o: { op: string }) => { if (o.op === "markLogin") marked = true; return { loggedIn: true, needsLogin: false, accessToken: "test-token", expiresAt: null }; };
+    ctx.state.registry.models.provider.claude.claudeAuth = async (_c: unknown, _s: unknown, o: { op: string }) => { if (o.op === "markLogin") marked = true; return { loggedIn: true, needsLogin: false, accessToken: "test-token", expiresAt: null }; };
     ctx.state.registry.llm.claudeCodeCliVersion = async () => "2.0.0";
     const conn: types.models.ResolvedConnection = { id: crypto.randomUUID(), provider: "claude", accountName: "me", config: {}, secret: async () => null, fetch: async (url, init = {}) => { const c = { url, init }; calls.push(c); return handler(c); } };
     return { ctx, conn, calls, marked: () => marked };
@@ -19,8 +19,8 @@ async function setup(handler: (call: Call) => Response = end) {
 describe("Claude protocol", () => {
     test("static models and not-logged-in check make no requests", async () => {
         const { ctx, conn, calls } = await setup();
-        expect((await claude.listModels()).length).toBe(9);
-        ctx.state.registry.models.claudeAuth = async () => ({ loggedIn: false, needsLogin: true, expiresAt: null });
+        expect((await claude.listModels(ctx)).length).toBe(9);
+        ctx.state.registry.models.provider.claude.claudeAuth = async () => ({ loggedIn: false, needsLogin: true, expiresAt: null });
         expect(await claude.test(ctx, conn)).toMatchObject({ status: "configured", reason: "login-required" });
         expect(calls).toHaveLength(0);
     });

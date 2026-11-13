@@ -1,6 +1,8 @@
 import {test,expect} from 'bun:test';
 import auth from './claudeAuth';
 import login from './claudeLogin';
+import authImplementation from './provider/claude/claudeAuth';
+import loginImplementation from './provider/claude/claudeLogin';
 import constants from '../llm/anthropicOAuthConstants';
 import parse from '../llm/parseAnthropicAuthorizationInput';
 
@@ -10,6 +12,7 @@ function setup(handler:(init:RequestInit)=>Promise<Response>=async()=>Response.j
  const ctx:any={env:{ANTHROPIC_OAUTH_REDIRECT_URI:'https://example.test/callback'},state:{models:{}},fns:{}};
  const conn:any={id:'test',fetch:async(_url:string,init:RequestInit)=>{calls++;return handler(init);}};
  ctx.fns={secrets:{decryptLocal:async(o:any)=>o.envelope,encryptLocal:async(o:any)=>o.value,putLocal:async(o:any)=>{row={value_enc:o.value,version:(row?.version??0)+1};},deleteLocal:async()=>{row=null;}},procs:{db:{select:async(o:any)=>{if(o.sql.startsWith('SELECT'))return row?[{...row}]:[];if(!row||row.version!==o.params[4])return [];row={value_enc:o.params[0],version:row.version+1};return [{version:row.version}];},run:async()=>{}},events:{refresh:async()=>{}}},llm:{anthropicOAuthConstants:()=>constants(ctx,null,{}),parseAnthropicAuthorizationInput:(o:any)=>parse(ctx,null,o)},models:{claudeAuth:(o:any)=>auth(ctx,null,o),claudeRequest:(o:any)=>o.conn.fetch(o.url,o.init)}};
+ ctx.fns.models.provider={claude:{claudeAuth:(o:any)=>authImplementation(ctx,null,o),claudeLogin:(o:any)=>loginImplementation(ctx,null,o),claudeRequest:(o:any)=>ctx.fns.models.claudeRequest(o)}};
  return {ctx,conn,run:(op:any,tokens?:any)=>auth(ctx,null,{conn,op,tokens}),flow:(op:any,extra:any={})=>login(ctx,null,{conn,op,...extra}),calls:()=>calls,row:()=>row};
 }
 const tokens=(expires_in=3600)=>({access_token:'old-access',refresh_token:'old-refresh',expires_in});

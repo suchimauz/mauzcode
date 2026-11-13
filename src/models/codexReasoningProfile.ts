@@ -12,12 +12,5 @@ export default function (
         model: string;
     },
 ): types.models.ReasoningCapabilities | null {
-    const id = opts.model;
-    const profile = "codex-2026-07";
-    if (/^gpt-6(?:[.-]|$)/.test(id)) return { supported: ["low", "medium", "high", "xhigh"], default: "medium", source: "profile", profile };
-    if (/^(?:gpt-5(?:[.-]|$)|codex-)/.test(id)) {
-        const xhigh = /^gpt-5\.(?:[2-9]|\d{2,})|codex-max/.test(id);
-        return { supported: ["off", "minimal", "low", "medium", "high", ...(xhigh ? ["xhigh" as const] : [])], default: "medium", source: "profile", profile };
-    }
-    return null;
+    return _ctx.fns.models.provider.codex.codexReasoningProfile(opts);
 }

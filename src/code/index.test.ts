@@ -96,6 +96,15 @@ describe("code.index", () => {
         } finally { cleanup(); }
     });
 
+    test("deep provider targets retain their full name, including missing leaves", async () => {
+        const { ctx } = await indexed({
+            "models/run.ts": `export default function (ctx: Context) { ctx.fns.models.provider.codex.send({}); ctx.fns.models.provider.codex.absent({}); }`,
+            "models/provider/codex/send.ts": `export default function () { return 1; }`,
+        });
+        const calls = await ctx.fns.procs.db.select({ sql: "SELECT callee FROM code_calls WHERE kind='fn' ORDER BY callee", params: [] });
+        expect(calls.map((c: { callee: string }) => c.callee)).toEqual(["models.provider.codex.absent", "models.provider.codex.send"]);
+    });
+
     test("a method on a call result is not mistaken for a nested function", async () => {
         const { ctx, cleanup } = await indexed({
             "shop/checkout.ts": `export default async function (ctx: Context) { await ctx.fns.shop.charge.call({}); }\n`,

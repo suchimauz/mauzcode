@@ -144,15 +144,15 @@ export default async function (
             if (ts.isCallExpression(node)) {
                 const target = callTarget(node, sf);
                 if (target) {
-                    // Two segments or three? `runtime.docs.search` is a nested
-                    // module and `procs.db.select` is too, while `shop.charge(…)`
-                    // followed by `.then` is not. Ask the registry instead of
-                    // hardcoding which prefixes nest: the longer name wins only
-                    // if such a function actually exists.
+                    // Nested runtime namespaces have no fixed depth. Prefer the
+                    // longest registered prefix; preserve the complete unknown
+                    // target so missing nested procedures are reported accurately.
                     const parts = target.split(".");
-                    const two = parts.slice(0, 2).join(".");
-                    const three = parts.length > 2 ? parts.slice(0, 3).join(".") : null;
-                    const callee = three && allNames.has(three) ? three : two;
+                    let callee = target;
+                    for (let length = parts.length; length >= 2; length--) {
+                        const candidate = parts.slice(0, length).join(".");
+                        if (allNames.has(candidate)) { callee = candidate; break; }
+                    }
                     // Is the result dropped? A call that is its own statement,
                     // with no `await`, no `.then`, no `.catch` and no `void`,
                     // discards whatever comes back. That only matters when the

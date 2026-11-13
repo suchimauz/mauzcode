@@ -1,6 +1,8 @@
 import {afterEach, describe, expect, mock, test} from 'bun:test';
 import routed from './fetch';
 import validate from './validateTransport';
+import fetchImplementation from './transport/fetch';
+import validateImplementation from './transport/validateTransport';
 const original = globalThis.fetch;
 afterEach(() => { globalThis.fetch = original; });
 const direct = {kind:'direct'} as const;
@@ -11,6 +13,7 @@ function fixture() {
  const tunnelSignal = new AbortController();
  const fns = {socksProxy:{readSaved:mock(async () => ({host:'proxy',port:1080})),request,validateIdentity:mock(async () => {})}, sshProvider:{tunnel:mock(async () => ({port:1081,signal:tunnelSignal.signal,release}))}, sshInstance:{get:mock(async () => ({pinnedHostKey:'pin'}))},procs:{db:{select:mock(async () => [{id:'proxy'}])}}};
  const ctx = {fns} as unknown as Context;
+ Object.assign(fns,{models:{transport:{fetch:(opts:Parameters<typeof routed>[2])=>fetchImplementation(ctx,null,opts),validateTransport:(opts:Parameters<typeof validate>[2])=>validateImplementation(ctx,null,opts)}}});
  return {ctx,fns,release,request,tunnelSignal};
 }
 const call = (f: ReturnType<typeof fixture>, transport = ssh as types.models.TransportSpec, extra: Partial<Parameters<typeof routed>[2]> = {}) => routed(f.ctx,null,{transport,url:'https://example.invalid/test',...extra});
@@ -33,7 +36,7 @@ describe('model transports', () => {
  });
  test('direct body cancellation after a successful response resolves',async () => {
   const server=Bun.serve({port:0,hostname:'127.0.0.1',fetch:() => Response.json({ok:true})});
-  try { const r=await routed({fns:{}} as never,null,{transport:direct,url:`http://127.0.0.1:${server.port}/x`}); expect(r.status).toBe(200); await expect(r.body!.cancel()).resolves.toBeUndefined(); }
+  try { const r=await routed(fixture().ctx,null,{transport:direct,url:`http://127.0.0.1:${server.port}/x`}); expect(r.status).toBe(200); await expect(r.body!.cancel()).resolves.toBeUndefined(); }
   finally { server.stop(true); }
  });
  for (const transport of [direct,socks,ssh]) {

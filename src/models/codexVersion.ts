@@ -12,7 +12,5 @@ export default function (
         config: types.models.ResolvedConnection["config"];
     },
 ): string {
-    const v = typeof opts.config.clientVersion === "string" ? opts.config.clientVersion.trim() : "";
-    if (v && /^[0-9A-Za-z.+-]{1,40}$/.test(v)) return v;
-    return "0.157.1";
+    return _ctx.fns.models.provider.codex.codexVersion(opts);
 }

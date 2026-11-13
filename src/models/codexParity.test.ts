@@ -349,6 +349,10 @@ describe("architecture and transports", () => {
 
     test("static: Codex SDK sources reference no legacy namespace or agent types", async () => {
         const files = ["$modelProvider_codex.ts", "codexInput.ts", "parseSSE.ts", "codexVersion.ts", "codexFailure.ts", "codexQuota.ts", "codexReasoningProfile.ts", "resolveReasoning.ts", "checkInput.ts", "failure.ts", "stream.ts", "compact.ts", "codexAuth.ts", "codexLogin.ts", "StreamRequest.ts", "StreamResult.ts", "CompactRequest.ts", "CompactResult.ts", "Checkpoint.ts", "ProviderState.ts"];
+        // The original entry points remain facades; audit the actual protocol leaves too.
+        for await (const leaf of new Bun.Glob("*.ts").scan(`${import.meta.dir}/provider/codex`)) {
+            if (!leaf.endsWith(".test.ts")) files.push(`provider/codex/${leaf}`);
+        }
         for (const f of files) {
             const src = await Bun.file(`${import.meta.dir}/${f}`).text();
             expect({ f, hit: src.match(/ctx\.fns\.(llm|llms|agent|session|codexAccount|sshAccount)\b|types\.(llm|agent|session)\.|\bimport\s[^;]*from\s+["']\.\.?\//g) }).toEqual({ f, hit: null });
