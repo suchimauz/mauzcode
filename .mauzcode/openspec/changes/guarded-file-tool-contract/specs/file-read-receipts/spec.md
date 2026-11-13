@@ -16,13 +16,21 @@ The `read` tool SHALL keep text, range, hashline, image and host-aware reading. 
 - **WHEN** an agent reads lines 40–80 of a 200-line file
 - **THEN** the readId covers lines 40–80 and is marked as not complete
 
-### Requirement: Keep receipts per agent with a bounded lifetime
+### Requirement: Keep receipts per session with a bounded lifetime
 
-Receipts SHALL be stored in memory per agent with a sliding lifetime of 30 minutes by default, extended on each use, and a bounded per-agent count with least-recently-used eviction. A readId SHALL resolve only for the agent that received it. Receipts are version references, not permissions; normal path and host resolution still applies.
+Receipts SHALL be stored in memory per session with a sliding lifetime of 30 minutes by default, extended on each use, and a bounded per-session count with least-recently-used eviction. A readId SHALL resolve only within the session that received it. A call without a session SHALL receive no readId. Only `read` SHALL issue receipts; `grep` SHALL NOT. Receipts are version references, not permissions; normal path and host resolution still applies.
 
 #### Scenario: Unknown or expired readId
-- **WHEN** an edit uses a readId that expired, was evicted, was lost on restart, or belongs to another agent
+- **WHEN** an edit uses a readId that expired, was evicted, was lost on restart, or belongs to another session
 - **THEN** nothing is written and the result reports `expired` with guidance to read the file again
+
+#### Scenario: Session-less read
+- **WHEN** `read` runs without a session, for example from eval
+- **THEN** the content is returned as before and no readId is issued
+
+#### Scenario: readId stays visible in a stored preview
+- **WHEN** a large read result is stored and shown as a tail preview
+- **THEN** the preview still shows the readId line
 
 #### Scenario: Use extends lifetime
 - **WHEN** a live readId is used

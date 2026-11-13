@@ -22,7 +22,7 @@
 
 ### Requirement: Publish writes atomically under a per-file lock
 
-`files.write` SHALL keep its signature and SHALL write every file, locally or over SSH, by taking a per-file lock with bounded waiting, checking any precondition inside the lock (`expectedVersion`, `expectedContent`, `ifAbsent`), writing a temporary file in the same directory, keeping the file mode, and renaming it into place. A failed or refused write SHALL leave the original file intact. Locks SHALL NOT be stolen automatically.
+`files.write` SHALL keep its signature and SHALL write every file, locally or over SSH, by taking a per-file lock with bounded waiting, checking any precondition inside the lock (`expectedVersion`, `expectedContent`, `ifAbsent`), writing a temporary file in the same directory, keeping the file mode, and renaming it into place. A failed or refused write SHALL leave the original file intact.
 
 #### Scenario: Two cooperating writers
 - **WHEN** two edits based on the same version reach the commit at the same time
@@ -32,9 +32,21 @@
 - **WHEN** writing the temporary file fails
 - **THEN** the target file keeps its previous content
 
+### Requirement: Keep locks outside the project tree
+
+Lock directories SHALL live under `~/.mauzcode/locks/` on the writing host and record their owner. Locks SHALL NOT be stolen automatically; a `busy` result SHALL name the lock path and owner.
+
+#### Scenario: Lock held too long
+- **WHEN** a lock stays held past the bounded wait
+- **THEN** nothing is written and the result reports `busy` with the lock path and owner
+
 ### Requirement: Route existing save paths through the commit service
 
-The Files PUT route and the Canvas item save SHALL pass their existing expected-content check to `files.write`, so it is evaluated inside the lock. Their HTTP contracts, authentication and CSRF handling SHALL stay unchanged.
+The Files PUT route and the Canvas item save SHALL pass their existing expected-content check to `files.write`, so it is evaluated inside the lock. The Files POST create SHALL pass `ifAbsent`, and `files.editHashline` SHALL use the same locked edit path. Their HTTP contracts, authentication and CSRF handling SHALL stay unchanged.
+
+#### Scenario: Browser create over an existing file
+- **WHEN** the Files POST creates a path that already exists
+- **THEN** the existing file is not overwritten
 
 #### Scenario: Browser save races an agent edit
 - **WHEN** an agent edit is published between the browser's load and save
@@ -50,7 +62,7 @@ Edits and replacements SHALL keep the file's original line-ending style, final-n
 
 ### Requirement: Keep legacy calls working with a warning
 
-Path-only `edit` and path+content `write` SHALL keep working. They SHALL be applied under the lock against the current file and SHALL return a warning that no version was checked, plus a new readId. Tool documentation SHALL describe only the readId forms.
+Path-only `edit` and path+content `write` SHALL keep working. They SHALL be applied under the lock against the current file and SHALL return a warning that no version was checked, plus a new readId. Tool documentation SHALL describe only the readId forms. Schemas SHALL stay flat with optional fields; invalid combinations (`mode` without `readId`, `path` not matching the receipt) SHALL be rejected as `invalid`.
 
 #### Scenario: Legacy edit
 - **WHEN** an agent sends `edit({ path, edits })` without a readId

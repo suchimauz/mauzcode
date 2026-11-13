@@ -54,10 +54,11 @@ Results stay text-first, like today's tools. Each starts with a status line (`ap
 
 ### 2. Receipts
 
-- A receipt is `{ id, agentId, host, absPath, version (sha256 of raw bytes), range: [start, end], totalLines, complete, eol, finalNewline, bom, expiresAt }`. It lives in an in-memory map in `ctx.state`.
+- A receipt is `{ id, sessionId, host, absPath, version (sha256 of raw bytes), range: [start, end], totalLines, complete, eol, finalNewline, bom, expiresAt }`. It lives in an in-memory map in `ctx.state`.
 - The ID is short and random (about 8 base32 characters), so the model does not copy long hashes.
-- The lifetime is 30 minutes, sliding on use, with at most about 500 receipts per agent (LRU). If the server restarts, the agent simply rereads; the response says so.
-- A receipt is looked up only for the calling agent, which avoids accidental cross-agent mix-ups. This is a correctness measure, not a security boundary.
+- The lifetime is 30 minutes, sliding on use, with at most about 500 receipts per session (LRU). If the server restarts, the agent simply rereads; the response says so.
+- Receipts are scoped to the calling session (`session.id`, which tools already receive), so forks and delegated children of other sessions never resolve them. This is a correctness measure, not a security boundary. A call without a session (e.g. `ctx.fns.tools.edit` from eval with `session = null`) gets no receipt store: `read` issues no readId and `edit`/`write` run in the legacy form with its warning.
+- Only `read` issues receipts. `grep({ hashline: true })` anchors are for locating code; guidance changes from "edit by grep anchors" to "grep, then read the range, then edit".
 - A hashline read and a plain read issue the same kind of receipt. Anchors are checked against the receipt's version, not merely re-hashed against the current file.
 - Several range reads of the same version are not merged in v1. Replacing a file requires a complete read.
 
@@ -75,9 +76,11 @@ Return a short diff summary rather than the full file, as today.
 
 All writes go through `files.write`.
 
-- **Locally:** a per-path mutex within the process plus an exclusive `<file>.mauzcode-lock` (`mkdir`) for other processes, with bounded waiting that returns `busy`. Locks are never stolen automatically. Inside the lock: check the precondition (`expectedVersion`, `expectedContent`, `ifAbsent`), write a temp file in the same directory, copy the mode, fsync and rename. Symlinks are written through to their target, as `remote.writeFile` does.
-- **SSH:** `remote.writeFile` gains a sha256 `expectedVersion` and `ifAbsent` inside its existing lock, keeping the md5 `expectedContent` path for compatibility.
+- **Locally:** a per-path mutex within the process plus an exclusive lock directory outside the project tree, `~/.mauzcode/locks/<sha256(abs real path)>` (`mkdir`), for other processes, with bounded waiting that returns `busy`. Locks are never stolen automatically; the lock directory holds an `owner` file (pid, host, start time) and a `busy` result names the lock path and owner so a person can remove a stale lock. Keeping locks out of the tree means `src/` hot-reload, code indexing and `git status` never see them; only the short-lived temp file stays next to the target, as atomic rename requires. Inside the lock: check the precondition (`expectedVersion`, `expectedContent`, `ifAbsent`), write a temp file in the same directory, copy the mode, fsync and rename. Symlinks are written through to their target, as `remote.writeFile` does.
+- **SSH:** `remote.writeFile` gains a sha256 `expectedVersion` (`sha256sum`, falling back to `shasum -a 256` on macOS, as md5 already does) and `ifAbsent` inside its lock, which moves to the same `~/.mauzcode/locks/<hash>` layout on the remote host; the md5 `expectedContent` path stays for compatibility.
 - **Files PUT and Canvas save:** pass their existing `expectedContent` to `files.write`, so the comparison happens inside the lock. Their HTTP contract is unchanged.
+- **Files POST (create):** passes `ifAbsent`, so creating a file never overwrites an existing one.
+- **`files.editHashline`:** goes through the reworked `files.applyEdits` under the lock like the `edit` tool.
 
 ### 5. Line endings
 
@@ -89,7 +92,9 @@ Production limits stay as they are now (10 MB file cap, existing line options). 
 
 ### 7. Legacy forms
 
-Path-only `edit` and path+content `write` remain accepted. Under the lock they apply against the current file, as today but atomically, and return `warning: no readId — edit was applied to the current file without a version check` plus a new `readId`. `$tool_*.md` documents only the new form. The stale marker-syntax mentions are removed.
+Path-only `edit` and path+content `write` remain accepted. Under the lock they apply against the current file, as today but atomically, and return `warning: no readId — edit was applied to the current file without a version check` plus a new `readId`. `$tool_*.md` documents only the new form. The tool schemas stay flat: `readId`, `mode`, `path`, `host` are all optional and `tools.editValidate` enforces the combinations (`readId` requires `mode`; `path` with `readId` is accepted only if it resolves to the receipt's file, otherwise `invalid`; `mode` without `readId` is `invalid`). This avoids `oneOf`, which several providers handle poorly.
+
+The `readId` header is the first line of the `read` result, and the stored-result preview SHALL always keep it visible, including tail previews. The stale marker-syntax mentions are removed.
 
 ## Risks / Trade-offs
 

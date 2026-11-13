@@ -9,7 +9,7 @@ Experiments in `.mauzcode/tmp/hp/patch-bench-v3/` (synthetic tasks, one model, t
 ## What Changes
 
 - Evolve the current `read`, `edit` and `write` tools in place; no parallel tool family. Text, range, hashline, image and host-aware reading keep working.
-- Text reads return a short opaque `readId` naming the exact file version (content hash) and the delivered line range. Receipts are kept in memory per agent with a sliding lifetime; they are a version reference, not a permission.
+- Text reads return a short opaque `readId` naming the exact file version (content hash) and the delivered line range. Receipts are kept in memory per session with a sliding lifetime; only `read` issues them (`grep` anchors are for locating, not editing); they are a version reference, not a permission.
 - `edit({ readId, mode: 'literal' | 'anchor', edits })`. The explicit mode keeps the two families unmixed, as tested. Literal matches and anchors must lie inside the delivered range.
 - If the file changed since the receipt, nothing is written; the result states the reason and returns a new `readId` with fresh content for the same range, so the agent can retry without a separate read. Success also returns a new `readId`, so consecutive edits chain without rereading.
 - `write` gains explicit `create` (fails if the file exists) and `replace` (needs a `readId` from a complete read).
@@ -31,6 +31,6 @@ None.
 
 ## Impact
 
-Touches `src/tools/{read,edit,write}.ts`, their `$tool_*.md` schemas and guidance, `src/tools/editValidate.ts`, `src/files/{applyEdits,write,readHashline}.ts`, `src/remote/writeFile.ts`, and the Files/Canvas save routes, which only move their existing `expectedContent` check into the locked commit. No migration, no new setting, no new dependency.
+Touches `src/tools/{read,edit,write}.ts`, their `$tool_*.md` schemas and guidance, `src/tools/editValidate.ts`, `src/files/{applyEdits,editHashline,write,readHashline}.ts`, `src/remote/writeFile.ts`, the `grep` tool guidance, the Files POST (create via `ifAbsent`), and the Files/Canvas save routes, which only move their existing `expectedContent` check into the locked commit. No migration, no new setting, no new dependency.
 
 Out of scope: owner/session-bound authorization and durable receipt storage; warn/enforce rollout modes; multi-file transactions; protection against `bash`, direct `Bun.write`/`node:fs` and external editors (these are documented nonparticipants); Codex or a patch language; reworking the Files/Canvas browser protocol.
