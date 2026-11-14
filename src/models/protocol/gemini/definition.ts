@@ -19,5 +19,6 @@ export default function (
         apiKeyHeaders(key) { return ({ "x-goog-api-key": key }); },
         listModels(ctx, opts) { return ctx.fns.models.protocol.gemini.listModels(opts); },
         probe(ctx, opts) { return ctx.fns.models.protocol.gemini.probe(opts); },
+        stream(ctx, opts) { return ctx.fns.models.protocol.gemini.stream(opts); },
     };
 }

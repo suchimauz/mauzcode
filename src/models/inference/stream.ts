@@ -15,6 +15,10 @@
  * @param opts.runId Caller-owned logical run id; required for continuation state.
  * @param opts.state Continuation state returned by the previous request of the same run.
  * @param opts.signal Cancels the provider request.
+ * @param opts.temperature Sampling temperature; dropped unless the provider declares capabilities.sampling. @minimum 0 @maximum 2
+ * @param opts.maxTokens Output token budget; dropped unless the provider declares capabilities.sampling. @minimum 1
+ * @param opts.responseFormat Structured output request; dropped unless the provider declares capabilities.structuredOutput.
+ * @param opts.providerOptions Provider-specific options passed unchanged.
  */
 export default async function (
     ctx: Context,
@@ -46,6 +50,14 @@ export default async function (
         state?: types.models.ProviderState;
         /** Cancels the provider request. */
         signal?: AbortSignal;
+        /** Sampling temperature; dropped unless the provider declares capabilities.sampling. @minimum 0 @maximum 2 */
+        temperature?: number;
+        /** Output token budget; dropped unless the provider declares capabilities.sampling. @minimum 1 */
+        maxTokens?: number;
+        /** Structured output request; dropped unless the provider declares capabilities.structuredOutput. */
+        responseFormat?: types.models.ResponseFormat;
+        /** Provider-specific options passed unchanged. */
+        providerOptions?: Record<string, unknown>;
     },
 ): Promise<types.models.StreamResult> {
     const view = await ctx.fns.models.inference.assertModelEnabled({ id: opts.connectionId, model: opts.model });
@@ -62,8 +74,14 @@ export default async function (
         }
         opts.signal?.throwIfAborted();
         const { definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id, signal: opts.signal, timeoutMs: 600000 });
-        const { connectionId: _c, ...rest } = opts;
-        const req: types.models.StreamRequest = reasoning ? { ...rest, reasoning } : rest;
+        const { connectionId: _c, temperature, maxTokens, responseFormat, ...rest } = opts;
+        // Capability gating: a provider never sees options it did not opt into.
+        const gated = {
+            ...(def.capabilities?.sampling && temperature !== undefined ? { temperature } : {}),
+            ...(def.capabilities?.sampling && maxTokens !== undefined ? { maxTokens } : {}),
+            ...(def.capabilities?.structuredOutput && responseFormat !== undefined ? { responseFormat } : {}),
+        };
+        const req: types.models.StreamRequest = reasoning ? { ...rest, ...gated, reasoning } : { ...rest, ...gated };
         const result = await definition.stream!(ctx, conn, req);
         if (result.state && (!def.capabilities?.continuationState || result.state.provider !== view.provider || result.state.connectionId !== view.id || result.state.sessionId !== opts.sessionId || result.state.runId !== opts.runId)) delete result.state;
         return reasoning ? { ...result, reasoning } : result;

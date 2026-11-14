@@ -19,5 +19,6 @@ export default function (
         apiKeyHeaders(key) { return ({ authorization: "Bearer " + key }); },
         listModels(ctx, opts) { return ctx.fns.models.protocol.openaiChat.listModels(opts); },
         probe(ctx, opts) { return ctx.fns.models.protocol.openaiChat.probe(opts); },
+        stream(ctx, opts) { return ctx.fns.models.protocol.openaiChat.stream(opts); },
     };
 }

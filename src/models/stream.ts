@@ -15,6 +15,10 @@
  * @param opts.runId Caller-owned logical run id; required for continuation state.
  * @param opts.state Continuation state returned by the previous request of the same run.
  * @param opts.signal Cancels the provider request.
+ * @param opts.temperature Sampling temperature; dropped unless the provider declares capabilities.sampling. @minimum 0 @maximum 2
+ * @param opts.maxTokens Output token budget; dropped unless the provider declares capabilities.sampling. @minimum 1
+ * @param opts.responseFormat Structured output request; dropped unless the provider declares capabilities.structuredOutput.
+ * @param opts.providerOptions Provider-specific options passed unchanged.
  */
 export default async function (
     ctx: Context,
@@ -46,6 +50,14 @@ export default async function (
         state?: types.models.ProviderState;
         /** Cancels the provider request. */
         signal?: AbortSignal;
+        /** Sampling temperature; dropped unless the provider declares capabilities.sampling. @minimum 0 @maximum 2 */
+        temperature?: number;
+        /** Output token budget; dropped unless the provider declares capabilities.sampling. @minimum 1 */
+        maxTokens?: number;
+        /** Structured output request; dropped unless the provider declares capabilities.structuredOutput. */
+        responseFormat?: types.models.ResponseFormat;
+        /** Provider-specific options passed unchanged. */
+        providerOptions?: Record<string, unknown>;
     },
 ): Promise<types.models.StreamResult> {
     return ctx.fns.models.inference.stream(opts);

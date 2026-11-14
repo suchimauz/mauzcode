@@ -24,6 +24,14 @@ export type StreamRequest = {
     state?: types.models.ProviderState;
     /** Cancels the provider request. */
     signal?: AbortSignal;
+    /** Sampling temperature; models.stream passes it only to providers declaring capabilities.sampling. @minimum 0 @maximum 2 */
+    temperature?: number;
+    /** Output token budget; models.stream passes it only to providers declaring capabilities.sampling. @minimum 1 */
+    maxTokens?: number;
+    /** Structured output request; models.stream passes it only to providers declaring capabilities.structuredOutput. */
+    responseFormat?: types.models.ResponseFormat;
+    /** Provider-specific options passed unchanged; the provider rejects keys it does not support with INVALID_INPUT. */
+    providerOptions?: Record<string, unknown>;
     /** Receives incremental text, reasoning and tool-argument deltas. */
     onEvent?: (event: types.models.StreamEvent) => void;
 };

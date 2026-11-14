@@ -12,7 +12,7 @@ export default {
     async test(ctx, conn) { return ctx.fns.models.provider.codex.codexTest({ conn }); },
     async listModels(ctx, conn) { return ctx.fns.models.provider.codex.codexListModels({ conn }); },
     async usage(ctx, conn) { return ctx.fns.models.provider.codex.codexUsage({ conn }); },
-    capabilities: { continuationState: true, checkpoints: true, reasoning: true },
+    capabilities: { continuationState: true, checkpoints: true, reasoning: true, structuredOutput: true },
     reasoningProfile: (ctx, model) => ctx.fns.models.provider.codex.codexReasoningProfile({ model }),
     async stream(ctx, conn, req) { return ctx.fns.models.provider.codex.codexStream({ conn, req }); },
     async compact(ctx, conn, req) { return ctx.fns.models.provider.codex.codexCompact({ conn, req }); },

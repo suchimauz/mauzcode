@@ -19,5 +19,6 @@ export default function (
         apiKeyHeaders(key) { return ({ "x-api-key": key }); },
         listModels(ctx, opts) { return ctx.fns.models.protocol.anthropic.listModels(opts); },
         probe(ctx, opts) { return ctx.fns.models.protocol.anthropic.probe(opts); },
+        stream(ctx, opts) { return ctx.fns.models.protocol.anthropic.stream(opts); },
     };
 }

@@ -202,14 +202,40 @@ and `onEvent` receives `text_delta`, `thinking_delta` and `tool_args_delta`.
 `StreamResult` matches the legacy `llm.stream` result (`text`, `thinking`,
 `finishReason`, `usage`, `toolCalls`). Agents still use legacy `llm.*` routing.
 
+### One-shot calls
+
+`ctx.fns.models.call({ connectionId, model, user, system?, temperature?, maxTokens?, reasoningEffort?, responseFormat?, providerOptions?, sessionId?, timeoutMs?, signal? })`
+makes one non-agent request over the provider's `stream` (providers implement no
+separate call). It sends `user` as one user message, no tools, and returns
+`{ text, finishReason, usage, reasoning?, attempts, ignored }`.
+
+- Input is validated before any network request (`INVALID_INPUT`); enabled and
+  `UNSUPPORTED` checks are the same as for `models.stream`.
+- `temperature`/`maxTokens` reach only providers declaring `capabilities.sampling`;
+  otherwise their names are listed in `ignored`.
+- `responseFormat` (`json_object` or `json_schema`) is sent natively to providers
+  declaring `capabilities.structuredOutput`, otherwise a JSON-only instruction is
+  appended. The answer is always normalized to compact JSON; a violation of the
+  top-level type, `required` or `additionalProperties:false` fails `INVALID_OUTPUT`.
+- `providerOptions` pass through unchanged; providers reject unknown keys with
+  `INVALID_INPUT` (`models.inference.rejectProviderOptions`).
+- Retries (`models.inference.retryDecision`): at most 3 attempts on the **same**
+  connection, only for retryable, replay-safe failures with acceptance `none` or
+  `rejected`; delay `retryAfterMs` or 500/2000 ms, bounded by `timeoutMs`. The
+  `sessionId` stays stable across attempts. There is no fallback chain.
+
+Every shared protocol also implements `stream`; the custom provider streams
+through its configured protocol. Legacy callers keep using `llm.call`.
+
 ### Additive SDK contracts
 
 Every field below is optional and opt-in. A provider declares support with
-`capabilities: { continuationState?, checkpoints?, reasoning? }` and, for
+`capabilities: { continuationState?, checkpoints?, reasoning?, sampling?, structuredOutput? }` and, for
 reasoning, an optional `reasoningProfile(ctx, model)`. The loader rejects
-unknown flags and `checkpoints` without `compact`. Claude and custom declare
-none, so their requests, results and compaction (`focus`, `maxTokens`, cache
-fields) are unchanged.
+unknown flags and `checkpoints` without `compact`. `sampling` admits
+`temperature`/`maxTokens` and `structuredOutput` admits `responseFormat`;
+`models.stream` drops them for other providers. Claude declares `sampling`,
+custom declares `sampling` and `structuredOutput`, Codex adds `structuredOutput`.
 
 | Contract | Request | Result | Without the capability |
 | --- | --- | --- | --- |

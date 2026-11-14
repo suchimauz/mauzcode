@@ -181,3 +181,36 @@ describe("custom provider spec scenarios", () => {
         } finally { f.server.stop(true); }
     });
 });
+
+describe("custom provider streaming through shared protocols", () => {
+    const frames: Record<string, unknown[]> = {
+        "openai-chat": [{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }, "[DONE]"],
+        "openai-responses": [{ type: "response.output_text.delta", delta: "ok" }, { type: "response.completed", response: {} }],
+        anthropic: [{ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } }, { type: "message_delta", delta: { stop_reason: "end_turn" } }, { type: "message_stop" }],
+        gemini: [{ candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }] }],
+    };
+    for (const protocol of Object.keys(frames)) {
+        test(protocol + " stream goes through the configured protocol with the API key", async () => {
+            const seen: { path: string; auth: string | null; body: any }[] = [];
+            const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
+                seen.push({ path: new URL(req.url).pathname, auth: req.headers.get("authorization") ?? req.headers.get("x-api-key") ?? req.headers.get("x-goog-api-key"), body: await req.json() });
+                const body = frames[protocol]!.map(f => "data: " + (typeof f === "string" ? f : JSON.stringify(f)) + "\n\n").join("");
+                return new Response(body, { headers: { "content-type": "text/event-stream" } });
+            } });
+            try {
+                const ctx = await mkTestCtx();
+                const conn: types.models.ResolvedConnection = {
+                    id: "fixture", provider: "custom", accountName: "mock", config: { baseUrl: server.url.origin, protocol },
+                    secret: async key => key === "apiKey" ? "test-only-key" : null,
+                    fetch: async (url, init) => await fetch(url, init),
+                };
+                const r = await provider.stream!(ctx, conn, { model: "mock", instructions: "sys", messages: [{ role: "user", content: "hi" }], sessionId: "s1", maxTokens: 5 });
+                expect(r).toMatchObject({ text: "ok", finishReason: "stop" });
+                expect(seen).toHaveLength(1);
+                expect(seen[0]!.auth).toContain("test-only-key");
+                await expect(provider.stream!(ctx, conn, { model: "mock", instructions: "", messages: [{ role: "user", content: "hi" }], sessionId: "s1", providerOptions: { x: 1 } })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+                expect(seen).toHaveLength(1);
+            } finally { server.stop(true); }
+        });
+    }
+});

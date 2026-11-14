@@ -19,5 +19,6 @@ export default function (
         apiKeyHeaders(key) { return ({ authorization: "Bearer " + key }); },
         listModels(ctx, opts) { return ctx.fns.models.protocol.openaiResponses.listModels(opts); },
         probe(ctx, opts) { return ctx.fns.models.protocol.openaiResponses.probe(opts); },
+        stream(ctx, opts) { return ctx.fns.models.protocol.openaiResponses.stream(opts); },
     };
 }

@@ -18,5 +18,7 @@ export default {
     validate(ctx, config) { return ctx.fns.models.provider.custom.customValidate({ config }); },
     async test(ctx, conn) { return ctx.fns.models.provider.custom.customTest({ conn }); },
     async listModels(ctx, conn) { return ctx.fns.models.provider.custom.customListModels({ conn }); },
+    capabilities: { sampling: true, structuredOutput: true },
+    async stream(ctx, conn, req) { return ctx.fns.models.provider.custom.customStream({ conn, req }); },
     // No usage callback: the core returns only test status, reason and checkedAt.
 } satisfies types.models.ProviderDefinition;

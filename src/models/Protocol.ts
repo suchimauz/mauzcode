@@ -1,5 +1,5 @@
 /**
- * Shared wire protocol strategy for model discovery and a minimal generation probe.
+ * Shared wire protocol strategy for model discovery, a minimal generation probe and streaming generation.
  * Obtain one through models.protocol.get; a protocol never receives the connection or its secrets, only the transport-bound fetch.
  */
 export type Protocol = {
@@ -26,4 +26,11 @@ export type Protocol = {
         model: string;
         signal?: AbortSignal;
     }) => Promise<void>;
+    /** Stream one generation in the protocol's native wire format: maps temperature, maxTokens and responseFormat, reports deltas through request.onEvent and returns a normalized StreamResult. Fails with classified SDK failures. */
+    stream: (ctx: Context, opts: {
+        fetch: types.models.ResolvedConnection["fetch"];
+        endpoint: types.models.ProtocolEndpoint;
+        request: types.models.StreamRequest;
+        signal?: AbortSignal;
+    }) => Promise<types.models.StreamResult>;
 };

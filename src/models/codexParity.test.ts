@@ -100,6 +100,15 @@ describe("codex SDK request parity", () => {
         expect(spawn).not.toHaveBeenCalled();
     });
 
+    test("structured output maps responseFormat to text.format", async () => {
+        const { calls, replies, stream } = await setup();
+        replies.push(sse([done()]), sse([done()]));
+        await stream({ responseFormat: { type: "json_schema", name: "r", schema: { type: "object" } } });
+        expect(JSON.parse(calls.at(-1)!.body).text).toEqual({ verbosity: "medium", format: { type: "json_schema", name: "r", schema: { type: "object" }, strict: true } });
+        await expect(stream({ providerOptions: { x: 1 } })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+        expect(replies).toHaveLength(1);
+    });
+
     test("malformed tool arguments are an explicit parse failure; framing across chunks and CRLF", async () => {
         const { replies, stream } = await setup();
         const frames = [

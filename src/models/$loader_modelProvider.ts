@@ -93,7 +93,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { e
         }
         if (definition.capabilities !== undefined) {
             const caps = definition.capabilities as Record<string, unknown>;
-            if (!caps || typeof caps !== "object" || Array.isArray(caps) || Object.entries(caps).some(([k, v]) => !["continuationState", "checkpoints", "reasoning"].includes(k) || typeof v !== "boolean")) fail("modelProvider capabilities must be known boolean flags");
+            if (!caps || typeof caps !== "object" || Array.isArray(caps) || Object.entries(caps).some(([k, v]) => !["continuationState", "checkpoints", "reasoning", "sampling", "structuredOutput"].includes(k) || typeof v !== "boolean")) fail("modelProvider capabilities must be known boolean flags");
             if (caps.checkpoints && !definition.compact) fail("modelProvider checkpoints capability requires compact");
         }
         if (definition.actions !== undefined) {

@@ -26,6 +26,10 @@ export type ProviderDefinition = {
         checkpoints?: boolean;
         /** Receives SDK-normalized reasoning in StreamRequest.reasoning; requires model metadata or reasoningProfile. */
         reasoning?: boolean;
+        /** Accepts StreamRequest.temperature and maxTokens; without it models.stream drops them. */
+        sampling?: boolean;
+        /** Accepts StreamRequest.responseFormat and maps it to native structured output; without it models.call uses an instruction fallback. */
+        structuredOutput?: boolean;
     };
     /** Documented versioned reasoning profile used when model discovery metadata has none; return null when no profile applies to the model. */
     reasoningProfile?: (ctx: Context, model: string) => types.models.ReasoningCapabilities | null;

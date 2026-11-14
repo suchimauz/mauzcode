@@ -15,6 +15,7 @@ export default async function (
 ): Promise<types.models.StreamResult> {
     const { conn, req } = opts;
     
+            ctx.fns.models.inference.rejectProviderOptions({ provider: "codex", providerOptions: req.providerOptions });
             const a = await ctx.fns.models.provider.codex.codexWireAuth({ conn: conn });
             const { input } = ctx.fns.models.provider.codex.codexInput({ messages: req.messages });
             // models.stream normalizes reasoning for this opted-in provider; direct callers must do the same.
@@ -22,7 +23,10 @@ export default async function (
             if (!applied) throw ctx.fns.models.inference.failure({ message: "Codex requires SDK-resolved reasoning (call through models.stream)", status: 400, info: { code: "CAPABILITY_UNAVAILABLE", classification: "capability_unavailable", acceptance: "none", retryable: false, replaySafe: true } });
             const body: Record<string, unknown> = {
                 model: req.model, store: false, stream: true, instructions: req.instructions, input,
-                text: { verbosity: "medium" }, prompt_cache_key: req.promptCacheKey || req.sessionId,
+                text: {
+                    verbosity: "medium",
+                    ...(req.responseFormat ? { format: req.responseFormat.type === "json_schema" ? { type: "json_schema", name: req.responseFormat.name, schema: req.responseFormat.schema, strict: req.responseFormat.strict ?? true } : { type: "json_object" } } : {}),
+                }, prompt_cache_key: req.promptCacheKey || req.sessionId,
                 reasoning: { effort: applied === "off" ? "none" : applied, summary: "auto" },
                 ...(req.tools?.length ? { tools: req.tools, parallel_tool_calls: true } : {}),
             };

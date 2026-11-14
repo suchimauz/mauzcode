@@ -7,6 +7,7 @@ export default {
     async test(ctx, conn) { return ctx.fns.models.provider.claude.claudeTest({ conn }); },
     async listModels(ctx) { return ctx.fns.models.provider.claude.claudeListModels({  }); },
     async usage(ctx, conn) { return ctx.fns.models.provider.claude.claudeUsage({ conn }); },
+    capabilities: { sampling: true },
     async stream(ctx, conn, req) { return ctx.fns.models.provider.claude.claudeStream({ conn, req }); },
     async compact(ctx, conn, req) { return ctx.fns.models.provider.claude.claudeCompact({ conn, req }); },
     actions: {

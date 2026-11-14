@@ -16,6 +16,7 @@ export default async function (
     const { conn, req } = opts;
     const IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
     
+            ctx.fns.models.inference.rejectProviderOptions({ provider: "claude", providerOptions: req.providerOptions });
             const instructions = req.instructions.startsWith(IDENTITY) ? req.instructions.slice(IDENTITY.length).trimStart() : req.instructions;
             const bootstrap = instructions ? [{ role: "user", content: instructions }, { role: "assistant", content: "Understood. Ready to act." }] : [];
             // Claude does not declare checkpoints, so models.stream never passes checkpoint entries here.
@@ -34,6 +35,9 @@ export default async function (
                 else if (!/(opus|sonnet)-5/.test(req.model)) body.thinking = { type: "disabled" };
             }
             if (req.tools?.length) body.tools = req.tools;
+            if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens;
+            // Anthropic rejects a custom temperature while extended thinking is enabled.
+            if (req.temperature !== undefined && (body.thinking as { type?: string } | undefined)?.type !== "adaptive") body.temperature = req.temperature;
             const h = await ctx.fns.models.provider.claude.claudeWireHeaders({ conn: conn });
             if (messages[0]?.content?.[0]?.type === "compaction") h["anthropic-beta"] += ",compact-2026-09-04";
             const res = await ctx.fns.models.provider.claude.claudeWireRequest({ conn: conn, path: "/v1/messages", init: { method: "POST", headers: h, body: JSON.stringify(body), signal: req.signal } });

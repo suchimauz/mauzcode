@@ -13,7 +13,7 @@ test("root model procedures are exactly the minimal facade plus providers and ap
         .filter(file => !file.endsWith(".test.ts") && !file.startsWith("$") && /^[a-z]/.test(file))
         .map(file => file.slice(0, -3)).sort();
     expect(roots).toEqual(Object.keys(baseline.procedures).sort());
-    expect(roots).toEqual(["action", "api", "compact", "create", "get", "list", "listModels", "providers", "refreshAll", "remove", "setModelEnabled", "stream", "test", "update", "usage"]);
+    expect(roots).toEqual(["action", "api", "call", "compact", "create", "get", "list", "listModels", "providers", "refreshAll", "remove", "setModelEnabled", "stream", "test", "update", "usage"]);
 });
 
 test("original public model signatures, async declarations, types and HTTP route contracts survive", async () => {
