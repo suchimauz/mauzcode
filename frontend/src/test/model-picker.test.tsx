@@ -92,23 +92,39 @@ it('reports draft config errors and retries using a read-only model projection',
  expect(url.searchParams.get('effort')).toBeNull();
 });
 
-it('shows and searches proxy account groups while saving the original OAuth route',async()=>{
+it('groups models by connection account, shows unavailable connections and saves the model route',async()=>{
  let state=structuredClone(original);
- const model='anthropic-oauth/work:opus';
- state.models.push({provider:'anthropic-oauth',model,label:'opus',groupLabel:'socks5 · Office proxy · claude/work',disabled:false,icon:null});
+ const model='claude/work:claude-opus-5';
+ state.models.push({provider:'claude',model,label:'Opus 5',groupLabel:'work',disabled:false,icon:null});
+ state.groups=[{connectionId:'c1',provider:'claude',accountName:'work',enabled:true,unavailable:false},{connectionId:'c2',provider:'codex',accountName:'broken',enabled:true,unavailable:true}];
  const fetcher=vi.fn(async(_url:string,init?:RequestInit)=>{
-  if(init?.method==='POST'){state={...state,model:JSON.parse(init.body as string).model,label:'opus'};return json({ok:true,model});}
+  if(init?.method==='POST'){state={...state,model:JSON.parse(init.body as string).model,label:'Opus 5'};return json({ok:true,model});}
   return json(state);
  });
  vi.stubGlobal('fetch',fetcher);
  render(<ModelPicker {...props}/>);
  await userEvent.click(await screen.findByRole('button',{name:'Выбрать модель: gpt-5'}));
  await userEvent.click(await screen.findByRole('menuitem',{name:/Model gpt-5/}));
- expect(screen.getByRole('group',{name:'socks5 · Office proxy · claude/work'})).toBeVisible();
- await userEvent.type(screen.getByRole('textbox',{name:'Search models'}),'Office proxy');
+ expect(screen.getByRole('group',{name:'work'})).toBeVisible();
+ expect(screen.getByRole('group',{name:'broken'})).toHaveTextContent('Недоступно');
+ await userEvent.type(screen.getByRole('textbox',{name:'Search models'}),'work');
  expect(screen.queryByRole('menuitemradio',{name:'gpt-5'})).toBeNull();
- await userEvent.click(screen.getByRole('menuitemradio',{name:'opus'}));
+ await userEvent.click(screen.getByRole('menuitemradio',{name:'Opus 5'}));
  await waitFor(()=>expect(props.onSaved).toHaveBeenCalledOnce());
  const post=fetcher.mock.calls.find(([,init])=>init?.method==='POST');
  expect(JSON.parse(post![1]!.body as string)).toEqual({model});
+});
+it('keeps same-named accounts of different providers in separate groups and shows the unavailable one with its error',async()=>{
+ const state=structuredClone(original);
+ state.models.push({provider:'claude',model:'claude/team:opus',label:'opus',groupLabel:'team',connectionId:'c1',disabled:false,icon:null});
+ state.groups=[{connectionId:'c1',provider:'claude',accountName:'team',enabled:true,unavailable:false},{connectionId:'c2',provider:'codex',accountName:'team',enabled:true,unavailable:true,error:'HTTP 401'}];
+ vi.stubGlobal('fetch',vi.fn(async()=>json(state)));
+ render(<ModelPicker {...props}/>);
+ await userEvent.click(await screen.findByRole('button',{name:'Выбрать модель: gpt-5'}));
+ await userEvent.click(await screen.findByRole('menuitem',{name:/Model gpt-5/}));
+ const teams=screen.getAllByRole('group',{name:'team'});
+ expect(teams).toHaveLength(2);
+ expect(teams[0]).toContainElement(screen.getByRole('menuitemradio',{name:'opus'}));
+ expect(teams[1]).toHaveTextContent('Недоступно');
+ expect(teams[1]).toHaveTextContent('HTTP 401');
 });

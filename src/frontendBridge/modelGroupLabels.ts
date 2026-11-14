@@ -1,31 +1,23 @@
 /**
- * Build SOCKS5 Claude account group labels for model selectors without changing model routes
+ * Map model routes to their model connection account names for picker group labels
  *
- * Use when projecting authenticated existing-chat or new-chat model choices. Reads secret-free local OAuth proxy bindings once per account; leaves direct, SSH and node routes without an override.
- * @param opts.models Full runtime model routes to annotate; only local anthropic-oauth routes have proxy group overrides.
+ * Use when projecting model choices that arrive as provider/accountName:modelId routes. Each route whose provider and account match a stored model connection (models.list) is labelled with that connection's account name; routes without a matching connection get no label. Never changes routes or reads secrets.
+ * @param opts.models Model routes in provider/accountName:modelId form to label.
  */
 export default async function (
     ctx: Context,
     session: Session | null,
     opts: {
-        /** Full runtime model routes to annotate; only local anthropic-oauth routes have proxy group overrides. */
+        /** Model routes in provider/accountName:modelId form to label. */
         models: string[];
     },
 ): Promise<Record<string, string>> {
-    const accounts = new Map<string, Promise<string | null>>();
+    const accounts = new Map((await ctx.fns.models.list({})).map(connection => [connection.provider + "/" + connection.accountName, connection.accountName] as const));
     const labels: Record<string, string> = {};
-    await Promise.all(opts.models.map(async model => {
-        const match = /^anthropic-oauth(?:\/([^:]+))?:/.exec(model);
-        if (!match) return;
-        const account = match[1] || "default";
-        let pending = accounts.get(account);
-        if (!pending) {
-            pending = ctx.fns.llm.accountProxy({provider:"anthropic-oauth",account}).then(proxy =>
-                proxy ? `socks5 · ${proxy.name || `${proxy.host}:${proxy.port}`} · claude/${account}` : null);
-            accounts.set(account, pending);
-        }
-        const label = await pending;
-        if (label) labels[model] = label;
-    }));
+    for (const model of opts.models) {
+        const colon = model.indexOf(":", Math.max(0, model.indexOf("/")));
+        const account = colon > 0 ? accounts.get(model.slice(0, colon)) : undefined;
+        if (account) labels[model] = account;
+    }
     return labels;
 }

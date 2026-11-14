@@ -10,6 +10,8 @@ type Application = { id: string; label: string; href: string; group?: string };
 export function nativeApplicationHref(href: string, applications: Readonly<Record<string, string>> = pluginRuntime.getState().applications): string | null {
   const url = new URL(href, location.origin);
   const path = url.pathname.replace(/\/$/, '') || '/';
+  // The legacy models page lives on as the native Models settings tab.
+  if (path === '/llms') return '/?settings=models';
   const page = Object.hasOwn(applications, path) ? applications[path] : undefined;
   if (!page) return null;
   url.pathname = '/'; url.searchParams.set('view', `extension:${page}`);
@@ -22,7 +24,9 @@ export function applicationLinks(value: unknown): Application[] {
     if (!item || typeof item !== 'object' || typeof item.id !== 'string' || typeof item.label !== 'string' || typeof item.href !== 'string') return false;
     try { safeApiPath(item.href); } catch { return false; }
     // These destinations have native React surfaces; never embed the application shell in itself.
-    return !['/', '/auth/users', '/sshInstance', '/cron', '/plugins', '/llms'].includes(item.href.split('?')[0]) && !/^\/(sber|tbank)(\/|$)/i.test(item.href);
+    // The legacy /llms page is replaced by the Models settings tab and is never listed.
+    const path = item.href.split('?')[0].replace(/\/$/, '') || '/';
+    return !['/', '/auth/users', '/sshInstance', '/cron', '/plugins', '/llms'].includes(path) && !/^\/(sber|tbank)(\/|$)/i.test(item.href);
   });
 }
 

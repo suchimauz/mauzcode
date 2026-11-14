@@ -11,21 +11,19 @@ export default async function (
         /** Existing unarchived agent identifier, one to 128 ASCII letters, digits, underscores or hyphens. */
         agentId: string;
     },
-): Promise<{ version: 1; agentId: string; model: string; label: string; icon: {src:string;custom:boolean}|null; running: boolean; defaultModel: string; models: Array<{provider:string;model:string;label:string;groupLabel?:string;disabled:boolean;icon:{src:string;custom:boolean}|null}>; effort: {requested:types.llm.ReasoningEffort;applied:types.llm.ReasoningEffort;supported:types.llm.ReasoningEffort[];defaultEffort:types.llm.ReasoningEffort;mode:types.llm.ReasoningProfile["mode"];downgraded:boolean} }> {
+): Promise<{ version: 1; agentId: string; model: string; label: string; icon: {src:string;custom:boolean}|null; running: boolean; defaultModel: string; models: Array<{provider:string;model:string;label:string;groupLabel?:string;connectionId?:string;disabled:boolean;icon:{src:string;custom:boolean}|null}>; groups: Array<{connectionId:string;provider:string;accountName:string;enabled:boolean;unavailable:boolean}>; effort: ReturnType<Context["fns"]["frontendBridge"]["modelEffort"]> }> {
     if (!(session as Session & {user?:{id:string}})?.user) throw new Error("Unauthorized");
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(opts.agentId)) throw new Error("Invalid agentId");
     const rows = await ctx.fns.procs.db.select({sql:"SELECT id, model, reasoning_effort, run_state FROM agents WHERE id = ? AND archived_at IS NULL",params:[opts.agentId]});
     const row = rows[0];
     if (!row) throw new Error("Agent not found");
     const currentModel = String(row.model ?? "");
-    const requested = String(row.reasoning_effort ?? "auto") as types.llm.ReasoningEffort;
-    const [groups, defaultModel, policy, profile, resolved] = await Promise.all([ctx.fns.llm.listModels({}),ctx.fns.settings.modelDefault({}),ctx.fns.llm.modelPolicy({action:"list"}),ctx.fns.llm.reasoningCapabilities({model:currentModel}),ctx.fns.llm.resolveReasoningEffort({model:currentModel,effort:requested})]);
-    const canonical = (model:string) => { try { return ctx.fns.llm.parseModelRoute({model}).route; } catch { return model; } };
-    const disabled = new Set(policy.disabledModels.map(canonical));
-    const groupLabels = await ctx.fns.frontendBridge.modelGroupLabels({models:Object.values(groups).flat()});
-    const names = await ctx.fns.llm.modelDisplayNames({models:[currentModel,...Object.values(groups).flat()]});
-    const models = await Promise.all(Object.entries(groups).flatMap(([provider,values])=>values.map(async model=>({provider,model,...(groupLabels[model] ? {groupLabel:groupLabels[model]} : {}),label:names[model]??model.slice(model.lastIndexOf(":")+1),disabled:disabled.has(canonical(model)),icon:await ctx.fns.frontendBridge.iconData({model})}))));
-    const enabledDefault = models.find(m=>!m.disabled && m.model===defaultModel)?.model ?? models.find(m=>!m.disabled)?.model ?? "";
+    const requested = String(row.reasoning_effort ?? "auto");
+    const catalogue = await ctx.fns.frontendBridge.modelCatalogue({});
+    const models = await Promise.all(catalogue.models.map(async ({reasoning:_r,...option})=>({...option,icon:await ctx.fns.frontendBridge.iconData({model:option.model})})));
+    const current = catalogue.models.find(m=>m.model===currentModel);
+    // The stored selection is shown as is; an unavailable or empty model is never replaced by a default here.
+    const enabledDefault = await ctx.fns.settings.modelDefault({}).then(model=>models.some(m=>m.model===model&&!m.disabled)?model:"").catch(()=>"");
     const live = ctx.state.agent?.[opts.agentId];
-    return {version:1,agentId:opts.agentId,model:currentModel,label:names[currentModel]??currentModel.slice(currentModel.lastIndexOf(":")+1),icon:await ctx.fns.frontendBridge.iconData({model:currentModel}),running:row.run_state==="running" || Number(live?.activeRunCount ?? 0)>0,defaultModel:enabledDefault,models,effort:{requested,applied:resolved.applied,supported:profile.supported,defaultEffort:profile.defaultEffort,mode:profile.mode,downgraded:resolved.downgraded}};
+    return {version:1,agentId:opts.agentId,model:currentModel,label:current?.label??(currentModel.slice(currentModel.indexOf(":",Math.max(0,currentModel.indexOf("/")))+1)||currentModel),icon:currentModel?await ctx.fns.frontendBridge.iconData({model:currentModel}):null,running:row.run_state==="running" || Number(live?.activeRunCount ?? 0)>0,defaultModel:enabledDefault,models,groups:catalogue.groups,effort:ctx.fns.frontendBridge.modelEffort({reasoning:current?.reasoning??null,requested})};
 }

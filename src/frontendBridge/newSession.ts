@@ -19,19 +19,16 @@ export default async function (
     if(!['GET','POST'].includes(req.method))return reply({error:'Method not allowed'},405);
     const owner=await ctx.fns.projects.principal({});
     if(req.method==='POST'&&!await ctx.fns.auth.verifyCsrf({req,token:req.headers.get('x-csrf-token')||''}))return reply({error:'Invalid request token'},403);
-    const [groups,defaultModel,policy]=await Promise.all([ctx.fns.llm.listModels({}),ctx.fns.settings.modelDefault({}),ctx.fns.llm.modelPolicy({action:'list'})]);
-    const canonical = (model:string) => { try { return ctx.fns.llm.parseModelRoute({model}).route; } catch { return model; } };
-    const disabled=new Set(policy.disabledModels.map(canonical));
-    const groupLabels=await ctx.fns.frontendBridge.modelGroupLabels({models:Object.values(groups).flat()});
-    const names=await ctx.fns.llm.modelDisplayNames({models:Object.values(groups).flat()});
-    const models=await Promise.all(Object.entries(groups).flatMap(([provider,values])=>values.map(async model=>({provider,model,...(groupLabels[model] ? {groupLabel:groupLabels[model]} : {}),label:names[model]??model.slice(model.lastIndexOf(':')+1),disabled:disabled.has(canonical(model)),icon:await ctx.fns.frontendBridge.iconData({model})}))));
+    const catalogue=await ctx.fns.frontendBridge.modelCatalogue({});
+    const defaultModel=await ctx.fns.settings.modelDefault({}).catch(()=>'');
+    const models=await Promise.all(catalogue.models.map(async ({reasoning:_r,...option})=>({...option,icon:await ctx.fns.frontendBridge.iconData({model:option.model})})));
+    const reasoningOf=(model:string)=>catalogue.models.find(m=>m.model===model)?.reasoning??null;
     const enabledDefault=models.find(m=>!m.disabled&&m.model===defaultModel)?.model??models.find(m=>!m.disabled)?.model??'';
     const efforts=['auto','off','minimal','low','medium','high','xhigh'];
     if(req.method==='GET'){
-        const url=new URL(req.url),model=canonical(url.searchParams.get('model')||enabledDefault),requested=url.searchParams.get('effort')||'auto';
+        const url=new URL(req.url),model=url.searchParams.get('model')||enabledDefault,requested=url.searchParams.get('effort')||'auto';
         if(!models.some(m=>m.model===model&&!m.disabled)||!efforts.includes(requested))return reply({error:'Invalid model or effort'},400);
-        const [profile,resolved]=await Promise.all([ctx.fns.llm.reasoningCapabilities({model}),ctx.fns.llm.resolveReasoningEffort({model,effort:requested as types.llm.ReasoningEffort})]);
-        return reply({promptPresets:await ctx.fns.agent.listPromptPresets({}),version:1,model,label:models.find(m=>m.model===model)?.label??model.slice(model.lastIndexOf(':')+1),icon:await ctx.fns.frontendBridge.iconData({model}),defaultModel:enabledDefault,models,effort:{requested,applied:resolved.applied,supported:profile.supported,defaultEffort:profile.defaultEffort,mode:profile.mode,downgraded:resolved.downgraded},csrfToken:await ctx.fns.auth.csrfToken({req})});
+        return reply({promptPresets:await ctx.fns.agent.listPromptPresets({}),version:1,model,label:models.find(m=>m.model===model)?.label??model.slice(model.lastIndexOf(':')+1),icon:await ctx.fns.frontendBridge.iconData({model}),defaultModel:enabledDefault,models,groups:catalogue.groups,effort:ctx.fns.frontendBridge.modelEffort({reasoning:reasoningOf(model),requested}),csrfToken:await ctx.fns.auth.csrfToken({req})});
     }
     const contentType=req.headers.get('content-type')?.split(';')[0]?.trim();
     let data:{requestKey?:string;projectId?:string;model?:string;effort?:string;mascot?:string;text?:string;title?:string;workspaceDir?:string;createWorkspaceDir?:string;promptPreset?:string[];systemPrompt?:string};
@@ -92,10 +89,10 @@ export default async function (
     }
     const project=data.projectId?await ctx.fns.projects.get({projectId:data.projectId}):null;if(data.projectId&&!project)return reply({error:'Project not found'},404);
     if(!data.projectId&&advanced.createWorkspaceDir!=='1'){try{await ctx.fns.workspace.normalize({dir:advanced.workspaceDir,create:false});}catch(error){return reply({error:String(error instanceof Error?error.message:error)},422);}}
-    const model=canonical(data.model||enabledDefault);if(!models.some(m=>m.model===model&&!m.disabled))return reply({error:'Model unavailable'},400);
+    const model=data.model||enabledDefault;if(!models.some(m=>m.model===model&&!m.disabled))return reply({error:'Model unavailable'},400);
     if(data.effort!==undefined&&(typeof data.effort!=='string'||!efforts.includes(data.effort)))return reply({error:'Invalid effort'},400);
-    const effort=(data.effort??'auto') as types.llm.ReasoningEffort;
-    const profile=await ctx.fns.llm.reasoningCapabilities({model});
+    const effort=(data.effort??'auto') as types.models.ReasoningLevel|'auto';
+    const profile=ctx.fns.frontendBridge.modelEffort({reasoning:reasoningOf(model),requested:effort});
     if(effort!=='auto'&&!profile.supported.includes(effort))return reply({error:'Effort unsupported for model'},400);
     const claim:Claim={fingerprint,status:'sending',projectId:data.projectId};
     const inserted=await ctx.fns.procs.db.select({sql:'INSERT INTO kv (key,value) VALUES (?,?) ON CONFLICT (key) DO NOTHING RETURNING key',params:[key,JSON.stringify(claim)]});

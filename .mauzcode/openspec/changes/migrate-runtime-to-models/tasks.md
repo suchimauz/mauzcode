@@ -37,9 +37,9 @@
 
 ## 6. UI catalogue and settings surfaces
 
-- [ ] 6.1 Rebuild `frontendBridge.modelData`, `newSession`, `navigationData`, `chatHeader` and `modelGroupLabels` and `api/$route_v1_new-agent-options_GET` from `models.list` + `models.listModels`; update their tests for grouping, labels, disabled flags and the unavailable-connection case
-- [ ] 6.2 Remove the LLM Connections, LLMs and model-policy entries from the frontend `SettingsDialog`; delete `LlmConnectionsPanel`, `RemoteLoginDiagnostics`, `LlmPolicySettings` and `frontend/src/lib/llmConnections.ts` with the `settings-llm` and `settings-llm-policy` tests; update `settings-models`; verify with the frontend test run that only Models is listed
-- [ ] 6.3 Delete `CodexAccountReset` and `NodeSettings` with their tests; point the `/llms` entry in `ApplicationPages`, `SshInstancesPanel`'s `onOpenConnections`, and `LiveApp`'s `llm-connections` deep link and `openQuotas` at the Models tab; update the `settings-ssh` and `quota-matrix` tests; verify with the frontend tests and `rg '/llms|llm-connections|llmConnections' frontend/src` that no reference remains
+- [x] 6.1 Rebuild `frontendBridge.modelData`, `newSession`, `navigationData`, `chatHeader` and `modelGroupLabels` and `api/$route_v1_new-agent-options_GET` from `models.list` + `models.listModels`; update their tests for grouping, labels, disabled flags and the unavailable-connection case
+- [x] 6.2 Remove the LLM Connections, LLMs and model-policy entries from the frontend `SettingsDialog`; delete `LlmConnectionsPanel`, `RemoteLoginDiagnostics`, `LlmPolicySettings` and `frontend/src/lib/llmConnections.ts` with the `settings-llm` and `settings-llm-policy` tests; update `settings-models`; verify with the frontend test run that only Models is listed
+- [x] 6.3 Delete `CodexAccountReset` and `NodeSettings` with their tests; point the `/llms` entry in `ApplicationPages`, `SshInstancesPanel`'s `onOpenConnections`, and `LiveApp`'s `llm-connections` deep link and `openQuotas` at the Models tab; update the `settings-ssh` and `quota-matrix` tests; verify with the frontend tests and `rg '/llms|llm-connections|llmConnections' frontend/src` that no reference remains
 
 ## 7. Agent data migration
 

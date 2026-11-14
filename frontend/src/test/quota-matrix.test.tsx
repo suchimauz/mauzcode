@@ -9,7 +9,7 @@ const codex: QuotaAccount = { id: 'codex:su@srv', provider: 'codex', account: 's
 const kimi: QuotaAccount = { id: 'kimi-coding:t', provider: 'kimi-coding', account: 't', label: 'kimi', model: 'kimi-coding/t:', connection: 'local', kind: 'quota', windows: { fiveHour: { usedPercent: 0, resetsAt: null, tone: 'neutral' }, monthly: { usedPercent: 60, resetsAt: null, tone: 'warning' } }, tone: 'warning', parkedAgents: 0 };
 const gate: QuotaAccount = { id: 'oneapi:default', provider: 'oneapi', account: 'default', label: 'Asoft LLM Gate', model: 'oneapi/default:', connection: 'local', kind: 'status', status: 'available', tone: 'neutral', parkedAgents: 0 };
 const unmeasured: QuotaAccount = { id: 'claude-code:x@srv', provider: 'claude-code', account: 'x', label: 'claude', model: 'claude-code/x:', connection: 'ssh', host: 'srv', kind: 'quota', windows: {}, quotaStatus: 'unavailable', tone: 'neutral', parkedAgents: 0 };
-afterEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+afterEach(() => { localStorage.clear(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 const cells = (id: string) => [...document.querySelectorAll('.quota-card')].find(c => c.getAttribute('aria-label')?.startsWith(id))!;
 
@@ -49,11 +49,16 @@ it('compact mode shows one worst-tone dot and opens quotas on click', async () =
   await userEvent.click(btn); expect(onOpen).toHaveBeenCalled();
 });
 
-it('sidebar places quotas right above the account bar and hides them when empty', () => {
+it('sidebar places quotas above the owner resource row and the account bar and hides them when empty', async () => {
+  // The owner's server resource row (ResourceMonitor) sits between the quota block and the account bar.
+  const metrics = { sampledAt: 1, platform: 'linux', cpu: 10, cores: [10], memory: { total: 8, used: 4, available: 4 }, swap: null, load: [0] };
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(metrics), { headers: { 'content-type': 'application/json' } })));
   const base = { projects: [], user: { name: 'Test User', role: 'owner' as const }, selected: '', theme: 'light' as const, onTheme: vi.fn(), onToggle: vi.fn(), onSelect: vi.fn(), onRetry: vi.fn() };
   const { rerender } = render(<WorkspaceSidebar {...base} quotas={[kimi]} />);
   const matrix = screen.getByRole('region', { name: 'Лимиты моделей' });
-  expect(matrix.nextElementSibling).toHaveClass('workspace-account');
+  expect(matrix.nextElementSibling).toHaveClass('resource-monitor-row');
+  expect(matrix.nextElementSibling?.nextElementSibling).toHaveClass('workspace-account');
+  await screen.findByRole('button', { name: /Ресурсы сервера\. CPU 10%, RAM 50%/ });
   rerender(<WorkspaceSidebar {...base} quotas={[]} />);
   expect(screen.queryByRole('region', { name: 'Лимиты моделей' })).toBeNull();
 });

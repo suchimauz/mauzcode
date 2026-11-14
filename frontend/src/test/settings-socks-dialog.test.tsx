@@ -2,20 +2,18 @@ import { useState } from 'react';
 import { expect, test, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SettingsDialog, type SettingsTab } from '../components/settings/SettingsDialog';
-vi.mock('../components/settings/LlmConnectionsPanel',()=>({LlmConnectionsPanel:()=> <p>LLM panel</p>}));
 vi.mock('@mauzcode/ui',async()=>({...await vi.importActual<typeof import('@mauzcode/ui')>('@mauzcode/ui'),requestJson:vi.fn(async()=>({items:[]}))}));
 import { requestJson } from '@mauzcode/ui';
-function Harness(){const [tab,setTab]=useState<SettingsTab>('llm-connections');return <SettingsDialog open tab={tab} onTab={setTab} onOpenChange={()=>{}} theme="dark"/>;}
+function Harness(){const [tab,setTab]=useState<SettingsTab>('ssh-instances');return <SettingsDialog open tab={tab} onTab={setTab} onOpenChange={()=>{}} theme="dark"/>;}
 test('real Settings dialog opens SOCKS5 registry via navigation and mobile selector',async()=>{
  render(<Harness/>);
- expect(screen.getByText('LLM panel')).toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'SOCKS5'}));
  expect(await screen.findByText('Прокси пока нет.')).toBeInTheDocument();
  expect(requestJson).toHaveBeenCalledWith('/settings/proxies',expect.objectContaining({signal:expect.any(AbortSignal)}));
  fireEvent.click(screen.getByRole('button',{name:'Добавить прокси'}));
  expect(screen.getByLabelText('Метка')).toHaveFocus();
  expect(screen.getByLabelText('IP или DNS-имя')).toBeEnabled();
- fireEvent.change(screen.getByLabelText('Раздел настроек'),{target:{value:'llm-connections'}});
+ fireEvent.change(screen.getByLabelText('Раздел настроек'),{target:{value:'updates'}});
  expect(screen.queryByLabelText('IP или DNS-имя')).not.toBeInTheDocument();
  fireEvent.change(screen.getByLabelText('Раздел настроек'),{target:{value:'socks-proxies'}});
  expect(await screen.findByText('Прокси пока нет.')).toBeInTheDocument();

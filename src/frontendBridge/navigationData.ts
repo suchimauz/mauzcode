@@ -21,19 +21,18 @@ export default async function (
     const dates=await ctx.fns.procs.db.select({sql:"SELECT m.agent_id,MAX(m.ts) AS ts FROM messages m JOIN agents a ON a.id=m.agent_id WHERE a.visibility='nav' AND m.role='assistant' AND m.content IS NOT NULL AND m.content <> '' AND (m.tool_calls IS NULL OR m.tool_calls='[]'::jsonb) GROUP BY m.agent_id"});
     const lastReply=new Map<string,number>(dates.map(r=>[String(r.agent_id),Number(r.ts)]));
     const iconRows=await ctx.fns.procs.db.select({sql:"SELECT id,icon,model,color_hue,reasoning_effort,created_at FROM agents WHERE visibility='nav'"});
-    const modelNames=await ctx.fns.llm.modelDisplayNames({models:[...new Set(iconRows.map(row=>String(row.model??'')).filter(Boolean))]});
-    const modelLabel=(model:string)=>modelNames[model]??model.slice(model.lastIndexOf(':')+1);
+    const catalogue=new Map((await ctx.fns.frontendBridge.modelCatalogue({})).models.map(m=>[m.model,m]));
+    const modelLabel=(model:string)=>catalogue.get(model)?.label??(model.slice(model.indexOf(':',Math.max(0,model.indexOf('/')))+1)||model);
     const icons=new Map(await Promise.all(iconRows.map(async row=>[String(row.id),await ctx.fns.frontendBridge.iconData({icon:row.icon,model:row.model})] as const)));
-    // Native capability resolution is cache-only, including MauzCode/OpenCode routes.
-    // Share one resolution per distinct pair rather than repeating work for every chat.
-    const efforts=new Map<string,Promise<{requested:types.llm.ReasoningEffort;applied:types.llm.ReasoningEffort;label:string|null;downgraded:boolean}>>();
-    const labels:Record<types.llm.ReasoningEffort,string>={auto:'Default',off:'Off',minimal:'Minimal',low:'Low',medium:'Medium',high:'High',xhigh:'Max'};
+    // Reasoning comes from the cached connection catalogue; share one projection per distinct pair.
+    const efforts=new Map<string,{requested:types.models.ReasoningLevel|'auto';applied:types.models.ReasoningLevel|'auto';label:string|null;downgraded:boolean}>();
+    const labels:Record<types.models.ReasoningLevel|'auto',string>={auto:'Default',off:'Off',minimal:'Minimal',low:'Low',medium:'Medium',high:'High',xhigh:'Max'};
     const metadata=new Map(await Promise.all(iconRows.map(async row=>{
         const model=String(row.model??'');
-        const requested=String(row.reasoning_effort??'auto') as types.llm.ReasoningEffort;
+        const requested=String(row.reasoning_effort??'auto');
         const key=JSON.stringify([model,requested]);
-        if(!efforts.has(key)) efforts.set(key,ctx.fns.llm.resolveReasoningEffort({model,effort:requested}).then(resolved=>({requested:resolved.requested,applied:resolved.applied,label:resolved.mode==='none'?null:labels[resolved.requested==='auto'?'auto':resolved.applied],downgraded:resolved.downgraded})));
-        return [String(row.id),{colorHue:row.color_hue==null?null:Number(row.color_hue),modelLabel:modelLabel(model),effort:await efforts.get(key)!,createdAt:row.created_at==null?null:Number(row.created_at)}] as const;
+        if(!efforts.has(key)){const resolved=ctx.fns.frontendBridge.modelEffort({reasoning:catalogue.get(model)?.reasoning??null,requested});efforts.set(key,{requested:resolved.requested,applied:resolved.applied,label:resolved.mode==='none'?null:labels[resolved.requested==='auto'?'auto':resolved.applied],downgraded:resolved.downgraded});}
+        return [String(row.id),{colorHue:row.color_hue==null?null:Number(row.color_hue),modelLabel:modelLabel(model),effort:efforts.get(key)!,createdAt:row.created_at==null?null:Number(row.created_at)}] as const;
     })));
     const chatMetadata=(id:string,model:string)=>metadata.get(id)??{colorHue:null,modelLabel:modelLabel(String(model??'')),effort:null,createdAt:null};
     const mapChat=(chat:types.projects.Chat)=>({id:chat.id,icon:icons.get(chat.id)??null,title:summaries.get(chat.id)?.title||chat.title,model:chat.model,...chatMetadata(chat.id,chat.model),runState:chat.runState,teamRunningCount:chat.teamRunningCount??0,hasUnread:chat.hasUnread,archived:chat.archived,pinned:pins.has(chat.id),pinnedAt:pins.get(chat.id)??null,lastReplyAt:lastReply.get(chat.id)??null});

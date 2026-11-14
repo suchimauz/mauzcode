@@ -144,7 +144,9 @@ export function LiveApp() {
   const readOnly = archived || !mauzcode.page || (mauzcode.page.archived == null && !selectedChat);
   const current = mauzcode.agents.find(item => item.id === mauzcode.selected) ?? selectedChat;
   const requestedSettings = new URLSearchParams(location.search).get('settings');
-  const linkedSettings = (['ssh-instances', 'llm-connections', 'models', 'push-notifications', 'updates'] as const).find(id => id === requestedSettings);
+  // Legacy model settings links (LLM Connections, LLMs, policy) open the single Models tab.
+  const legacyModelSettings = ['llm-connections', 'llms', 'llm-policy', 'model-policy'];
+  const linkedSettings = legacyModelSettings.includes(requestedSettings ?? '') ? 'models' as const : (['ssh-instances', 'models', 'push-notifications', 'updates'] as const).find(id => id === requestedSettings);
   const [settingsOpen, setSettingsOpen] = useState(!!linkedSettings);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>(linkedSettings ?? 'ssh-instances');
   const changeSettingsOpen = (open: boolean) => {
@@ -152,7 +154,7 @@ export function LiveApp() {
     if (!open) { const url = new URL(location.href); url.searchParams.delete('settings'); history.replaceState(null, '', url); }
   };
   const openSettings = useCallback(() => { setSheetOpen(false); setSettingsOpen(true); }, []);
-  const openQuotas = useCallback(() => { setSheetOpen(false); setSettingsTab('llm-connections'); setSettingsOpen(true); }, []);
+  const openQuotas = useCallback(() => { setSheetOpen(false); setSettingsTab('models'); setSettingsOpen(true); }, []);
   type PageView = 'automation' | 'plugins' | 'people' | 'applications' | 'pages' | `extension:${string}` | null;
   const readView = (): PageView => { const v = new URL(location.href).searchParams.get('view'); return v === 'automation' || v === 'plugins' || v === 'people' || v === 'applications' || v === 'pages' ? v : /^extension:[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/.test(v ?? '') ? v as PageView : null; }; // runtime plugins load after first render
   const [pageView, setPageViewState] = useState<PageView>(readView);

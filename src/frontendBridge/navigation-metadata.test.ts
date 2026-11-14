@@ -1,24 +1,24 @@
 import { expect, test } from 'bun:test';
 import navigation from './navigationData';
+import modelEffort from './modelEffort';
 
 test('navigation projects durable model/effort and creation dates without per-chat catalogue requests', async () => {
  const rows = [
-  {id:'high',model:'codex:gpt-6-astra',reasoning_effort:'high',created_at:'123'},
-  {id:'same',model:'codex:gpt-6-astra',reasoning_effort:'high',created_at:'124'},
-  {id:'auto',model:'codex:gpt-6-astra',reasoning_effort:'auto',created_at:'125'},
-  {id:'max',model:'codex:gpt-6-astra',reasoning_effort:'xhigh'},
-  {id:'down',model:'codex:gpt-6-astra',reasoning_effort:'off'},
-  {id:'none',model:'lmstudio:local',reasoning_effort:'high'},
+  {id:'high',model:'codex/me:gpt-6-astra',reasoning_effort:'high',created_at:'123'},
+  {id:'same',model:'codex/me:gpt-6-astra',reasoning_effort:'high',created_at:'124'},
+  {id:'auto',model:'codex/me:gpt-6-astra',reasoning_effort:'auto',created_at:'125'},
+  {id:'max',model:'codex/me:gpt-6-astra',reasoning_effort:'xhigh'},
+  {id:'down',model:'codex/me:gpt-6-astra',reasoning_effort:'off'},
+  {id:'none',model:'custom/local:llama',reasoning_effort:'high'},
  ];
  let resolutions=0;
  const ctx:any={fns:{
   projects:{list:async()=>[{id:'p',title:'P'},{id:'virtual',virtual:true}],chats:async({projectId,archived}:any)=>projectId==='p'&&!archived?rows.map(row=>({...row,runState:'idle'})):[]},
-  session:{list:async()=>[]}, frontendBridge:{iconData:async()=>null},
-  llm:{modelDisplayNames:async()=>({}),resolveReasoningEffort:async({model,effort}:any)=>{
-   resolutions++;
-   const none=model==='lmstudio:local';
-   return {requested:effort,applied:none?'off':effort==='auto'?'medium':effort==='off'?'low':effort,mode:none?'none':'openai-effort',downgraded:none||effort==='off'};
-  }}, 
+  session:{list:async()=>[]},
+  frontendBridge:{modelEffort:(o:any)=>modelEffort({} as any,null,o),iconData:async()=>null,modelCatalogue:async()=>{resolutions++;return {groups:[],models:[
+   {provider:'codex',model:'codex/me:gpt-6-astra',label:'gpt-6-astra',groupLabel:'me',connectionId:'c',disabled:false,reasoning:{supported:['low','medium','high','xhigh'],default:'medium'}},
+   {provider:'custom',model:'custom/local:llama',label:'llama',groupLabel:'local',connectionId:'l',disabled:false},
+  ]};}},
   procs:{db:{select:async({sql,params}:any)=>{
    if(sql.startsWith('SELECT id,icon,model,'))return rows;
    if(sql.startsWith('SELECT id,created_at FROM projects')) {expect(params).toEqual(['p','virtual']);return [{id:'p',created_at:'100'}]}
@@ -37,5 +37,5 @@ test('navigation projects durable model/effort and creation dates without per-ch
  expect(data.projects[1].createdAt).toBeNull();
  expect(data.projects[2].createdAt).toBeNull();
  expect(data.projects[2].chats[0]).toMatchObject({modelLabel:'gpt-6-astra',createdAt:123,effort:{label:'High'}});
- expect(resolutions).toBe(5);
+ expect(resolutions).toBe(1);
 });

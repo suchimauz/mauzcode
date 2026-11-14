@@ -36,12 +36,14 @@ function mockApi(connections: unknown[], providers: unknown[] = [custom], usage:
 beforeEach(() => { pluginUi.current = { registry: createExtensionRegistry([], {}), applications: {}, errors: {}, loaded: true }; });
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
-it('lists Models next to the unchanged LLM Connections tab', async () => {
-  const ids = SETTINGS_TABS.map(t => t.id);
-  expect(ids).toContain('llm-connections'); expect(ids).toContain('models');
+it('lists Models as the only model settings tab', async () => {
+  const ids: string[] = SETTINGS_TABS.map(t => t.id);
+  expect(ids).toContain('models'); expect(ids).not.toContain('llm-connections');
+  expect(SETTINGS_TABS.map(t => t.label).filter(label => /llm|policy|model/i.test(label))).toEqual(['Models']);
   mockApi([]);
   render(<SettingsDialog open tab="models" onTab={() => {}} onOpenChange={() => {}} />);
-  expect(screen.getByRole('button', { name: 'LLM Connections' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'LLM Connections' })).toBeNull();
+  expect(screen.queryByRole('button', { name: /LLMs|policy/i })).toBeNull();
   expect(screen.getByRole('button', { name: 'Models' })).toHaveAttribute('aria-current', 'true');
   expect(await screen.findByRole('heading', { name: 'Models' })).toBeVisible();
 });

@@ -10,6 +10,8 @@ describe('declared application documents', () => {
     expect(applicationLinks({ items: ['/docs', '/files', '//evil.test', '/%2f%2fevil.test', '/a/../b', '/%0aevil', '/', '/auth/users', '/sber/login', '/tbank', 'https://example.com'].map(item) }).map(x => x.href)).toEqual(['/docs', '/files']);
     expect(applicationLinks(null)).toEqual([]);
     expect(nativeApplicationHref('/news?source=rss')).toBeNull();
+    expect(nativeApplicationHref('/llms')).toBe('/?settings=models');
+    expect(nativeApplicationHref('/llms/?tab=accounts')).toBe('/?settings=models');
     const apps = { '/architectureMap': 'architecture-map/architecture', '/architectureMap/turbulence': 'architecture-map/turbulence', '/browser/live': 'browser/live' };
     expect(nativeApplicationHref('/architectureMap/', apps)).toBe('/?view=extension%3Aarchitecture-map%2Farchitecture');
     expect(nativeApplicationHref('/architectureMap/turbulence?days=7', apps)).toBe('/?days=7&view=extension%3Aarchitecture-map%2Fturbulence');
@@ -31,6 +33,15 @@ describe('declared application documents', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Все приложения' }));
     expect(view.container.querySelector('iframe')).toBeNull();
     view.unmount(); expect(live.stop).toHaveBeenCalled();
+  });
+  it('never lists the legacy /llms page; only the Models settings destination remains', async () => {
+    expect(applicationLinks({ items: [{ id: 'llms', label: 'LLM connections', href: '/llms' }, { id: 'llms2', label: 'Модели и подключения', href: '/llms/?tab=x' }, { id: 'docs', label: 'Docs', href: '/docs' }] }).map(x => x.href)).toEqual(['/docs']);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ items: [{ id: 'llms', label: 'LLM connections', href: '/llms', group: 'System' }, { id: 'docs', label: 'Docs', href: '/docs', group: 'Приложения' }] })));
+    const view = render(<ApplicationPages theme="light" />);
+    await screen.findByRole('button', { name: 'Docs Приложения' });
+    expect(view.container.textContent).not.toMatch(/LLM connections|Модели и подключения/);
+    expect(view.container.querySelector('[href*="/llms"], iframe[src*="/llms"]')).toBeNull();
+    view.unmount();
   });
   it('displays read errors without retrying writes or invoking approvals', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ error: 'Permission denied' }), { status: 403 }));

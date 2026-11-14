@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import { Check, ChevronDown, ChevronRight, Cpu } from 'lucide-react';
 import { NavigationChatIcon } from './NavigationChatIcon';
-import { effortLabel, modelAccount, modelGroup, modelSourceLabel, getDraftModelSettings, getModelSettings, setAgentEffort, setAgentModel, type ModelSettings } from '../../lib/models';
+import { effortLabel, modelAccount, modelGroup, modelGroupKey, modelSourceLabel, getDraftModelSettings, getModelSettings, setAgentEffort, setAgentModel, type ModelSettings } from '../../lib/models';
 import { rememberSessionSelection } from '../../lib/newSession';
 import './model-picker.css';
 
@@ -86,10 +86,10 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length;
     items[next].focus();
   };
-  const groups = new Map<string, ModelSettings['models']>();
+  const groups = new Map<string, { label: string; options: ModelSettings['models'] }>();
   for (const option of data?.models ?? []) {
     if (!`${option.label} ${option.provider} ${option.model} ${modelGroup(option)}`.toLowerCase().includes(query.trim().toLowerCase())) continue;
-    const key = modelGroup(option); const group = groups.get(key) ?? []; group.push(option); groups.set(key, group);
+    const key = modelGroupKey(option); const group = groups.get(key) ?? { label: modelGroup(option), options: [] }; group.options.push(option); groups.set(key, group);
   }
   const effort = data?.effort;
   const hasEffort = !!effort && effort.mode !== 'none' && effort.supported.length > 0;
@@ -110,11 +110,11 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
             {hasEffort && <button type="button" role="menuitem" className="model-picker-cell" disabled={saving} onClick={() => setPage('effort')}><span>Effort</span><span className="model-picker-cell-value">{effortLabel(effort.requested)}</span><ChevronRight size={14} strokeWidth={1} /></button>}
           </div>}
           {page === 'models' && <>{(data?.models.length ?? 0) > 4 && <input className="model-picker-search" aria-label="Search models" placeholder="Search models" value={query} onChange={event => setQuery(event.target.value)} />}
-            <div role="menu" aria-label="Model" className="model-picker-scroll">{[...groups].map(([provider, options]) => <section role="group" aria-label={provider} key={provider}>
-              <div className="model-picker-group">{provider}</div>{options.map(option => <button type="button" key={option.model} role="menuitemradio" aria-checked={option.model === data?.model} className="model-picker-option" aria-label={option.label} aria-description={modelSourceLabel(option.model) || undefined} title={option.disabled ? `${option.model} — недоступна по политике провайдера` : option.model} disabled={option.disabled || saving || running || busy} onClick={() => void choose('model', option.model)}>
+            <div role="menu" aria-label="Model" className="model-picker-scroll">{[...groups].map(([key, { label: groupName, options }]) => <section role="group" aria-label={groupName} key={key}>
+              <div className="model-picker-group">{groupName}</div>{options.map(option => <button type="button" key={option.model} role="menuitemradio" aria-checked={option.model === data?.model} className="model-picker-option" aria-label={option.label} aria-description={modelSourceLabel(option.model) || undefined} title={option.disabled ? `${option.model} — недоступна по политике провайдера` : option.model} disabled={option.disabled || saving || running || busy} onClick={() => void choose('model', option.model)}>
                 <NavigationChatIcon icon={option.icon} /><span className="model-picker-option-text"><span>{option.label}</span>{modelSourceLabel(option.model) && <span className="model-picker-option-source" aria-hidden="true">{modelSourceLabel(option.model)}</span>}</span><span className="model-picker-check">{option.model === data?.model && <Check size={16} strokeWidth={1} />}</span>
               </button>)}
-            </section>)}{!groups.size && <p className="model-picker-note">Модели не найдены</p>}</div></>}
+            </section>)}{(data?.groups ?? []).filter(group => group.unavailable && !groups.has(group.connectionId)).map(group => <section role="group" aria-label={group.accountName} key={group.connectionId}><div className="model-picker-group">{group.accountName}</div><p className="model-picker-note" title={group.error}>Недоступно: список моделей не загрузился{group.error ? ` (${group.error})` : ''}</p></section>)}{!groups.size && !(data?.groups ?? []).some(group => group.unavailable) && <p className="model-picker-note">Модели не найдены</p>}</div></>}
           {page === 'effort' && <div role="menu" aria-label="Effort">{[...new Set(['auto', ...(effort?.supported ?? [])])].map(value => <button type="button" role="menuitemradio" key={value} aria-checked={value === effort?.requested} className="model-picker-option" disabled={saving || running || busy} onClick={() => void choose('effort', value)}><span>{effortLabel(value)}</span><span className="model-picker-check">{value === effort?.requested && <Check size={16} strokeWidth={1} />}</span></button>)}</div>}
         </>}
         {running && <p className="model-picker-note">Смена доступна после завершения ответа.</p>}

@@ -55,6 +55,7 @@ export default async function (
             FROM agent_runs r WHERE r.agent_id=agents.id) AS duration_ms,
         (SELECT MAX(e.ts) FROM events e WHERE e.agent_id=agents.id AND e.type='assistant') AS last_reply_at
         FROM agents WHERE parent_id = ? AND visibility = 'team' AND archived_at IS NULL ORDER BY created_at ASC`,params:[now,now,parentId]});
+    const catalogue=ctx.fns.frontendBridge.modelCatalogue({}).then(c=>new Map(c.models.map(m=>[m.model,m] as const)));
     const finite=(value:unknown):number|null=>value==null||!Number.isFinite(Number(value))||Number(value)<0?null:Number(value);
     return Promise.all(children.map(async row=>{
         const details=await ctx.fns.agent.contextDetails({agentId:String(row.id)});
@@ -62,7 +63,7 @@ export default async function (
         const model=String(row.model??'');
         return {id:String(row.id),title:String(row.title??''),icon:await ctx.fns.frontendBridge.iconData({icon:row.icon,model:row.model}),colorHue:row.color_hue==null?null:Number(row.color_hue),runState:String(row.run_state??'idle'),
             tokens:(details.coverage?.tokenRequests??0)>0&&input!=null&&output!=null?finite(input+output):null,
-            durationMs:finite(row.duration_ms),modelLabel:(await ctx.fns.llm.modelDisplayNames({models:[model]}))[model]??model.slice(model.lastIndexOf(':')+1),lastReplyAt:finite(row.last_reply_at)};
+            durationMs:finite(row.duration_ms),modelLabel:(await catalogue).get(model)?.label??(model.slice(model.indexOf(':',Math.max(0,model.indexOf('/')))+1)||model),lastReplyAt:finite(row.last_reply_at)};
     }));
     };
     const [children,siblings]=await Promise.all([loadChildren(agentId),parent?loadChildren(parent.id):Promise.resolve([])]);

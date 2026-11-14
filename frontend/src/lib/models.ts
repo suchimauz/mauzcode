@@ -1,10 +1,13 @@
 import { requestJson } from './mauzcode';
 import type { NavigationIcon } from './navigation';
 import { readSessionSelection } from './newSession';
-export type ModelOption = { provider: string; model: string; label: string; groupLabel?: string; disabled: boolean; icon: NavigationIcon | null };
+export type ModelOption = { provider: string; model: string; label: string; groupLabel?: string; connectionId?: string; disabled: boolean; icon: NavigationIcon | null };
+/** One model connection; unavailable means its catalogue could not be loaded. */
+export type ModelGroup = { connectionId: string; provider: string; accountName: string; enabled: boolean; unavailable: boolean; error?: string };
 export type ModelSettings = {
   agentId: string; model: string; label: string; icon: NavigationIcon | null;
   models: ModelOption[];
+  groups?: ModelGroup[];
   effort: { requested: string; applied: string; supported: string[]; mode: string };
 };
 export const getModelSettings = (id: string, signal?: AbortSignal) => requestJson<ModelSettings>(`/ui-lab-api/models?agentId=${encodeURIComponent(id)}`, { signal });
@@ -37,15 +40,21 @@ export type ModelRoute = { host: string | null; provider: string; account: strin
 export const parseModelRoute = (value: string): ModelRoute => {
   const ssh = /^ssh\/([^:]+):(.+)$/.exec(value);
   const host = ssh ? ssh[1] : null; const rest = ssh ? ssh[2] : value;
-  const m = /^([a-z][\w-]*)(?:\/([\w.-]+))?:(.+)$/.exec(rest);
+  const m = /^([a-z][\w-]*)(?:\/([^/:]+))?:(.+)$/.exec(rest);
   const provider = m ? m[1] : 'lmstudio'; const account = m?.[2] ?? 'default'; const model = m ? m[3] : rest;
   return { host, provider, account, model, route: `${host ? `ssh/${host}:` : ''}${provider}/${account}:${model}` };
 };
-// SSH routes are grouped per host account so accounts don't mix.
+// Display label of a model's group: the connection account name (never the provider).
 export const modelGroup = (option: Pick<ModelOption, 'provider' | 'model' | 'groupLabel'>) => {
   if (option.groupLabel) return option.groupLabel;
   const route = parseModelRoute(option.model);
-  return route.host ? `${route.host} · ${route.provider}/${route.account}` : option.provider;
+  return route.host ? `${route.host} · ${route.account}` : route.account;
+};
+// Stable group identity: the connection id; provider/account route prefix for options without one.
+export const modelGroupKey = (option: Pick<ModelOption, 'provider' | 'model' | 'connectionId'>) => {
+  if (option.connectionId) return option.connectionId;
+  const route = parseModelRoute(option.model);
+  return `${route.host ?? ''}|${route.provider}/${route.account}`;
 };
 // Account name alone, for compact captions under the current model.
 export const modelAccount = (model: string) => parseModelRoute(model).account;

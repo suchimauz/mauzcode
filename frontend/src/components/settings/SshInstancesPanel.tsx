@@ -156,7 +156,7 @@ export function SshInstancesPanel({ onOpenConnections }: { onOpenConnections?: (
   return <div className="settings-panel" data-page="ssh-instances">
     <header className="settings-panel-header">
       <h2>SSH Instances</h2>
-      <p>Connect a server to run subscription requests remotely. Manage provider accounts in {onOpenConnections ? <button type="button" onClick={onOpenConnections}>LLM Connections</button> : 'the LLM Connections settings tab'}.</p>
+      <p>Connect a server to run subscription requests remotely. Manage model connections in {onOpenConnections ? <button type="button" onClick={onOpenConnections}>Models</button> : 'the Models settings tab'}.</p>
     </header>
     {feedback && <div className={`settings-feedback is-${feedback.tone}`} role={feedback.tone === 'error' ? 'alert' : 'status'} aria-live="polite">{feedback.text}</div>}
     {loadError ? <div className="settings-feedback is-error" role="alert">{loadError.forbidden ? 'Только владелец может управлять SSH Instances.' : loadError.text}{!loadError.forbidden && <Button variant="ghost" onClick={() => { void load(); }}>Повторить</Button>}</div>
