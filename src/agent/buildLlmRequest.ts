@@ -1,20 +1,6 @@
-// Build the system + messages payload for an LLM call.
-//
-// Policy (option A — "system-as-messages"): the full instruction body lives
-// as a synthetic user → assistant exchange at the start of the conversation;
-// system is empty or near-empty. Rationale: models attend to recent user
-// messages more reliably than to system, especially smaller / local models
-// (Haiku, Llama). Moving instructions into the conversation also makes them
-// visible in transcript debugging.
-//
-// Anthropic OAuth subscription (claude-code provider) is a special case:
-// the server-side anti-fraud check rejects requests whose system prompt
-// doesn't start with the Claude Code identity line. That line MUST stay in
-// `system` regardless of policy. Everything else moves to messages.
-//
-// Returns:
-//   { system: string, messages: Message[] }  — both ready to feed to a
-//   streamer. messages is [bootstrap-user, bootstrap-ack, ...transcript].
+// The descriptor preamble is the system instruction; the remaining prompt
+// is a synthetic user/assistant bootstrap before the canonical transcript.
+// No provider identity or wire dialect decisions belong here.
 /**
  * Assemble the outgoing system prompt and effective transcript, including checkpoint fallback metadata.
  * Use preview for a read-only context estimate: it may reuse existing Jev decisions but never requests new scores.
@@ -33,7 +19,7 @@ export default async function (
     agent: types.agent.Agent;
         /** Read-only preview; reuse cached relevance choices without external calls or repair logs. @default false */
     preview?: boolean },
-): Promise<{ system: string; messages: any[]; /** Number of leading synthetic instruction/ack messages, independent of wire role; excludes human transcript. */ bootstrapMessageCount: number; /** Exclusive canonical-message boundary before per-request control instructions. */ cacheableMessageCount: number; context: { mode: "full" | "compact"; fallback: "missing_generation" | "missing_checkpoint" | "incompatible_checkpoint" | "invalid_boundary" | null; revision: number | null } }> {
+): Promise<{ instructions: string; messages: any[]; /** Number of leading synthetic instruction/ack messages, independent of wire role; excludes human transcript. */ bootstrapMessageCount: number; /** Exclusive canonical-message boundary before per-request control instructions. */ cacheableMessageCount: number; context: { mode: "full" | "compact"; fallback: "missing_generation" | "missing_checkpoint" | "incompatible_checkpoint" | "invalid_boundary" | null; revision: number | null } }> {
     const { agent } = opts;
     const fullPrompt = await ctx.fns.agent.fullSystemPrompt({ agent });
     // Goal context travels as persisted `goal_context` rows (agent.syncGoalContext), like
@@ -92,21 +78,13 @@ export default async function (
     // agent.syncWorldState now and travel as a persisted tail row, for the same
     // reason as the function catalogue: a block that changes between requests
     // must not rewrite history the provider has already cached.
-    const ep = await ctx.fns.llm.resolveEndpoint({ model: agent.model });
-    const claudeCodeHeader = "You are Claude Code, Anthropic's official CLI for Claude.";
+    const route = await ctx.fns.models.resolveRoute({ route: agent.model });
 
     // Nothing per-turn lives in the bootstrap: every byte there is the cached
     // prefix shared by all later requests and by transcript-sharing forks.
     // The status line is a persisted transcript row (see agent.run).
-    let system = '';
-    let bodyText = fullPrompt;
-    const upstream = ep.provider === 'mauzcode' ? (ep.upstream ?? '') : ep.provider;
-    if (upstream === 'claude-code' || upstream === 'anthropic-oauth') {
-        system = claudeCodeHeader;
-        if (bodyText.startsWith(claudeCodeHeader)) {
-            bodyText = bodyText.slice(claudeCodeHeader.length).trimStart();
-        }
-    }
+    const instructions = route.systemPreamble ?? '';
+    const bodyText = instructions ? fullPrompt.split(instructions).join('').trimStart() : fullPrompt;
 
     const bootstrap = bodyText
         ? [
@@ -190,7 +168,7 @@ export default async function (
     if (lastPlanning !== planningContext) messages.push({ role: 'user', content: planningContext, excluded_from_cursor: true });
 
     return {
-        system,
+        instructions,
         messages,
         bootstrapMessageCount: bootstrap.length,
         cacheableMessageCount,

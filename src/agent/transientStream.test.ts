@@ -1,15 +1,15 @@
 import { describe, test, expect } from 'bun:test';
-import { mkTestCtx } from '../_testCtx.entry';
+import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
 
 describe('web transient stream', () => {
     test('run coalesces tokens and immediately clears failures and cancellation', async () => {
         for (const cancel of [false, true]) {
             const ctx: any = await mkTestCtx();
-            const agent = await ctx.fns.agent.start({ model: 'mock:test' });
+            const agent = await ctx.fns.agent.start({ model: 'mock/default:test' });
             await ctx.fns.session.save({ agent });
             const notices: any[] = [];
             ctx.fns.procs.events.emit = (_c: any, _s: any, opts: any) => { if (opts.topic === `agent:${agent.id}:stream`) notices.push(opts); };
-            ctx.fns.llm.stream = async (_c: any, _s: any, opts: any) => {
+            ctx.fns.models.stream = async (_c: any, _s: any, opts: any) => {
                 for (let i = 0; i < 100; i++) opts.onEvent({ type: 'text_delta', delta: 'x' });
                 expect(notices).toHaveLength(0);
                 await Bun.sleep(390);

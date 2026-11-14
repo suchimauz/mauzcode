@@ -25,11 +25,11 @@ export default async function (
     const apiKey = ep.provider === "mauzcode" ? ep.apiKey : await ctx.fns.llm.getXaiOAuthToken({ account: ep.account });
     if (!apiKey) throw new Error(`${ep.provider}: no credentials`);
     const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: agent.model, effort: agent.reasoningEffort ?? "auto" });
-    const { system: instructions, messages: convo } = await ctx.fns.agent.buildLlmRequest({ agent });
+    const { instructions, messages: convo } = await ctx.fns.agent.buildLlmRequest({ agent });
     const { input } = ctx.fns.llm.toCodexInput({ messages: convo as any });
     const body: any = { model: ep.modelId, store: false, stream: true, instructions, input, prompt_cache_key: await ctx.fns.agent.cacheRoot({ agent }), include: ["reasoning.encrypted_content"] };
     if (reasoning.applied !== "off") body.reasoning = { effort: reasoning.applied };
-    const tools = ctx.fns.agent.wireTools({ agent, api: "responses" });
+    const tools = ctx.fns.tools.schemas({ only: agent.tools, api: "responses" });
     if (tools.length) { body.tools = tools; body.parallel_tool_calls = true; }
     if ((ctx as Context & { goalRequestContext?: { authority?: types.goal.DelegationAuthority } }).goalRequestContext?.authority) await ctx.fns.goal.requestAuthorize({});
     const res = await ctx.fns.llm.connectFetch({ url: ep.url, init: { method: "POST", headers: { authorization: `Bearer ${apiKey}`, accept: "text/event-stream", "content-type": "application/json", session_id: agent.id }, body: JSON.stringify(body), signal: opts.signal } });

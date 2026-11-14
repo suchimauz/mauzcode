@@ -28,11 +28,8 @@ export default async function (
     if(canonical(tool.parameters)!==canonical(contract.parameters))return fail('native_goal_schema_mismatch');
     selected.push(tool);
     }
-    const ep=await ctx.fns.llm.resolveEndpoint({model:owner.model});
-    // Match llm.stream's effective dialect: xAI uses Responses even through
-    // MauzCode, while Gemini converts the OpenAI declarations to native tools.
-    const api=ep.api==='gemini'?'openai':ep.api==='anthropic'?'anthropic':(ep.provider==='mauzcode'?ep.upstream:ep.provider)==='xai'?'responses':ep.api;
-    const wire=ctx.fns.agent.wireTools({agent:owner,api});
-    for(const tool of selected){const declaration=wire.find(t=>(t.function?.name??t.name)===tool.wireName);if(!declaration||canonical(declaration.function?.parameters??declaration.parameters??declaration.input_schema)!==canonical(tool.parameters))return fail('native_goal_tools_filtered');}
-    return {available:true,reason:'available',fingerprint:String(Bun.hash(canonical({model:owner.model,api,tools:selected.map(t=>({key:t.key,fn:t.fn,wireName:t.wireName,parameters:t.parameters}))})))};
+    const route=await ctx.fns.models.resolveRoute({route:owner.model});
+    const wire=ctx.fns.agent.wireTools({agent:owner});
+    for(const tool of selected){const declaration=wire.find(t=>t.name===tool.wireName);if(!declaration||canonical(declaration.parameters)!==canonical(tool.parameters))return fail('native_goal_tools_filtered');}
+    return {available:true,reason:'available',fingerprint:String(Bun.hash(canonical({model:owner.model,connectionId:route.connectionId,tools:selected.map(t=>({key:t.key,fn:t.fn,wireName:t.wireName,parameters:t.parameters}))})))};
 }

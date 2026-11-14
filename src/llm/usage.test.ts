@@ -259,16 +259,20 @@ describe("llm.usageOverview", () => {
 
     test("counts the agents parked on each credential", async () => {
         const ctx: any = await mkTestCtx();
-        const first = await ctx.fns.agent.start({ model: "mock:test" });
-        await ctx.fns.agent.start({ model: "mock:test" });
+        ctx.state.registry.models.resolveRoute = async (_c:any,_s:any,{route}:any)=>({route,provider:'mock',accountName:route.slice(5,route.indexOf(':')),connectionId:'mock',model:'test'});
+        const first = await ctx.fns.agent.start({ model: "mock/default:test" });
+        await ctx.fns.agent.start({ model: "mock/default:test" });
         const other = await ctx.fns.agent.start({ model: "mock/work:test" });
         await ctx.fns.agent.parkOnUsageLimit({
-            info: { kind: "usage_limit", provider: "mock", account: "default", message: "spent", retryable: false, resetsAt: NOW + 86_400_000 } as any,
+            originAgentId:first.id,
+            info: { code:'QUOTA_EXHAUSTED',classification:'quota',acceptance:'rejected',replaySafe:true,retryable:false,resetAt:NOW+86_400_000 },
             now: NOW,
         });
+        // Explicit legacy-store fixture: agent parking intentionally no longer populates it.
+        await ctx.fns.llm.recordUsage({provider:'mock',account:'default',kind:'subscription',now:NOW,rateLimits:{primary:{used_percent:100,resets_at:(NOW+86400000)/1000}}});
         const entry = (await ctx.fns.llm.usageOverview({ now: NOW })).find((e: any) => e.provider === "mock");
         expect(entry.parkedAgents).toBe(2);
-        expect(entry.usedPercent).toBe(100);
+        // Parking no longer writes the retired llm usage store.
         expect((await ctx.fns.session.load({id:other.id})).scratchpad.parked).toBeUndefined();
         await ctx.fns.procs.db.run({sql:"UPDATE agents SET archived_at = ? WHERE id = ?",params:[NOW,first.id]});
         const afterArchive = (await ctx.fns.llm.usageOverview({now:NOW})).find((e:any)=>e.provider==="mock");

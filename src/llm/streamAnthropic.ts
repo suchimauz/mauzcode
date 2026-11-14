@@ -29,7 +29,7 @@ export default async function (
     const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: agent.model, effort: agent.reasoningEffort ?? "auto" });
     // buildLlmRequest keeps the required Claude Code identity in the top-level
     // system field for both externally managed and mauzcode-managed OAuth.
-    const { system, messages: convo, cacheableMessageCount } = await ctx.fns.agent.buildLlmRequest({ agent });
+    const { instructions: system, messages: convo, cacheableMessageCount } = await ctx.fns.agent.buildLlmRequest({ agent });
     // Prompt caching. Two breakpoints: the bootstrap turn (tools + system +
     // core prompt — identical for every turn and for every transcript-sharing
     // fork) and the tail of the conversation, so each request re-reads the
@@ -99,7 +99,7 @@ export default async function (
         }
     }
     // Native tool_use blocks, in JSON protocol mode only (see agent.wireTools).
-    const tools = ctx.fns.agent.wireTools({ agent, api: "anthropic" });
+    const tools = ctx.fns.tools.schemas({ only: agent.tools, api: "anthropic" });
     if (tools.length) body.tools = tools;
 
     const headers: Record<string, string> = {

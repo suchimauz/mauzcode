@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { mkTestCtx } from '../_testCtx.entry';
+import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
 
 // The planning-mode context row is covered by its own tests; keep transcript
 // indices here about the tool-call protocol only.
@@ -10,7 +10,7 @@ async function mkCtx() {
 }
 
 async function mkAgent(ctx: any, turns: any[]) {
-    const agent = await ctx.fns.agent.start({ model: 'mock:test' });
+    const agent = await ctx.fns.agent.start({ model: 'mock/default:test' });
     agent.scratchpad.mockLLM = { turns, defaultText: 'done' };
     await ctx.fns.session.save({ agent });
     return agent;
@@ -83,23 +83,26 @@ describe('agent.run', () => {
     });
 
 
-    test('tool schemas go on the wire in the endpoint dialect', async () => {
+    test('tool schemas stay neutral and respect agent narrowing', async () => {
         const ctx: any = await mkCtx();
-        const agent = await ctx.fns.agent.start({ model: 'mock:test' });
+        const agent = await ctx.fns.agent.start({ model: 'mock/default:test' });
 
-        const wire = ctx.fns.agent.wireTools({ agent, api: 'anthropic' });
+        const wire = ctx.fns.agent.wireTools({ agent });
         // Native goal tools (create_goal/get_goal/update_goal) join when the goal feature is on.
         expect(wire.map((t: any) => t.name).filter((n: string) => !n.endsWith('_goal')).sort()).toEqual(['bash', 'edit', 'eval', 'find', 'grep', 'read', 'respondHtml', 'write']);
 
-        const narrowed = ctx.fns.agent.wireTools({ agent: { ...agent, tools: ['read'] }, api: 'openai' });
+        const narrowed = ctx.fns.agent.wireTools({ agent: { ...agent, tools: ['read'] } });
         expect(narrowed).toHaveLength(1);
+        expect(narrowed[0]).toHaveProperty('parameters');
+        expect(narrowed[0]).not.toHaveProperty('function');
+        expect(narrowed[0]).not.toHaveProperty('input_schema');
     });
 });
 
 describe('transcript surgery keeps JSON pairs intact', () => {
     async function withPair(ctx: any) {
         ctx.fns.tools.read = async () => 'FILE';
-        const agent = await ctx.fns.agent.start({ model: 'mock:test' });
+        const agent = await ctx.fns.agent.start({ model: 'mock/default:test' });
             agent.scratchpad.mockLLM = { turns: [
             { toolCalls: [{ name: 'read', args: { path: 'a.ts' } }] },
             { text: 'готово' },
@@ -153,17 +156,17 @@ describe('transcript surgery keeps JSON pairs intact', () => {
 
     test('a reply truncated mid-arguments executes nothing and says so', async () => {
         const ctx: any = await mkCtx();
-        const agent = await ctx.fns.agent.start({ model: 'mock:test' });
+        const agent = await ctx.fns.agent.start({ model: 'mock/default:test' });
             let ran = 0;
         ctx.fns.tools.read = async () => { ran++; return 'x'; };
-        ctx.fns.llm.stream = async () => ({
+        ctx.fns.models.stream = async () => ({
             text: '', usage: null, finishReason: 'length',
             toolCalls: [{ id: 'c1', name: 'read', args: { __unparsed: '{"path": "a.t' } }],
         });
         await ctx.fns.session.save({ agent });
 
         const turns: any[] = [];
-        ctx.fns.llm.stream = async () => turns.length++
+        ctx.fns.models.stream = async () => turns.length++
             ? { text: 'ok', usage: null, finishReason: 'stop', toolCalls: [] }
             : { text: '', usage: null, finishReason: 'length', toolCalls: [{ id: 'c1', name: 'read', args: { __unparsed: '{"path": "a.t' } }] };
 
@@ -179,7 +182,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
         let ran = 0;
         let sampled = 0;
         ctx.fns.tools.call = async () => { ran++; return 'unexpected'; };
-        ctx.fns.llm.stream = async () => sampled++ === 0
+        ctx.fns.models.stream = async () => sampled++ === 0
             ? { text: 'partial', usage: null, finishReason: 'tool_calls', toolCalls: [
                 { id: 'valid', name: 'read', args: { path: 'a.ts' } },
                 { id: 'invalid', name: 'read', args: { __unparsed: '{' } },
@@ -206,7 +209,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
         let stopped = 0;
         ctx.fns.agent.stop = async () => { stopped++; };
         ctx.fns.tools.call = async () => { ran++; return 'unexpected'; };
-        ctx.fns.llm.stream = async () => {
+        ctx.fns.models.stream = async () => {
             sampled++;
             return { text: '', usage: null, finishReason: sampled === 2 ? 'length' : 'stop',
                 toolCalls: [{ id: `bad${sampled}`, name: 'read', args: { __unparsed: '{' } }] };
@@ -229,7 +232,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
         let sampled = 0;
         let ran = 0;
         ctx.fns.tools.read = async () => { ran++; return 'read'; };
-        ctx.fns.llm.stream = async () => {
+        ctx.fns.models.stream = async () => {
             sampled++;
             if (sampled === 6) return { text: 'done', usage: null, finishReason: 'stop', toolCalls: [] };
             return { text: '', usage: null, finishReason: 'tool_calls', toolCalls: [

@@ -14,9 +14,9 @@ function harness(turns: any[], scratchpad: any = { knowledgeTrackingEnabled: tru
         session: { forAgent: () => ({}), appendUserMessage: ({ text }: any) => appendMessage({ message: { role: 'user', content: text } }), appendMessage,
             syncAgentState: async () => { agent.messages = rows.map(r => ({ ...r })); }, appendAssistantEvent: async () => ({idx: 0}), appendErrorEvent: noop, appendToolCallEvent: noop,
             updateMessageContent: async ({ idx, content }: any) => { rows[idx].content = content; }, recordContextUsage: noop },
-        agent: { recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => false, autoCompactIfNeeded: async () => ({ status: 'not_needed' }), statusLineForTurn: async () => '', stashResult: async ({ output }: any) => ({ content: output }), sanitizeHtmlBody: ({ html }: any) => html },
+        agent: { buildLlmRequest:async()=>({instructions:'',messages:[]}),wireTools:()=>[],cacheRoot:async()=>agent.id, recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => false, autoCompactIfNeeded: async () => ({ status: 'not_needed' }), statusLineForTurn: async () => '', stashResult: async ({ output }: any) => ({ content: output }), sanitizeHtmlBody: ({ html }: any) => html },
         procs: { events: { emit: () => {} }, db: { select: async () => [{ i: Math.max(-1, ...rows.filter(r => r.role === 'user').map(r => r.idx)) }], run: async () => ({ changes: 1, rows: [] }) } },
-        llm: { resolveEndpoint: async () => ({ provider: 'fixture' }), classifyError: () => ({ kind: 'fatal', retryable: false }), stream: async () => { const turn = turns.shift(); if (turn instanceof Error) throw turn; return turn ?? { text: 'done' }; } },
+        models: { resolveRoute: async () => ({ provider: 'fixture' }), classifyError: () => ({ kind: 'fatal', retryable: false }), stream: async () => { const turn = turns.shift(); if (turn instanceof Error) throw turn; return turn ?? { text: 'done' }; } },
         markdown: { render: async ({ source }: any) => source },
         tools: { call: async ({ name }: any) => ({ output: 'tool persisted', ...(name === 'respondHtml' ? { terminal: { type: 'html', html: '<p>final</p>', text: 'final' } } : {}) }) },
         knowledge: { updateSidecar: async (o: any) => { launches.push({ messageIdx: o.messageIdx, rows: rows.map(r => ({ ...r })) }); } },
@@ -69,7 +69,7 @@ describe('Knowledge completed-turn hook (isolated)', () => {
     test('LLM errors, aborted responses and empty responses do not launch', async () => {
         const h = harness([new Error('provider failed')]); await expect(h.execute()).rejects.toThrow('provider failed'); expect(h.launches).toHaveLength(0);
         const empty = harness([{ text: '' }]); await expect(empty.execute()).rejects.toThrow('Model returned an empty response'); expect(empty.launches).toHaveLength(0);
-        const aborted = harness([]); aborted.ctx.fns.llm.stream = async () => { aborted.agent.abortController.abort(); return { text: 'partial' }; };
+        const aborted = harness([]); aborted.ctx.fns.models.stream = async () => { aborted.agent.abortController.abort(); return { text: 'partial' }; };
         await expect(aborted.execute()).rejects.toMatchObject({ name: 'AbortError' }); expect(aborted.launches).toHaveLength(0);
     });
     test('extraction is not awaited and sync/async plugin failures do not fail the turn', async () => {

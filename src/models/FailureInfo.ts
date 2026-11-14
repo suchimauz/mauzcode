@@ -7,6 +7,8 @@ export type FailureInfo = {
     upstreamStatus?: number;
     /** Suggested wait before a caller-level retry, in milliseconds. */
     retryAfterMs?: number;
+    /** Quota reset instant in epoch milliseconds; absent when not reported. */
+    resetAt?: number;
     /** Whether the provider may have accepted (and billed/executed) the request. */
     acceptance: "none" | "rejected" | "accepted" | "uncertain";
     /** Transient condition: a later attempt may succeed. Independent of replaySafe. */

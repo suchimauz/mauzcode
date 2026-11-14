@@ -12,20 +12,20 @@ function harness(turns:any[],status='active'){
  input:{isWaiting:async()=>false},
  planning:{read:async({agentId}:any)=>({version:1,agentId,mode:'execute',revision:0,scope:'session',advisory:true,runningPolicy:'reject',pending:null,proposal:null})},
  session:{forAgent:()=>({}),appendUserMessage:noop,appendMessage:async({message}:any)=>{messages.push(message);return {idx:idx++}},syncAgentState:noop,updateMessageContent:noop,appendAssistantEvent:async()=>({idx:idx++}),appendToolCallEvent:noop,recordContextUsage:noop,appendErrorEvent:noop},
- agent:{retrySchedule:async()=>false,retryWait:async()=>{},recordRunLifecycle:noop,statusLineForTurn:async()=>'',autoCompactIfNeeded:async()=>({status:'not_needed'}),stashResult:async({output}:any)=>({content:output}),sanitizeHtmlBody:({html}:any)=>html},
+ agent:{ cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[],retrySchedule:async()=>false,retryWait:async()=>{},recordRunLifecycle:noop,statusLineForTurn:async()=>'',autoCompactIfNeeded:async()=>({status:'not_needed'}),stashResult:async({output}:any)=>({content:output}),sanitizeHtmlBody:({html}:any)=>html},
  procs:{db:{run:async()=>({changes:0}),select:async()=>[{i:0,stopped_at:null,run_state:'running',run_token:'token'}]},events:{emit:noop},log:{warn:noop}},
- goal:{ownerBarrier:(o:any)=>barrier(ctx,null,o),delegationScope:async({fn}:any)=>fn(),forkRelease:async(o:any)=>{expect(calls[0][0]).toBe('capture');expect(o.baselineAvailable).toBe(true);expect(o.goalId).toBe(state.binding.goalId);return false;},runBindingCapture:async(o:any)=>{calls.push(['capture',o]);return {kind:'bound',state}},runStopRegistry:noop,runUsageRecord:async(o:any)=>{calls.push(['usage',o]);state.pendingRequests.delete(o.requestId);if(o.format==='unsupported')state.blocked=true;return {kind:'recorded'}},runCheckpointFlush:async()=>{calls.push(['flush']);return state.blocked?{kind:'blocked',allowContinuation:false}:{kind:'committed',checkpointId:'receipt-'+calls.filter(c=>c[0]==='flush').length,sequence:calls.filter(c=>c[0]==='flush').length,revision:7,budgetTransition:status==='budget_limited',status,allowContinuation:status==='active'}},budgetSteer:async()=>{calls.push(['steer'])}},
- llm:{resolveEndpoint:async()=>({provider:'openai',api:'openai'}),classifyError:(opts:any)=>classifyError(ctx,null,opts),stream:async()=>{expect(state.pendingRequests.size).toBe(1);const t=turns.shift();if(t instanceof Error)throw t;return t}},markdown:{render:async({source}:any)=>source},tools:{call:async({name}:any)=>({handlerExecuted:true,output:'ok',...(name==='respondHtml'?{terminal:{type:'html',text:'final',html:'<p>final</p>'}}:{})})
+ goal:{requestAuthorize:async()=>{},ownerBarrier:(o:any)=>barrier(ctx,null,o),delegationScope:async({fn}:any)=>fn(),forkRelease:async(o:any)=>{expect(calls[0][0]).toBe('capture');expect(o.baselineAvailable).toBe(true);expect(o.goalId).toBe(state.binding.goalId);return false;},runBindingCapture:async(o:any)=>{calls.push(['capture',o]);return {kind:'bound',state}},runStopRegistry:noop,runUsageRecord:async(o:any)=>{calls.push(['usage',o]);state.pendingRequests.delete(o.requestId);if(o.format==='unsupported')state.blocked=true;return {kind:'recorded'}},runCheckpointFlush:async()=>{calls.push(['flush']);return state.blocked?{kind:'blocked',allowContinuation:false}:{kind:'committed',checkpointId:'receipt-'+calls.filter(c=>c[0]==='flush').length,sequence:calls.filter(c=>c[0]==='flush').length,revision:7,budgetTransition:status==='budget_limited',status,allowContinuation:status==='active'}},budgetSteer:async()=>{calls.push(['steer'])}},
+ models:{resolveRoute:async()=>({provider:'openai',api:'openai'}),classifyError:(opts:any)=>classifyError(ctx,null,opts),stream:async()=>{expect(state.pendingRequests.size).toBe(1);const t=turns.shift();if(t instanceof Error)throw t;return t}},markdown:{render:async({source}:any)=>source},tools:{call:async({name}:any)=>({handlerExecuted:true,output:'ok',...(name==='respondHtml'?{terminal:{type:'html',text:'final',html:'<p>final</p>'}}:{})})
  }}};
  return {calls,messages,agent,state,ctx,execute:(extra:any={})=>run(ctx,null,{agent,userText:'question',...extra})};
 }
 test('ordinary final checkpoints but cannot continue without native goal tool',async()=>{const h=harness([{text:'answer',usage:{prompt_tokens:4}}]);const result=await h.execute();expect(result.goalContinuation).toBeUndefined();expect(h.calls.map(c=>c[0])).toEqual(['capture','usage','flush','flush']);expect(h.calls[1][1].format).toBe('common-stream');});
 test('terminal HTML includes pre-tool and final checkpoints without budget steering',async()=>{const h=harness([{toolCalls:[{id:'t',name:'respondHtml',args:{}}],usage:{}}]);const result=await h.execute();expect(result.terminal).toBe(true);expect(result.goalContinuation).toBeUndefined();expect(h.calls.filter(c=>c[0]==='flush').length).toBe(3);expect(h.calls.some(c=>c[0]==='steer')).toBe(false);});
 test('failed request records unsupported before finally and preserves original failure',async()=>{const h=harness([new Error('provider exploded')]);await expect(h.execute()).rejects.toThrow('provider exploded');expect(h.calls.map(c=>c[0])).toEqual(['capture','usage','flush']);expect(h.calls[1][1].format).toBe('unsupported');expect(h.state.pendingRequests.size).toBe(0);expect(h.agent.abortController).toBeNull();});
-test('disabled feature leaves ordinary return and provider path unchanged',async()=>{const h=harness([{text:'answer'}]);h.ctx.fns.goal.runBindingCapture=async()=>({kind:'disabled',allowContinuation:false});h.ctx.fns.llm.stream=async()=>({text:'answer'});const result=await h.execute();expect(result.goalContinuation).toBeUndefined();expect(h.calls).toEqual([]);});
+test('disabled feature leaves ordinary return and provider path unchanged',async()=>{const h=harness([{text:'answer'}]);h.ctx.fns.goal.runBindingCapture=async()=>({kind:'disabled',allowContinuation:false});h.ctx.fns.models.stream=async()=>({text:'answer'});const result=await h.execute();expect(result.goalContinuation).toBeUndefined();expect(h.calls).toEqual([]);});
 test('worker binding hook precedes execution, is frozen and survives thrown provider errors',async()=>{
  const error=Object.freeze(new Error('provider exploded'));const h=harness([error]);h.state.binding.sourceAgentId='a';
- const bindings:any[]=[];const stream=h.ctx.fns.llm.stream;h.ctx.fns.llm.stream=async()=>{expect(bindings).toHaveLength(1);return stream();};
+ const bindings:any[]=[];const stream=h.ctx.fns.models.stream;h.ctx.fns.models.stream=async()=>{expect(bindings).toHaveLength(1);return stream();};
  await expect(run(h.ctx,null,{agent:h.agent,userText:'question',onGoalBinding:b=>bindings.push(b)})).rejects.toBe(error);
  expect(bindings).toEqual([{goalId:'g',runToken:'token'}]);expect(Object.isFrozen(bindings[0])).toBe(true);
 });
@@ -34,14 +34,14 @@ for(const mode of ['setup','descendant','authority','disabled'])test(`worker bin
  if(mode==='setup')h.ctx.fns.goal.forkRelease=async()=>{throw new Error('admission denied');};
  if(mode==='descendant')h.state.binding.rootAgentId='parent';
  if(mode==='authority')h.state.binding.authority={rootAgentId:'a'};
- if(mode==='disabled'){h.ctx.fns.goal.runBindingCapture=async()=>({kind:'disabled'});h.ctx.fns.llm.stream=async()=>({text:'answer'});}
+ if(mode==='disabled'){h.ctx.fns.goal.runBindingCapture=async()=>({kind:'disabled'});h.ctx.fns.models.stream=async()=>({text:'answer'});}
  const result=run(h.ctx,null,{agent:h.agent,userText:'question',onGoalBinding:b=>bindings.push(b)});
  if(mode==='setup')await expect(result).rejects.toThrow('admission denied');else await result;
  expect(bindings).toEqual([]);
 });
 
 for(const kind of ['disabled','excluded','absent','blocked'])test(`required descendant rejects ${kind} capture without model`,async()=>{
- const h=harness([]);let models=0;h.ctx.fns.goal.runBindingCapture=async(o:any)=>{expect(Object.isFrozen(o.authority)).toBe(true);return {kind,allowContinuation:false};};h.ctx.fns.llm.stream=async()=>{models++;return {};};
+ const h=harness([]);let models=0;h.ctx.fns.goal.runBindingCapture=async(o:any)=>{expect(Object.isFrozen(o.authority)).toBe(true);return {kind,allowContinuation:false};};h.ctx.fns.models.stream=async()=>{models++;return {};};
  const result=await run(h.ctx,null,{agent:h.agent,userText:'question',goalAuthority:{sourceAgentId:'a'} as any});
  expect(result.goalAdmissionBlocked).toBe(true);expect(models).toBe(0);
 });
@@ -87,14 +87,14 @@ test('capture read failure stops root before a successful second read or dispatc
  const h=harness([]);h.agent.currentJobId='token';let reads=0,dispatches=0;
  h.ctx.fns.goal.runBindingCapture=async()=>({kind:'blocked',reason:'transient read failure'});
  h.ctx.fns.goal.read=async()=>{reads++;return {enabled:true,goal:{goalId:'g',status:'active'}}};
- h.ctx.fns.llm.stream=async()=>{dispatches++;return {text:'bad'}};
+ h.ctx.fns.models.stream=async()=>{dispatches++;return {text:'bad'}};
  expect((await h.execute()).goalAdmissionBlocked).toBe(true);expect(reads).toBe(0);expect(dispatches).toBe(0);
 });
 for(const status of ['paused','complete','budget_limited'])test(`confirmed ${status} allows ordinary chat without accounting`,async()=>{
  const h=harness([]);h.agent.currentJobId='token';let dispatches=0;
  h.ctx.fns.goal.runBindingCapture=async()=>({kind:'inactive',goalId:'g'});
  h.ctx.fns.goal.read=async()=>({enabled:true,goal:{goalId:'g',status,revision:1}});
- h.ctx.fns.llm.stream=async()=>{dispatches++;return {text:'ordinary'}};
+ h.ctx.fns.models.stream=async()=>{dispatches++;return {text:'ordinary'}};
  await h.execute();expect(dispatches).toBe(1);expect(h.calls).toEqual([]);
 });
 for(const role of ['fork','descendant','sidecar'])test(`${role} receives only its authorized native scope`,async()=>{
@@ -109,14 +109,14 @@ for(const role of ['fork','descendant','sidecar'])test(`${role} receives only it
 test('initial identity drift rejects before provider work',async()=>{
  const h=harness([]);h.agent.currentJobId='token';let dispatches=0;
  h.ctx.fns.goal.read=async()=>({enabled:true,goal:{goalId:'replacement',status:'active'}});
- h.ctx.fns.llm.stream=async()=>{dispatches++;return {text:'bad'}};
+ h.ctx.fns.models.stream=async()=>{dispatches++;return {text:'bad'}};
  await expect(h.execute()).rejects.toThrow('handoff failed');expect(dispatches).toBe(0);
 });
 // Every transport reports usage through the common stream shape, so a bound Goal run
 // dispatches on any api and records that request in the common-stream format.
 for(const api of ['anthropic','responses','gemini','mock','unknown'])test(`bound ${api} dispatches and records common-stream usage`,async()=>{
- const h=harness([]);let dispatches=0;h.ctx.fns.llm.resolveEndpoint=async()=>({provider:'openai',api});
- h.ctx.fns.llm.stream=async()=>{dispatches++;return {text:'ok',usage:{prompt_tokens:1}}};
+ const h=harness([]);let dispatches=0;h.ctx.fns.models.resolveRoute=async()=>({provider:'openai',api});
+ h.ctx.fns.models.stream=async()=>{dispatches++;return {text:'ok',usage:{prompt_tokens:1}}};
  await h.execute();expect(dispatches).toBe(1);expect(h.calls.find((c:any)=>c[0]==='usage')?.[1].format).toBe('common-stream');
 });
 
@@ -124,12 +124,12 @@ test('inactive capture cannot race into an unaccounted active goal',async()=>{
  const h=harness([]);h.agent.currentJobId='token';let dispatches=0;
  h.ctx.fns.goal.runBindingCapture=async()=>({kind:'inactive',goalId:'g'});
  h.ctx.fns.goal.read=async()=>({enabled:true,goal:{goalId:'g',status:'active'}});
- h.ctx.fns.llm.stream=async()=>{dispatches++;return {text:'bad'}};
+ h.ctx.fns.models.stream=async()=>{dispatches++;return {text:'bad'}};
  await expect(h.execute()).rejects.toThrow('handoff failed');expect(dispatches).toBe(0);
 });
 for(const provider of ['xai','mauzcode'])test(`bound ${provider} xai adapter dispatches and records common-stream usage`,async()=>{
- const h=harness([]);let dispatches=0;h.ctx.fns.llm.resolveEndpoint=async()=>({provider,upstream:'xai',api:'openai'});
- h.ctx.fns.llm.stream=async()=>{dispatches++;return {text:'ok',usage:{prompt_tokens:1}}};
+ const h=harness([]);let dispatches=0;h.ctx.fns.models.resolveRoute=async()=>({provider,upstream:'xai',api:'openai'});
+ h.ctx.fns.models.stream=async()=>{dispatches++;return {text:'ok',usage:{prompt_tokens:1}}};
  await h.execute();expect(dispatches).toBe(1);expect(h.calls.find((c:any)=>c[0]==='usage')?.[1].format).toBe('common-stream');
 });
 

@@ -285,6 +285,9 @@ export default async function (
     let consumedUserIdx = -1;
     const MAX_TURNS = 300;
     let turns = 0;
+    const inferenceRunId = runToken ?? crypto.randomUUID();
+    let continuationState: types.models.ProviderState | undefined;
+    let continuationKey: string | undefined;
     // One unsuccessful compaction per run: a failing summarizer must not become
     // another expensive loop. Successful compactions may recur as context grows.
     let compactionBlocked = false;
@@ -298,6 +301,7 @@ export default async function (
             ctx.fns.procs.log?.warn?.({ event: 'agent.mid-turn-compaction.failed', msg: String(error), agentId: agent.id });
         }
         await assertRunActive();
+        if (compacted?.status === 'compacted') { continuationState = undefined; continuationKey = undefined; }
         if (compacted && ['failed', 'stale', 'not_needed', 'no_compactor', 'busy'].includes(compacted.status)) compactionBlocked = true;
         ac.signal.throwIfAborted();
         // No retryable provider error: finish this run with a durable explanation,
@@ -412,8 +416,13 @@ export default async function (
             mobileStream.thinkingSummary = '';
             thinkingStart = null;
         };
+        let receivedDelta = false;
+        let requestStartedAt = 0;
+        let firstEventMs: number | null = null;
         try {
-            const onEvent = (event: any) => {
+            const onEvent = (event: types.models.StreamEvent) => {
+                if (event.delta) receivedDelta = true;
+                if (event.type === 'text_delta' || event.type === 'thinking_delta') firstEventMs ??= Math.max(0, performance.now() - requestStartedAt);
                 if (ac.signal.aborted || agent.abortController !== ac || sampling.signal.aborted || !['text_delta', 'thinking_delta'].includes(event?.type) || typeof event.delta !== 'string') return;
                 // Expose only provider activity, never its private reasoning text.
                 if (event.type === 'thinking_delta') {
@@ -432,11 +441,8 @@ export default async function (
                     if (!ac.signal.aborted && agent.abortController === ac) notifyStream();
                 }, 350);
             };
-            if (goalRun) {
-                const endpoint = await ctx.fns.llm.resolveEndpoint({ model: agent.model });
-                goalProvider = endpoint.provider;
-
-            }
+            const route = await ctx.fns.models.resolveRoute({ route: agent.model });
+            goalProvider = route.provider;
             if (goalRun?.sealed) throw new DOMException('Run accounting sealed for Stop', 'AbortError');
             goalRun?.pendingRequests.add(goalRequestId);
             // Capture is immutable, but setup/admission failures are not execution failures.
@@ -464,16 +470,32 @@ export default async function (
             const estimating = (async () => {
                 const source = await ctx.fns.compaction.tokenizer({ model: agent.model }) ? 'tokenizer' as const : 'heuristic' as const;
                 const request = await ctx.fns.agent.buildLlmRequest({ agent, preview: true });
-                const endpoint = await ctx.fns.llm.resolveEndpoint({ model: agent.model });
-                const tools = ctx.fns.agent.wireTools({ agent, api: endpoint.api });
+                const tools = ctx.fns.agent.wireTools({ agent });
                 coverage.estimatedPromptTokens = await ctx.fns.compaction.estimateTokens({ model: agent.model, messages: [
                     ...request.messages,
-                    ...(request.system ? [{ role: 'system', content: request.system }] : []),
+                    ...(request.instructions ? [{ role: 'system', content: request.instructions }] : []),
                     ...(tools.length ? [{ role: 'system', content: JSON.stringify(tools) }] : []),
                 ] });
                 coverage.estimateSource = source;
             })().catch(() => { /* calibration sample is optional */ });
-            streamed = await ctx.fns.llm.stream({ agent, signal: sampling.signal, onEvent });
+            const request = await ctx.fns.agent.buildLlmRequest({ agent });
+            const stateKey = JSON.stringify([route.connectionId, route.model, agent.sleepContext]);
+            if (continuationKey !== stateKey) continuationState = undefined;
+            const promptCacheKey = await ctx.fns.agent.cacheRoot({ agent });
+            await assertRunActive();
+            if ((ctx as Context & { goalRequestContext?: { authority?: types.goal.DelegationAuthority } }).goalRequestContext?.authority) await ctx.fns.goal.requestAuthorize({});
+            requestStartedAt = performance.now();
+            streamed = await ctx.fns.models.stream({
+                connectionId: route.connectionId, model: route.model,
+                instructions: request.instructions, messages: request.messages,
+                cacheableMessageCount: request.cacheableMessageCount,
+                tools: ctx.fns.agent.wireTools({ agent }), reasoningEffort: agent.reasoningEffort,
+                sessionId: agent.id, promptCacheKey, runId: inferenceRunId,
+                state: continuationState, signal: sampling.signal, onEvent,
+            });
+            streamed.metrics = { llmTimeMs: Math.max(0, performance.now() - requestStartedAt), ttftMs: firstEventMs };
+            continuationState = streamed.state;
+            continuationKey = stateKey;
             await estimating;
             await ctx.fns.procs.db.run({ sql: 'UPDATE agents SET llm_retry_attempt = 0, llm_retry_pending = NULL WHERE id = ? AND stopped_at IS NULL AND (?::text IS NULL OR run_token = ?)', params: [agent.id, runToken ?? null, runToken ?? null] });
             if (goalRun) goalResult = await ctx.fns.goal.runUsageRecord({ state: goalRun, provider: goalProvider, requestId: goalRequestId, format: goalFormat, usage: streamed.usage });
@@ -492,17 +514,10 @@ export default async function (
             }
             if (!sampling.signal.aborted && error?.name !== 'AbortError') {
                 await assertRunActive();
-                const route = /^(?:([^/:]+)(?:\/([^:]+))?):/.exec(agent.model);
-                const proxyError = /^(PROXY_|OAUTH_OUTCOME_UNKNOWN$)/.test(String(error?.code??""));
-                const provider = error?.failure?.provider ?? (proxyError ? route?.[1] ?? "unknown" : (await ctx.fns.llm.resolveEndpoint({model:agent.model})).provider);
-                const transport = error?.transportFailure;
-                const classified = error?.failure ?? (/^(PROXY_|OAUTH_OUTCOME_UNKNOWN$)/.test(String(error?.code??"")) ? ctx.fns.llm.proxyFailure({error,provider,account:route?.[2]??"default"}) : null) ?? ctx.fns.llm.classifyError({ provider, body: String(error?.message ?? error) });
-                const failure: types.llm.FailureInfo = transport?.kind === 'ssh_transport'
-                    ? { ...classified, kind: transport.phase === 'permanent' ? 'fatal' : 'transient',
-                        code: transport.phase === 'permanent' ? 'SSH_PERMANENT' : 'SSH_TRANSPORT',
-                        retryable: transport.phase !== 'permanent', message: String(error?.message ?? error), provider }
-                    : classified;
-                if (await ctx.fns.agent.retrySchedule({ agentId: agent.id, runToken: runToken ?? null, failure, signal: ac.signal })) {
+                const failure: types.models.FailureInfo | undefined = error?.failure;
+                // Partial output proves acceptance; never replay an accepted/uncertain request.
+                const replay = failure && !receivedDelta && failure.replaySafe && ['none', 'rejected'].includes(failure.acceptance);
+                if (failure && replay && await ctx.fns.agent.retrySchedule({ agentId: agent.id, runToken: runToken ?? null, failure, signal: ac.signal })) {
                     // A failed sample is not a completed tool cycle: always mode
                     // must not silently inherit the tool-loop retry count limit.
                     turns--;

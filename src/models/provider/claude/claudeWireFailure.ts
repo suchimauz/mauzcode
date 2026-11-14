@@ -23,7 +23,16 @@ export default async function (
         const classified = ctx.fns.models.provider.claude.classifyError({ status, body, headers: h });
         // Provider bodies can echo credentials. Preserve machine classification and timing,
         // never export raw payloads or provider-controlled error text.
-        const { raw: _raw, message: _message, ...safe } = classified;
-        const info = { ...safe, message: `Claude request failed (${classified.code})` };
-        throw Object.assign(new Error(info.message), { failure: info, code: info.code, retryable: info.retryable, noFallback: true });
+        // Status-less SSE errors arrive after the request was accepted.
+        const accepted = status === undefined || status < 400;
+        const code = classified.kind === 'usage_limit' ? 'QUOTA_EXHAUSTED' : classified.kind === 'rate_limit' ? 'RATE_LIMITED' : classified.kind === 'auth' ? 'LOGIN_REQUIRED' : classified.kind === 'overflow' ? 'OVERFLOW' : 'PROVIDER_ERROR';
+        const classification: types.models.FailureInfo['classification'] = classified.kind === 'usage_limit' ? 'quota' : classified.kind === 'rate_limit' ? 'throttled' : classified.kind === 'auth' ? 'auth' : classified.kind === 'overflow' ? 'invalid_input' : 'provider';
+        const info: types.models.FailureInfo = {
+            code, classification, retryable: classified.retryable,
+            acceptance: accepted ? 'accepted' : 'rejected', replaySafe: !accepted,
+            ...(status !== undefined ? { upstreamStatus: status } : {}),
+            ...(classified.retryAfterMs !== undefined ? { retryAfterMs: classified.retryAfterMs } : {}),
+            ...(classified.resetsAt != null ? { resetAt: classified.resetsAt } : {}),
+        };
+        throw ctx.fns.models.inference.failure({ info, message: `Claude request failed (${code})` });
 }

@@ -42,7 +42,7 @@ export default function (
         const timing = retryAfterMs !== undefined ? { retryAfterMs } : {};
         if (opts.status === 401) return { status: 409, message: "Codex login required: the backend rejected the access token", info: { code: "LOGIN_REQUIRED", classification: "auth", retryable: false, ...base } };
         if (/usage_limit_reached|usage_not_included|quota_exceeded|credits_depleted/i.test(code))
-            return { status: 429, message: "Codex usage limit reached", info: { code: "QUOTA_EXHAUSTED", classification: "quota", retryable: false, ...timing, ...base } };
+            return { status: 429, message: "Codex usage limit reached", info: { code: "QUOTA_EXHAUSTED", classification: "quota", retryable: false, ...timing, ...(retryAfterMs !== undefined ? {resetAt: now + retryAfterMs} : {}), ...base } };
         if (opts.status === 429 || /rate_limit/i.test(code))
             return { status: 429, message: "Codex is rate limiting requests", info: { code: "RATE_LIMITED", classification: "throttled", retryable: true, ...timing, ...base } };
         if (opts.status === 408 || opts.status >= 500 || /server_error|overloaded/i.test(code))

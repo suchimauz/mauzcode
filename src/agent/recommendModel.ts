@@ -34,27 +34,22 @@ export default async function (
         try { caller = await ctx.fns.agent.current({}); } catch { return empty('no-current-agent'); }
         const flags = await ctx.fns.procs.db.select({ sql: 'SELECT jev_model_routing_enabled FROM agents WHERE id = ? AND archived_at IS NULL', params: [caller.id] });
         if (flags[0]?.jev_model_routing_enabled !== true) return empty('disabled');
-        if (typeof opts.task !== 'string' || !opts.task.trim() || opts.task.length > 4000 || !Array.isArray(opts.allowedModels) || opts.allowedModels.length < 1 || opts.allowedModels.length > 20 || opts.allowedModels.some(id => typeof id !== 'string' || !/^([A-Za-z0-9_.\/-]+:)+[A-Za-z0-9_.\/-]+$/.test(id) || id.length > 256)) return empty('invalid-input');
+        if (typeof opts.task !== 'string' || !opts.task.trim() || opts.task.length > 4000 || !Array.isArray(opts.allowedModels) || opts.allowedModels.length < 1 || opts.allowedModels.length > 20 || opts.allowedModels.some(id => typeof id !== 'string' || !id || id.length > 256)) return empty('invalid-input');
         // No generic canonical catalogue currently certifies these mandatory capabilities.
         if (opts.requireTools || opts.requireVision || opts.minContextTokens !== undefined || opts.privacy !== undefined) return empty('unverifiable-required-capability');
         let ids: string[] = [];
         try {
-            const groups = await ctx.fns.llm.listModels({});
-        // Catalogue entries are canonical routes; legacy aliases in allowedModels map onto them.
-        const catalog = new Set(Object.values(groups).flat());
-        const canonical = (model: string) => { try { return ctx.fns.llm.parseModelRoute({ model }).route; } catch { return ''; } };
-            for (const id of [...new Set(opts.allowedModels.map(canonical))]) {
-                if (!catalog.has(id)) continue;
+            for (const id of [...new Set(opts.allowedModels)]) {
                 try {
-                    await ctx.fns.llm.modelPolicy({ action: 'assert', model: id });
-                    await ctx.fns.llm.resolveEndpoint({ model: id });
-                    ids.push(id);
-                } catch { /* Excluded, unconfigured or unavailable destinations never become candidates. */ }
+                    const route = await ctx.fns.models.resolveRoute({ route: id });
+                    const catalogue = await ctx.fns.models.listModels({ id: route.connectionId });
+                    if (catalogue.models.some(model => model.id === route.model && !model.disabled)) ids.push(route.route);
+                } catch { /* Invalid, disabled or unavailable destinations never become candidates. */ }
             }
         } catch { return empty('catalog-unavailable'); }
         if (!ids.length) return empty('no-eligible-candidates');
         // Only the model slug is exposed. Provider/account/node/host aliases and endpoints remain private.
-        const labels = ids.map(id => id.slice(id.lastIndexOf(':') + 1));
+        const labels = ids.map(id => id.slice(id.indexOf(':') + 1));
         if (new Set(labels).size !== labels.length) return empty('ambiguous-candidates');
         const criteria: Record<string, string> = { abstain: 'No supported recommendation or insufficient verified information' };
         for (let i = 0; i < ids.length; i++) criteria['c' + i] = labels[i]!;

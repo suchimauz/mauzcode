@@ -1,15 +1,14 @@
 import { expect, test } from "bun:test";
 import setModel from "./setModel";
-import parseModelRouteFn from "../llm/parseModelRoute";
 
 function fixture() {
     const calls: string[] = [];
-    const live: any = { model: "mock:old", activeRunCount: 0, abortController: new AbortController() };
+    const live: any = { model: "mock/default:old", activeRunCount: 0, abortController: new AbortController() };
     let state = "idle";
     let claimOnUpdate = false;
-    let storedModel = "mock:old";
+    let storedModel = "mock/default:old";
     const ctx: any = { state: { agent: { a: live } }, fns: {
-        llm: { parseModelRoute: (o: any) => parseModelRouteFn({} as any, null, o), resolveEndpoint: async () => ({ kind: "local" }) },
+        models: { resolveRoute: async ({route}: any) => ({route,provider:'mock',accountName:'default'}) },
         procs: { db: {
             select: async ({ sql }: any) => sql.includes("WHERE id") ? [{ id: "a", model: storedModel, run_state: state, scratchpad: "{}" }] : [],
             run: async ({ sql, params }: any) => {
@@ -31,16 +30,16 @@ for (const kind of ["worker", "direct"] as const) {
     test(`setModel rejects an active ${kind} before any mutation`, async () => {
         const f = fixture();
         if (kind === "worker") f.state("running"); else f.live.activeRunCount = 1;
-        await expect(setModel(f.ctx, null, { id: "a", model: "mock:new" })).rejects.toThrow(/running/);
+        await expect(setModel(f.ctx, null, { id: "a", model: "mock/default:new" })).rejects.toThrow(/running/);
         expect(f.calls).toEqual([]);
-        expect(f.live.model).toBe("mock:old");
-        expect(f.model()).toBe("mock:old");
+        expect(f.live.model).toBe("mock/default:old");
+        expect(f.model()).toBe("mock/default:old");
     });
 }
 
 test("setModel permits idle switch despite stale abortController", async () => {
     const f = fixture();
-    const result = await setModel(f.ctx, null, { id: "a", model: "mock:new" });
+    const result = await setModel(f.ctx, null, { id: "a", model: "mock/default:new" });
     expect(result.changed).toEqual(["a"]);
     expect(f.model()).toBe("mock/default:new");
     expect(f.calls).toEqual(["update", "event", "unpark", "compact"]);
@@ -48,26 +47,26 @@ test("setModel permits idle switch despite stale abortController", async () => {
 
 test("worker claim between preflight and update cannot mutate live model or unpark", async () => {
     const f = fixture(); f.race();
-    await expect(setModel(f.ctx, null, { id: "a", model: "mock:new" })).rejects.toThrow(/running|changed/);
+    await expect(setModel(f.ctx, null, { id: "a", model: "mock/default:new" })).rejects.toThrow(/running|changed/);
     expect(f.calls).toEqual(["update"]);
-    expect(f.live.model).toBe("mock:old");
-    expect(f.model()).toBe("mock:old");
+    expect(f.live.model).toBe("mock/default:old");
+    expect(f.model()).toBe("mock/default:old");
 });
 test("same model is a no-op even while running", async () => {
     const f = fixture(); f.state("running"); f.live.activeRunCount = 1;
-    expect((await setModel(f.ctx, null, { id: "a", model: "mock:old" })).changed).toEqual([]);
+    expect((await setModel(f.ctx, null, { id: "a", model: "mock/default:old" })).changed).toEqual([]);
     expect(f.calls).toEqual([]);
 });
 
 test("provider scope preflights every target before the first mutation", async () => {
     const f = fixture();
     f.ctx.fns.procs.db.select = async ({ sql, params }: any) => {
-        if (!sql.includes("WHERE id")) return [{ id: "a", model: "mock:old" }, { id: "b", model: "mock:old" }];
-        return [{ id: params[0], model: "mock:old", run_state: params[0] === "b" ? "running" : "idle", scratchpad: JSON.stringify({ parked: { provider: "mock", account: "default" } }) }];
+        if (!sql.includes("WHERE id")) return [{ id: "a", model: "mock/default:old" }, { id: "b", model: "mock/default:old" }];
+        return [{ id: params[0], model: "mock/default:old", run_state: params[0] === "b" ? "running" : "idle", scratchpad: JSON.stringify({ parked: { provider: "mock", account: "default" } }) }];
     };
-    await expect(setModel(f.ctx, null, { id: "a", model: "mock:new", scope: "provider" })).rejects.toThrow(/running/);
+    await expect(setModel(f.ctx, null, { id: "a", model: "mock/default:new", scope: "provider" })).rejects.toThrow(/running/);
     expect(f.calls).toEqual([]);
-    expect(f.live.model).toBe("mock:old");
+    expect(f.live.model).toBe("mock/default:old");
 });
 
 test("another model switch between preflight and CAS is not overwritten", async () => {
@@ -75,11 +74,11 @@ test("another model switch between preflight and CAS is not overwritten", async 
     f.ctx.fns.procs.db.run = async ({ sql, params }: any) => {
         f.calls.push("update");
         expect(sql.includes("model IS NOT DISTINCT FROM ?")).toBe(true);
-        expect(params[3]).toBe("mock:old");
+        expect(params[3]).toBe("mock/default:old");
         return { changes: 0 };
     };
-    await expect(setModel(f.ctx, null, { id: "a", model: "mock:new" })).rejects.toThrow(/changed/);
+    await expect(setModel(f.ctx, null, { id: "a", model: "mock/default:new" })).rejects.toThrow(/changed/);
     expect(f.calls).toEqual(["update"]);
-    expect(f.live.model).toBe("mock:old");
+    expect(f.live.model).toBe("mock/default:old");
 });
 

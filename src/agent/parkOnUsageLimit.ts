@@ -15,11 +15,10 @@
  *
  * Marks each agent as parked, schedules a durable wake-up at the reset moment
  * with per-agent jitter, clears the pending run and emits one toast for the
- * whole group. Call it from the worker loop when llm.classifyError returns
- * kind "usage_limit".
- *
- * @param opts.info Failure classification produced by llm.classifyError.
- * @param opts.originAgentId Agent whose request hit the limit, for the toast.
+ * whole group. Call from the worker after a QUOTA_EXHAUSTED models failure.
+ * Missing/past reset times use a finite default bounded to one minute–one day.
+ * @param opts.info Provider-neutral quota failure.
+ * @param opts.originAgentId Agent whose route identifies the exhausted connection, for the toast.
  * @param opts.fallbackMs Parking duration when the provider gives no reset time.
  * @param opts.now Current time in ms, for testing.
  */
@@ -27,23 +26,24 @@ export default async function (
     ctx: Context,
     _session: Session | null,
     opts: {
-        /** Classified failure; must have kind "usage_limit". */
-        info: types.llm.FailureInfo;
-        /** Id of the agent whose call hit the limit. */
-        originAgentId?: string;
-        /** How long to park when resetsAt is unknown, ms. @default 3600000 @minimum 60000 */
+        /** Classified failure with code QUOTA_EXHAUSTED. */
+        info: types.models.FailureInfo;
+        /** Agent whose model identifies the exhausted connection. */
+        originAgentId: string;
+        /** Parking duration when resetAt is unknown, ms. @default 3600000 @minimum 60000 @maximum 86400000 */
         fallbackMs?: number;
         /** Current timestamp in ms; defaults to Date.now(). */
         now?: number;
     },
 ): Promise<{ provider: string; account: string; resetsAt: number; parked: string[] }> {
-    const { info } = opts;
-    if (info.kind !== "usage_limit") throw new Error(`parkOnUsageLimit: expected kind "usage_limit", got "${info.kind}"`);
+    if (opts.info.code !== 'QUOTA_EXHAUSTED') throw new Error('parkOnUsageLimit: expected QUOTA_EXHAUSTED');
+    const origin = (await ctx.fns.procs.db.select({ sql: 'SELECT model FROM agents WHERE id = ?', params: [opts.originAgentId] }))[0];
+    if (!origin) throw new Error('Quota origin agent not found');
+    const route = await ctx.fns.models.resolveRoute({ route: String(origin.model) });
+    const info = { provider: route.provider, account: route.accountName, message: 'Model connection quota exhausted', planType: null };
     const now = opts.now ?? Date.now();
-    const fallbackMs = Math.max(60_000, Number(opts.fallbackMs ?? 3_600_000));
-    // A reset moment already in the past would refuse to schedule; treat it as
-    // "soon" rather than failing to park at all.
-    const resetsAt = info.resetsAt && info.resetsAt > now + 30_000 ? info.resetsAt : now + fallbackMs;
+    const fallbackMs = Number.isFinite(opts.fallbackMs) ? Math.max(60_000, Math.min(86_400_000, opts.fallbackMs!)) : 3_600_000;
+    const resetsAt = Number.isFinite(opts.info.resetAt) && opts.info.resetAt! > now ? opts.info.resetAt! : now + fallbackMs;
 
     const rows = (await ctx.fns.procs.db.select({
         sql: "SELECT id, model, wake_at, wake_reason FROM agents WHERE archived_at IS NULL AND model IS NOT NULL",
@@ -52,8 +52,8 @@ export default async function (
 
     const targets = [];
     for (const row of rows) {
-        const parsed = await splitModel(ctx, String(row.model ?? ""));
-        if (parsed.provider === info.provider && parsed.account === info.account) targets.push(row);
+        // Compare only the exact route prefix; model ids may contain any separators.
+        if (String(row.model).startsWith(`${route.provider}/${route.accountName}:`)) targets.push(row);
     }
 
     const reason = `${info.provider} usage limit resets — continue the interrupted work`;
@@ -132,38 +132,11 @@ export default async function (
         }).catch(() => {});
     }
 
-    // The quota indicator must show the wall too, not only the approach to it.
-    await ctx.fns.llm.recordUsage({
-        provider: info.provider,
-        account: info.account,
-        spent: true,
-        resetsAt,
-        planType: info.planType ?? null,
-        now,
-    }).catch(() => undefined);
 
     return { provider: info.provider, account: info.account, resetsAt, parked };
 }
 
-// "codex/personal:gpt-5.6-sol" → provider codex, account personal.
-async function splitModel(ctx: Context, model: string): Promise<{ provider: string; account: string }> {
-    const m = /^([a-z][\w\-]*)(?:\/([\w\-.]+))?:(.+)$/.exec(model);
-    const provider = m?.[1] ?? "lmstudio", account = m?.[2] ?? "default";
-    if (provider === "ssh") {
-        const inner = /^(codex|claude-code)\/([\w-]+):/.exec(m?.[3] ?? "");
-        if (inner) return { provider: inner[1]!, account: `ssh.${account}.${inner[2]}` };
-    }
-    if (provider !== "mauzcode") return { provider, account };
-    const id = m![3]!;
-    const canonical = /^([a-z][\w\-]*)\/([\w\-.]+):/.exec(id);
-    if (canonical) return { provider, account: `${account}/${canonical[1]}/${canonical[2]}` };
-    const node = await ctx.fns.node.get({ name: account });
-    const exact = (node?.catalog ?? []).filter((e) => e.id === id);
-    const matches = exact.length ? exact : id.includes(":") ? [] : (node?.catalog ?? []).filter((e) => e.id.slice(e.id.indexOf(":") + 1) === id);
-    const entry = matches.length === 1 ? matches[0] : null;
-    // Unknown/ambiguous legacy routes must never join a node-wide quota group.
-    return { provider, account: entry ? `${account}/${entry.provider}/${entry.account ?? "default"}` : `${account}/unresolved/${id}` };
-}
+
 
 function hash(text: string): number {
     let h = 2166136261;

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { testCtx } from "../$test";
+import { mkModelsTestCtx as testCtx } from "./modelsTestCtx.entry";
 import build from "./buildLlmRequest";
 
 const ctx = await testCtx();
@@ -21,7 +21,7 @@ test("function RAG is disabled by default and enabled agents retrieve functions"
 
 test("retrieved candidates travel as a world_state row, not by rewriting the user's message", async () => {
     setHits(relevant);
-    const agent: any = await ctx.fns.agent.start({ model: "mock:test" });
+    const agent: any = await ctx.fns.agent.start({ model: "mock/default:test" });
     agent.functionRagEnabled = true;
     await ctx.fns.session.appendUserMessage({ id: agent.id, text: "send a telegram message" });
     await ctx.fns.session.syncAgentState({ agent });
@@ -52,7 +52,7 @@ test("retrieved candidates travel as a world_state row, not by rewriting the use
 test("buildLlmRequest no longer rewrites history for retrieval", async () => {
     setHits(relevant);
     const agent: any = {
-        id: "rag", model: "mock:test", systemPrompt: "", scratchpad: {}, functionRagEnabled: true,
+        id: "rag", model: "mock/default:test", systemPrompt: "", scratchpad: {}, functionRagEnabled: true,
         messages: [{ role: "user", content: "send a telegram message", idx: 0 }],
     };
     const result = await build(ctx, null, { agent });

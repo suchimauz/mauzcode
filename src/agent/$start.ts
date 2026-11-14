@@ -6,6 +6,13 @@
 // database, where queued agents must not wake up and act (call models, tools, send messages).
 /** Initializes the agent runtime when the namespace starts. */
 export default async function (ctx: Context, _session: Session | null, _config?: unknown) {
+    const state = ctx.state as typeof ctx.state & { agentConnectionRenameUnsubscribe?: () => void };
+    state.agentConnectionRenameUnsubscribe?.();
+    state.agentConnectionRenameUnsubscribe = ctx.fns.procs.events.subscribe({ handler: event => {
+        if (event.type !== 'models.connectionRenamed') return;
+        void ctx.fns.agent.onConnectionRenamed({ provider: event.provider, from: event.from, to: event.to })
+            .catch(error => ctx.fns.procs.log.error({ event: 'agent.connection-rename.failed', msg: String(error) }));
+    } });
     const rehydrated = await ctx.fns.session.loadAll({});
     ctx.fns.procs.log.info({ event: "agent.rehydrated", msg: `${rehydrated.loaded} agent(s)` });
     if (ctx.env.AGENT_WORKER === "off") {

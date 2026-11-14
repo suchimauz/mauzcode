@@ -35,6 +35,7 @@ test("original public model signatures, async declarations, types and HTTP route
         const additive: Record<string, string> = {
             "ProviderDefinition.ts": "inference?:{systemPreamble?:string;priceVendor?:string;};",
             "CallRequest.ts": "tools?:types.models.ToolSpec[];",
+            "FailureInfo.ts": "resetAt?:number;",
         };
         expect(additive[name] ? actual.replace(additive[name], "") : actual, name).toBe(expected);
     }

@@ -93,7 +93,7 @@ describe("Claude protocol", () => {
     test("quota vs throttle, unauthorized and SSE errors", async () => {
         const { ctx, conn, marked } = await setup();
         conn.fetch = async () => Response.json({ error: { type: "usage_limit_reached", message: "usage limit reached" } }, { status: 429 });
-        await expect(claude.stream(ctx, conn, req)).rejects.toMatchObject({ code: "USAGE_LIMIT", retryable: false });
+        await expect(claude.stream(ctx, conn, req)).rejects.toMatchObject({ code: "QUOTA_EXHAUSTED", retryable: false });
         conn.fetch = async () => Response.json({ error: { type: "rate_limit_error", message: "too many requests" } }, { status: 429, headers: { "retry-after": "3" } });
         await expect(claude.stream(ctx, conn, req)).rejects.toMatchObject({ retryable: true });
         conn.fetch = async () => new Response("unauthorized", { status: 401 });

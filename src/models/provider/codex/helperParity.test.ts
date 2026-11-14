@@ -45,7 +45,7 @@ for (const [label, version, profile, quota, failure, input] of [
         expect(failure(ctx, null, { phase: "http", status: 401, error: { message: "secret-token" }, now: 1000 })).toEqual({ status: 409, message: "Codex login required: the backend rejected the access token", info: { code: "LOGIN_REQUIRED", classification: "auth", retryable: false, upstreamStatus: 401, acceptance: "rejected", replaySafe: true } });
         const throttled = failure(ctx, null, { phase: "stream", status: 429, retryAfter: "2", now: 1000 });
         expect(throttled.info).toEqual({ code: "RATE_LIMITED", classification: "throttled", retryable: true, retryAfterMs: 2000, upstreamStatus: 429, acceptance: "accepted", replaySafe: false });
-        expect(failure(ctx, null, { phase: "http", status: 429, error: { code: "quota_exceeded", resets_at: 5 }, retryAfter: "99", now: 1000 }).info).toEqual({ code: "QUOTA_EXHAUSTED", classification: "quota", retryable: false, retryAfterMs: 4000, upstreamStatus: 429, acceptance: "rejected", replaySafe: true });
+        expect(failure(ctx, null, { phase: "http", status: 429, error: { code: "quota_exceeded", resets_at: 5 }, retryAfter: "99", now: 1000 }).info).toEqual({ code: "QUOTA_EXHAUSTED", classification: "quota", retryable: false, retryAfterMs: 4000, resetAt: 5000, upstreamStatus: 429, acceptance: "rejected", replaySafe: true });
         expect(failure(ctx, null, { phase: "http", status: 503 }).info.classification).toBe("provider");
         expect(failure(ctx, null, { phase: "http", status: 400, error: { code: "secret-token", message: "secret-token" } }).message).toBe("Codex rejected the request (HTTP 400)");
     });

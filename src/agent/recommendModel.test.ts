@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import recommend from './recommendModel';
-import parseModelRouteFn from '../llm/parseModelRoute';
+import parseRoute from '../models/inference/parseRoute';
 
 function fixture() {
     const calls: any[] = [];
@@ -8,11 +8,14 @@ function fixture() {
     const ctx: any = { fns: {
         agent: { current: async () => ({ id: 'caller' }) },
         procs: { db: { select: async () => [{ jev_model_routing_enabled: state.enabled }] } },
-        llm: {
-            parseModelRoute: (o: any) => parseModelRouteFn({} as any, null, o),
-            listModels: async () => { calls.push('catalog'); return { mock: state.catalog }; },
-            modelPolicy: async ({model}: any) => { if (state.denied.includes(model)) throw Error('disabled'); },
-            resolveEndpoint: async ({model}: any) => { if (state.unavailable.includes(model)) throw Error('unavailable'); return { apiKey: 'SECRET', account: 'PRIVATE' }; },
+        models: {
+            resolveRoute: async ({route}: any) => {
+                calls.push('catalog');
+                const parsed = parseRoute({state:{models:{providers:{mock:{},custom:{}}}},fns:{models:{inference:{failure:({info}:any)=>Object.assign(Error(info.code),{failure:info})}}}} as any, null, {route});
+                if (state.denied.includes(route) || state.unavailable.includes(route)) throw Error('unavailable');
+                return {...parsed, route, connectionId: route.slice(0,route.indexOf(':')), model: parsed.modelId};
+            },
+            listModels: async ({id}: any) => ({models: state.catalog.filter(route=>route.startsWith(id+':')).map(route=>({id:route.slice(id.length+1)}))}),
         },
         jev: { decide: async (opts: any) => { calls.push(opts); return { answers: { model: state.answer }, usage: {inputTokens: 10, outputTokens: 3, cost: 0.001} }; } },
     } };
@@ -23,11 +26,11 @@ describe('advisory Jev model recommendation (no network)', () => {
     test('disabled never discovers catalog or calls Jev', async () => { const f=fixture(); f.state.enabled=false; expect((await f.run()).reason).toBe('disabled'); expect(f.calls).toEqual([]); });
     test('sessionless abstains', async () => { const f=fixture(); f.ctx.fns.agent.current=async()=>{throw Error('no session');}; expect((await f.run()).reason).toBe('no-current-agent'); });
     test('valid allowlisted recommendation; no credentials/account labels; bounded timeout and retries', async () => { const f=fixture(); const r=await f.run(); expect(r.id).toBe('mock/work:alpha'); expect(r.usage?.inputTokens).toBe(10); expect(r.latencyMs).toBeGreaterThanOrEqual(0); const wire=f.calls[1]; expect(wire.timeoutMs).toBeLessThanOrEqual(3000); expect(wire.retries).toBe(0); expect(JSON.stringify(wire)).not.toMatch(/SECRET|PRIVATE|work/); expect(wire.questions.model.instructions).toContain('untrusted'); });
-    test('reject invalid and oversized inputs before discovery', async () => { for (const opts of [{task:'x'.repeat(4001)}, {allowedModels:[]}, {allowedModels:Array(21).fill('mock:a')}, {allowedModels:['bare']}, {task:''}]) {const f=fixture(); expect((await f.run(opts)).reason).toBe('invalid-input'); expect(f.calls).toEqual([]);} });
+    test('reject invalid and oversized inputs before discovery', async () => { for (const opts of [{task:'x'.repeat(4001)}, {allowedModels:[]}, {allowedModels:Array(21).fill('mock:a')}, {task:''}]) {const f=fixture(); expect((await f.run(opts)).reason).toBe('invalid-input'); expect(f.calls).toEqual([]);} });
     test('mandatory unknown capabilities abstain without discovery', async () => {for(const opts of [{requireTools:true},{requireVision:true},{minContextTokens:1000},{privacy:'local-only'}]){const f=fixture();expect((await f.run(opts)).reason).toBe('unverifiable-required-capability');expect(f.calls).toEqual([]);}});
     test('catalog/policy/availability intersection', async () => {for(const kind of ['catalog','denied','unavailable'] as const){const f=fixture();if(kind==='catalog')f.state.catalog=[];else f.state[kind]=['mock/work:alpha'];expect((await f.run()).reason).toBe('no-eligible-candidates');expect(f.calls.length).toBe(1);}});
     test('same model across accounts is ambiguous without sending aliases', async () => {const f=fixture();f.state.catalog.push('mock/personal:alpha');expect((await f.run({allowedModels:f.state.catalog.filter(x=>x.endsWith(':alpha'))})).reason).toBe('ambiguous-candidates');});
-    test('bare local catalogue IDs qualify only within their provider group', async () => {const f=fixture();f.ctx.fns.llm.listModels=async()=>({lmstudio:['lmstudio/default:alpha']});expect((await f.run({allowedModels:['lmstudio:alpha']})).id).toBe('lmstudio/default:alpha');expect((await f.run({allowedModels:['mock:alpha']})).reason).toBe('no-eligible-candidates');});
+    test('legacy routes are excluded, account spaces and native separators are preserved', async () => {const f=fixture();expect((await f.run({allowedModels:['mock:alpha']})).reason).toBe('no-eligible-candidates'); const route='custom/Asoft LLM Gate:vendor/model:v1'; f.state.catalog=[route];expect((await f.run({allowedModels:[route]})).id).toBe(route);expect(JSON.stringify(f.calls.at(-1))).not.toContain('Asoft LLM Gate');});
     test('duplicates deduplicated', async () => {const f=fixture();expect((await f.run({allowedModels:['mock/work:alpha','mock/work:alpha']})).id).toBe('mock/work:alpha');});
     test('strict distributions and confidence', async () => {for(const answer of [{choice:'outside'}, {confidence:NaN}, {probabilities:{abstain:0.2,c0:0.9}}, {probabilities:{abstain:0,c0:1,extra:0}}, {probabilities:{c0:1}}, {probabilities:{abstain:-0.1,c0:1.1}}]){const f=fixture();Object.assign(f.state.answer,answer);expect((await f.run()).reason).toBe('invalid-response');}});
     test('ties and low confidence abstain', async () => {for(const answer of [{confidence:0.59},{probabilities:{abstain:0.5,c0:0.5}}]){const f=fixture();Object.assign(f.state.answer,answer);expect((await f.run()).reason).toBe('ambiguous-response');}});

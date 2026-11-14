@@ -17,7 +17,7 @@ function fixture() {
         session: { getFullMessages: async (_c: any, _s: any, o: any) => o.id === 'parent' ? inherited : [...inherited, ...own], getMessages: async () => own, repairToolPairs: (_c: any, _s: any, o: any) => ({ messages: o.messages, repaired: [] }) },
         procs: { db: { select: async () => [{ parent_id: 'parent', fork_offset: 1 }] } },
         compaction: { project: async (_c: any, _s: any, o: any) => { projections.push(o); return { messages: o.sleepContext ? [{ role: 'user', content: 'summary includes queued synthetic' }] : o.messages, mode: o.sleepContext ? 'compact' : 'full', fallback: null, revision: null }; } },
-        llm: { resolveEndpoint: async () => ({ provider: 'openai' }), stream: async (c: any, _s: any, o: any) => { await Promise.resolve(); return c.fns.agent.buildLlmRequest({ agent: o.agent }); } },
+        models: { resolveRoute: async () => ({ provider: 'openai' }), stream: async (c: any, _s: any, o: any) => { await Promise.resolve(); return c.fns.agent.buildLlmRequest({ agent: o.agent }); } },
         auth: { attributeMessages: async (_c: any, _s: any, o: any) => ({ applied: false, messages: o.messages }) },
         attachments: { resolveContent: async (_c: any, _s: any, o: any) => o.messages },
     };
@@ -35,9 +35,9 @@ describe('goal outgoing request context (offline)', () => {
         h.agent.sleepContext = {checkpoint:true};
         h.own.splice(0,h.own.length,{role:'user',idx:2,content:'authorized task'},
             {role:'assistant',idx:3,content:'own output'}, {role:'tool',idx:4,content:'own tool'});
-        expect(text(await h.scoped.fns.llm.stream({agent:h.agent}))).toContain('authorized task');
+        expect(text(await h.scoped.fns.models.stream({agent:h.agent}))).toContain('authorized task');
         h.own.push({role:'user',idx:6,content:'late human'}, {role:'user',idx:7,excluded_from_cursor:true,content:'excluded injection'}, {role:'user',content:'missing index injection'});
-        const out = text(await h.scoped.fns.llm.stream({agent:h.agent}));
+        const out = text(await h.scoped.fns.models.stream({agent:h.agent}));
         expect(out).toContain('own output'); expect(out).toContain('own tool'); expect(out).toContain('inherited same idx');
         expect(out).not.toContain('late human'); expect(out).not.toContain('injection');
         expect(h.projections.every(p=>p.sleepContext===null)).toBe(true);
@@ -46,7 +46,7 @@ describe('goal outgoing request context (offline)', () => {
     });
     test('descendant request without exact frontier fails closed', async () => {
         const h=fixture(); h.scoped.goalRequestContext={agentId:'child',omitGoalContinuationIdxs:[],authority:{}};
-        await expect(h.scoped.fns.llm.stream({agent:h.agent})).rejects.toThrow('missing authorized task frontier');
+        await expect(h.scoped.fns.models.stream({agent:h.agent})).rejects.toThrow('missing authorized task frontier');
         expect(h.projections).toHaveLength(0);
     });
     test('disabled no suppression leaves outgoing history and bootstrap unchanged', async () => {
@@ -73,7 +73,7 @@ describe('goal outgoing request context (offline)', () => {
     test('real dispatch Proxy preserves isolated scopes during concurrent provider calls', async () => {
         const h = fixture(); const other: any = Object.create(h.ctx);
         other.goalRequestContext = Object.freeze({ agentId: 'other', omitGoalContinuationIdxs: Object.freeze([]) });
-        const [filtered, normal] = await Promise.all([h.scoped.fns.llm.stream({ agent: h.agent }), other.fns.llm.stream({ agent: { ...h.agent, id: 'other' } })]);
+        const [filtered, normal] = await Promise.all([h.scoped.fns.models.stream({ agent: h.agent }), other.fns.models.stream({ agent: { ...h.agent, id: 'other' } })]);
         expect(text(filtered)).not.toContain('queued synthetic'); expect(text(normal)).toContain('queued synthetic');
         expect(Object.hasOwn(h.ctx, 'goalRequestContext')).toBe(false);
     });

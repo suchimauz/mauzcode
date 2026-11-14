@@ -271,7 +271,7 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
     };
     const heartbeatTimer = setInterval(() => { void heartbeat().catch(() => undefined); }, RUN_HEARTBEAT_MS);
     let errorText: string | null = null;
-    let failure: types.llm.FailureInfo | null = null;
+    let failure: types.models.FailureInfo | null = null;
     let transportFailure: { kind: 'ssh_transport'; phase: 'before_dispatch' | 'ambiguous' | 'permanent'; retryable: boolean } | null = null;
     let aborted = false;
     let delegationBlocked = false;
@@ -320,9 +320,9 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
             transportFailure = e?.transportFailure?.kind === 'ssh_transport' ? e.transportFailure : null;
             // Transport dispatch knowledge is authoritative, even if an upstream
             // wrapper also attached an HTTP classification or a transient message.
-            failure = transportFailure ? null : (e?.failure as types.llm.FailureInfo | undefined) ?? null;
-            errorText = failure?.message ?? e?.message ?? String(e);
-            if (failure?.kind !== 'usage_limit') {
+            failure = transportFailure ? null : (e?.failure as types.models.FailureInfo | undefined) ?? null;
+            errorText = e?.message ?? String(e);
+            if (failure?.code !== 'QUOTA_EXHAUSTED') {
                 try { await ctx.fns.session.appendErrorEvent({ id: agentId, error: errorText ?? 'unknown error', ts: Date.now() }); } catch {}
             }
         }
@@ -433,7 +433,7 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
                 finalized = await ctx.fns.procs.db.transaction({ fn: async () => {
                     await ctx.fns.goal.lifecycleFailure({
                         agentId, expectedGoalId: binding.goalId, expectedRunToken: binding.runToken,
-                        reason: failure?.kind === 'usage_limit' ? 'usage_limit' : 'terminal_error',
+                        reason: failure?.code === 'QUOTA_EXHAUSTED' ? 'usage_limit' : 'terminal_error',
                         terminal: true, codexPlanMode: false,
                     });
                     const result = await finalize();
@@ -465,7 +465,7 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
 
         // Model retries are exhausted here. Subscription exhaustion instead parks
         // the credential group until its reset time.
-        if (failure?.kind === 'usage_limit') {
+        if (failure?.code === 'QUOTA_EXHAUSTED') {
             try {
                 await ctx.fns.agent.parkOnUsageLimit({ info: failure, originAgentId: agentId });
             } catch (error: any) {

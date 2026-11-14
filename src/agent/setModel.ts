@@ -8,13 +8,12 @@
  *
  * Rejects active worker/direct runs before changing any target; idle agents,
  * including usage-limit parked agents, can still switch through the UI.
- * Validates the target through llm.resolveEndpoint (unknown provider or a
- * missing key fails here rather than on the next request), records a visible
+ * Validates the target through models.resolveRoute before persistence, records a visible
  * transcript event, and lifts a usage-limit parking so the interrupted work
  * resumes immediately on the new model.
  *
  * @param opts.id Agent whose model changes.
- * @param opts.model Target model as "provider[/account]:modelId".
+ * @param opts.model Target model as "<provider>/<accountName>:<modelId>".
  * @param opts.scope Apply to this agent only, or to every agent sharing its parked credential.
  * @param opts.now Current time in ms, for testing.
  * @param opts.expectedModel Optional exact previously observed route; rejects stale per-agent parameter edits.
@@ -25,7 +24,7 @@ export default async function (
     opts: {
         /** Agent identifier. */
         id: string;
-        /** Target model string, e.g. "kimi-coding:k3" or "codex/personal:gpt-5.6-sol". */
+        /** Canonical provider/accountName:modelId route; account names may contain spaces. */
         model: string;
         /** "agent" changes one agent; "provider" changes every agent parked on the same credential. @default "agent" */
         scope?: "agent" | "provider";
@@ -36,17 +35,11 @@ export default async function (
     },
 ): Promise<{ changed: string[]; model: string; from: string | null }> {
     const raw = String(opts.model ?? "").trim();
-    // Store only the canonical [ssh/<host>:]<provider>/<account>:<model> route.
-    const model = raw ? ctx.fns.llm.parseModelRoute({ model: raw }).route : "";
+    const model = (await ctx.fns.models.resolveRoute({ route: raw })).route;
     const now = opts.now ?? Date.now();
     if (!model) throw new Error("setModel: model is required");
     if (opts.expectedModel !== undefined && opts.scope === "provider") throw new Error("setModel: expectedModel requires agent scope");
 
-    // Fail here, loudly, instead of on the agent's next turn.
-    const endpoint = await ctx.fns.llm.resolveEndpoint({ model });
-    if (!endpoint.apiKey && !endpoint.ssh && endpoint.kind !== "local" && endpoint.provider !== "opencode" && endpoint.provider !== "claude-code" && endpoint.provider !== "anthropic-oauth") {
-        throw new Error(`setModel: no credential for ${endpoint.provider}/${endpoint.account} — add a key or log in first`);
-    }
 
     const row = ((await ctx.fns.procs.db.select({
         sql: "SELECT id, model, scratchpad FROM agents WHERE id = ? AND archived_at IS NULL",
@@ -69,8 +62,7 @@ export default async function (
             })) as any[];
             targets = [];
             for (const r of rows) {
-                const parsed = await splitModel(ctx, String(r.model ?? ""));
-                if (parsed.provider === parked.provider && parsed.account === (parked.account ?? "default")) targets.push(String(r.id));
+                if (String(r.model ?? '').startsWith(`${parked.provider}/${parked.account}:`)) targets.push(String(r.id));
             }
             if (!targets.includes(String(row.id))) targets.push(String(row.id));
         }
@@ -83,10 +75,9 @@ export default async function (
         const before = ((await ctx.fns.procs.db.select({ sql: "SELECT model, run_state FROM agents WHERE id = ? AND archived_at IS NULL", params: [id] })) as any[])[0];
         if (!before) throw new Error(`setModel: agent not found: ${id}`);
         const previous = before.model ? String(before.model) : null;
-        const canon = (value: string | null) => { if (!value) return value; try { return ctx.fns.llm.parseModelRoute({ model: value }).route; } catch { return value; } };
-        if (opts.expectedModel !== undefined && canon(previous) !== canon(opts.expectedModel)) throw new Error("setModel: model changed; reopen settings and retry");
+        if (opts.expectedModel !== undefined && previous !== opts.expectedModel) throw new Error("setModel: model changed; reopen settings and retry");
         const live = (ctx.state as any).agent?.[id];
-        if (canon(previous) === model && (!live || canon(live.model ?? null) === model)) continue;
+        if (previous === model && (!live || live.model === model)) continue;
         if (before.run_state === "running" || Number(live?.activeRunCount ?? 0) > 0) {
             throw new Error(`setModel: agent ${id} is running; wait for the run to finish`);
         }
@@ -136,22 +127,4 @@ export default async function (
     if (changed.length) { try { ctx.fns.events.emitAgentsChanged({}); } catch {} }
 
     return { changed, model, from };
-}
-
-async function splitModel(ctx: Context, model: string): Promise<{ provider: string; account: string }> {
-    const m = /^([a-z][\w\-]*)(?:\/([\w\-.]+))?:(.+)$/.exec(model);
-    const provider = m?.[1] ?? "lmstudio", account = m?.[2] ?? "default";
-    if (provider === "ssh") {
-        const inner = /^(codex|claude-code)\/([\w-]+):/.exec(m?.[3] ?? "");
-        if (inner) return { provider: inner[1]!, account: `ssh.${account}.${inner[2]}` };
-    }
-    if (provider !== "mauzcode") return { provider, account };
-    const id = m![3]!;
-    const canonical = /^([a-z][\w\-]*)\/([\w\-.]+):/.exec(id);
-    if (canonical) return { provider, account: `${account}/${canonical[1]}/${canonical[2]}` };
-    const node = await ctx.fns.node.get({ name: account });
-    const exact = (node?.catalog ?? []).filter((e) => e.id === id);
-    const matches = exact.length ? exact : id.includes(":") ? [] : (node?.catalog ?? []).filter((e) => e.id.slice(e.id.indexOf(":") + 1) === id);
-    const entry = matches.length === 1 ? matches[0] : null;
-    return { provider, account: entry ? `${account}/${entry.provider}/${entry.account ?? "default"}` : `${account}/unresolved/${id}` };
 }

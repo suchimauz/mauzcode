@@ -28,7 +28,7 @@ export default async function (
     toolCalls: { id: string; name: string; args: any }[];
 }> {
     const { agent } = opts;
-    const { system: sys, messages: convo } = await ctx.fns.agent.buildLlmRequest({ agent });
+    const { instructions: sys, messages: convo } = await ctx.fns.agent.buildLlmRequest({ agent });
     const messages: any[] = [];
     if (sys) messages.push({ role: "system", content: sys });
     const ep = await ctx.fns.llm.resolveEndpoint({ model: agent.model });
@@ -74,7 +74,7 @@ export default async function (
     if (ep.provider === "openai") body.prompt_cache_key = await ctx.fns.agent.cacheRoot({ agent });
 
     // Native function calls, in JSON protocol mode only (see agent.wireTools).
-    const tools = ctx.fns.agent.wireTools({ agent, api: "openai" });
+    const tools = ctx.fns.tools.schemas({ only: agent.tools, api: "openai" });
     if (tools.length) {
         body.tools = tools;
         body.parallel_tool_calls = true;

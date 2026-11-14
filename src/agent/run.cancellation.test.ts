@@ -18,9 +18,9 @@ function harness() {
             syncAgentState: async () => { agent.messages = rows.slice(); },
             appendToolCallEvent: noop, appendAssistantEvent: async () => ({idx: 0}), recordContextUsage: noop,
             updateMessageContent: async ({ idx, content }: any) => { rows[idx].content = content; } },
-        agent: { recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => false, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
+        agent: { cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => false, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
             stashResult: async ({ output }: any) => ({ content: output }) },
-        llm: { resolveEndpoint: async () => ({ provider: 'fixture' }), classifyError: () => ({ kind: 'fatal', retryable: false }), stream: async () => ({ toolCalls: [{ id: 'a', name: 'one' }, { id: 'b', name: 'two' }] }) },
+        models: { resolveRoute: async () => ({ provider: 'fixture' }), classifyError: () => ({ kind: 'fatal', retryable: false }), stream: async () => ({ toolCalls: [{ id: 'a', name: 'one' }, { id: 'b', name: 'two' }] }) },
         tools: { call: async () => { calls++; return { output: 'ok' }; } },
     } };
     return { agent, ctx, rows, calls: () => calls, stop: (abort = true) => { stopped = true; if (abort) agent.abortController.abort(); }, execute: () => run(ctx, null, { agent, userText: 'go' }) };
@@ -58,7 +58,7 @@ test('late stream cleanup preserves replacement stream and controllers', async (
     const replacement = new AbortController();
     const sampling = new AbortController();
     const fragment = { text: 'new stream' };
-    h.ctx.fns.llm.stream = async () => {
+    h.ctx.fns.models.stream = async () => {
         h.agent.abortController = replacement;
         h.agent.samplingAbortController = sampling;
         h.agent.scratchpad.mobileStream = fragment;

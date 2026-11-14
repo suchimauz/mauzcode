@@ -1,19 +1,18 @@
-// The tool definitions this agent sends on the wire, in the dialect the
-// endpoint speaks. One place answers the question — narrowing (agent.tools),
-// dialect, schema shape — so a streamer just drops the result into the body.
-/** Wire tools for the runtime.  * @param opts.agent Agent whose state is read or updated.
- * @param opts.api Provider API dialect.
-*/
+/** Build provider-neutral tool declarations, respecting the agent's selection and prose-only goal receipts.
+ * Providers own wire dialect conversion; callers must not select an API dialect.
+ * @param opts.agent Agent whose tool selection is used.
+ */
 export default function (
     ctx: Context,
     _session: Session | null,
     opts: {
         /** Live agent instance to operate on. */
-    agent: types.agent.Agent;
-        /** Api used by the operation. */
-    api: string },
-): any[] {
+    agent: types.agent.Agent },
+): types.models.ToolSpec[] {
     // Run-owned completion receipts are prose-only, irrespective of agent tool settings.
     if ((ctx as Context & { goalCompletionReport?: boolean }).goalCompletionReport) return [];
-    return ctx.fns.tools.schemas({ api: opts.api, only: opts.agent.tools });
+    const only = opts.agent.tools;
+    return ctx.fns.tools.list({})
+        .filter(tool => !only?.length || only.includes(tool.wireName) || only.includes(tool.name))
+        .map(tool => ({ name: tool.wireName, description: tool.description, parameters: tool.parameters }));
 }

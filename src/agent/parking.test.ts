@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkTestCtx } from "../_testCtx.entry";
+import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
 import wakeWorker from "./wakeWorker";
 
 async function drainUntilIdle(ctx: any, deadlineMs = 5000) {
@@ -20,24 +20,20 @@ async function drainUntilIdle(ctx: any, deadlineMs = 5000) {
 
 const RESETS_AT = Date.now() + 3 * 24 * 3_600_000;
 
-function limitInfo(over: Partial<types.llm.FailureInfo> = {}): types.llm.FailureInfo {
+function limitInfo(over: Partial<types.models.FailureInfo> = {}): types.models.FailureInfo {
     return {
-        kind: "usage_limit",
-        provider: "mock",
-        account: "default",
-        message: "Лимит подписки mock исчерпан.",
+        code: "QUOTA_EXHAUSTED", classification: "quota", acceptance: "rejected", replaySafe: true,
         retryable: false,
-        resetsAt: RESETS_AT,
-        planType: "prolite",
+        resetAt: RESETS_AT,
         ...over,
-    } as types.llm.FailureInfo;
+    } as types.models.FailureInfo;
 }
 
 describe("usage-limit parking", () => {
     test("parks every agent sharing the credential, not the one that failed", async () => {
         const ctx: any = await mkTestCtx();
-        const a = await ctx.fns.agent.start({ model: "mock:test" });
-        const b = await ctx.fns.agent.start({ model: "mock:test" });
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
+        const b = await ctx.fns.agent.start({ model: "mock/default:test" });
         const other = await ctx.fns.agent.start({ model: "mock/second:test" });
 
         const result = await ctx.fns.agent.parkOnUsageLimit({ info: limitInfo(), originAgentId: a.id });
@@ -61,30 +57,30 @@ describe("usage-limit parking", () => {
         expect(Number(rows[0].wake_at)).not.toBe(Number(rows[1].wake_at));
 
         const parked = (await ctx.fns.session.load({ id: a.id })).scratchpad.parked;
-        expect(parked).toMatchObject({ reason: "usage_limit", provider: "mock", account: "default", planType: "prolite", resetsAt: RESETS_AT });
+        expect(parked).toMatchObject({ reason: "usage_limit", provider: "mock", account: "default", planType: null, resetsAt: RESETS_AT });
         expect((await ctx.fns.session.getEvents({ id: a.id })).at(-1)).toMatchObject({ type: "parked", provider: "mock" });
     });
 
     test("an unknown reset time parks for the fallback window instead of failing", async () => {
         const ctx: any = await mkTestCtx();
-        const a = await ctx.fns.agent.start({ model: "mock:test" });
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
         const now = Date.now();
-        const result = await ctx.fns.agent.parkOnUsageLimit({ info: limitInfo({ resetsAt: null }), fallbackMs: 600_000, now });
+        const result = await ctx.fns.agent.parkOnUsageLimit({ originAgentId: a.id, info: limitInfo({ resetAt: undefined }), fallbackMs: 600_000, now });
         expect(result.parked).toEqual([a.id]);
         expect(result.resetsAt).toBe(now + 600_000);
     });
 
     test("a reset moment already in the past does not refuse to park", async () => {
         const ctx: any = await mkTestCtx();
-        await ctx.fns.agent.start({ model: "mock:test" });
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
         const now = Date.now();
-        const result = await ctx.fns.agent.parkOnUsageLimit({ info: limitInfo({ resetsAt: now - 5_000 }), fallbackMs: 60_000, now });
+        const result = await ctx.fns.agent.parkOnUsageLimit({ originAgentId: a.id, info: limitInfo({ resetAt: now - 5_000 }), fallbackMs: 60_000, now });
         expect(result.resetsAt).toBe(now + 60_000);
     });
 
     test("parking and unpark preserve a user's independent unified wake trigger", async () => {
         const ctx: any = await mkTestCtx();
-        const a = await ctx.fns.agent.start({ model: "mock:test" });
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
         const mine = Date.now() + 30 * 60_000;
         await ctx.fns.agent.wakeAt({ id: a.id, at: mine, reason: "my own reminder" });
 
@@ -93,7 +89,7 @@ describe("usage-limit parking", () => {
         expect(triggers[0]).toMatchObject({ kind: "at", mode: "once", status: "active", prompt: "my own reminder" });
         expect(Number(triggers[0].nextAt)).toBe(mine);
 
-        await ctx.fns.agent.parkOnUsageLimit({ info: limitInfo() });
+        await ctx.fns.agent.parkOnUsageLimit({ originAgentId: a.id, info: limitInfo() });
         // wakeAt now creates an independent trigger, not the legacy parking alarm.
         expect((await ctx.fns.session.load({ id: a.id })).scratchpad.parked.previousWake).toBeNull();
         expect(await ctx.fns.agent.triggers({ id: a.id })).toEqual(triggers);
@@ -109,14 +105,14 @@ describe("usage-limit parking", () => {
 
     test("unpark restores an existing legacy wake alarm", async () => {
         const ctx: any = await mkTestCtx();
-        const a = await ctx.fns.agent.start({ model: "mock:test" });
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
         const mine = Date.now() + 30 * 60_000;
         // Old persisted alarms still use agents.wake_at; wakeAt no longer writes it.
         await ctx.fns.procs.db.run({
             sql: "UPDATE agents SET wake_at = ?, wake_reason = ? WHERE id = ?",
             params: [mine, "legacy reminder", a.id],
         });
-        await ctx.fns.agent.parkOnUsageLimit({ info: limitInfo() });
+        await ctx.fns.agent.parkOnUsageLimit({ originAgentId: a.id, info: limitInfo() });
         expect((await ctx.fns.session.load({ id: a.id })).scratchpad.parked.previousWake)
             .toEqual({ at: mine, reason: "legacy reminder" });
         expect((await ctx.fns.agent.unpark({ id: a.id })).wasParked).toBe(true);
@@ -130,9 +126,9 @@ describe("usage-limit parking", () => {
 
     test("unpark resumes an agent whose messages went unanswered", async () => {
         const ctx: any = await mkTestCtx();
-        const a = await ctx.fns.agent.start({ model: "mock:test" });
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
         await ctx.fns.session.appendMessage({ id: a.id, message: { role: "user", content: "do the thing" } });
-        await ctx.fns.agent.parkOnUsageLimit({ info: limitInfo() });
+        await ctx.fns.agent.parkOnUsageLimit({ originAgentId: a.id, info: limitInfo() });
         expect((await ctx.fns.procs.db.select({ sql: "SELECT next_run_at FROM agents WHERE id = ?", params: [a.id] }))[0].next_run_at).toBeNull();
 
         const un = await ctx.fns.agent.unpark({ id: a.id, reason: "manual" });
@@ -142,10 +138,10 @@ describe("usage-limit parking", () => {
 
     test("the scheduled wake clears the parking and continues the work", async () => {
         const ctx: any = await mkTestCtx();
-        const a = await ctx.fns.agent.start({ model: "mock:test" });
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
         await ctx.fns.session.appendMessage({ id: a.id, message: { role: "user", content: "do the thing" } });
         const now = Date.now();
-        const parked = await ctx.fns.agent.parkOnUsageLimit({ info: limitInfo({ resetsAt: null }), fallbackMs: 60_000, now });
+        const parked = await ctx.fns.agent.parkOnUsageLimit({ originAgentId: a.id, info: limitInfo({ resetAt: undefined }), fallbackMs: 60_000, now });
         expect(parked.parked).toEqual([a.id]);
 
         const wakeAt = Number((await ctx.fns.session.load({ id: a.id })).scratchpad.parked.wakeAt);
@@ -160,14 +156,14 @@ describe("usage-limit parking", () => {
 
     test("unparking an agent that was never parked is a no-op", async () => {
         const ctx: any = await mkTestCtx();
-        const a = await ctx.fns.agent.start({ model: "mock:test" });
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
         expect(await ctx.fns.agent.unpark({ id: a.id })).toMatchObject({ wasParked: false, resumed: false });
     });
 
     test("only a usage_limit classification may park", async () => {
         const ctx: any = await mkTestCtx();
-        await ctx.fns.agent.start({ model: "mock:test" });
-        await expect(ctx.fns.agent.parkOnUsageLimit({ info: limitInfo({ kind: "rate_limit" }) })).rejects.toThrow(/usage_limit/);
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
+        await expect(ctx.fns.agent.parkOnUsageLimit({ originAgentId: a.id, info: limitInfo({ code: "RATE_LIMITED" }) })).rejects.toThrow(/QUOTA_EXHAUSTED/);
     });
 
     test("the worker parks instead of retrying, and leaves no error badge", async () => {
@@ -180,7 +176,7 @@ describe("usage-limit parking", () => {
             throw error;
         };
 
-        const a = await ctx.fns.agent.start({ model: "mock:test" });
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
         await ctx.fns.session.save({ agent: a });
         await ctx.fns.session.appendUserMessage({ id: a.id, text: "go" });
         await ctx.fns.procs.db.run({ sql: "UPDATE agents SET next_run_at = ? WHERE id = ?", params: [Date.now(), a.id] });

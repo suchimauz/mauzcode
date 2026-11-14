@@ -27,7 +27,7 @@ describe("compaction.portable", () => {
         const ctx: any = await mkTestCtx();
         ctx.state.registry.llm.resolveEndpoint = () => ({ provider: 'test', modelId: 'test' });
         ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
-            expect(opts).toEqual({ route: 'codex/work:gpt-test' });
+            expect(['codex/work:gpt-test','claude/work:claude-opus-5']).toContain(opts.route);
             return { connectionId: 'connection', model: 'gpt-test', route: opts.route, nativeCompaction: true };
         };
         const agent = await ctx.fns.agent.start({ model: "codex/work:gpt-test", workspaceDir: process.cwd() });

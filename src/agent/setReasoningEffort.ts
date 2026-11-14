@@ -1,7 +1,7 @@
 /**
  * Changes the durable reasoning effort preference of one agent
  *
- * Validate and persist one agent reasoning effort preference, update the live agent object, record a visible event and refresh the chat. The stored preference is retained across model switches while llm.resolveReasoningEffort computes any model-specific downgrade.
+ * Validate and persist one agent reasoning effort preference, update the live agent object, record a visible event and refresh the chat. The stored preference is retained across model switches and the connection normalizes it during inference. Unsupported explicit levels fail before any state change.
  * @param opts.id Agent identifier.
  * @param opts.effort Requested reasoning preference.
  * @param opts.now Current timestamp in milliseconds, for testing.
@@ -13,17 +13,21 @@ export default async function (
         /** Agent identifier. */
         id: string;
         /** Requested reasoning preference. */
-        effort: types.llm.ReasoningEffort;
+        effort: (types.models.ReasoningLevel | "auto");
         /** Current timestamp in milliseconds, for testing. */
         now?: number;
     },
-): Promise<{ id: string; requested: types.llm.ReasoningEffort; applied: types.llm.ReasoningEffort; downgraded: boolean }> {
-    const allowed: types.llm.ReasoningEffort[] = ["auto", "off", "minimal", "low", "medium", "high", "xhigh"];
+): Promise<{ id: string; requested: (types.models.ReasoningLevel | "auto"); applied: (types.models.ReasoningLevel | "auto"); downgraded: boolean }> {
+    const allowed: (types.models.ReasoningLevel | "auto")[] = ["auto", "off", "minimal", "low", "medium", "high", "xhigh"];
     if (!allowed.includes(opts.effort)) throw new Error("invalid reasoning effort");
     const row = ((await ctx.fns.procs.db.select({ sql: "SELECT id, model, reasoning_effort FROM agents WHERE id = ? AND archived_at IS NULL", params: [opts.id] })) as any[])[0];
     if (!row) throw new Error(`agent not found: ${opts.id}`);
-    const previous = String(row.reasoning_effort ?? "auto") as types.llm.ReasoningEffort;
-    const resolved = await ctx.fns.llm.resolveReasoningEffort({ model: String(row.model), effort: opts.effort });
+    const previous = String(row.reasoning_effort ?? "auto") as (types.models.ReasoningLevel | "auto");
+    const route = await ctx.fns.models.resolveRoute({ route: String(row.model) });
+    const catalogue = await ctx.fns.models.listModels({ id: route.connectionId });
+    const reasoning = catalogue.models.find(model => model.id === route.model)?.reasoning;
+    if (opts.effort !== 'auto' && !reasoning?.supported.includes(opts.effort)) throw new Error('unsupported reasoning effort');
+    const resolved = { applied: opts.effort === 'auto' ? reasoning?.default ?? 'auto' as const : opts.effort, downgraded: false };
     if (previous !== opts.effort) {
         await ctx.fns.procs.db.run({ sql: "UPDATE agents SET reasoning_effort = ?, updated_at = ? WHERE id = ?", params: [opts.effort, opts.now ?? Date.now(), opts.id] });
         const live = (ctx.state as any).agent?.[opts.id];

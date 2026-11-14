@@ -35,7 +35,7 @@ export default async function (
     if (!apiKey && ep.provider !== "opencode") throw new Error("codex: no access_token (run /settings → login)");
     const accountId = viaNode || ep.provider === "opencode" || ep.ssh ? "" : extractAccountId(apiKey!);
 
-    const { system: instructions, messages: convo } = await ctx.fns.agent.buildLlmRequest({ agent });
+    const { instructions, messages: convo } = await ctx.fns.agent.buildLlmRequest({ agent });
     const { input } = ctx.fns.llm.toCodexInput({ messages: convo as any });
 
     const body: any = {
@@ -52,7 +52,7 @@ export default async function (
         Object.assign(body, await ctx.fns.llm.opencodeReasoningBody({ model: agent.model, modelId: ep.modelId, api: "responses", effort: agent.reasoningEffort }));
     } else body.reasoning = { effort: reasoning.applied === "off" ? "none" : reasoning.applied, summary: "auto" };
     // Native function_call items, in JSON protocol mode only (agent.wireTools).
-    const tools = ctx.fns.agent.wireTools({ agent, api: "responses" });
+    const tools = ctx.fns.tools.schemas({ only: agent.tools, api: "responses" });
     if (tools.length) {
         body.tools = tools;
         body.parallel_tool_calls = true;

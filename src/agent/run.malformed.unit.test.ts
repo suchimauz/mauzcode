@@ -23,11 +23,11 @@ function harness(turns: any[]) {
             updateMessageContent: async ({ idx, content }: any) => { rows[idx].content = content; },
         },
         procs: { events: { emit: noop }, db: { run: async () => ({ changes: 0 }), select: async ({ sql }: any) => sql.includes('MAX(idx)') ? [{ i: 0 }] : [{ stopped_at: null }] } },
-        agent: { retrySchedule: async () => false, retryWait: async () => {}, recordRunLifecycle: async () => {}, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
+        agent: { cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], retrySchedule: async () => false, retryWait: async () => {}, recordRunLifecycle: async () => {}, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
             stop: async () => { stops++; }, stashResult: async ({ output }: any) => ({ content: output }) },
         events: { emitAgentsChanged: noop, refreshAgentMeta: noop },
         markdown: { render: async ({ source }: any) => source },
-        llm: { resolveEndpoint: async () => ({ provider: 'mock' }), classifyError: (opts: any) => classifyError(ctx, null, opts), stream: async () => { if (sampled >= turns.length) throw new Error('unexpected extra model request'); return turns[sampled++]; } },
+        models: { resolveRoute: async () => ({ provider: 'mock' }), classifyError: (opts: any) => classifyError(ctx, null, opts), stream: async () => { if (sampled >= turns.length) throw new Error('unexpected extra model request'); return turns[sampled++]; } },
         tools: { call: async () => { calls++; return { output: 'ok' }; }, runs: () => [] },
     } };
     return { ctx, agent, rows, errors, get sampled() { return sampled; }, get calls() { return calls; }, get stops() { return stops; } };

@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import resolve from "./resolveEndpoint";
-import classify from "./classifyError";
+
 import park from "../agent/parkOnUsageLimit";
 import setModel from "../agent/setModel";
 import parseModelRouteFn from "./parseModelRoute";
@@ -43,32 +43,36 @@ test("legacy bare route upgrades only when unique", async () => {
     await expect(resolve(fixture().ctx, null, { model: "mauzcode/mini6:gpt-test" })).rejects.toThrow("ambiguous");
 });
 
-test("quota park isolates node, provider and account including unique legacy", async () => {
-    const {ctx} = fixture([catalog[0]!, { ...catalog[0]!, id: "codex/a:other" }]);
-    const ep = await resolve(ctx, null, { model: "mauzcode/mini6:codex/a:gpt-test" });
-    const info = classify(ctx, null, { provider: ep.provider, account: ep.quotaAccount, kind: ep.kind, status: 429, body: '{"error":{"type":"usage_limit_reached"}}' });
-    const result = await park(ctx, null, {info, now: 1000});
-    expect(result.parked).toEqual(["a1", "a2", "legacy"]);
+function canonicalFixture() {
+    const {ctx,rows}=fixture();
+    rows.forEach(row=>{row.model = row.id === 'a1' ? 'custom/mini6 a:codex/a:gpt-test' : row.id === 'a2' ? 'custom/mini6 a:codex/a:other' : `custom/${row.id}:native`;});
+    ctx.fns.models={resolveRoute:async({route}:any)=>({route,provider:'custom',accountName:route.slice(7,route.indexOf(':')),connectionId:'connection',model:route.slice(route.indexOf(':')+1)})};
+    ctx.fns.procs.db.select=async({sql,params}:any)=>sql.includes('WHERE id = ?')?rows.filter(r=>r.id===params[0]):rows;
+    return {ctx,rows};
+}
+const quota:types.models.FailureInfo={code:'QUOTA_EXHAUSTED',classification:'quota',acceptance:'rejected',retryable:false,replaySafe:true};
+test("canonical gateway quota isolates exact connection without interpreting native suffix", async () => {
+    const {ctx}=canonicalFixture();
+    const result=await park(ctx,null,{info:quota,originAgentId:'a1',now:1000});
+    expect(result.parked).toEqual(['a1','a2']);
 });
 
-test("ambiguous legacy and old node-wide failure never park other accounts", async () => {
-    const {ctx} = fixture();
-    const info = classify(ctx, null, {provider: "mauzcode", account: "mini6/codex/a", kind: "subscription", status: 429, body: '{"error":{"type":"usage_limit_reached"}}'});
-    expect((await park(ctx, null, {info})).parked).toEqual(["a1", "a2"]);
-    expect((await park(ctx, null, {info: {...info, account: "mini6"}})).parked).toEqual([]);
+test('non-quota SDK failure never parks other accounts',async()=>{
+ const {ctx}=canonicalFixture();
+ await expect(park(ctx,null,{info:{...quota,code:'RATE_LIMITED',classification:'throttled'},originAgentId:'a1'})).rejects.toThrow('QUOTA_EXHAUSTED');
 });
 
 test("manual provider-scope switch respects upstream quota identity", async () => {
-    const {ctx, rows} = fixture();
+    const {ctx, rows} = canonicalFixture();
     const changed: string[] = [];
     ctx.fns.llm.resolveEndpoint = async () => ({apiKey: "fake", provider: "mauzcode", account: "mini6", kind: "subscription"});
     ctx.fns.procs.db.select = async ({sql, params}: any) => sql.includes("scratchpad")
-        ? [{ ...rows[0], scratchpad: JSON.stringify({parked: {provider: "mauzcode", account: "mini6/codex/a"}}) }]
+        ? [{ ...rows[0], scratchpad: JSON.stringify({parked: {provider: "custom", account: "mini6 a"}}) }]
         : sql.includes("WHERE id = ?") ? rows.filter(r => r.id === params[0]) : rows;
     ctx.fns.agent = {unpark: async ({id}: any) => { changed.push(id); }};
     ctx.fns.session.load = async () => null;
     ctx.fns.events.emitAgentsChanged = () => {};
-    const result = await setModel(ctx, null, {id: "a1", model: "mauzcode/mini6:codex/b:gpt-test", scope: "provider"});
+    const result = await setModel(ctx, null, {id: "a1", model: "custom/mini6 b:codex/b:gpt-test", scope: "provider"});
     expect(result.changed).toEqual(["a1", "a2"]);
     expect(changed).toEqual(["a1", "a2"]);
 });

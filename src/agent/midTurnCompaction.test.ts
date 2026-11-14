@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { mkTestCtx } from '../_testCtx.entry';
+import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
 
 async function owned(ctx: any) {
     // buildLlmRequest is migrated in block 5; isolate its legacy preamble lookup.
@@ -62,7 +62,7 @@ describe('owned mid-turn compaction', () => {
     });
     test('failed compaction is attempted once across many tool batches without replay', async () => {
         const ctx: any = await mkTestCtx();
-        const agent = await ctx.fns.agent.start({ model: 'mock:test' });
+        const agent = await ctx.fns.agent.start({ model: 'mock/default:test' });
         agent.scratchpad.mockLLM = { turns: Array.from({ length: 4 }, () => ({ toolCalls: [{ name: 'read', args: { path: 'x' } }] })), defaultText: 'done' };
         await ctx.fns.session.save({ agent });
         let effects = 0, attempts = 0;
@@ -79,9 +79,9 @@ describe('owned mid-turn compaction', () => {
     });
     test('hard budget guard pauses before any provider or tool replay', async () => {
         const ctx: any = await mkTestCtx();
-        const agent = await ctx.fns.agent.start({ model: 'mock:test' });
+        const agent = await ctx.fns.agent.start({ model: 'mock/default:test' });
         let calls = 0;
-        ctx.state.registry.llm.stream = () => { calls++; throw new Error('must not sample'); };
+        ctx.state.registry.models.stream = () => { calls++; throw new Error('must not sample'); };
         ctx.state.registry.agent.autoCompactIfNeeded = (_c: any, _s: any, o: any) => ({ status: o.checkOnly ? 'over_threshold' : 'failed', estimatedTokens: 195000, contextWindow: 200000 });
         await ctx.fns.agent.run({ agent, userText: 'go' });
         expect(calls).toBe(0);

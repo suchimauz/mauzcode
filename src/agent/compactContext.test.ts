@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { mkTestCtx } from "../_testCtx.entry";
+import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
 
 async function seeded(ctx: any) {
   // buildLlmRequest is migrated in block 5; isolate its legacy preamble lookup.

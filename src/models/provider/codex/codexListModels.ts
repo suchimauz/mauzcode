@@ -1,7 +1,8 @@
 /**
  * List provider model identifiers and preserve discovery fallback semantics.
  *
- * Use from codex provider adapters or protocol procedures; preserves existing wire behavior.
+ * Use for the Codex connection catalogue. Missing discovered reasoning metadata
+ * uses only the documented provider profile; unknown model profiles stay absent.
  */
 export default async function (
     ctx: Context,
@@ -20,7 +21,9 @@ export default async function (
             return (data.models ?? [])
                 .filter(m => typeof m?.slug === "string" && m.visibility !== "hidden" && m.visibility !== "hide" && m.supported_in_api !== false)
                 .map(m => {
-                    const reasoning = ctx.fns.models.provider.codex.codexWireDiscoveredReasoning({ m: m });
+                    const discovered = ctx.fns.models.provider.codex.codexWireDiscoveredReasoning({ m });
+                    const profile = discovered ?? ctx.fns.models.provider.codex.codexReasoningProfile({ model: m.slug as string });
+                    const reasoning = profile ? { supported: profile.supported, default: profile.default } : undefined;
                     return {
                     id: m.slug as string,
                     ...(typeof m.display_name === "string" ? { label: m.display_name } : {}),

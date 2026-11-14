@@ -21,7 +21,7 @@ function fixture() {
   agent:{contextTokens:async({fallbackTokens}:any)=>({tokens:fallbackTokens,source:'estimate',reportedTokens:null,deltaTokens:null,reportedAt:null}),normalizeSleepContext:(o:any)=>normalize(ctx,null,o),getSleepGeneration:(o:any)=>generation(ctx,null,o),fullSystemPrompt:async()=> 'bootstrap '.repeat(100),selectJevContext:async({messages,cachedOnly}:any)=>{expect(cachedOnly).toBe(true);return messages;},buildLlmRequest:(o:any)=>{expect(o.preview).toBe(true);expect(o.agent.model).toBe('test:model');return build(ctx,null,o);},wireTools:()=>tools},
   auth:{attributeMessages:async({messages}:any)=>({messages,applied:false})},
   attachments:{resolveContent:async({messages}:any)=>structuredClone(messages)},
-  llm:{resolveEndpoint:async()=>({provider:'test',api:'test'}),call:()=>{throw Error('no generation');},stream:()=>{throw Error('no generation');}},
+  models:{resolveRoute:async()=>({provider:'test',api:'test'}),call:()=>{throw Error('no generation');},stream:()=>{throw Error('no generation');}},
   compaction:{tokenizer:async()=>null,calibration:async()=>({factor:1,samples:0,source:'heuristic'}),project:(o:any)=>project(ctx,null,o),portable:(o:any)=>portable(ctx,null,o),estimateTokens:(o:any)=>{measured=o.messages;return estimate(ctx,null,o);},contextWindow:async()=>1000000},
  }};
  return {ctx,agent,messages,sleep,tools,setCheckpoint:(v:any[])=>{checkpoint=v;},measured:()=>measured,call:()=>budget(ctx,null,{agentId:'root'})};

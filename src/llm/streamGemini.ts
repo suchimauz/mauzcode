@@ -22,12 +22,12 @@ export default async function (
     const ep=await ctx.fns.llm.resolveEndpoint({model:agent.model});
     const request=await ctx.fns.agent.buildLlmRequest({agent});
     const contents=await ctx.fns.llm.toGeminiContents({messages:request.messages});
-    const wire=ctx.fns.agent.wireTools({agent,api:'openai'});
+    const wire=ctx.fns.tools.schemas({ only: agent.tools, api: 'openai' });
     const tools=wire.map((tool:any)=>{
      const f=tool.function;
      if(!f || typeof f.name !== 'string') throw new Error('Gemini invalid tool declaration');
      return {name:f.name,description:f.description,parameters:f.parameters};
     });
     const generationConfig=await ctx.fns.llm.geminiGenerationConfig({model:agent.model,modelId:ep.modelId,reasoningEffort:agent.reasoningEffort});
-    return ctx.fns.llm.geminiGenerate({model:agent.model,contents,system:request.system,generationConfig,tools,stream:true,signal:opts.signal,sessionId:agent.id,onEvent:opts.onEvent});
+    return ctx.fns.llm.geminiGenerate({model:agent.model,contents,system:request.instructions,generationConfig,tools,stream:true,signal:opts.signal,sessionId:agent.id,onEvent:opts.onEvent});
 }

@@ -14,9 +14,9 @@ function harness(turns: any[]) {
         session: { forAgent: () => ({}), appendUserMessage: async () => { events.push({type:'user'}); }, appendMessage: append,
             syncAgentState: noop, updateMessageContent: noop, appendAssistantEvent: async ({payload}: any) => { const idx = events.length; events.push({type:'assistant',...payload}); return {idx}; },
             appendToolCallEvent: async () => { events.push({type:'tool_call'}); }, recordContextUsage: noop, appendErrorEvent: noop },
-        agent: { retryWait: noop, retrySchedule: async () => false, recordRunLifecycle: async (o: any) => records.push(o), statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({status:'not_needed'}), stashResult: async ({output}:any) => ({content:output}), sanitizeHtmlBody: ({html}:any) => html },
+        agent: { cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], retryWait: noop, retrySchedule: async () => false, recordRunLifecycle: async (o: any) => records.push(o), statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({status:'not_needed'}), stashResult: async ({output}:any) => ({content:output}), sanitizeHtmlBody: ({html}:any) => html },
         procs: { db: { run: noop, select: async () => [{i:0,stopped_at:null}] }, events: {emit:noop}, log:{warn:noop} },
-        llm:{resolveEndpoint: async () => ({provider:'fixture'}), classifyError: () => ({kind:'fatal',retryable:false}), stream:async () => { const t = turns.shift(); if(t instanceof Error) throw t; if(t === 'stop') { agent.abortController.abort(); throw new DOMException('Stopped','AbortError'); } return t; }},
+        models:{resolveRoute: async () => ({provider:'fixture'}), classifyError: () => ({kind:'fatal',retryable:false}), stream:async () => { const t = turns.shift(); if(t instanceof Error) throw t; if(t === 'stop') { agent.abortController.abort(); throw new DOMException('Stopped','AbortError'); } return t; }},
         markdown:{render:async ({source}:any) => source}, tools:{call:async ({name}:any) => ({output:'ok',...(name === 'respondHtml' ? {terminal:{type:'html',html:'<p>final</p>',text:'final'}}:{})})}
     }};
     return {agent,ctx,events,records, execute:()=>run(ctx,null,{agent,userText:'question'})};
@@ -39,6 +39,19 @@ test('provider failure closes error without inventing an answer',async()=>{
 test('stop closes stopped without answer',async()=>{
     const h=harness(['stop']); await expect(h.execute()).rejects.toBeDefined();
     expect(h.records[1]).toMatchObject({status:'stopped',answerIdx:null});
+});
+for (const change of ['none','route','compaction'] as const) test(`continuation is run-local and resets on ${change}`,async()=>{
+ const h=harness([]);const calls:any[]=[];let compactCalls=0;
+ h.ctx.fns.models.resolveRoute=async()=>({provider:'fixture',connectionId:'c',model:h.agent.model??'m'});
+ h.ctx.fns.models.stream=async(o:any)=>{calls.push(o);return calls.length===1?{state:{opaque:'private'},toolCalls:[{id:'t',name:'read',args:{}}]}:{text:'answer'};};
+ h.ctx.fns.tools.call=async()=>{if(change==='route')h.agent.model='next';return {output:'ok'};};
+ h.ctx.fns.agent.autoCompactIfNeeded=async()=>({status:++compactCalls>1&&change==='compaction'?'compacted':'not_needed'});
+ await h.execute();
+ expect(calls[0].state).toBeUndefined();expect(calls[0].runId).toBe(calls[1].runId);
+ expect(calls[1].state).toEqual(change==='none'?{opaque:'private'}:undefined);
+ const oldRun=calls[0].runId;await h.execute();
+ expect(calls[2].runId).not.toBe(oldRun);expect(calls[2].state).toBeUndefined();
+ expect(JSON.stringify(h.agent.scratchpad)).not.toContain('opaque');
 });
 test('durable procedure creates observed start and terminal detects interleaved users',async()=>{
     const calls:any[]=[]; const ctx:any={fns:{procs:{db:{run:async(o:any)=>calls.push(o)}}}};

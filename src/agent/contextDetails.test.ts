@@ -18,8 +18,8 @@ test('budget builds one preview, partitions system messages and leaves default s
     const ctx: any = { state: { agent: { test: { model: 'mock' } } }, fns: {
         procs: { db: { select: async ({ sql }: any) => sql.includes('FROM agents') ? [{ model: 'mock', sleep_context: null }] : [] } },
         session: { getMessages: async () => [] },
-        agent: { buildLlmRequest: async () => { previews++; return { messages: [{ role: 'system', content: 'abc' }, { role: 'user', content: 'hello' }], system: 'x', context: { mode: 'full', fallback: null, revision: null } }; }, wireTools: () => [], contextTokens: async ({ fallbackTokens }: any) => ({ tokens: fallbackTokens, source: 'estimate' }) },
-        llm: { resolveEndpoint: async () => ({ api: 'mock' }) },
+        agent: { buildLlmRequest: async () => { previews++; return { messages: [{ role: 'system', content: 'abc' }, { role: 'user', content: 'hello' }], instructions: 'x', context: { mode: 'full', fallback: null, revision: null } }; }, wireTools: () => [], contextTokens: async ({ fallbackTokens }: any) => ({ tokens: fallbackTokens, source: 'estimate' }) },
+        models: { resolveRoute: async () => ({ api: 'mock' }) },
         compaction: { calibration: async () => ({ factor: 1, samples: 0, source: 'heuristic' }), contextWindow: async () => 1000, estimateTokens: async ({ messages }: any) => messages.reduce((s: number, m: any) => s + m.content.length, 0) },
     } };
     const measured = await budget(ctx, null, { agentId: 'test', breakdown: true });
@@ -28,7 +28,7 @@ test('budget builds one preview, partitions system messages and leaves default s
     expect(measured.estimatedTokens).toBe(9);
     expect(await budget(ctx, null, { agentId: 'test' })).not.toHaveProperty('breakdown');
     // Synthetic bootstrap user + ack belong to instructions, not the conversation.
-    ctx.fns.agent.buildLlmRequest = async () => ({ system: 'x', bootstrapMessageCount: 2, messages: [{role:'user',content:'instructions'}, {role:'assistant',content:'ack'}, {role:'user',content:'hello'}, {role:'system',content:'abc'}], context: {mode:'full',fallback:null,revision:null} });
+    ctx.fns.agent.buildLlmRequest = async () => ({ instructions: 'x', bootstrapMessageCount: 2, messages: [{role:'user',content:'instructions'}, {role:'assistant',content:'ack'}, {role:'user',content:'hello'}, {role:'system',content:'abc'}], context: {mode:'full',fallback:null,revision:null} });
     const semantic = await budget(ctx, null, {agentId:'test',breakdown:true});
     expect(semantic.breakdown).toEqual({systemPrompt:19,toolDefinitions:0,messages:5});
     expect(semantic.estimatedTokens).toBe(24);

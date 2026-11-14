@@ -22,18 +22,18 @@ export default async function (
     const messages = await ctx.fns.session.getMessages({ id: opts.agentId });
     const snapshot = { ...agent, model: rows[0].model, sleepContext: rows[0].sleep_context, messages };
     const request = await ctx.fns.agent.buildLlmRequest({ agent: snapshot, preview: true });
-    const endpoint = await ctx.fns.llm.resolveEndpoint({ model: snapshot.model });
-    const tools = ctx.fns.agent.wireTools({ agent: snapshot, api: endpoint.api });
+    await ctx.fns.models.resolveRoute({ route: snapshot.model });
+    const tools = ctx.fns.agent.wireTools({ agent: snapshot });
     const estimatedTokens = await ctx.fns.compaction.estimateTokens({ messages: [
         ...request.messages,
-        ...(request.system ? [{ role: "system", content: request.system }] : []),
+        ...(request.instructions ? [{ role: "system", content: request.instructions }] : []),
         ...(tools.length ? [{ role: "system", content: JSON.stringify(tools) }] : []),
     ], model: snapshot.model });
     let breakdown: NonNullable<types.agent.ContextUsageDetails['breakdown']> | undefined;
     if (opts.breakdown) {
         // Partition system-role messages too: providers may inline the system prompt.
         const [systemPrompt, toolDefinitions, messages] = await Promise.all([
-            ctx.fns.compaction.estimateTokens({ model: snapshot.model, messages: [...request.messages.filter((m, index) => index < (request.bootstrapMessageCount ?? 0) || m.role === 'system'), ...(request.system ? [{ role: 'system', content: request.system }] : [])] }),
+            ctx.fns.compaction.estimateTokens({ model: snapshot.model, messages: [...request.messages.filter((m, index) => index < (request.bootstrapMessageCount ?? 0) || m.role === 'system'), ...(request.instructions ? [{ role: 'system', content: request.instructions }] : [])] }),
             ctx.fns.compaction.estimateTokens({ model: snapshot.model, messages: tools.length ? [{ role: 'system', content: JSON.stringify(tools) }] : [] }),
             ctx.fns.compaction.estimateTokens({ model: snapshot.model, messages: request.messages.filter((m, index) => index >= (request.bootstrapMessageCount ?? 0) && m.role !== 'system') }),
         ]);
