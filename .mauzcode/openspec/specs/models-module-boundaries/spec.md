@@ -6,7 +6,7 @@ Organize model implementations by provider, transport, catalogue, connections an
 ## Requirements
 
 ### Requirement: Stable public model facade
-The system SHALL expose a minimal public root model facade consisting of exactly `models.call`, `models.stream`, `models.compact`, `models.listModels`, `models.setModelEnabled`, `models.refreshAll`, `models.list`, `models.get`, `models.create`, `models.update`, `models.remove`, `models.test`, `models.usage` and `models.action`, together with the existing non-forwarding root procedures `models.providers` and `models.api`. These entries SHALL preserve their typed options, return contract and observable behavior and SHALL delegate without duplicating business logic or wrapping errors into a different contract. Other root forwarding procedures SHALL NOT exist. The facade SHALL serve only consumers outside `src/models`; callers inside `src/models` SHALL use the full responsibility namespace names, including for the kept facade entries. Public `types.models.*`, HTTP paths, provider ids and registration ownership SHALL remain unchanged.
+The system SHALL expose a minimal public root model facade consisting of exactly `models.call`, `models.stream`, `models.compact`, `models.listModels`, `models.setModelEnabled`, `models.refreshAll`, `models.list`, `models.get`, `models.create`, `models.update`, `models.remove`, `models.test`, `models.usage`, `models.action`, `models.resolveRoute` and `models.tokenPrice`, together with the existing non-forwarding root procedures `models.providers` and `models.api`. These entries SHALL preserve their typed options, return contract and observable behavior and SHALL delegate without duplicating business logic or wrapping errors into a different contract. Other root forwarding procedures SHALL NOT exist. The facade SHALL serve only consumers outside `src/models`; callers inside `src/models` SHALL use the full responsibility namespace names, including for the kept facade entries. Consumers outside `src/models` SHALL NOT call implementation namespaces. Public `types.models.*`, HTTP paths, provider ids and registration ownership SHALL remain unchanged.
 
 #### Scenario: Existing consumer calls a moved procedure
 - **WHEN** a core or plugin consumer calls one of the minimal facade entries
@@ -31,6 +31,14 @@ The system SHALL expose a minimal public root model facade consisting of exactly
 #### Scenario: One-shot call through the facade
 - **WHEN** a consumer outside `src/models` calls `models.call`
 - **THEN** the call reaches `models.inference.call` with the same options, cancellation signal and return/error semantics
+
+#### Scenario: Route facade entries
+- **WHEN** a consumer outside `src/models` calls `models.resolveRoute` or `models.tokenPrice`
+- **THEN** the call reaches its single implementation namespace procedure with unchanged options and return/error semantics
+
+#### Scenario: Consumer reaches into an implementation namespace
+- **WHEN** code outside `src/models` calls a `models.inference.*`, `models.connections.*`, `models.catalog.*`, `models.transport.*`, `models.protocol.*` or `models.provider.*` procedure
+- **THEN** the architecture check fails and names the caller
 
 ### Requirement: Responsibility-focused implementation namespaces
 Model implementation procedures SHALL be organized by connection management, transport, inference, catalogue, shared wire protocols and provider-specific responsibilities. Shared protocols SHALL live in `models.protocol`. Provider implementations SHALL use `models.provider.claude`, `models.provider.codex` and `models.provider.custom`, without colliding with the existing `models.providers` function. Each runtime procedure SHALL retain one function per file and invoke other project procedures through `ctx.fns` rather than project-file imports.
@@ -96,3 +104,10 @@ The refactoring SHALL include a complete source-to-destination map, external con
 - **WHEN** a responsibility group is migrated independently
 - **THEN** its tests and public facade compatibility checks pass before the next group moves
 - **AND** unrelated pre-existing quality failures are recorded separately from new regressions
+
+### Requirement: Models owns only model data
+Model procedures SHALL read and write only model-owned storage (connections, model caches, model settings and model secrets). Changes that affect other modules' data, such as a connection rename that invalidates stored model routes, MUST be announced through a published event, and the owning module MUST apply its own update.
+
+#### Scenario: Connection rename
+- **WHEN** a connection's account name changes
+- **THEN** models publishes a rename event carrying provider, old and new account names, and performs no write to agent storage

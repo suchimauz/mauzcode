@@ -40,9 +40,13 @@ Every streaming or compaction request through the models inference entry point S
 - **WHEN** the model is re-enabled and the session makes another request
 - **THEN** the request is passed to the provider
 
-### Requirement: Isolation from legacy model policy
-Disabling a model of a connection SHALL NOT change the legacy disabled-model policy, existing model routes or agents.
+### Requirement: Sole model availability policy
+Per-connection disabled models and connection enablement SHALL be the only policy that decides whether a model may be selected or called. Model pickers MUST hide or mark disabled models and connections, and every agent turn, model change, compaction and one-shot call MUST refuse them before any provider request.
 
-#### Scenario: Legacy route unaffected
-- **WHEN** the owner disables a model in a models connection
-- **THEN** the legacy model list and legacy disabled-model policy remain unchanged
+#### Scenario: Disabled model in a picker
+- **WHEN** the owner opens the new-session model picker after disabling `gpt-6-sol` on a codex connection
+- **THEN** `gpt-6-sol` cannot be selected
+
+#### Scenario: One-shot call to a disabled model
+- **WHEN** a one-shot call targets a disabled model
+- **THEN** it fails with `MODEL_DISABLED_BY_USER` and no provider request is sent
