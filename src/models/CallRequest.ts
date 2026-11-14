@@ -6,6 +6,8 @@ export type CallRequest = {
     model: string;
     /** Non-empty user prompt sent as one user message. */
     user: string;
+    /** Provider-neutral tool definitions; tools are advertised but never executed by this one-shot call. */
+    tools?: types.models.ToolSpec[];
     /** Optional system instructions. */
     system?: string;
     /** Sampling temperature for providers declaring capabilities.sampling; otherwise reported in ignored. @minimum 0 @maximum 2 */

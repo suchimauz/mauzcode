@@ -7,7 +7,7 @@
  * @param opts.instructions Effective system instructions.
  * @param opts.messages Ordered input: OpenAI-shaped chat messages and, for checkpoint-capable providers, checkpoint entries.
  * @param opts.cacheableMessageCount Number of leading cacheable messages, excluding transient guidance. @minimum 0
- * @param opts.tools Wire tool schemas in the provider's API shape.
+ * @param opts.tools Provider-neutral tools converted to wire declarations by the provider.
  * @param opts.reasoningEffort Reasoning effort such as low, medium, high or off.
  * @param opts.onEvent Receives incremental text, reasoning and tool-argument deltas.
  * @param opts.sessionId Stable session or agent id for request correlation; prompt cache identity when promptCacheKey is absent.
@@ -34,8 +34,8 @@ export default async function (
         messages: (Record<string, unknown> | types.models.CheckpointEntry)[];
         /** Number of leading cacheable messages, excluding transient guidance. @minimum 0 */
         cacheableMessageCount?: number;
-        /** Wire tool schemas in the provider's API shape. */
-        tools?: Record<string, unknown>[];
+        /** Provider-neutral tools converted to wire declarations by the provider. */
+        tools?: types.models.ToolSpec[];
         /** Reasoning effort such as low, medium, high or off. */
         reasoningEffort?: string;
         /** Receives incremental text, reasoning and tool-argument deltas. */

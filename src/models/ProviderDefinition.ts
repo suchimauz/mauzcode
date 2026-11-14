@@ -6,6 +6,13 @@ export type ProviderDefinition = {
     description?: string;
     /** Lucide icon name or data URL. */
     icon?: string;
+    /** Optional provider identity and public pricing metadata; omission means no preamble or vendor. */
+    inference?: {
+        /** Identity instructions callers prepend to the system prompt. */
+        systemPreamble?: string;
+        /** Public price catalogue vendor identifier. */
+        priceVendor?: string;
+    };
     fields: types.models.FieldSpec[];
     transports: types.models.TransportSpec["kind"][];
     /** Test this connection only; use conn.fetch and never log conn.secret results. */

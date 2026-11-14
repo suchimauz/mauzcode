@@ -1,7 +1,7 @@
 /**
  * Make one non-agent LLM request to an enabled model of a stored connection
  *
- * One-shot inference of the models stack, built over models.inference.stream so providers implement only stream. Sends `user` as one user message with `system` as instructions and no tools. Validates input before any network request (INVALID_INPUT for an empty prompt, out-of-range timeoutMs, maxTokens or temperature) and applies the same enabled/UNSUPPORTED checks as stream. temperature and maxTokens reach only providers declaring capabilities.sampling; dropped names are returned in `ignored`. responseFormat goes natively to providers declaring capabilities.structuredOutput, otherwise a JSON-only instruction is appended; the answer is always normalized to compact JSON (INVALID_OUTPUT on violation). Retries on the same connection per models.inference.retryDecision within the timeoutMs deadline; never switches connection, account or model. Use for runtime synthesis (summaries, classification, JSON extraction) through models connections; legacy callers still use llm.call.
+ * One-shot inference of the models stack, built over models.inference.stream so providers implement only stream. Sends `user` as one user message with `system` as instructions and optional provider-neutral tools (advertised, not executed). Validates input before any network request (INVALID_INPUT for an empty prompt, out-of-range timeoutMs, maxTokens or temperature) and applies the same enabled/UNSUPPORTED checks as stream. temperature and maxTokens reach only providers declaring capabilities.sampling; dropped names are returned in `ignored`. responseFormat goes natively to providers declaring capabilities.structuredOutput, otherwise a JSON-only instruction is appended; the answer is always normalized to compact JSON (INVALID_OUTPUT on violation). Retries on the same connection per models.inference.retryDecision within the timeoutMs deadline; never switches connection, account or model. Use for runtime synthesis (summaries, classification, JSON extraction) through models connections; legacy callers still use llm.call.
  * @param opts.connectionId Model connection UUID.
  * @param opts.model Provider-native model id on the connection.
  * @param opts.user Non-empty user prompt.
@@ -25,6 +25,8 @@ export default async function (
         model: string;
         /** Non-empty user prompt. */
         user: string;
+        /** Provider-neutral tool definitions advertised to the model, never executed here. */
+        tools?: types.models.ToolSpec[];
         /** Optional system instructions. */
         system?: string;
         /** Sampling temperature for providers declaring capabilities.sampling. @minimum 0 @maximum 2 */
@@ -85,6 +87,7 @@ export default async function (
             const result = await ctx.fns.models.inference.stream({
                 connectionId: opts.connectionId, model: opts.model, instructions,
                 messages: [{ role: "user", content: user }], sessionId, signal,
+                ...(opts.tools !== undefined ? { tools: opts.tools } : {}),
                 ...(opts.reasoningEffort !== undefined ? { reasoningEffort: opts.reasoningEffort } : {}),
                 ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
                 ...(opts.maxTokens !== undefined ? { maxTokens: opts.maxTokens } : {}),

@@ -1,7 +1,7 @@
 /**
  * Make one non-agent LLM request to an enabled model of a stored connection
  *
- * Public one-shot entry point of the models stack; delegates to models.inference.call. Sends a single user prompt (with optional system instructions, no tools) through the provider's stream operation, applying enabled checks, capability-gated temperature/maxTokens (dropped names reported in `ignored`), structured output (native or instruction fallback, normalized to compact JSON, INVALID_OUTPUT on violation) and bounded same-connection retries within timeoutMs. Use instead of llm.call when the caller addresses a models connection by connectionId and model.
+ * Public one-shot entry point of the models stack; delegates to models.inference.call. Sends a single user prompt (with optional system instructions and neutral tools, never executed here) through the provider's stream operation, applying enabled checks, capability-gated temperature/maxTokens (dropped names reported in `ignored`), structured output (native or instruction fallback, normalized to compact JSON, INVALID_OUTPUT on violation) and bounded same-connection retries within timeoutMs. Use instead of llm.call when the caller addresses a models connection by connectionId and model.
  * @param opts.connectionId Model connection UUID.
  * @param opts.model Provider-native model id on the connection.
  * @param opts.user Non-empty user prompt.

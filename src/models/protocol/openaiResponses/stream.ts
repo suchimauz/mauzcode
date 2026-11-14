@@ -48,7 +48,7 @@ export default async function (
     const body: Record<string, unknown> = {
         model: req.model, input, stream: true, store: false,
         ...(req.instructions ? { instructions: req.instructions } : {}),
-        ...(req.tools?.length ? { tools: req.tools } : {}),
+        ...(req.tools?.length ? { tools: ctx.fns.models.protocol.openaiResponses.toTools({ tools: req.tools }) } : {}),
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
         ...(req.maxTokens !== undefined ? { max_output_tokens: req.maxTokens } : {}),
         ...(format ? { text: { format: format.type === "json_schema" ? { type: "json_schema", name: format.name, schema: format.schema, strict: format.strict ?? true } : { type: "json_object" } } } : {}),

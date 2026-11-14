@@ -28,7 +28,7 @@ export default async function (
                     ...(req.responseFormat ? { format: req.responseFormat.type === "json_schema" ? { type: "json_schema", name: req.responseFormat.name, schema: req.responseFormat.schema, strict: req.responseFormat.strict ?? true } : { type: "json_object" } } : {}),
                 }, prompt_cache_key: req.promptCacheKey || req.sessionId,
                 reasoning: { effort: applied === "off" ? "none" : applied, summary: "auto" },
-                ...(req.tools?.length ? { tools: req.tools, parallel_tool_calls: true } : {}),
+                ...(req.tools?.length ? { tools: ctx.fns.models.protocol.openaiResponses.toTools({ tools: req.tools }), parallel_tool_calls: true } : {}),
             };
             // Sticky routing: replay the run's first x-codex-turn-state; a new run (or no runId) starts without one.
             const turnState = req.runId && req.state?.runId === req.runId ? req.state.data.turnState : undefined;

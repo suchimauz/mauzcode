@@ -7,12 +7,12 @@
 
 ## 2. Provider descriptors and route resolution
 
-- [ ] 2.1 Add the optional `inference` block (`systemPreamble`, `priceVendor`) to `ProviderDefinition` and declare it in the claude and codex providers; run genTypes and verify the `llm-provider-sdk` descriptor scenarios, including the defaults for a provider without the block
-- [ ] 2.1a Add `types.models.ToolSpec` and make `StreamRequest.tools`/`models.stream`/`models.call` take it; add `models.protocol.{anthropic,openaiResponses,openaiChat,gemini}.toTools` (moving the recursive `strict` check from `tools.schemas`) and call them in the claude, codex and custom (by configured protocol) providers; update codex/claude/protocol tests; verify the `Provider-neutral tool definitions` scenarios
-- [ ] 2.2 Add `models.inference.parseRoute`/`formatRoute` with tests for the `model-routing` format scenarios (separators, malformed → `INVALID_ROUTE`, legacy → `LEGACY_ROUTE`)
-- [ ] 2.3 Add `models.inference.resolveRoute`, returning connection, model, descriptors, `nativeCompaction` and cached limits, and the facade entry `models.resolveRoute`; update `internalCompatibility.test.ts` and docs/models-providers.md; verify the resolution scenarios (not found, disabled connection/model) send no request
-- [ ] 2.4 Add a model-owned migration for a unique `(provider, account_name)` index and checks in connections create/update (duplicate pair and `/` or `:` in the account name → validation error); on rename, update only `models.localizationModel` and emit `models.connectionRenamed`; verify with connection tests that no `agents` write happens
-- [ ] 2.5 Add an architecture test that fails on `fns.models.(inference|connections|catalog|transport|protocol|provider).` outside `src/models`; verify it passes now and fails on an injected call
+- [x] 2.1 Add the optional `inference` block (`systemPreamble`, `priceVendor`) to `ProviderDefinition` and declare it in the claude and codex providers; run genTypes and verify the `llm-provider-sdk` descriptor scenarios, including the defaults for a provider without the block
+- [x] 2.1a Add `types.models.ToolSpec` and make `StreamRequest.tools`/`models.stream`/`models.call` take it; add `models.protocol.{anthropic,openaiResponses,openaiChat,gemini}.toTools` (moving the recursive `strict` check from `tools.schemas`) and call them in the claude, codex and custom (by configured protocol) providers; update codex/claude/protocol tests; verify the `Provider-neutral tool definitions` scenarios
+- [x] 2.2 Add `models.inference.parseRoute`/`formatRoute` with tests for the `model-routing` format scenarios (separators, malformed → `INVALID_ROUTE`, legacy → `LEGACY_ROUTE`)
+- [x] 2.3 Add `models.inference.resolveRoute`, returning connection, model, descriptors, `nativeCompaction` and cached limits, and the facade entry `models.resolveRoute`; update `internalCompatibility.test.ts` and docs/models-providers.md; verify the resolution scenarios (not found, disabled connection/model) send no request
+- [x] 2.4 Add a model-owned migration for a unique `(provider, account_name)` index and checks in connections create/update (duplicate pair and `/` or `:` in the account name → validation error); on rename, update only `models.localizationModel` and emit `models.connectionRenamed`; verify with connection tests that no `agents` write happens
+- [x] 2.5 Add an architecture test that fails on `fns.models.(inference|connections|catalog|transport|protocol|provider).` outside `src/models`; verify it passes now and fails on an injected call
 
 ## 3. Settings, pricing, localization and usage
 

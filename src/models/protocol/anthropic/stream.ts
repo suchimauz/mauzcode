@@ -32,7 +32,7 @@ export default async function (
         model: req.model, messages, stream: true, max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
         ...(system ? { system } : {}),
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
-        ...(req.tools?.length ? { tools: req.tools } : {}),
+        ...(req.tools?.length ? { tools: ctx.fns.models.protocol.anthropic.toTools({ tools: req.tools }) } : {}),
     };
     const res = await ctx.fns.models.protocol.common.streamFetch({ fetch: opts.fetch, url: opts.endpoint.base + "/messages", headers: opts.endpoint.headers, body, label, signal });
     let text = "", thinking = "", stop: string | null = null, terminal = false;

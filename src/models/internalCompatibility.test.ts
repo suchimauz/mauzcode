@@ -12,8 +12,8 @@ test("root model procedures are exactly the minimal facade plus providers and ap
     const roots = [...new Bun.Glob("*.ts").scanSync(import.meta.dir)]
         .filter(file => !file.endsWith(".test.ts") && !file.startsWith("$") && /^[a-z]/.test(file))
         .map(file => file.slice(0, -3)).sort();
-    expect(roots).toEqual(Object.keys(baseline.procedures).sort());
-    expect(roots).toEqual(["action", "api", "call", "compact", "create", "get", "list", "listModels", "providers", "refreshAll", "remove", "setModelEnabled", "stream", "test", "update", "usage"]);
+    expect(roots).toEqual([...Object.keys(baseline.procedures), "resolveRoute"].sort());
+    expect(roots).toEqual(["action", "api", "call", "compact", "create", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setModelEnabled", "stream", "test", "update", "usage"]);
 });
 
 test("original public model signatures, async declarations, types and HTTP route contracts survive", async () => {
@@ -24,11 +24,19 @@ test("original public model signatures, async declarations, types and HTTP route
         expect(fn, name).toBeDefined();
         expect(!!fn.asteriskToken, name).toBe(contract.generator);
         expect(!!fn.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword), name).toBe(contract.async);
-        expect(fn.parameters.map(p => normalize(p.getText(sf))), name).toEqual(contract.parameters.map(normalize));
+        expect(fn.parameters.map(p => normalize(p.getText(sf))), name).toEqual(contract.parameters.map(p => normalize(name === "stream" ? p.replace("tools?: Record<string, unknown>[]", "tools?: types.models.ToolSpec[]") : p)));
         expect(fn.type ? normalize(fn.type.getText(sf)) : null, name).toBe(contract.returnType ? normalize(contract.returnType) : null);
     }
     for (const [name, source] of Object.entries({...baseline.types, ...baseline.routes}) as [string, string][]) {
-        expect(normalize(await readFile(join(import.meta.dir, name), "utf8")), name).toBe(normalize(source));
+        // Intentional SDK additions are checked structurally, without rewriting the historical snapshot.
+        const actual = normalize(await readFile(join(import.meta.dir, name), "utf8"));
+        let expected = normalize(source);
+        if (name === "StreamRequest.ts") expected = expected.replace("tools?:Record<string,unknown>[]", "tools?:types.models.ToolSpec[]");
+        const additive: Record<string, string> = {
+            "ProviderDefinition.ts": "inference?:{systemPreamble?:string;priceVendor?:string;};",
+            "CallRequest.ts": "tools?:types.models.ToolSpec[];",
+        };
+        expect(additive[name] ? actual.replace(additive[name], "") : actual, name).toBe(expected);
     }
 });
 
@@ -72,7 +80,11 @@ test("fresh discovery preserves callable providers, nested dynamic facades, miss
             const current = ctx.state.models.providers![original.id]!.definition;
             // Compares every metadata member, nested schema/default, action label
             // and callback presence without comparing intentional body changes.
-            expect(registrationShape(current), file).toEqual(registrationShape(original));
+            const expectedInference = original.id === "claude"
+                ? { systemPreamble: "You are Claude Code, Anthropic's official CLI for Claude.", priceVendor: "anthropic" }
+                : original.id === "codex" ? { priceVendor: "openai" } : undefined;
+            expect(current.inference).toEqual(expectedInference);
+            expect(registrationShape({ ...current, ...(expectedInference ? { inference: undefined } : {}) }), file).toEqual(registrationShape({ ...original, ...(expectedInference ? { inference: undefined } : {}) }));
         }
         // Inspect real public facades and declaration bodies as they migrate. Every
         // nested implementation dispatch must exist in the freshly booted registry.

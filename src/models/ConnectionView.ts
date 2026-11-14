@@ -6,7 +6,7 @@ export type ConnectionView = {
     provider: string;
     /** False when the provider declaration is no longer registered. */
     providerRegistered: boolean;
-    /** Non-unique display name, 1–100 characters. */
+    /** Provider-unique account name, 1–100 characters without slash or colon. */
     accountName: string;
     /** Non-secret configuration; manual model ids are stored under `models`. */
     config: types.models.ResolvedConnection["config"];

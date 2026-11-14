@@ -1,7 +1,7 @@
 /**
  * Update a model connection, keeping omitted secrets
  *
- * Use to rename, reconfigure, change transport, or enable/disable a connection. Omitted fields keep their stored values; `config`, when given, replaces the whole non-secret configuration and is revalidated. Secret fields: a string replaces the stored value, `null` deletes it, an omitted key keeps it. The provider cannot change. Bumps `updatedAt`, which invalidates cached health. Returns the secret-free view.
+ * Use to rename, reconfigure, change transport, or enable/disable a connection. Omitted fields keep their stored values; `config`, when given, replaces the whole non-secret configuration and is revalidated. Secret fields: a string replaces the stored value, `null` deletes it, an omitted key keeps it. The provider cannot change. Bumps `updatedAt`, which invalidates cached health. Renames atomically update only the model localization setting and publish models.connectionRenamed after commit; duplicate identities or account separators fail validation without storing changes. Returns the secret-free view.
  * @param opts.id Connection UUID.
  * @param opts.accountName New display account name (1–100 characters).
  * @param opts.config Replacement non-secret configuration.
@@ -33,6 +33,7 @@ export default async function (
     let accountName = current.accountName;
     if (opts.accountName !== undefined) {
         accountName = typeof opts.accountName === "string" ? opts.accountName.trim() : "";
+        if (/[/:]/.test(accountName)) invalid("Account name cannot contain / or :", "accountName");
         if (!accountName || accountName.length > 100) invalid("Account name is required (1–100 characters)", "accountName");
     }
     if (opts.enabled !== undefined && typeof opts.enabled !== "boolean") invalid("enabled must be true or false", "enabled");
@@ -51,9 +52,14 @@ export default async function (
             transport = t.kind === "socks" ? { kind: "socks", proxyId: t.proxyId } : t.kind === "ssh-tunnel" ? { kind: "ssh-tunnel", instance: t.instance } : { kind: "direct" };
         }
     }
-    await ctx.fns.procs.db.transaction({ fn: async () => {
-        const rows = await ctx.fns.procs.db.select({ sql: "SELECT secrets FROM llm_connections WHERE id=? FOR UPDATE", params: [id] });
+    let renamed: { provider: string; from: string; to: string } | undefined;
+    try { await ctx.fns.procs.db.transaction({ fn: async () => {
+        const rows = await ctx.fns.procs.db.select({ sql: "SELECT secrets, account_name FROM llm_connections WHERE id=? FOR UPDATE", params: [id] });
         if (!rows[0]) throw Object.assign(new Error("Connection not found"), { code: "NOT_FOUND", status: 404 });
+        const previousName = String(rows[0].account_name);
+        accountName = opts.accountName === undefined ? previousName : accountName;
+        const duplicate = await ctx.fns.procs.db.select({ sql: "SELECT id FROM llm_connections WHERE provider=? AND account_name=? AND id<>?", params: [current.provider, accountName, id] });
+        if (duplicate.length) invalid("Account name is already used by this provider", "accountName");
         const refs: Record<string, string> = typeof rows[0].secrets === "string" ? JSON.parse(rows[0].secrets) : { ...(rows[0].secrets ?? {}) };
         for (const [key, value] of Object.entries(secrets)) {
             if (value === null) {
@@ -68,6 +74,18 @@ export default async function (
             sql: "UPDATE llm_connections SET account_name=?, config=?::jsonb, secrets=?::jsonb, transport=?::jsonb, enabled=?, updated_at=GREATEST(updated_at+1, ?) WHERE id=?",
             params: [accountName, JSON.stringify(config), JSON.stringify(refs), JSON.stringify(transport), opts.enabled ?? current.enabled, Date.now(), id],
         });
-    } });
+        if (previousName !== accountName) {
+            const prefix = `${current.provider}/${previousName}:`;
+            const localization = await ctx.fns.settings.get({ module: "models", scopeType: "global", key: "localizationModel" });
+            if (typeof localization === "string" && localization.startsWith(prefix)) {
+                await ctx.fns.settings.set({ module: "models", scopeType: "global", key: "localizationModel", value: `${current.provider}/${accountName}:${localization.slice(prefix.length)}` });
+            }
+            renamed = { provider: current.provider, from: previousName, to: accountName };
+        }
+    } }); } catch (error) {
+        if (error && typeof error === "object" && (("code" in error && String(error.code) === "23505") || ("errno" in error && String(error.errno) === "23505"))) invalid("Account name is already used by this provider", "accountName");
+        throw error;
+    }
+    if (renamed) ctx.fns.procs.events.emit({ event: { type: "models.connectionRenamed", ...renamed } });
     return await ctx.fns.models.connections.get({ id });
 }

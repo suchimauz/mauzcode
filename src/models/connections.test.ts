@@ -60,10 +60,10 @@ describe("models.validateConfig", () => {
 });
 
 describe("models connection CRUD", () => {
-    test("create/list/get never expose secrets; names are not unique", async () => {
+    test("create/list/get never expose secrets; distinct account identities remain isolated", async () => {
         const { ctx, create, secretRows } = await setup();
         const a = await create({ secrets: { apiKey: KEY, org: ORG } });
-        const b = await create();
+        const b = await create({ accountName: "other" });
         expect(a.id).not.toBe(b.id);
         expect(a).toMatchObject({ provider: "acme", accountName: "work", enabled: true, transport: { kind: "direct" }, secrets: { apiKey: true, org: true }, providerRegistered: true });
         expect(b.secrets).toEqual({ apiKey: true, org: false });
@@ -106,7 +106,7 @@ describe("models connection CRUD", () => {
     test("remove deletes the row and all its secrets only", async () => {
         const { ctx, create, secretRows } = await setup();
         const a = await create({ secrets: { apiKey: KEY, org: ORG } });
-        const b = await create();
+        const b = await create({ accountName: "other" });
         expect(await ctx.fns.models.remove({ id: a.id })).toEqual({ removed: a.id });
         expect((await ctx.fns.models.list({})).map((c: any) => c.id)).toEqual([b.id]);
         expect(await secretRows(a.id)).toEqual([]);
@@ -122,12 +122,12 @@ describe("models test/listModels/usage/action", () => {
         const off = await create({ enabled: false });
         expect(await ctx.fns.models.test({ id: off.id })).toMatchObject({ status: "disabled", reason: "disabled" });
         expect(calls.test).toBe(0);
-        const bad = await create({ config: { baseUrl: "https://fail.example" } });
+        const bad = await create({ accountName: "bad", config: { baseUrl: "https://fail.example" } });
         const r = await ctx.fns.models.test({ id: bad.id });
         expect(r).toMatchObject({ status: "unavailable", reason: "test-failed" });
         expect(r.message).toContain("401");
         noSecrets(r);
-        const good = await create();
+        const good = await create({ accountName: "good" });
         expect(await ctx.fns.models.test({ id: good.id })).toMatchObject({ status: "available", reason: "models-ok" });
     });
 

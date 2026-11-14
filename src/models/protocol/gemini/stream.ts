@@ -35,7 +35,7 @@ export default async function (
     const body: Record<string, unknown> = {
         contents,
         ...(req.instructions ? { systemInstruction: { parts: [{ text: req.instructions }] } } : {}),
-        ...(req.tools?.length ? { tools: req.tools } : {}),
+        ...(req.tools?.length ? { tools: ctx.fns.models.protocol.gemini.toTools({ tools: req.tools }) } : {}),
         ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
     };
     const model = encodeURIComponent(req.model.replace(/^models\//, ""));

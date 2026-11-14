@@ -28,7 +28,7 @@ export default async function (
     const format = req.responseFormat;
     const body: Record<string, unknown> = {
         model: req.model, messages, stream: true, stream_options: { include_usage: true },
-        ...(req.tools?.length ? { tools: req.tools } : {}),
+        ...(req.tools?.length ? { tools: ctx.fns.models.protocol.openaiChat.toTools({ tools: req.tools }) } : {}),
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
         ...(req.maxTokens !== undefined ? { max_tokens: req.maxTokens } : {}),
         ...(format?.type === "json_object" ? { response_format: { type: "json_object" } } : {}),

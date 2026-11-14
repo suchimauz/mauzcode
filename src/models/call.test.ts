@@ -24,7 +24,7 @@ async function setup(opts: { capabilities?: types.models.ProviderDefinition["cap
     ctx.state.models ??= {};
     ctx.state.models.providers = { acme: { owner: "core", module: "models", rel: "models/$modelProvider_acme.ts", definition } };
     ctx.state.models.health = {};
-    const conn = await ctx.fns.models.create({ provider: "acme", accountName: "work", config: {}, secrets: {} });
+    const conn = await ctx.fns.models.create({ provider: "acme", accountName: "work-" + crypto.randomUUID(), config: {}, secrets: {} });
     return { ctx, seen, conn };
 }
 

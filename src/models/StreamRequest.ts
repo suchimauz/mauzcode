@@ -8,8 +8,8 @@ export type StreamRequest = {
     messages: (Record<string, unknown> | types.models.CheckpointEntry)[];
     /** Number of leading messages eligible for prompt caching, excluding transient guidance. @minimum 0 */
     cacheableMessageCount?: number;
-    /** Wire tool schemas in the provider's API shape (Responses `function` tools for Codex). */
-    tools?: Record<string, unknown>[];
+    /** Provider-neutral tool definitions; the provider converts them to its configured wire protocol. */
+    tools?: types.models.ToolSpec[];
     /** Reasoning preference such as auto, off, low, medium or high. Opted-in providers receive the normalized value in `reasoning`; this field keeps the caller's original value. */
     reasoningEffort?: string;
     /** Set by models.stream for providers declaring capabilities.reasoning: requested/applied reasoning resolved before inference. */

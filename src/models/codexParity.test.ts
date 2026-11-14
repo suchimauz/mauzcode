@@ -54,7 +54,7 @@ describe("codex SDK request parity", () => {
     test("golden prepared tool conversation: URL, method, headers and body", async () => {
         const { calls, replies, legacy, stream } = await setup();
         replies.push(sse([done()]));
-        const tools = [{ type: "function", name: "read", description: "Read", parameters: { type: "object", properties: { path: { type: "string" } } } }];
+        const tools = [{ name: "read", description: "Read", parameters: { type: "object", properties: { path: { type: "string" } } } }];
         await stream({
             messages: [
                 { role: "system", content: "ignored by stream instructions" },
@@ -85,7 +85,7 @@ describe("codex SDK request parity", () => {
                 { type: "message", role: "user", content: [{ type: "input_image", detail: "auto", image_url: "data:image/jpeg;base64,BBB" }] },
             ],
             text: { verbosity: "medium" }, prompt_cache_key: "s1",
-            reasoning: { effort: "high", summary: "auto" }, tools, parallel_tool_calls: true,
+            reasoning: { effort: "high", summary: "auto" }, tools: tools.map(t => ({ type: "function", ...t, strict: false })), parallel_tool_calls: true,
         });
         expect(legacy).toEqual([]);
     });

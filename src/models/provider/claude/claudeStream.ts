@@ -34,7 +34,7 @@ export default async function (
                 if (reasoning.applied !== "off") { body.thinking = { type: "adaptive" }; body.output_config = { effort: reasoning.applied === "xhigh" ? "max" : reasoning.applied }; }
                 else if (!/(opus|sonnet)-5/.test(req.model)) body.thinking = { type: "disabled" };
             }
-            if (req.tools?.length) body.tools = req.tools;
+            if (req.tools?.length) body.tools = ctx.fns.models.protocol.anthropic.toTools({ tools: req.tools });
             if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens;
             // Anthropic rejects a custom temperature while extended thinking is enabled.
             if (req.temperature !== undefined && (body.thinking as { type?: string } | undefined)?.type !== "adaptive") body.temperature = req.temperature;

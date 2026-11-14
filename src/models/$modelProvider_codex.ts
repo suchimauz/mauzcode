@@ -4,6 +4,7 @@ export default {
     label: "Codex",
     description: "ChatGPT subscription through the Codex backend. Log in with a device code; login and all requests use the selected transport.",
     icon: "Bot",
+    inference: { priceVendor: "openai" },
     fields: [
         { key: "clientVersion", label: "Client version", type: "text", help: "Optional Codex client version sent to the backend; defaults to the documented SDK version (models.codexVersion)." },
     ],

@@ -1,6 +1,7 @@
 /** claude provider metadata and dynamically dispatched operation adapters. */
 export default {
     id: "claude", label: "Claude", description: "Claude subscription with owner-managed OAuth login", icon: "sparkles",
+    inference: { systemPreamble: "You are Claude Code, Anthropic's official CLI for Claude.", priceVendor: "anthropic" },
     fields: [{ key: "clientVersion", label: "Client version", type: "text", required: false }],
     transports: ["direct", "socks", "ssh-tunnel"],
     validate(ctx, config) { return ctx.fns.models.provider.claude.claudeValidate({ config }); },

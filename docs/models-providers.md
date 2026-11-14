@@ -2,14 +2,14 @@
 
 This SDK registers LLM connection providers beside the existing `llm` / `llms`
 routing system. Registration does **not** change agent models, accounts or inference.
-The current foundation provides the types, declaration loader and metadata catalogue.
-Connection storage, transport execution, provider operations and the Models settings
-UI are separate implementation stages; do not assume those APIs are available yet.
+The SDK provides connection storage, transport execution, provider operations and a
+Models settings surface. During the runtime migration, existing agents still use
+legacy routing until their owning modules switch to the models facade.
 
 ## Internal implementation navigation
 
 The public surface is a **minimal facade** of root procedures
-`ctx.fns.models.<name>`: `stream`, `compact`, `listModels`, `setModelEnabled`,
+`ctx.fns.models.<name>`: `stream`, `call`, `compact`, `resolveRoute`, `listModels`, `setModelEnabled`,
 `refreshAll`, `list`, `get`, `create`, `update`, `remove`, `test`, `usage` and
 `action`, plus `models.providers` (catalogue) and `models.api` (HTTP). Each facade
 entry delegates once to its implementation with unchanged options, callbacks,
@@ -33,7 +33,50 @@ routes, migrations, the provider loader, the facade, `api`, `providers` and
 `$start` remain at root. Shared runtime state remains `ctx.state.models`.
 Code inside `src/models` calls implementation namespaces directly, never a root
 facade entry. `internalCompatibility.test.ts` pins the facade signatures and
-asserts that no other root procedure exists.
+asserts that no other root procedure exists. `architecture.test.ts` checks executable
+calls across source, plugins, frontend, scripts and tests; outside `src/models`,
+only the public facade may be called. Its injected-negative cases prove that private
+calls fail while quoted fixture source does not count as an executable call.
+
+## Routes and provider inference descriptors
+
+`models.resolveRoute({ route })` is the public network-free route lookup. Routes
+are `<provider>/<accountName>:<modelId>`; the first slash and following colon delimit
+identity. Account spaces and all slashes/colons in the native model id survive
+parse/format unchanged. Internal parsing/formatting stays in `models.inference`.
+Empty/malformed components fail `INVALID_ROUTE`; SSH-prefixed routes, bare
+`provider:model` (including model separators), and unregistered providers fail
+`LEGACY_ROUTE`, with instructions to choose a model. All route failures are
+nonretryable SDK failures. Missing connections fail `CONNECTION_NOT_FOUND`;
+current disabled connection/model state fails `CONNECTION_DISABLED` /
+`MODEL_DISABLED_BY_USER`, before any provider operation.
+
+The result contains `{ route, connectionId, provider, accountName, model, modelId,
+nativeCompaction, systemPreamble?, priceVendor?, contextWindow?, maxOutputTokens? }`.
+`model` is ready for `stream`/`call`; `modelId` preserves the parsed route component.
+Limits come only from stored catalogue metadata. The internal `cacheOnly` read
+falls back to manual ids or an empty catalogue on a cold cache, never discovers
+models, reads secrets or sends traffic. Unknown model ids remain resolvable without
+limits. Ordinary `listModels` still discovers on a cold cache.
+
+`ProviderDefinition.inference` is optional: `systemPreamble` identifies a provider's
+system instructions and `priceVendor` identifies its public price catalogue.
+Claude declares the Claude Code identity line and `anthropic`; Codex declares
+`openai`; Custom declares neither. An absent block yields absent properties, not
+provider-specific fallback logic in callers. Native compaction is derived from
+the provider's `compact` operation.
+
+Connection identity is unique by `(provider, account_name)` (enforced by a
+model-owned index). Account names cannot contain `/` or `:`. Duplicate creates or
+renames fail `VALIDATION`, and transactions roll back configuration and secrets.
+The same account name on another provider is valid. On rename, models updates only
+its own connection and `models.localizationModel` (preserving native separators),
+then emits `{ type: "models.connectionRenamed", provider, from, to }` through
+`procs.events` **after commit**. `from` comes from the row locked by the transaction.
+Failed/no-op renames emit nothing. Models never writes `agents` or `kv`; the agent
+module's subscriber is responsible for updating its routes in a later migration
+stage. An instance-file-fixed localization setting cannot be rewritten: rename
+fails atomically rather than silently leaving that route stale.
 
 ## Wire protocols
 
@@ -197,16 +240,34 @@ provider, they re-read the stored connection on **every** request
 - provider without the operation → code `UNSUPPORTED`.
 
 None of these send a network request. `StreamRequest.messages` is the
-OpenAI-shaped transcript, `tools` are wire schemas in the provider's API shape,
+OpenAI-shaped transcript, `tools` are neutral `ToolSpec[]` (`name`, `description`,
+JSON Schema `parameters`),
 and `onEvent` receives `text_delta`, `thinking_delta` and `tool_args_delta`.
 `StreamResult` matches the legacy `llm.stream` result (`text`, `thinking`,
 `finishReason`, `usage`, `toolCalls`). Agents still use legacy `llm.*` routing.
 
+### Provider-neutral tools
+
+Claude converts tools with `models.protocol.anthropic.toTools` (`input_schema`);
+Codex uses `openaiResponses.toTools` (flat `type:function`). Custom delegates to
+its configured protocol, whose stream converts with its own `toTools`:
+OpenAI Chat uses nested `{ type: "function", function: ... }`, and Gemini wraps
+`functionDeclarations`. Both OpenAI converters share a recursive strict-schema
+check: optional object properties anywhere, including array items, disable
+`strict`. Conversion does not mutate the caller's schema.
+
+`tools.schemas({ api })` remains a legacy compatibility API with its existing
+private strict check while legacy callers are loaded. It does not call private
+models namespaces; models owns a self-contained check and has no dependency on
+the legacy tools module. The historical contract snapshot is retained, with
+explicit tests for these intentional additive descriptor/tool/facade changes.
+
 ### One-shot calls
 
-`ctx.fns.models.call({ connectionId, model, user, system?, temperature?, maxTokens?, reasoningEffort?, responseFormat?, providerOptions?, sessionId?, timeoutMs?, signal? })`
+`ctx.fns.models.call({ connectionId, model, user, system?, tools?, temperature?, maxTokens?, reasoningEffort?, responseFormat?, providerOptions?, sessionId?, timeoutMs?, signal? })`
 makes one non-agent request over the provider's `stream` (providers implement no
-separate call). It sends `user` as one user message, no tools, and returns
+separate call). It sends `user` as one user message and optional neutral tools
+(advertised only; this call does not execute them), and returns
 `{ text, finishReason, usage, reasoning?, attempts, ignored }`.
 
 - Input is validated before any network request (`INVALID_INPUT`); enabled and
