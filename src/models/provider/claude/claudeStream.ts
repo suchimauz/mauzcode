@@ -22,14 +22,14 @@ export default async function (
             // Claude does not declare checkpoints, so models.stream never passes checkpoint entries here.
             const convo = [...bootstrap, ...(req.messages as Record<string, unknown>[]).filter(m => m.role !== "system")];
             const cacheableMessageCount = (req.cacheableMessageCount ?? req.messages.length) + bootstrap.length;
-            const messages = ctx.fns.llm.toAnthropicMessages({ messages: convo, cacheableMessageCount });
+            const messages = ctx.fns.models.protocol.anthropic.toAnthropicMessages({ messages: convo, cacheableMessageCount });
             const mark = (message: typeof messages[number] | undefined) => {
                 const block = message?.content?.[message.content.length - 1];
                 if (block && typeof block === "object") block.cache_control = { type: "ephemeral" };
             };
             if (messages.length > 2 && messages[1]?.role === "assistant") mark(messages[1]);
             const body: Record<string, unknown> = { model: req.model, system: IDENTITY, messages, stream: true, max_tokens: 16384 };
-            const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: `anthropic-oauth:${req.model}`, effort: req.reasoningEffort as types.llm.ReasoningEffort ?? "auto" });
+            const reasoning = await ctx.fns.models.inference.resolveReasoningEffort({ model: req.model, effort: req.reasoningEffort as types.models.ReasoningLevel | "auto" ?? "auto" });
             if (reasoning.mode === "anthropic-adaptive" && reasoning.applied !== "auto") {
                 if (reasoning.applied !== "off") { body.thinking = { type: "adaptive" }; body.output_config = { effort: reasoning.applied === "xhigh" ? "max" : reasoning.applied }; }
                 else if (!/(opus|sonnet)-5/.test(req.model)) body.thinking = { type: "disabled" };
@@ -54,7 +54,7 @@ export default async function (
             };
             try {
                 if (!res.body) throw new Error("Claude response has no stream body");
-                for await (const frame of ctx.fns.llm.parseSSE({ body: res.body })) {
+                for await (const frame of ctx.fns.models.transport.parseSSE({ body: res.body })) {
                     if (!frame.data || frame.data === "[DONE]") continue;
                     const ev = JSON.parse(frame.data);
                     const type = ev.type ?? frame.event;

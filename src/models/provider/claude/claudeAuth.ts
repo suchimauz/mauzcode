@@ -77,7 +77,7 @@ export default async function (
          if(cur.value.expiresAt>Date.now())return cur.value.accessToken;
          if(!cur.value.refreshToken)throw fail();
          if(!await cas(cur.version,{...cur.value,refreshUncertain:true}))throw fail();
-         const constants=ctx.fns.llm.anthropicOAuthConstants({});
+         const constants=ctx.fns.models.provider.claude.anthropicOAuthConstants({});
          try {
          const response=await ctx.fns.models.provider.claude.claudeRequest({conn,url:constants.tokenUrl,init:{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({grant_type:'refresh_token',refresh_token:cur.value.refreshToken,client_id:constants.clientId})}});
          if(!response.ok){await response.body?.cancel();if(response.status===400||response.status===401||response.status===403){await cas(cur.version+1,{...cur.value,refreshUncertain:false,needsLogin:true});await touch();throw fail();}throw fail('OAUTH_OUTCOME_UNKNOWN');}

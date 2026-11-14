@@ -20,7 +20,7 @@ export default async function (
     const { conn, body, h, status } = opts;
     
         if (status === 401 || status === 403) await ctx.fns.models.provider.claude.claudeAuth({ conn, op: "markLogin" });
-        const classified = ctx.fns.llm.classifyError({ provider: "anthropic-oauth", kind: "subscription", status, body, headers: h });
+        const classified = ctx.fns.models.provider.claude.classifyError({ status, body, headers: h });
         // Provider bodies can echo credentials. Preserve machine classification and timing,
         // never export raw payloads or provider-controlled error text.
         const { raw: _raw, message: _message, ...safe } = classified;

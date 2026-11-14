@@ -11,7 +11,9 @@ async function setup(handler: (call: Call) => Response = end) {
     const ctx = await mkTestCtx({ env: {} });
     const calls: Call[] = []; let marked = false;
     ctx.state.registry.models.provider.claude.claudeAuth = async (_c: unknown, _s: unknown, o: { op: string }) => { if (o.op === "markLogin") marked = true; return { loggedIn: true, needsLogin: false, accessToken: "test-token", expiresAt: null }; };
-    ctx.state.registry.llm.claudeCodeCliVersion = async () => "2.0.0";
+    ctx.state.registry.models.provider.claude.claudeCodeCliVersion = async () => "2.0.0";
+    // No model operation may reach the retiring legacy registry.
+    ctx.state.registry.llm = new Proxy({}, { get() { throw new Error("Legacy runtime access is forbidden in models"); } }) as typeof ctx.state.registry.llm;
     const conn: types.models.ResolvedConnection = { id: crypto.randomUUID(), provider: "claude", accountName: "me", config: {}, secret: async () => null, fetch: async (url, init = {}) => { const c = { url, init }; calls.push(c); return handler(c); } };
     return { ctx, conn, calls, marked: () => marked };
 }
@@ -46,6 +48,26 @@ describe("Claude protocol", () => {
             await expect(ctx.fns.models.provider.claude.claudeRequest({ conn, url: url!, init: { method } })).rejects.toMatchObject({ code: "PROXY_CONFIG", requestSent: false });
         }
         expect(calls).toHaveLength(0);
+    });
+    test("Claude reasoning wire matrix runs without legacy registry access", async () => {
+        const { ctx, conn, calls } = await setup();
+        for (const [model, preference, thinking, effort] of [
+            ["claude-opus-5", "auto", undefined, undefined],
+            ["claude-sonnet-5", "auto", undefined, undefined],
+            ["claude-opus-5", "off", "adaptive", "low"],
+            ["claude-opus-5", "xhigh", "adaptive", "max"],
+            ["claude-sonnet-5", "xhigh", "adaptive", "high"],
+            ["claude-opus-4-6", "auto", "adaptive", "medium"],
+            ["claude-sonnet-4-6", "off", "disabled", undefined],
+            ["claude-sonnet-4-6", "minimal", "disabled", undefined],
+            ["claude-haiku-4-5", "high", undefined, undefined],
+        ] as const) {
+            await claude.stream(ctx, conn, { ...req, model, reasoningEffort: preference, temperature: 0.2 });
+            const body = JSON.parse(String(calls.at(-1)!.init.body));
+            expect(body.thinking?.type).toBe(thinking);
+            expect(body.output_config?.effort).toBe(effort);
+            expect(body.temperature).toBe(thinking === "adaptive" ? undefined : 0.2);
+        }
     });
     test("text, thinking, tool deltas and final cache usage", async () => {
         const { ctx, conn } = await setup(() => frames([
@@ -118,24 +140,5 @@ describe("Claude protocol", () => {
         await claude.stream(ctx, conn, req);
         expect(snapshots).toEqual([expect.objectContaining({ windows: [{ label: "Session", usedPercent: 42, resetAt: 2000000000000 }] })]);
     });
-    test("byte parity with legacy stream and compact", async () => {
-        const { ctx, conn, calls } = await setup();
-        const captured: RequestInit[] = [];
-        ctx.state.registry.llm.resolveEndpoint = async () => ({ api: "anthropic", provider: "anthropic-oauth", kind: "subscription", modelId: req.model, url: "https://api.anthropic.com/v1/messages", apiKey: "test-token", account: "me", noFallback: true });
-        ctx.state.registry.llm.getAnthropicOAuthToken = async () => "test-token";
-        ctx.state.registry.agent.buildLlmRequest = async () => ({ system: IDENTITY, messages: [{ role: "user", content: req.instructions }, { role: "assistant", content: "Understood. Ready to act." }, ...req.messages], cacheableMessageCount: 3 });
-        ctx.state.registry.agent.wireTools = () => [];
-        ctx.state.registry.llm.recordUsage = async () => undefined;
-        ctx.state.registry.llm.claudeFetch = async (_c: unknown, _s: unknown, o: { init: RequestInit }) => { captured.push(o.init); return end(); };
-        await claude.stream(ctx, conn, req);
-        await ctx.fns.llm.streamAnthropic({ agent: { model: `anthropic-oauth:${req.model}`, reasoningEffort: "auto" } as types.agent.Agent });
-        const normalizedHeaders = (h: RequestInit["headers"]) => { const v = new Headers(h); v.delete("x-client-request-id"); return Object.fromEntries(v.entries()); };
-        expect(calls[0]!.init.body).toBe(captured[0]!.body); expect(normalizedHeaders(calls[0]!.init.headers)).toEqual(normalizedHeaders(captured[0]!.headers));
-        const compactResponse = () => Response.json({ content: [{ type: "compaction", content: "summary", signature: "sig" }] });
-        conn.fetch = async (_url, init = {}) => { calls.push({ url: _url, init }); return compactResponse(); };
-        ctx.state.registry.llm.claudeFetch = async (_c: unknown, _s: unknown, o: { init: RequestInit }) => { captured.push(o.init); return compactResponse(); };
-        await claude.compact(ctx, conn, { ...req, focus: "paths", maxTokens: 1000 });
-        await ctx.fns.llm.compactAnthropic({ model: `anthropic-oauth:${req.model}`, instructions: req.instructions, messages: req.messages, focus: "paths", maxTokens: 1000 });
-        expect(calls[1]!.init.body).toBe(captured[1]!.body); expect(normalizedHeaders(calls[1]!.init.headers)).toEqual(normalizedHeaders(captured[1]!.headers));
-    });
+
 });

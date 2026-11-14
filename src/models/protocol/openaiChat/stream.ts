@@ -24,7 +24,7 @@ export default async function (
     const { request: req, signal } = opts;
     const label = "OpenAI Chat";
     const transcript = (req.messages as Record<string, unknown>[]).filter(m => m.role !== "system");
-    const messages = [...(req.instructions ? [{ role: "system", content: req.instructions }] : []), ...ctx.fns.llm.toOpenAIMessages({ messages: transcript })];
+    const messages = [...(req.instructions ? [{ role: "system", content: req.instructions }] : []), ...ctx.fns.models.protocol.openaiChat.toOpenAIMessages({ messages: transcript })];
     const format = req.responseFormat;
     const body: Record<string, unknown> = {
         model: req.model, messages, stream: true, stream_options: { include_usage: true },

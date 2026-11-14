@@ -24,7 +24,7 @@ export default async function (
     const { request: req, signal } = opts;
     const label = "Gemini";
     const transcript = (req.messages as Record<string, any>[]).filter(m => m.role !== "system");
-    const contents = await ctx.fns.llm.toGeminiContents({ messages: transcript });
+    const contents = await ctx.fns.models.protocol.gemini.toGeminiContents({ messages: transcript });
     const format = req.responseFormat;
     const generationConfig: Record<string, unknown> = {
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),

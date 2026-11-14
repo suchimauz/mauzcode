@@ -2,8 +2,8 @@
 
 ## 1. Self-contained models internals
 
-- [ ] 1.1 Copy the legacy message converters (`toAnthropicMessages`, `toOpenAIMessages`, `toGeminiContents`) into `models.protocol.{anthropic,openaiChat,gemini}` with their tests, and switch `src/models/protocol/*/stream.ts` and the `parseSSE` callers to `models.protocol.*` / `models.transport.parseSSE`; verify `bun test src/models` passes
-- [ ] 1.2 Copy the claude helpers (`classifyError` subset, `anthropicOAuthConstants`, `claudeCodeCliVersion`, `parseAnthropicAuthorizationInput`) into `models.provider.claude.*` and `resolveReasoningEffort` into `models.inference.*`; verify `rg 'fns\.llm\.' src/models` is empty and the claude/codex parity tests pass
+- [x] 1.1 Copy the legacy message converters (`toAnthropicMessages`, `toOpenAIMessages`, `toGeminiContents`) into `models.protocol.{anthropic,openaiChat,gemini}` with their tests, and switch `src/models/protocol/*/stream.ts` and the `parseSSE` callers to `models.protocol.*` / `models.transport.parseSSE`; verify `bun test src/models` passes
+- [x] 1.2 Copy the claude helpers (`classifyError` subset, `anthropicOAuthConstants`, `claudeCodeCliVersion`, `parseAnthropicAuthorizationInput`) into `models.provider.claude.*` and `resolveReasoningEffort` into `models.inference.*`; verify `rg 'fns\.llm\.' src/models` is empty and the claude/codex parity tests pass
 
 ## 2. Provider descriptors and route resolution
 

@@ -32,11 +32,11 @@ export default async function (
         if(flow?.status==='pending'&&flow.expiresAt<=Date.now())finish(flow,'expired','Login expired');
         if(op==='status')return view(flow);
         if(op==='cancel'){if(flow?.status==='pending')finish(flow,'failed','Login cancelled');await (ctx.state.models as typeof ctx.state.models & {claudeMutations?:Record<string,Promise<void>>}).claudeMutations?.[conn.id];return view(flow);}
-        const constants=ctx.fns.llm.anthropicOAuthConstants({});
+        const constants=ctx.fns.models.provider.claude.anthropicOAuthConstants({});
         const submit=async(f:Flow,input:string,callback=false)=>{
          if(f.status!=='pending'||f.busy)return view(f);
          if(f.expiresAt<=Date.now()){finish(f,'expired','Login expired');return view(f);}
-         const parsed=ctx.fns.llm.parseAnthropicAuthorizationInput({input});
+         const parsed=ctx.fns.models.provider.claude.parseAnthropicAuthorizationInput({input});
          if(!parsed.code||(callback&&!parsed.state)||(parsed.state&&parsed.state!==f.state)){f.message='Invalid authorization code or state';return view(f);}
          f.busy=true;
          try{
@@ -69,7 +69,7 @@ export default async function (
          active.server=Bun.serve({hostname:'127.0.0.1',port:Number(redirect.port||80),fetch:async(request)=>{
          const u=new URL(request.url);
          if(request.method!=='GET'||u.pathname!==redirect.pathname)return new Response('Not found',{status:404});
-         const parsed=ctx.fns.llm.parseAnthropicAuthorizationInput({input:u.toString()});
+         const parsed=ctx.fns.models.provider.claude.parseAnthropicAuthorizationInput({input:u.toString()});
          if(!parsed.state||parsed.state!==active.state||!parsed.code)return new Response('Invalid authorization response',{status:400});
          await submit(active,u.toString(),true);
          return new Response(active.status==='succeeded'?'Login complete. Return to MauzCode.':'Login did not complete. Return to MauzCode.',{headers:{'content-type':'text/plain','cache-control':'no-store'}});

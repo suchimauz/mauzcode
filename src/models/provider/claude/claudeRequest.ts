@@ -19,7 +19,7 @@ export default async function (
     },
 ): Promise<Response> {
     const base = (ctx.env.CLAUDE_CODE_BASE_API_URL || "https://api.anthropic.com").replace(/\/+$/, "");
-        const token = ctx.fns.llm.anthropicOAuthConstants({}).tokenUrl;
+        const token = ctx.fns.models.provider.claude.anthropicOAuthConstants({}).tokenUrl;
         const destinations: Record<string, string> = { [base + "/v1/messages"]: "POST", [base + "/v1/messages/count_tokens"]: "POST", [base + "/api/oauth/usage"]: "GET", [base + "/api/oauth/profile"]: "GET", [token]: "POST" };
         if (!opts.url.startsWith("https://") || destinations[opts.url] !== (opts.init.method ?? "GET").toUpperCase()) throw Object.assign(new Error("PROXY_CONFIG: Claude endpoint is not allowed"), { code: "PROXY_CONFIG", retryable: false, requestSent: false });
         return opts.conn.fetch(opts.url, { ...opts.init, redirect: "error" });

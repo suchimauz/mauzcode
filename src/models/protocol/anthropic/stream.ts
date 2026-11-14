@@ -25,7 +25,7 @@ export default async function (
     const label = "Anthropic Messages";
     const DEFAULT_MAX_TOKENS = 4096;
     const transcript = (req.messages as Record<string, unknown>[]).filter(m => m.role !== "system");
-    const messages = ctx.fns.llm.toAnthropicMessages({ messages: transcript });
+    const messages = ctx.fns.models.protocol.anthropic.toAnthropicMessages({ messages: transcript });
     const json = req.responseFormat ? ctx.fns.models.inference.structured({ action: "instruction", format: req.responseFormat }) : "";
     const system = [req.instructions, json].filter(Boolean).join("\n\n");
     const body: Record<string, unknown> = {
