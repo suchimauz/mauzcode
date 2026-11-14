@@ -20,7 +20,7 @@ export default async function (
         /** Parse this text as the file's content instead of reading it (e.g. right after writing it). */
         content?: string;
     },
-): Promise<types.files.Snapshot> {
+): Promise<types.files.FileSnapshot> {
     let bytes: Uint8Array | null = null;
     let path = opts.path;
     if (opts.content != null) {

@@ -15,7 +15,7 @@ export default function (
     session: Session | null,
     opts: {
         /** Snapshot of the version that was delivered (from files.snapshot). */
-        snapshot: types.files.Snapshot;
+        snapshot: types.files.FileSnapshot;
         /** First delivered line, one-based. @minimum 1 */
         start: number;
         /** Last delivered line, inclusive. @minimum 0 */

@@ -1,7 +1,7 @@
 // What files.snapshot saw of a file at one moment: the exact version (sha256 of
 // the raw bytes) plus the line structure needed to edit it without touching the
 // bytes of lines nobody asked to change.
-export type Snapshot = {
+export type FileSnapshot = {
     /** Remote host alias, or undefined for the local machine. */
     host?: string;
     /** Absolute local path, or the remote path as given (relative to the remote home). */

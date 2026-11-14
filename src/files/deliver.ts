@@ -15,7 +15,7 @@ export default function (
     _session: Session | null,
     opts: {
         /** Snapshot to render (from files.snapshot); must be text. */
-        snapshot: types.files.Snapshot;
+        snapshot: types.files.FileSnapshot;
         /** First line to deliver, one-based. @default 1 @minimum 1 */
         startLine?: number;
         /** Last line to deliver, inclusive; omitted means end of file. @minimum 1 */

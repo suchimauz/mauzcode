@@ -51,7 +51,7 @@ export default async function (
         /** Read receipt the edit is based on (from files.useReceipt); omitted means the current file (legacy). */
         receipt?: types.files.Receipt;
     },
-): Promise<{ path: string; bytes: number; diff: string; content: string; version: string; changed: { start: number; end: number; added: number; removed: number }; snapshot: types.files.Snapshot }> {
+): Promise<{ path: string; bytes: number; diff: string; content: string; version: string; changed: { start: number; end: number; added: number; removed: number }; snapshot: types.files.FileSnapshot }> {
     const { path, ops, receipt } = opts;
     if (!ops.length) throw invalid("no edits — nothing to do");
     const snap = await ctx.fns.files.snapshot({ path, host: opts.host });
@@ -108,7 +108,7 @@ export default async function (
 // then each is spliced back as whole lines so lines it does not touch keep
 // their bytes. Matches that share a line are applied together.
 function applyLiteral(
-    snap: types.files.Snapshot,
+    snap: types.files.FileSnapshot,
     ops: Extract<types.files.EditHashlineOp, { kind: "literal_replace" }>[],
     range: { start: number; end: number },
 ): OutLine[] {
@@ -187,7 +187,7 @@ type PlannedOp =
 
 function applyAnchored(
     ctx: Context,
-    snap: types.files.Snapshot,
+    snap: types.files.FileSnapshot,
     ops: types.files.EditHashlineOp[],
     range: { start: number; end: number },
     receipt: types.files.Receipt | undefined,
