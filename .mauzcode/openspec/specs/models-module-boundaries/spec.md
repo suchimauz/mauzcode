@@ -6,7 +6,7 @@ Organize model implementations by provider, transport, catalogue, connections an
 ## Requirements
 
 ### Requirement: Stable public model facade
-The system SHALL expose a minimal public root model facade consisting of exactly `models.call`, `models.stream`, `models.compact`, `models.listModels`, `models.setModelEnabled`, `models.refreshAll`, `models.list`, `models.get`, `models.create`, `models.update`, `models.remove`, `models.test`, `models.usage`, `models.action`, `models.resolveRoute` and `models.tokenPrice`, together with the existing non-forwarding root procedures `models.providers` and `models.api`. These entries SHALL preserve their typed options, return contract and observable behavior and SHALL delegate without duplicating business logic or wrapping errors into a different contract. Other root forwarding procedures SHALL NOT exist. The facade SHALL serve only consumers outside `src/models`; callers inside `src/models` SHALL use the full responsibility namespace names, including for the kept facade entries. Consumers outside `src/models` SHALL NOT call implementation namespaces. Public `types.models.*`, HTTP paths, provider ids and registration ownership SHALL remain unchanged.
+The system SHALL expose a minimal public root model facade consisting of exactly `models.call`, `models.stream`, `models.compact`, `models.listModels`, `models.setModelEnabled`, `models.refreshAll`, `models.list`, `models.get`, `models.create`, `models.update`, `models.remove`, `models.test`, `models.usage`, `models.action`, `models.resolveRoute`, `models.tokenPrice` and `models.displayNames`, plus the non-forwarding root procedures `models.providers` and `models.api`.
 
 #### Scenario: Existing consumer calls a moved procedure
 - **WHEN** a core or plugin consumer calls one of the minimal facade entries
@@ -23,6 +23,16 @@ The system SHALL expose a minimal public root model facade consisting of exactly
 - **THEN** the removed root forwarding procedures and the replaced provider-local custom protocol procedure are absent from the live runtime registry
 - **AND** custom discovery and testing reach the new shared protocol implementations
 - **AND** the remaining model procedure names match those discovered on a fresh boot
+
+### Requirement: Facade entries delegate unchanged
+Root forwarding procedures other than the facade SHALL NOT exist. Facade entries SHALL preserve their typed options, return contract and observable behavior and SHALL delegate without duplicating business logic or wrapping errors into a different contract.
+
+#### Scenario: Facade error passes through
+- **WHEN** the implementation procedure behind a facade entry fails
+- **THEN** the caller receives the same error contract as from the implementation
+
+### Requirement: Facade consumers and stable public contracts
+The facade SHALL serve only consumers outside `src/models`; callers inside `src/models` SHALL use the full responsibility namespace names, including for the kept facade entries. Consumers outside `src/models` SHALL NOT call implementation namespaces. Public `types.models.*`, HTTP paths, provider ids and registration ownership SHALL remain unchanged.
 
 #### Scenario: Existing provider compiles against the SDK
 - **WHEN** a provider declaration references existing `types.models.*` contracts
@@ -41,7 +51,7 @@ The system SHALL expose a minimal public root model facade consisting of exactly
 - **THEN** the architecture check fails and names the caller
 
 ### Requirement: Responsibility-focused implementation namespaces
-Model implementation procedures SHALL be organized by connection management, transport, inference, catalogue, shared wire protocols and provider-specific responsibilities. Shared protocols SHALL live in `models.protocol`. Provider implementations SHALL use `models.provider.claude`, `models.provider.codex` and `models.provider.custom`, without colliding with the existing `models.providers` function. Each runtime procedure SHALL retain one function per file and invoke other project procedures through `ctx.fns` rather than project-file imports.
+Model implementation procedures SHALL be organized by connection management, transport, inference, catalogue, shared wire protocols and provider-specific responsibilities. Shared protocols SHALL live in `models.protocol`. Provider implementations SHALL use `models.provider.claude`, `models.provider.codex` and `models.provider.custom`, without colliding with the existing `models.providers` function.
 
 #### Scenario: Complete file disposition
 - **WHEN** the refactoring is reviewed
@@ -52,6 +62,13 @@ Model implementation procedures SHALL be organized by connection management, tra
 - **WHEN** runtime discovery registers the implementation namespaces, including `models.protocol`
 - **THEN** `models.providers` remains the existing callable catalogue operation
 - **AND** no namespace shadows a callable root entry
+
+### Requirement: One procedure per file through ctx.fns
+Each model runtime procedure SHALL retain one function per file and invoke other project procedures through `ctx.fns` rather than project-file imports.
+
+#### Scenario: Procedure calls another model procedure
+- **WHEN** a model procedure needs another project procedure
+- **THEN** it calls it through `ctx.fns` and its file defines only that one procedure
 
 ### Requirement: Stable registration and persistence boundaries
 The system SHALL retain root routes, migrations, lifecycle files, provider declarations, state ownership and public model types at their existing identities. The reorganization SHALL NOT change database schema, stored connection values, secret references, transport selection, approval or authorization behavior.

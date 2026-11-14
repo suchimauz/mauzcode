@@ -64,11 +64,15 @@ The Models tab SHALL be keyboard operable, label every form control, follow the 
 - **THEN** every action (add, edit, test, save, remove, confirm) is reachable and has a visible focus state
 
 ### Requirement: Per-model enable switches
-The connection's model list in the Models tab SHALL show an accessible switch for every model, with vertical spacing between rows. Clicking anywhere on a model row MUST toggle its switch. Disabled models MUST stay visible, dimmed and labelled `Disabled`.
+The connection's model list in the Models tab SHALL show an accessible switch for every model, with vertical spacing between rows, and the model's shared display name next to its id for every provider. Clicking anywhere on a model row MUST toggle its switch. Disabled models MUST stay visible, dimmed and labelled `Disabled`.
 
 #### Scenario: Row click toggles
 - **WHEN** the owner clicks the text of a model row
 - **THEN** that model's switch changes
+
+#### Scenario: Names for every provider
+- **WHEN** a claude connection lists `claude-sonnet-4-5` without a provider label
+- **THEN** its row shows "Claude Sonnet 4.5" next to the id, as codex rows show their provider labels
 
 ### Requirement: Saving model switch changes
 Toggles MUST only change a local draft. While the draft differs from the stored state the tab SHALL show `Save (N)` and `Reset`, and no request MUST be sent until Save. Save MUST announce errors and show the stored state afterwards.
@@ -100,7 +104,7 @@ Connection status SHALL show test and usage reason codes as human-readable text,
 - **THEN** the card says the provider is not loaded and suggests restarting MauzCode
 
 ### Requirement: Provider logos
-Connection cards and the add-connection form SHALL show the brand logo of known providers as an inert image. Custom connections SHALL always show a distinct generic connection icon, regardless of their endpoint or protocol.
+Connection cards and the add-connection form SHALL show the mark from the shared model mark resolver as an inert image: the brand logo of known providers, and for custom connections always the distinct generic plug icon, regardless of their endpoint or protocol.
 
 #### Scenario: Codex connection
 - **WHEN** a codex connection is listed

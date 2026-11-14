@@ -21,7 +21,7 @@ The `custom` provider SHALL accept an API base URL, an optional secret API key, 
 - **THEN** creation fails with a validation error
 
 ### Requirement: Protocol-specific authentication
-The custom provider SHALL send the API key in the selected shared protocol's standard form, obtained from that protocol's API-key header mapping: bearer authorization for both OpenAI protocols, the `x-api-key` header with an API version header for Anthropic, and the `x-goog-api-key` header for Gemini. The custom provider SHALL choose the protocol by registry lookup of its configured protocol id, and its protocol select options SHALL equal the shared protocol set (values and labels) in the same order. The Anthropic version header SHALL be sent with or without an API key.
+The custom provider SHALL send the API key in the selected shared protocol's standard form, obtained from that protocol's API-key header mapping: bearer authorization for both OpenAI protocols, the `x-api-key` header with an API version header for Anthropic, and the `x-goog-api-key` header for Gemini. The Anthropic version header SHALL be sent with or without an API key.
 
 #### Scenario: Anthropic headers
 - **WHEN** a request is made for a custom connection with protocol `anthropic` and an API key
@@ -30,6 +30,13 @@ The custom provider SHALL send the API key in the selected shared protocol's sta
 #### Scenario: Protocol options match the shared set
 - **WHEN** the custom provider fields are inspected
 - **THEN** the protocol select option values and labels equal the listed shared protocol ids and labels in order
+
+### Requirement: Protocol selection from the shared registry
+The custom provider SHALL choose the protocol by registry lookup of its configured protocol id, and its protocol select options SHALL equal the shared protocol set (values and labels) in the same order.
+
+#### Scenario: Protocol options match the registry
+- **WHEN** the custom provider form lists protocol options
+- **THEN** their values, labels and order equal the shared protocol set, and the configured id selects that registry protocol
 
 ### Requirement: Custom model discovery
 The custom provider SHALL list models from the protocol's models endpoint and merge them with the manual model list; when discovery fails or is unsupported, the manual list MUST still be returned.
