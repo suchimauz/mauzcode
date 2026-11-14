@@ -1,44 +1,18 @@
 /**
- * Returns the known input context window of a model in tokens
+ * Return the cached input context window for an enabled stored model route.
  *
- * Maps a provider-qualified model id to a conservative input context window (Claude 200K, Codex/GPT-5+ 272K, long-context families 1M, common open models 128K). Returns null when unknown. Use to derive auto-compaction thresholds as a fraction of the model window.
- * @param opts.model Provider-qualified model such as `claude-code:claude-opus-5` or `codex:gpt-5.6-sol`.
+ * Use to derive auto-compaction thresholds. Defaults to 200,000 tokens only when
+ * catalogue metadata is absent; resolution failures are not treated as missing limits.
+ * @param opts.model Stored provider/account:model route.
  */
 export default async function (
     ctx: Context,
     _session: Session | null,
     opts: {
-        /** Provider-qualified model such as `claude-code:claude-opus-5` or `codex:gpt-5.6-sol`. */
+        /** Stored provider/account:model route. */
         model: string;
     },
-): Promise<number | null> {
-    const identity = await ctx.fns.compaction.modelIdentity({ model: opts.model });
-    if (!identity) return null;
-    const id = identity.modelId.toLowerCase();
-    const provider = identity.provider;
-    if (provider === "opencode") {
-        const catalog = await ctx.fns.llm.opencodeCatalog({ cachedOnly: true });
-        return catalog.models.find(entry => entry.id === identity.modelId)?.context ?? null;
-    }
-    // MiniMax M Plan: the M3 generation (M3, M3.1-Flash) has a 1M-token
-    // window; the older M2.x line is a 204,800-token model. The M3 window is
-    // the model limit, but 512K is the recommended working size, so the
-    // conservative 512K is used for auto-compaction thresholds.
-    if (provider === "minimax-coding") {
-        if (/^minimax-m3/.test(id)) return 512_000;
-        if (/^minimax-m2/.test(id)) return 204_800;
-        return null;
-    }
-    // Kimi Coding reports its real window per model: K2.8 and K3 are 1M, while
-    // the Highspeed line and k3-256k are capped at 262K. The generic Kimi rule
-    // below would answer 128K for all of them and compact far too early.
-    if (provider === "kimi-coding") {
-        if (/k3-256k|highspeed/.test(id)) return 262_144;
-        return 1_048_576;
-    }
-    if (/claude|opus|sonnet|haiku|fable/.test(id)) return 200_000;
-    if (provider === "codex" || /^gpt-(5|6)|daybreak/.test(id)) return 272_000;
-    if (/^gpt-4\.1|gemini/.test(id)) return 1_000_000;
-    if (/kimi|deepseek|qwen|glm|grok/.test(id)) return 128_000;
-    return null;
+): Promise<number> {
+    const route = await ctx.fns.models.resolveRoute({ route: opts.model });
+    return route.contextWindow ?? 200_000;
 }

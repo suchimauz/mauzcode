@@ -1,8 +1,5 @@
-// Generic text compaction for any provider without its own `$compaction_<provider>.ts`.
-// Ported from Codex's local (non-remote) compaction, codex-rs/core/src/compact.rs:
-// the same handoff prompt and summary prefix, and on a context-window overflow
-// the oldest history item is dropped and the request retried, so a transcript
-// larger than the summarizer's window still compacts instead of failing.
+// Provider-neutral compaction selected for every stored model connection.
+// Native failure never falls back. Text summaries retain overflow trimming.
 
 const SUMMARIZATION_PROMPT = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
 
@@ -21,22 +18,53 @@ const SUMMARY_PREFIX = "Another language model started to solve this problem and
 const OVERFLOW = /context_length_exceeded|request_too_large|prompt is too long|exceeds the context|exceeded model token limit|maximum context length|\b413\b/i;
 
 /**
- * Summarizes a transcript into one handoff message with the agent's own model.
- * @param opts.model Model used for the summary.
- * @param opts.messages Effective transcript to compact.
+ * Compact through the resolved connection's native capability or a text handoff.
+ * Native failures propagate unchanged; only non-native summary overflow trims history.
+ * @param opts.model Stored provider/account:model route.
+ * @param opts.sessionId Stable compaction child id for provider correlation.
+ * @param opts.instructions Effective system instructions for native compaction.
+ * @param opts.focus Optional handoff guidance to preserve in either path.
+ * @param opts.messages Effective ordered transcript, including tool calls and results.
+ * @param opts.signal Cancellation signal forwarded to either model operation.
  */
 export default async function (ctx: Context, _session: Session | null, opts: Parameters<types.compaction.Compactor>[2]): Promise<types.compaction.CompactionResult> {
+    opts.signal?.throwIfAborted();
+    const route = await ctx.fns.models.resolveRoute({ route: opts.model });
+    if (route.nativeCompaction) {
+        const result = await ctx.fns.models.compact({
+            connectionId: route.connectionId, model: route.model,
+            sessionId: opts.sessionId, instructions: opts.instructions,
+            messages: opts.messages, focus: opts.focus, signal: opts.signal,
+        });
+        opts.signal?.throwIfAborted();
+        const item = result.item;
+        // Persist existing transcript markers by payload shape, not provider identity.
+        // Protocol converters and portable projection already replay these verbatim.
+        if (item?.type === "compaction" && "encrypted_content" in item && typeof item.encrypted_content === "string" && item.encrypted_content) {
+            return { message: { role: "user", content: JSON.stringify(item), message_type: "codex_compaction" }, summary: `Native server checkpoint · ${result.responseId}` };
+        }
+        if (item?.type === "compaction" && "content" in item && typeof item.content === "string" && item.content.trim() && typeof item.signature === "string" && item.signature) {
+            return { message: { role: "user", content: JSON.stringify(item), message_type: "anthropic_compaction" }, summary: item.content };
+        }
+        throw new Error("native compaction returned an invalid checkpoint");
+    }
     const system = SUMMARIZATION_PROMPT + (opts.focus?.trim() ? "\n\nFocus instructions: " + opts.focus.trim() : "");
     let history = [...opts.messages];
     for (;;) {
         opts.signal?.throwIfAborted();
         try {
-            const call = await ctx.fns.llm.call({ model: opts.model, sessionId: opts.sessionId, system, user: JSON.stringify(history) });
+            const call = await ctx.fns.models.call({ connectionId: route.connectionId, model: route.model, sessionId: opts.sessionId, signal: opts.signal, system, user: JSON.stringify(history) });
+            opts.signal?.throwIfAborted();
             const summary = String(call.text ?? "").trim();
             if (!summary) throw new Error("compaction summary was empty");
             return { message: { role: "user", content: SUMMARY_PREFIX + "\n" + summary, message_type: "compaction_summary" }, summary };
         } catch (error: any) {
-            if (!OVERFLOW.test(String(error?.message ?? error)) || history.length <= 1) throw error;
+            opts.signal?.throwIfAborted();
+            const code = error?.failure?.code ?? error?.code;
+            // Structured failure metadata wins over text: never trim quota/auth errors
+            // just because their human-readable message happens to mention context.
+            const overflow = code != null ? code === "OVERFLOW" : OVERFLOW.test(String(error?.message ?? error));
+            if (!overflow || history.length <= 1) throw error;
             // Trim from the beginning (keeps the recent, most relevant part) and
             // never leave a tool result without the call that produced it.
             history = history.slice(1);

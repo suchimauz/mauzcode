@@ -25,8 +25,8 @@
 
 ## 4. One-shot calls and compaction
 
-- [ ] 4.1 Switch `agent.checkGoal`, `agent.readAndSummarize`, `autotext/$route_suggest_POST` and `plugins/websearch` (answer, fetch) to `models.resolveRoute` + `models.call`; verify their tests with facade stubs and no fallback
-- [ ] 4.2 Make `$compaction_default` provider-neutral (`models.compact` when `nativeCompaction`, else a summary through `models.call`), and make `compaction.resolve`/`modelIdentity`/`contextWindow` use `resolveRoute` with no provider-id checks (default 200k); verify the compaction tests for both paths and remove the node/ssh parity tests that only cover legacy
+- [x] 4.1 Switch `agent.checkGoal`, `agent.readAndSummarize`, `autotext/$route_suggest_POST` and `plugins/websearch` (answer, fetch) to `models.resolveRoute` + `models.call`; verify their tests with facade stubs and no fallback
+- [x] 4.2 Make `$compaction_default` provider-neutral (`models.compact` when `nativeCompaction`, else a summary through `models.call`), and make `compaction.resolve`/`modelIdentity`/`contextWindow` use `resolveRoute` with no provider-id checks (default 200k); verify the compaction tests for both paths and remove the node/ssh parity tests that only cover legacy
 
 ## 5. Agent loop and model selection
 

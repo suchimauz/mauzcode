@@ -2,7 +2,9 @@ function parseJson(text: string): any {
     return JSON.parse(text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
 }
 
-/** Check goal for the runtime.  * @param opts.agent Agent whose state is read or updated.
+/** Evaluate a candidate answer against an enabled goal through its agent's stored model connection.
+ * Returns a blocked verdict on resolution, provider or JSON errors without changing goal ownership.
+ * @param opts.agent Agent whose goal and recent transcript are evaluated.
  * @param opts.candidateAnswer Candidate answer evaluated against the goal.
 */
 export default async function (
@@ -20,8 +22,11 @@ export default async function (
     const recent = messages.slice(-30).map((m: any, i: number) => ({ index: messages.length - 30 + i, role: m.role, content: m.content }));
     const system = `You are checking whether the agent has achieved its external work goal. Do not solve the task. Return only JSON {status: achieved|continue|needs_user|blocked, reason:string, nextStep?:string, evidence?:string[]}. Evaluate only the goal itself and actual work results. Never require a future goal-check status, an achieved card, a record of your own decision, or completion of the checking loop itself as evidence — these are self-referential internal artifacts. Use achieved when there is concrete evidence of the outcome. Use continue if the agent can take the next work step independently. Use needs_user if a user response or choice is needed. Use blocked if continuing is impossible. The agent saying "done" is not evidence by itself.`;
     try {
-        const result = await ctx.fns.llm.call({
-            model: opts.agent.model,
+        const route = await ctx.fns.models.resolveRoute({ route: opts.agent.model });
+        const result = await ctx.fns.models.call({
+            connectionId: route.connectionId,
+            model: route.model,
+            signal: opts.agent.abortController?.signal,
             sessionId: opts.agent.id,
             system,
             user: JSON.stringify({ goal: goal.statement, candidateAnswer: opts.candidateAnswer, recent }),

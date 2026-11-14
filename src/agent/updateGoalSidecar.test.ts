@@ -8,6 +8,11 @@ import { mkTestCtx } from "../_testCtx.entry";
 // repl.eval to a constant, so the stub here performs the one call the sidecar
 // is supposed to make, with the sidecar's own session (as the real eval would).
 function mockSidecarModel(ctx: any, turns: any[]) {
+    // Block 5 owns the agent.run mock migration; context budgets already use models.
+    ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
+        expect(opts).toEqual({ route: 'mock:test' });
+        return { connectionId: 'test', model: 'test', route: opts.route, nativeCompaction: false, contextWindow: 200000 };
+    };
     ctx.state.registry.repl.eval = async (c: any, _s: any, o: { code: string; agent?: any }) => {
         const m = /setObservedGoals\(\{ goals: (\[.*\]) \}\)/s.exec(o.code);
         if (!m) return "ok";

@@ -4,6 +4,11 @@ import { mkTestCtx } from "../_testCtx.entry";
 describe("agent goal loop", () => {
     test("continues after an unmet goal and stops when achieved", async () => {
         const ctx: any = await mkTestCtx();
+        // agent.run remains on its legacy mock in block 4; its context budget uses the models facade.
+        ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
+            expect(opts).toEqual({ route: 'mock:test' });
+            return { connectionId: 'test', model: 'test', route: opts.route, nativeCompaction: false, contextWindow: 200000 };
+        };
         const agent = await ctx.fns.agent.start({ model: "mock:test" });
         agent.scratchpad.mockLLM = { turns: [{ text: "first answer" }, { text: "final answer" }] };
         await ctx.fns.agent.setGoal({ id: agent.id, statement: "finish it", iterations: 3 });
@@ -24,6 +29,11 @@ describe("agent goal loop", () => {
 
     test("respects selected iteration limit", async () => {
         const ctx: any = await mkTestCtx();
+        // agent.run remains on its legacy mock in block 4; its context budget uses the models facade.
+        ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
+            expect(opts).toEqual({ route: 'mock:test' });
+            return { connectionId: 'test', model: 'test', route: opts.route, nativeCompaction: false, contextWindow: 200000 };
+        };
         const agent = await ctx.fns.agent.start({ model: "mock:test" });
         agent.scratchpad.mockLLM = { defaultText: "trying" };
         await ctx.fns.agent.setGoal({ id: agent.id, statement: "impossible", iterations: 2 });
@@ -40,6 +50,11 @@ describe("agent goal loop", () => {
     });
     test("does not check goal before executing tool calls", async () => {
         const ctx: any = await mkTestCtx();
+        // agent.run remains on its legacy mock in block 4; its context budget uses the models facade.
+        ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
+            expect(opts).toEqual({ route: 'mock:test' });
+            return { connectionId: 'test', model: 'test', route: opts.route, nativeCompaction: false, contextWindow: 200000 };
+        };
         ctx.fns.tools.read = async () => "FILE";
         const agent = await ctx.fns.agent.start({ model: "mock:test" });
         agent.scratchpad.mockLLM = { turns: [

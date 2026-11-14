@@ -6,7 +6,7 @@
  * @param opts.file Source file path.
  * @param opts.task Concise task to assign or perform.
  * @param opts.maxChars Maximum source characters to include.
- * @param opts.model Model identifier to use.
+ * @param opts.model Stored provider/account:model route override; defaults to the agent route.
 */
 
 export default async function (
@@ -26,10 +26,10 @@ export default async function (
         /** Maximum source characters sent to the model. @default 120000 @minimum 1 */
         maxChars?: number;
 
-        /** Optional model override. */
+        /** Stored provider/account:model route override; defaults to the agent route. */
         model?: string;
     },
-): Promise<{ file: string; summary: string; usage: any }> {
+): Promise<{ file: string; summary: string; usage: types.models.CallResult["usage"] }> {
     const { agent } = opts;
     const file = String(opts?.file ?? '').trim();
     const task = String(opts?.task ?? '').trim();
@@ -66,8 +66,11 @@ export default async function (
         content.length > sliced.length ? '[truncated; original chars=' + content.length + ']' : '',
     ].filter(Boolean).join('\n');
 
-    const result = await ctx.fns.llm.call({
-        model: model || agent.model,
+    const route = await ctx.fns.models.resolveRoute({ route: model || agent.model });
+    const result = await ctx.fns.models.call({
+        connectionId: route.connectionId,
+        model: route.model,
+        signal: agent.abortController?.signal,
         sessionId: agent.id,
         system,
         user,

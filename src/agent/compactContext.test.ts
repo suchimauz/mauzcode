@@ -2,7 +2,13 @@ import { describe, test, expect } from "bun:test";
 import { mkTestCtx } from "../_testCtx.entry";
 
 async function seeded(ctx: any) {
-  const agent = await ctx.fns.agent.start({ model: "lmstudio:test", title: "compact test", workspaceDir: process.cwd() });
+  // buildLlmRequest is migrated in block 5; isolate its legacy preamble lookup.
+  ctx.state.registry.llm.resolveEndpoint = () => ({ provider: 'test', modelId: 'test' });
+  ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
+    expect(Object.keys(opts)).toEqual(["route"]);
+    return { connectionId: "connection", model: "gpt-test", route: opts.route, nativeCompaction: opts.route === "codex/work:gpt-test", contextWindow: 200000 };
+  };
+  const agent = await ctx.fns.agent.start({ model: "custom/work:test", title: "compact test", workspaceDir: process.cwd() });
   for (let i = 0; i < 12; i++) await ctx.fns.session.appendMessage({ id: agent.id, message: { role: i % 2 ? "assistant" : "user", content: `${i}:` + "x".repeat(16000) } });
   await ctx.fns.session.syncAgentState({ agent });
   return agent;
@@ -12,7 +18,7 @@ describe("agent.compactContext", () => {
   test("preservation loss keeps prior active context and fails the draft without retry", async () => {
     const ctx = await mkTestCtx();
     const agent = await seeded(ctx);
-    ctx.state.registry.llm.call = () => ({text:'summary',finishReason:'stop',usage:{},raw:{}});
+    ctx.state.registry.models.call = () => ({text:'summary',finishReason:'stop',usage:{},raw:{}});
     await ctx.fns.agent.compactContext({agent});
     const previous = agent.sleepContext.activeRevision;
     for (let i=0;i<8;i++) await ctx.fns.session.appendMessage({id:agent.id,message:{role:i%2?'assistant':'user',content:'new '+ 'z'.repeat(16000)}});
@@ -31,7 +37,7 @@ describe("agent.compactContext", () => {
     const ctx = await mkTestCtx();
     const agent = await seeded(ctx);
     agent.jevCompactionEnabled = true;
-    ctx.state.registry.llm.call = () => ({text:'summary',finishReason:'stop',usage:{},raw:{}});
+    ctx.state.registry.models.call = () => ({text:'summary',finishReason:'stop',usage:{},raw:{}});
     ctx.state.registry.agent.reviewCompaction = async () => {
       await ctx.fns.session.appendMessage({id:agent.id,message:{role:'user',content:'concurrent review input'}});
       return {verdict:'unavailable',scope:'limited',reason:'review_failed_or_timed_out',sourceChars:10,summaryChars:7};
@@ -47,7 +53,7 @@ describe("agent.compactContext", () => {
       const ctx=await mkTestCtx(); const agent=await seeded(ctx); agent.jevCompactionEnabled=enabled;
       let calls=0;
       ctx.state.registry.agent.reviewCompaction=()=>{calls++;return {verdict:'unavailable',scope:'limited',reason:'review_failed_or_timed_out',sourceChars:0,summaryChars:0};};
-      ctx.state.registry.llm.call=()=>({text:'summary',finishReason:'stop',usage:{},raw:{}});
+      ctx.state.registry.models.call=()=>({text:'summary',finishReason:'stop',usage:{},raw:{}});
       expect((await ctx.fns.agent.compactContext({agent})).status).toBe('compacted');
       expect(calls).toBe(enabled?1:0);
     }
@@ -56,7 +62,7 @@ describe("agent.compactContext", () => {
     const ctx = await mkTestCtx();
     const agent = await seeded(ctx);
     const before = await ctx.fns.session.getMessages({ id: agent.id });
-    ctx.state.registry.llm.call = () => ({ text: "handoff summary", finishReason: "stop", usage: {}, raw: {} });
+    ctx.state.registry.models.call = () => ({ text: "handoff summary", finishReason: "stop", usage: {}, raw: {} });
     const result = await ctx.fns.agent.compactContext({ agent });
     expect(result.status).toBe("compacted");
     expect(await ctx.fns.session.getMessages({ id: agent.id })).toEqual(before);
@@ -84,7 +90,7 @@ describe("agent.compactContext", () => {
     await ctx.fns.session.appendMessage({ id: agent.id, message: { role: "assistant", content: "", tool_calls: [{ id: "c1", name: "x", args: {} }] } });
     await ctx.fns.session.appendMessage({ id: agent.id, message: { role: "tool", content: "ok", tool_call_id: "c1" } });
     await ctx.fns.session.syncAgentState({ agent });
-    ctx.state.registry.llm.call = () => ({ text: "summary", finishReason: "stop", usage: {}, raw: {} });
+    ctx.state.registry.models.call = () => ({ text: "summary", finishReason: "stop", usage: {}, raw: {} });
     await ctx.fns.agent.compactContext({ agent });
     const root = await ctx.fns.session.getMessages({ id: agent.id });
     const tail = root.slice(agent.sleepContext.generations.at(-1).tailStart);
@@ -95,7 +101,7 @@ describe("agent.compactContext", () => {
   test("marks draft stale when root changes during summarization", async () => {
     const ctx = await mkTestCtx();
     const agent = await seeded(ctx);
-    ctx.state.registry.llm.call = async () => {
+    ctx.state.registry.models.call = async () => {
       await ctx.fns.session.appendMessage({ id: agent.id, message: { role: "user", content: "concurrent" } });
       return { text: "stale summary", finishReason: "stop", usage: {}, raw: {} };
     };
@@ -109,7 +115,7 @@ describe("agent.compactContext", () => {
     const ctx = await mkTestCtx();
     const agent = await seeded(ctx);
     const inputs: string[] = [];
-    ctx.state.registry.llm.call = (_c: any, _s: any, opts: any) => {
+    ctx.state.registry.models.call = (_c: any, _s: any, opts: any) => {
       inputs.push(String(opts.user));
       return { text: inputs.length === 1 ? "summary one" : "summary two", finishReason: "stop", usage: {}, raw: {} };
     };
@@ -129,7 +135,7 @@ describe("agent.compactContext", () => {
     const ctx = await mkTestCtx();
     const agent = await seeded(ctx);
     let callOpts: any;
-    ctx.state.registry.llm.call = (_c: any, _s: any, opts: any) => {
+    ctx.state.registry.models.call = (_c: any, _s: any, opts: any) => {
       callOpts = opts;
       return { text: "summary", finishReason: "stop", usage: {}, raw: {} };
     };
@@ -141,17 +147,18 @@ describe("agent.compactContext", () => {
   test("uses native server compaction for Codex and replays its opaque checkpoint", async () => {
     const ctx = await mkTestCtx();
     const agent = await seeded(ctx);
-    agent.model = "codex:gpt-test";
+    agent.model = "codex/work:gpt-test";
     await ctx.fns.session.save({ agent });
     let compactOpts: any;
-    ctx.state.registry.llm.compactCodex = (_c: any, _s: any, opts: any) => {
+    ctx.state.registry.models.compact = (_c: any, _s: any, opts: any) => {
       compactOpts = opts;
       return { item: { type: "compaction", id: "cmp", encrypted_content: "opaque" }, responseId: "resp", usage: { prompt_tokens: 10, completion_tokens: 1 } };
     };
-    ctx.state.registry.llm.call = () => { throw new Error("text summarizer must not run"); };
+    ctx.state.registry.models.call = () => { throw new Error("text summarizer must not run"); };
     const result = await ctx.fns.agent.compactContext({ agent });
     expect(result.status).toBe("compacted");
-    expect(compactOpts.model).toBe("codex:gpt-test");
+    expect(compactOpts.model).toBe("gpt-test");
+    expect(compactOpts.connectionId).toBe("connection");
     const generation = agent.sleepContext.generations.at(-1);
     const stored = await ctx.fns.session.getMessages({ id: generation.contextAgentId });
     expect(stored[0].message_type).toBe("codex_compaction");
@@ -164,7 +171,7 @@ describe("agent.compactContext", () => {
   test("summarizer failure leaves no active projection", async () => {
     const ctx = await mkTestCtx();
     const agent = await seeded(ctx);
-    ctx.state.registry.llm.call = () => { throw new Error("boom"); };
+    ctx.state.registry.models.call = () => { throw new Error("boom"); };
     await expect(ctx.fns.agent.compactContext({ agent })).rejects.toThrow("boom");
     expect(agent.sleepContext.activeRevision).toBeNull();
     expect(agent.sleepContext.generations.at(-1).status).toBe("failed");

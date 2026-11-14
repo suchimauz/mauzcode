@@ -2,7 +2,13 @@ import { describe, test, expect } from 'bun:test';
 import { mkTestCtx } from '../_testCtx.entry';
 
 async function owned(ctx: any) {
-    const agent = await ctx.fns.agent.start({ model: 'lmstudio:test' });
+    // buildLlmRequest is migrated in block 5; isolate its legacy preamble lookup.
+    ctx.state.registry.llm.resolveEndpoint = () => ({ provider: 'test', modelId: 'test' });
+    ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
+        expect(opts).toEqual({ route: 'custom/work:test' });
+        return { connectionId: 'connection', model: 'test', route: opts.route, nativeCompaction: false, contextWindow: 200000 };
+    };
+    const agent = await ctx.fns.agent.start({ model: 'custom/work:test' });
     for (let i = 0; i < 12; i++) await ctx.fns.session.appendMessage({ id: agent.id, message: { role: i % 2 ? 'assistant' : 'user', content: `${i}:` + 'x'.repeat(16000) } });
     await ctx.fns.session.syncAgentState({ agent });
     agent.abortController = new AbortController();
@@ -20,7 +26,7 @@ describe('owned mid-turn compaction', () => {
         await ctx.fns.session.appendMessage({ id: agent.id, message: { role: 'tool', content: 'already done', tool_call_id: 'effect' } });
         await ctx.fns.session.syncAgentState({ agent });
         const before = await ctx.fns.session.getMessages({ id: agent.id });
-        ctx.state.registry.llm.call = () => ({ text: 'summary', usage: {} });
+        ctx.state.registry.models.call = () => ({ text: 'summary', usage: {} });
         const result = await ctx.fns.agent.compactContext({ agent, runToken: 'owner', signal: agent.abortController.signal });
         expect(result.status).toBe('compacted');
         expect(await ctx.fns.session.getMessages({ id: agent.id })).toEqual(before);
@@ -33,7 +39,7 @@ describe('owned mid-turn compaction', () => {
     for (const change of ['edit', 'token', 'head', 'growth']) test(`rejects concurrent ${change}`, async () => {
         const ctx: any = await mkTestCtx();
         const agent = await owned(ctx);
-        ctx.state.registry.llm.call = async () => {
+        ctx.state.registry.models.call = async () => {
             if (change === 'edit') await ctx.fns.session.updateMessageContent({ id: agent.id, idx: 0, content: 'changed' });
             if (change === 'token') await ctx.fns.procs.db.run({ sql: 'UPDATE agents SET run_token = ? WHERE id = ?', params: ['other', agent.id] });
             if (change === 'head') await ctx.fns.procs.db.run({ sql: "UPDATE agents SET sleep_context = jsonb_set(sleep_context, '{activeRevision}', '99') WHERE id = ?", params: [agent.id] });
@@ -47,7 +53,7 @@ describe('owned mid-turn compaction', () => {
         const agent = await owned(ctx);
         const ac = agent.abortController;
         let finish!: (v: any) => void;
-        ctx.state.registry.llm.call = () => new Promise(resolve => { finish = resolve; ac.abort(); });
+        ctx.state.registry.models.call = () => new Promise(resolve => { finish = resolve; ac.abort(); });
         await expect(ctx.fns.agent.compactContext({ agent, runToken: 'owner', signal: ac.signal })).rejects.toThrow();
         expect(agent.sleepContext.activeRevision).toBeNull();
         finish({ text: 'too late', usage: {} });

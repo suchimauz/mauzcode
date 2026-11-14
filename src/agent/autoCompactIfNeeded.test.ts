@@ -4,7 +4,11 @@ import { mkTestCtx } from "../_testCtx.entry";
 describe("agent.autoCompactIfNeeded", () => {
     test("compacts an oversized idle Codex agent", async () => {
         const ctx: any = await mkTestCtx();
-        const agent = await ctx.fns.agent.start({ model: "codex:gpt-test" });
+        ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
+            expect(Object.keys(opts)).toEqual(['route']);
+            return { connectionId: 'connection', model: 'test', route: opts.route, nativeCompaction: true, contextWindow: opts.route === 'codex/work:gpt-5.6-sol' ? 272000 : undefined };
+        };
+        const agent = await ctx.fns.agent.start({ model: "codex/work:gpt-test" });
         await ctx.fns.session.appendMessage({ id: agent.id, message: { role: "user", content: "x".repeat(50_000) } });
         await ctx.fns.session.syncAgentState({ agent });
         let calls = 0;
@@ -16,12 +20,16 @@ describe("agent.autoCompactIfNeeded", () => {
 
     test("skips agents without a compactor and below-threshold agents", async () => {
         const ctx: any = await mkTestCtx();
-        const local = await ctx.fns.agent.start({ model: "mock:test" });
+        ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
+            expect(Object.keys(opts)).toEqual(['route']);
+            return { connectionId: 'connection', model: 'test', route: opts.route, nativeCompaction: true, contextWindow: opts.route === 'codex/work:gpt-5.6-sol' ? 272000 : undefined };
+        };
+        const local = await ctx.fns.agent.start({ model: "custom/work:test" });
         const saved = ctx.state.compaction.compactors;
         ctx.state.compaction.compactors = {};
         expect((await ctx.fns.agent.autoCompactIfNeeded({ agent: local, thresholdTokens: 10_000 })).status).toBe("no_compactor");
         ctx.state.compaction.compactors = saved;
-        const codex = await ctx.fns.agent.start({ model: "codex:gpt-test" });
+        const codex = await ctx.fns.agent.start({ model: "codex/work:gpt-test" });
         await ctx.fns.session.appendMessage({ id: codex.id, message: { role: "user", content: "small" } });
         await ctx.fns.session.syncAgentState({ agent: codex });
         expect((await ctx.fns.agent.autoCompactIfNeeded({ agent: codex, thresholdTokens: 10_000 })).status).toBe("below_threshold");
@@ -31,7 +39,11 @@ describe("agent.autoCompactIfNeeded", () => {
 describe("agent.autoCompactIfNeeded window threshold", () => {
     test("compacts a Claude agent at a fraction of its 200K window", async () => {
         const ctx: any = await mkTestCtx();
-        const agent = await ctx.fns.agent.start({ model: "claude-code:claude-opus-5" });
+        ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
+            expect(Object.keys(opts)).toEqual(['route']);
+            return { connectionId: 'connection', model: 'test', route: opts.route, nativeCompaction: true, contextWindow: opts.route === 'codex/work:gpt-5.6-sol' ? 272000 : undefined };
+        };
+        const agent = await ctx.fns.agent.start({ model: "claude/work:claude-opus-5" });
         await ctx.fns.session.appendMessage({ id: agent.id, message: { role: "user", content: "x".repeat(700_000) } });
         await ctx.fns.session.syncAgentState({ agent });
         let calls = 0;
@@ -40,6 +52,6 @@ describe("agent.autoCompactIfNeeded window threshold", () => {
         expect(result.status).toBe("compacted");
         expect(calls).toBe(1);
         expect((await ctx.fns.compaction.contextWindow({ model: "codex/work:gpt-5.6-sol" }))).toBe(272_000);
-        expect((await ctx.fns.compaction.contextWindow({ model: "lmstudio:mystery" }))).toBeNull();
+        expect((await ctx.fns.compaction.contextWindow({ model: "custom/work:mystery" }))).toBe(200_000);
     });
 });
