@@ -1,6 +1,6 @@
 import {expect,test} from 'bun:test';
 import run from './run';
-import classifyError from '../llm/classifyError';
+import classifyError from '../models/provider/claude/classifyError';
 import barrier from '../goal/ownerBarrier';
 function harness(turns:any[],status='active'){
  const messages:any[]=[],calls:any[]=[];
@@ -12,7 +12,7 @@ function harness(turns:any[],status='active'){
  input:{isWaiting:async()=>false},
  planning:{read:async({agentId}:any)=>({version:1,agentId,mode:'execute',revision:0,scope:'session',advisory:true,runningPolicy:'reject',pending:null,proposal:null})},
  session:{forAgent:()=>({}),appendUserMessage:noop,appendMessage:async({message}:any)=>{messages.push(message);return {idx:idx++}},syncAgentState:noop,updateMessageContent:noop,appendAssistantEvent:async()=>({idx:idx++}),appendToolCallEvent:noop,recordContextUsage:noop,appendErrorEvent:noop},
- agent:{ cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[],retrySchedule:async()=>false,retryWait:async()=>{},recordRunLifecycle:noop,statusLineForTurn:async()=>'',autoCompactIfNeeded:async()=>({status:'not_needed'}),stashResult:async({output}:any)=>({content:output}),sanitizeHtmlBody:({html}:any)=>html},
+ agent:{ requireModel:({model}:any)=>model, cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[],retrySchedule:async()=>false,retryWait:async()=>{},recordRunLifecycle:noop,statusLineForTurn:async()=>'',autoCompactIfNeeded:async()=>({status:'not_needed'}),stashResult:async({output}:any)=>({content:output}),sanitizeHtmlBody:({html}:any)=>html},
  procs:{db:{run:async()=>({changes:0}),select:async()=>[{i:0,stopped_at:null,run_state:'running',run_token:'token'}]},events:{emit:noop},log:{warn:noop}},
  goal:{requestAuthorize:async()=>{},ownerBarrier:(o:any)=>barrier(ctx,null,o),delegationScope:async({fn}:any)=>fn(),forkRelease:async(o:any)=>{expect(calls[0][0]).toBe('capture');expect(o.baselineAvailable).toBe(true);expect(o.goalId).toBe(state.binding.goalId);return false;},runBindingCapture:async(o:any)=>{calls.push(['capture',o]);return {kind:'bound',state}},runStopRegistry:noop,runUsageRecord:async(o:any)=>{calls.push(['usage',o]);state.pendingRequests.delete(o.requestId);if(o.format==='unsupported')state.blocked=true;return {kind:'recorded'}},runCheckpointFlush:async()=>{calls.push(['flush']);return state.blocked?{kind:'blocked',allowContinuation:false}:{kind:'committed',checkpointId:'receipt-'+calls.filter(c=>c[0]==='flush').length,sequence:calls.filter(c=>c[0]==='flush').length,revision:7,budgetTransition:status==='budget_limited',status,allowContinuation:status==='active'}},budgetSteer:async()=>{calls.push(['steer'])}},
  models:{resolveRoute:async()=>({provider:'openai',api:'openai'}),classifyError:(opts:any)=>classifyError(ctx,null,opts),stream:async()=>{expect(state.pendingRequests.size).toBe(1);const t=turns.shift();if(t instanceof Error)throw t;return t}},markdown:{render:async({source}:any)=>source},tools:{call:async({name}:any)=>({handlerExecuted:true,output:'ok',...(name==='respondHtml'?{terminal:{type:'html',text:'final',html:'<p>final</p>'}}:{})})

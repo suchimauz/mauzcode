@@ -34,14 +34,21 @@ export default async function (ctx: Context, _session: Session | null, opts: Par
         const result = await ctx.fns.models.compact({
             connectionId: route.connectionId, model: route.model,
             sessionId: opts.sessionId, instructions: opts.instructions,
-            messages: opts.messages, focus: opts.focus, signal: opts.signal,
+            messages: opts.messages.map(message => {
+                if (message.message_type !== "codex_compaction") return message;
+                let checkpoint: types.models.Checkpoint;
+                try { checkpoint = JSON.parse(String(message.content)); } catch { throw new Error("Malformed persisted native checkpoint"); }
+                if (checkpoint?.kind !== "native-checkpoint" || checkpoint.version !== 1) throw new Error("Persisted native checkpoint lacks its compatibility identity");
+                return { type: "checkpoint", checkpoint };
+            }), focus: opts.focus, signal: opts.signal,
         });
         opts.signal?.throwIfAborted();
         const item = result.item;
-        // Persist existing transcript markers by payload shape, not provider identity.
-        // Protocol converters and portable projection already replay these verbatim.
+        // Keep the SDK compatibility envelope: payload alone loses connection/model
+        // identity and cannot safely be replayed on a different connection.
         if (item?.type === "compaction" && "encrypted_content" in item && typeof item.encrypted_content === "string" && item.encrypted_content) {
-            return { message: { role: "user", content: JSON.stringify(item), message_type: "codex_compaction" }, summary: `Native server checkpoint · ${result.responseId}` };
+            if (!result.checkpoint || result.checkpoint.kind !== "native-checkpoint" || result.checkpoint.connectionId !== route.connectionId || result.checkpoint.model !== route.model || JSON.stringify(result.checkpoint.payload) !== JSON.stringify(item)) throw new Error("Native checkpoint is missing its SDK compatibility envelope");
+            return { message: { role: "user", content: JSON.stringify(result.checkpoint), message_type: "codex_compaction" }, summary: `Native server checkpoint · ${result.responseId}` };
         }
         if (item?.type === "compaction" && "content" in item && typeof item.content === "string" && item.content.trim() && typeof item.signature === "string" && item.signature) {
             return { message: { role: "user", content: JSON.stringify(item), message_type: "anthropic_compaction" }, summary: item.content };

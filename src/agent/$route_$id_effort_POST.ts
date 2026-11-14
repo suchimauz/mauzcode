@@ -12,7 +12,7 @@ export default async function (ctx: Context, _session: Session | null, opts: {
     if (!archivedRow) return Response.json({ error: "not_found", message: "Agent not found" }, { status: 404 });
     if (archivedRow.archived_at != null) return Response.json({ error: "archived", message: "Restore this archived chat before making changes" }, { status: 409 });
     const form = await opts.req.formData();
-    const effort = String(form.get("effort") ?? "auto") as types.llm.ReasoningEffort;
+    const effort = String(form.get("effort") ?? "auto") as types.models.ReasoningLevel | "auto";
     try {
         const result = await ctx.fns.agent.setReasoningEffort({ id: opts.params.id!, effort });
         return new Response(null, { status: 204, headers: { "HX-Refresh": "true", "x-mauzcode-effort": result.applied } });

@@ -49,9 +49,11 @@
 
 ## 8. Retire legacy runtime
 
-- [ ] 8.1 Move `src/llm`, `src/llms` and `src/node` (and legacy-only helpers such as `sshAccount/startKimiLogin`, `frontendBridge/llmConnections` with its test) to `legacy/`; run `procs.dev.genTypes`, reload routes and restart; verify that `ctx.fns.llm` is undefined, `/node/v1/models` returns 404 and `migrate.up` succeeds
-- [ ] 8.2 Add `src/models/noLegacyCalls.test.ts` guarding `fns.(llm|llms|node).` outside `legacy/`; verify it passes and fails on an injected call
-- [ ] 8.3 Update docs/models-providers.md (descriptors, new facade entries, rename event), docs/architecture.md and docs/mauzcode-node.md (node retired); verify they no longer describe `llm.*` as the production path
+- [x] 8.1 Move `src/llm`, `src/llms` and `src/node` (and legacy-only helpers such as `sshAccount/startKimiLogin`, `frontendBridge/llmConnections` with its test) to `legacy/`; run `procs.dev.genTypes`, reload routes and restart; verify that `ctx.fns.llm` is undefined, `/node/v1/models` returns 404 and `migrate.up` succeeds
+- [x] 8.2 Add `src/models/noLegacyCalls.test.ts` guarding `fns.(llm|llms|node).` outside `legacy/`; verify it passes and fails on an injected call
+- [x] 8.3 Update docs/models-providers.md (descriptors, new facade entries, rename event), docs/architecture.md and docs/mauzcode-node.md (node retired); verify they no longer describe `llm.*` as the production path
+
+  - Verification scope: source retirement verified by fresh isolated process boot/restart and real loopback HTTP on test Postgres 54399, with preserved historical migration rows and tables. No production restart, deployment, provider call, commit or push. Evidence: `.mauzcode/tmp/js/acceptance.json` (275 byte-preserving moves, AST positive/negative checks, 584 passing regressions, strict metadata validation, full typecheck 426 → 326 with zero added diagnostics). Overall quality remains `ok:false` for the same 8 pre-existing private `.mauzcode` missing-call findings as baseline `37bd6bf3`; core and every official plugin are `ok:true`. Task 9.1 is not claimed complete.
 
 ## 9. Integration checks
 

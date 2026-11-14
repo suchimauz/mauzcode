@@ -8,7 +8,7 @@ export type Agent = {
     /** Chat avatar: sanitized SVG markup set by chat.setIcon; null/undefined shows the model logo. */
     icon?: string | null;
     /** Durable preference for model-side reasoning intensity. */
-    reasoningEffort?: types.llm.ReasoningEffort;
+    reasoningEffort?: types.models.ReasoningLevel | "auto";
     workspaceDir: string;
     /** SSH host alias the workspace lives on (see remote.servers); empty/undefined = local. When set, workspaceDir is a path on that host. */
     workspaceHost?: string;

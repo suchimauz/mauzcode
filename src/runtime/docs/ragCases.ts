@@ -82,7 +82,7 @@ const CASES: types.runtime.docs.RagCase[] = [
     { query: "давай залинкуемся в .mauzcode/user plugins", expected: ["plugins.load", "plugins.add"], relevant: ["plugins.list"], source: "transcript" },
     { query: "Найди тогда pubmed и nlm плагины", expected: ["plugins.search"], source: "transcript" },
     { query: "давай залогинелся в лузиадаш", expected: ["lusiadas.ensureLogin"], source: "transcript" },
-    { query: "обнови codex проверь", expected: ["llm.refreshCodex"], source: "transcript" },
+    { query: "обнови codex проверь", expected: ["models.action"], source: "transcript" },
 
     // Negatives mined from prompts after which the agent called nothing.
     { query: "а в чем разница на пальцах", expected: [], noResult: true, source: "transcript" },

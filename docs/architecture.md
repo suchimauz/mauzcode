@@ -295,9 +295,9 @@ Shipping declarations:
 
 | Declaration                            | Module · scope · key             | Used by                                                    |
 |----------------------------------------|----------------------------------|------------------------------------------------------------|
-| `src/llm/$setting_defaultModel.ts`     | `llm.global.defaultModel`        | `ui/createAgent.ts` and `$route_new_GET.ts` form pre-fill  |
-| `src/llm/$setting_lmstudioBaseUrl.ts`  | `llm.global.lmstudioBaseUrl`     | `resolveEndpoint` for the `lmstudio:` provider             |
-| `src/llm/$setting_<provider>ApiKey.ts` | `llm.global.<provider>ApiKey`    | `resolveEndpoint` per-provider auth                        |
+| `src/models/$setting_localizationModel.ts` | `models.global.localizationModel` | `runtime.localize` through `models.resolveRoute` + `models.call` |
+| `src/models/$setting_usageWarnPercent.ts` | `models.global.usageWarnPercent` | model usage projections |
+| `src/embeddings/$setting_openaiApiKey.ts` | `embeddings.global.openaiApiKey` | embeddings only; secrets remain references |
 | `src/agent/$setting_debounceMs.ts`     | `agent.global.debounceMs`        | `POST /agent/:id` default debounce (default `1000`)        |
 |                                        | `ui.agent.<id>.debounceMs`       | per-agent override (no declaration; set via UI/REPL)       |
 
@@ -307,13 +307,27 @@ Forms at `GET /settings/declared` render every declaration with title/descriptio
 
 ---
 
-## Mock LLM, no live network in tests
+## Models runtime and isolated tests
 
-Per `AGENTS.md`: every test uses `model: 'mock:*'` which routes through `src/llm/streamMock.ts`. Live integration tests for `streamOpenAI` are gated behind `LIVE_LLM=1` and **off by default**. `bun test` is deterministic and offline.
+Inference uses `models.resolveRoute`, `models.stream`, `models.call` and
+`models.compact`. Provider descriptors declare system preambles, pricing vendors
+and native compaction; agent code does not infer these from provider names.
+`models.tokenPrice` exposes pricing. `models.connectionRenamed` carries
+`{ provider, from, to }` after commit; the agent subscriber rewrites active routes
+and `kv.last-model`, while models owns its localization setting only.
 
-`agent.scratchpad.mockLLM = { echoUser, userToolCode, afterToolText }` controls mock behavior in tests.
+Legacy sources are preserved under `legacy/src/{llm,llms,node}` outside scanned
+roots. Their namespaces, settings, routes, hooks and compactors do not load;
+`/node/v1/models` returns 404. Applied migration history and legacy tables stay
+intact. Active routes have migration backups; archived selections are cleared
+without backup and require explicit selection after restore. No default or
+legacy fallback is injected into an unset session.
 
-The shared test fixture is `src/_testCtx.entry.ts` — `mkTestCtx()` returns a fully-wired `ctx` with `:memory:` DB + migrations + all common `ctx.fns.*` already populated. The `.entry.ts` suffix is skipped by the project scanner so the helper is **not** auto-registered as `ctx.fns.testCtx`.
+Fast tests stub models providers/transports; they never make real provider calls.
+Use `bun run test` for the scanned source suites, not historical tests in `legacy/`.
+The shared fixture `src/_testCtx.entry.ts` boots a fresh registry with migrations
+on isolated test Postgres (54399), never the working database (54393). It is not
+a production restart. `.entry.ts` helpers are not runtime procedures.
 
 ---
 

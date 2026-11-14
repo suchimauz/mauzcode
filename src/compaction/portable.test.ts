@@ -25,7 +25,6 @@ describe("compaction.portable", () => {
     });
     test("buildLlmRequest falls back to the full root transcript after switching away from Codex", async () => {
         const ctx: any = await mkTestCtx();
-        ctx.state.registry.llm.resolveEndpoint = () => ({ provider: 'test', modelId: 'test' });
         ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
             expect(['codex/work:gpt-test','claude/work:claude-opus-5']).toContain(opts.route);
             return { connectionId: 'connection', model: 'gpt-test', route: opts.route, nativeCompaction: true };
@@ -33,7 +32,7 @@ describe("compaction.portable", () => {
         const agent = await ctx.fns.agent.start({ model: "codex/work:gpt-test", workspaceDir: process.cwd() });
         for (let i = 0; i < 12; i++) await ctx.fns.session.appendMessage({ id: agent.id, message: { role: i % 2 ? "assistant" : "user", content: `${i}:` + "x".repeat(16000) } });
         await ctx.fns.session.syncAgentState({ agent });
-        ctx.state.registry.models.compact = () => ({ item: { type: "compaction", encrypted_content: "opaque" }, responseId: "r", usage: { prompt_tokens: 1, completion_tokens: 1 } });
+        ctx.state.registry.models.compact = () => { const item = { type: "compaction", encrypted_content: "opaque" }; return { item, checkpoint: { kind: "native-checkpoint", version: 1, provider: "codex", connectionId: "connection", model: "gpt-test", payload: item }, responseId: "r", usage: { prompt_tokens: 1, completion_tokens: 1 } }; };
         expect((await ctx.fns.agent.compactContext({ agent })).status).toBe("compacted");
         agent.model = "claude/work:claude-opus-5";
         const request = await ctx.fns.agent.buildLlmRequest({ agent });

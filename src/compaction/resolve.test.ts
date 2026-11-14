@@ -15,7 +15,7 @@ function fixture(nativeCompaction = false, window?: number) {
         models: {
             resolveRoute: async (opts: { route: string }) => { expect(opts).toEqual({ route: model }); return route; },
             call: async (opts: types.models.CallRequest) => { calls.push(opts); return { text: "summary" }; },
-            compact: async (opts: object) => { native.push(opts); return { item: { type: "compaction", encrypted_content: "opaque", id: "checkpoint" }, responseId: "response" }; },
+            compact: async (opts: object) => { native.push(opts); const item = { type: "compaction", encrypted_content: "opaque", id: "checkpoint" }; return { item, checkpoint: { kind: "native-checkpoint", version: 1, provider: route.provider, connectionId: route.connectionId, model: route.model, payload: item }, responseId: "response" }; },
         }, procs: { log: { warn: () => {} } },
     } };
     const opts = { model, sessionId: "child", instructions: "system", focus: "retain identifiers", messages: [{ role: "user", content: "hello" }], signal: new AbortController().signal };
@@ -48,7 +48,7 @@ describe("compaction models facade", () => {
         opts.messages.push({ role: "assistant", content: "tool context" });
         const result = await compact(ctx, null, opts);
         expect(native).toEqual([{ connectionId: "connection", model: "native/model:v2", sessionId: "child", instructions: opts.instructions, messages: opts.messages, focus: opts.focus, signal: opts.signal }]);
-        expect(JSON.parse(result.message.content)).toEqual({ type: "compaction", encrypted_content: "opaque", id: "checkpoint" });
+        expect(JSON.parse(result.message.content)).toEqual({ kind: "native-checkpoint", version: 1, provider: "custom", connectionId: "connection", model: "native/model:v2", payload: { type: "compaction", encrypted_content: "opaque", id: "checkpoint" } });
         expect(result.message.message_type).toBe("codex_compaction");
         expect(portable(ctx, null, { model, producedBy: model, messages: [result.message] })).toEqual([result.message]);
         expect(calls).toEqual([]);

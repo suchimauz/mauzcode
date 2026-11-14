@@ -6,7 +6,7 @@ const model = "custom/work:new/model:v2";
 function fixture(text = '{"status":"achieved","reason":"evidence","evidence":["file"]}') {
     const calls: types.models.CallRequest[] = []; const routes: string[] = [];
     const agent = { id: "child", model, goal: { enabled: true, statement: "build it" }, abortController: new AbortController() } as unknown as types.agent.Agent;
-    const ctx: any = { fns: {
+    const ctx: any = { fns: { agent: {requireModel:({model}:any)=>model},
         session: { getFullMessages: async () => [{ role: "user", content: "task" }] },
         files: { exists: async () => true, read: async () => "long document" },
         models: {

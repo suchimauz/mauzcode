@@ -3,10 +3,9 @@ import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
 
 async function seeded(ctx: any) {
   // buildLlmRequest is migrated in block 5; isolate its legacy preamble lookup.
-  ctx.state.registry.llm.resolveEndpoint = () => ({ provider: 'test', modelId: 'test' });
   ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
     expect(Object.keys(opts)).toEqual(["route"]);
-    return { connectionId: "connection", model: "gpt-test", route: opts.route, nativeCompaction: opts.route === "codex/work:gpt-test", contextWindow: 200000 };
+    return { provider: opts.route.split("/")[0], connectionId: "connection", model: "gpt-test", route: opts.route, nativeCompaction: opts.route === "codex/work:gpt-test", contextWindow: 200000 };
   };
   const agent = await ctx.fns.agent.start({ model: "custom/work:test", title: "compact test", workspaceDir: process.cwd() });
   for (let i = 0; i < 12; i++) await ctx.fns.session.appendMessage({ id: agent.id, message: { role: i % 2 ? "assistant" : "user", content: `${i}:` + "x".repeat(16000) } });
@@ -152,7 +151,8 @@ describe("agent.compactContext", () => {
     let compactOpts: any;
     ctx.state.registry.models.compact = (_c: any, _s: any, opts: any) => {
       compactOpts = opts;
-      return { item: { type: "compaction", id: "cmp", encrypted_content: "opaque" }, responseId: "resp", usage: { prompt_tokens: 10, completion_tokens: 1 } };
+      const item = { type: "compaction", id: "cmp", encrypted_content: "opaque" };
+      return { item, checkpoint: { kind: "native-checkpoint", version: 1, provider: "codex", connectionId: "connection", model: "gpt-test", payload: item }, responseId: "resp", usage: { prompt_tokens: 10, completion_tokens: 1 } };
     };
     ctx.state.registry.models.call = () => { throw new Error("text summarizer must not run"); };
     const result = await ctx.fns.agent.compactContext({ agent });
@@ -163,8 +163,7 @@ describe("agent.compactContext", () => {
     const stored = await ctx.fns.session.getMessages({ id: generation.contextAgentId });
     expect(stored[0].message_type).toBe("codex_compaction");
     const request = await ctx.fns.agent.buildLlmRequest({ agent });
-    const converted = ctx.fns.llm.toCodexInput({ messages: request.messages });
-    expect(converted.input).toContainEqual({ type: "compaction", id: "cmp", encrypted_content: "opaque" });
+    expect(request.messages).toContainEqual({ type: "checkpoint", checkpoint: { kind: "native-checkpoint", version: 1, provider: "codex", connectionId: "connection", model: "gpt-test", payload: { type: "compaction", id: "cmp", encrypted_content: "opaque" } } });
   });
 
 

@@ -15,7 +15,6 @@ export default async function(ctx: Context, session: Session | null, opts: {
     if (new URL(opts.req.url).pathname === '/ui-lab-api/ssh-instances') return ctx.fns.frontendBridge.sshInstances({req:opts.req});
     if (new URL(opts.req.url).pathname === '/ui-lab-api/plugins') return ctx.fns.frontendBridge.pluginsData({req:opts.req});
     if (new URL(opts.req.url).pathname === '/ui-lab-api/cron-tasks') return ctx.fns.frontendBridge.cronTasks({req:opts.req});
-    if (new URL(opts.req.url).pathname === '/ui-lab-api/llm-connections') return ctx.fns.frontendBridge.llmConnections({req:opts.req});
     if (new URL(opts.req.url).pathname === '/ui-lab-api/provider-icons') return ctx.fns.frontendBridge.providerIcons({req:opts.req});
     if (opts.req.method !== 'GET') return Response.json({error:'Method not allowed'}, {status:405,headers:{...headers,Allow:'GET'}});
     const url = new URL(opts.req.url);

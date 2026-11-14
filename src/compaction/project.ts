@@ -28,6 +28,19 @@ export default async function (
         ? await ctx.fns.session.getMessages({ id: String(generation.contextAgentId) })
         : generation.contextMessages;
     if (!Array.isArray(stored) || !stored.length) return full("missing_checkpoint");
+    // Older saved Codex rows contain only the opaque payload, with no SDK
+    // connection identity. Never manufacture that identity from the current route.
+    for (const message of stored) {
+        if (message?.message_type !== "codex_compaction") continue;
+        let value: Record<string, unknown>;
+        try { value = typeof message.content === "string" ? JSON.parse(message.content) : message.content; }
+        catch { throw new Error("Malformed persisted native checkpoint"); }
+        if (value?.type === "compaction" && typeof value.encrypted_content === "string" && value.encrypted_content) {
+            const frontier = Number(generation.sourceOffset ?? generation.sourceFrontier);
+            if (!Number.isSafeInteger(frontier) || frontier <= 0 || opts.messages.length < frontier) throw new Error("Legacy checkpoint has no compatibility identity and canonical history is unavailable");
+            return full("incompatible_checkpoint");
+        }
+    }
     const checkpoint = ctx.fns.compaction.portable({ model: opts.model, producedBy: generation.model, messages: stored });
     if (!checkpoint?.length) return full("incompatible_checkpoint");
     const frontier = Number(generation.sourceOffset ?? generation.sourceFrontier);

@@ -58,17 +58,11 @@ describe("settings store", () => {
 });
 
 describe("settings integration", () => {
-    test("resolveEndpoint prefers declared lmstudioBaseUrl setting over env/default", async () => {
+    test("retired endpoint resolver is not registered even with stored legacy settings", async () => {
         const ctx = await mkTestCtx();
-        await ctx.fns.settings.set({
-            module: "llm",
-            scopeType: "global",
-            key: "lmstudioBaseUrl",
-            value: "http://from-settings:9999",
-        });
-
-        const r = await ctx.fns.llm.resolveEndpoint({ model: "some-model" });
-        expect(r.url).toBe("http://from-settings:9999/v1/chat/completions");
+        await ctx.fns.settings.set({ module: "llm", scopeType: "global", key: "lmstudioBaseUrl", value: "http://from-settings:9999" });
+        expect(ctx.state.registry.llm).toBeUndefined();
+        expect(await ctx.fns.settings.get({ module: "llm", scopeType: "global", key: "lmstudioBaseUrl" })).toBe("http://from-settings:9999");
     });
 
     test("agent POST route uses agent setting debounceMs by default", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import run from './run';
-import classifyError from '../llm/classifyError';
+import classifyError from '../models/provider/claude/classifyError';
 
 function harness(turns: any[]) {
     const rows: any[] = [{ idx: 0, role: 'user', content: 'go' }];
@@ -23,7 +23,7 @@ function harness(turns: any[]) {
             updateMessageContent: async ({ idx, content }: any) => { rows[idx].content = content; },
         },
         procs: { events: { emit: noop }, db: { run: async () => ({ changes: 0 }), select: async ({ sql }: any) => sql.includes('MAX(idx)') ? [{ i: 0 }] : [{ stopped_at: null }] } },
-        agent: { cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], retrySchedule: async () => false, retryWait: async () => {}, recordRunLifecycle: async () => {}, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
+        agent: { requireModel:({model}:any)=>model, cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], retrySchedule: async () => false, retryWait: async () => {}, recordRunLifecycle: async () => {}, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
             stop: async () => { stops++; }, stashResult: async ({ output }: any) => ({ content: output }) },
         events: { emitAgentsChanged: noop, refreshAgentMeta: noop },
         markdown: { render: async ({ source }: any) => source },

@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test';
 import details from './contextDetails';
 import record from '../session/recordContextUsage';
-import stream from '../llm/stream';
 
 test('weighted decode TPS, cache ratio and partial history coverage', async () => {
  const rows = [
@@ -25,8 +24,4 @@ test('persists real zero cache and timing, absent cache remains unknown',async()
  await record(ctx,null,{id:'x',usage:{prompt_tokens:20,completion_tokens:3}});
  expect(saved.usage.cache_read_tokens).toBeNull();expect(saved.metrics).toBeNull();
 });
-test('stream returns measured duration and first content timing without telemetry',async()=>{
- const ctx:any={fns:{procs:{},llm:{resolveEndpoint:async()=>({api:'mock'}),resolveReasoningEffort:async()=>({}),streamMock:async({onEvent}:any)=>{onEvent({type:'text_delta',delta:'ok'});return {text:'ok',usage:{prompt_tokens:1,completion_tokens:1}};}}}};
- const r=await stream(ctx,null,{agent:{model:'mock'} as any});
- expect(r.metrics.llmTimeMs).toBeGreaterThanOrEqual(0);expect(r.metrics.ttftMs).not.toBeNull();
-});
+// Streaming timings are measured at agent.run's models boundary (runModels.test.ts).

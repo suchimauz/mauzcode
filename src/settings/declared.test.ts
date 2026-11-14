@@ -9,7 +9,7 @@ describe('settings declared registry + resolution', () => {
         expect(keys).not.toContain('models.defaultModel');
         expect(keys).toContain('models.localizationModel');
         expect(keys).toContain('models.usageWarnPercent');
-        expect(keys).toContain('llm.lmstudioBaseUrl');
+        expect(keys.some((key: string) => /^(llm|llms|node)\./.test(key))).toBe(false);
         expect(keys).toContain('agent.debounceMs');
     });
 
@@ -22,21 +22,21 @@ describe('settings declared registry + resolution', () => {
 
     test('source = env when env var set, no DB row', async () => {
         const ctx = await mkTestCtx();
-        ctx.env.LMSTUDIO_URL = 'http://env-host:1234';
-        const item = (await ctx.fns.settings.declared({})).find((i: any) => i.key === 'lmstudioBaseUrl');
+        ctx.env.LLM_USAGE_WARN_PERCENT = '35';
+        const item = (await ctx.fns.settings.declared({})).find((i: any) => i.module === 'models' && i.key === 'usageWarnPercent');
         expect(item.source).toBe('env');
-        expect(item.currentValue).toBe('http://env-host:1234');
+        expect(item.currentValue).toBe(35);
     });
 
     test('source = db when set() was called', async () => {
         const ctx = await mkTestCtx();
-        ctx.env.LMSTUDIO_URL = 'http://env-host:1234';
+        ctx.env.LLM_USAGE_WARN_PERCENT = '35';
         await ctx.fns.settings.set({
-            module: 'llm', scopeType: 'global', key: 'lmstudioBaseUrl', value: 'http://db-host:5555',
+            module: 'models', scopeType: 'global', key: 'usageWarnPercent', value: 40,
         });
-        const item = (await ctx.fns.settings.declared({})).find((i: any) => i.key === 'lmstudioBaseUrl');
+        const item = (await ctx.fns.settings.declared({})).find((i: any) => i.module === 'models' && i.key === 'usageWarnPercent');
         expect(item.source).toBe('db');
-        expect(item.currentValue).toBe('http://db-host:5555');
+        expect(item.currentValue).toBe(40);
     });
 
     test('settings.get fallback chain: DB → env → declared default', async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkTestCtx } from "../_testCtx.entry";
-import toAnthropic from "../llm/toAnthropicMessages";
-import toCodex from "../llm/toCodexInput";
+import toAnthropic from "../models/protocol/anthropic/toAnthropicMessages";
+import toCodex from "../models/provider/codex/codexInput";
 
 describe("chat attachments", () => {
     test("multipart image persists a compact ref and metadata", async () => {
@@ -28,7 +28,11 @@ describe("chat attachments", () => {
         const anthropic = toAnthropic({} as any, null, { messages: [message] });
         expect(anthropic[0].content[0]).toMatchObject({ type: "document", source: { type: "base64", media_type: "application/pdf" } });
         const codex = toCodex({} as any, null, { messages: [message] });
-        expect(codex.input[0].content[0].text).toContain("hello");
-        expect(codex.input[0].content[0].text).toContain("/tmp/a.pdf");
+        const first = codex.input[0];
+        const parts = first?.content;
+        if (!Array.isArray(parts) || typeof parts[0] !== "object" || parts[0] === null || typeof parts[0].text !== "string") throw new Error("Expected Codex PDF text part");
+        const text = parts[0].text;
+        expect(text).toContain("hello");
+        expect(text).toContain("/tmp/a.pdf");
     });
 });

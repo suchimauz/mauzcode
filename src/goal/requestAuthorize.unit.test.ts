@@ -1,11 +1,5 @@
 import {test,expect} from 'bun:test';
 import authorize from './requestAuthorize';
-import anthropic from '../llm/streamAnthropic';
-import openai from '../llm/streamOpenAI';
-import codex from '../llm/streamCodex';
-import xai from '../llm/streamXai';
-import gemini from '../llm/streamGemini';
-import generate from '../llm/geminiGenerate';
 const authority={rootAgentId:'root',goalId:'goal',sourceAgentId:'child',sourceRunId:'claim',capabilityId:'cap',authorizedThroughIdx:7,allowContinuation:false};
 test('ordinary dispatch has no feature or SQL calls',async()=>{await authorize({fns:{}} as any,null,{});});
 test('guard fails closed disabled, invalid frontier and durable denial; one read-only snapshot',async()=>{
@@ -16,11 +10,5 @@ test('guard fails closed disabled, invalid frontier and durable denial; one read
  expect(calls).toBe(variant==='disabled'||variant==='frontier'?0:1);
  }
 });
-for(const [name,adapter] of Object.entries({anthropic,openai,codex,xai,gemini})) test(`${name}: rebuilt request denied before actual transport`,async()=>{
- let built=0,checks=0,fetches=0;
- const ep={provider:name==='gemini'?'opencode':name==='xai'||name==='codex'?'mauzcode':'test',upstream:'xai',apiKey:'test',modelId:'model',url:name==='gemini'?'https://opencode.ai/inference/google/v1beta/models/model:generateContent':'https://example.invalid'};
- const ctx:any={goalRequestContext:{agentId:'child',authority},state:{},env:{},fns:{tools:{schemas:()=>[]},agent:{buildLlmRequest:async()=>{built++;return {instructions:'s',messages:[]};},wireTools:()=>[],cacheRoot:async()=> 'root'},goal:{requestAuthorize:async()=>{checks++;throw Object.assign(Error('denied'),{goalRequestDenied:true});}},llm:{resolveEndpoint:async()=>ep,resolveReasoningEffort:async()=>({applied:'off'}),toAnthropicMessages:()=>[],toOpenAIMessages:()=>[],toCodexInput:()=>({input:[]}),toGeminiContents:async()=>[],geminiGenerationConfig:async()=>({}),accountAuthHealth:async()=>[],codexCliVersion:async()=> '0',connectFetch:async()=>{fetches++;throw Error('network forbidden');},opencodeFetch:async()=>{fetches++;throw Error('network forbidden');}}}};
- ctx.fns.llm.geminiGenerate=(o:any)=>generate(ctx,null,o);
- await expect(adapter(ctx,null,{agent:{id:'child',model:'test:model'} as any})).rejects.toMatchObject({goalRequestDenied:true});
- expect(built).toBe(1);expect(checks).toBe(1);expect(fetches).toBe(0);
-});
+// Dispatch authorization now belongs to agent.run; runGoal.unit.test.ts covers
+// denial before models.stream. Retired provider adapters are not imported here.

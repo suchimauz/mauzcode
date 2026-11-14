@@ -29,7 +29,7 @@ test('every fallback returns complete history, never a partial checkpoint',async
   const f=fixture();
   if(reason==='missing_generation')f.sleep.activeRevision=99;
   if(reason==='missing_checkpoint')f.gen.contextMessages=[];
-  if(reason==='incompatible_checkpoint'){f.gen.model='codex:other';f.gen.contextMessages=[{role:'assistant',content:'opaque',message_type:'codex_compaction'}] as any;}
+  if(reason==='incompatible_checkpoint'){f.gen.model='codex:other';f.gen.contextMessages=[{role:'assistant',content:JSON.stringify({kind:'native-checkpoint',version:1,provider:'codex',connectionId:'c',model:'gpt',payload:{type:'compaction',encrypted_content:'opaque'}}),message_type:'codex_compaction'}] as any;}
   if(reason==='invalid_boundary')f.gen.sourceOffset=99;
   const r=await f.call();expect(r.fallback).toBe(reason);expect(r.mode).toBe('full');expect(r.messages).toBe(f.history);expect(r.tailStart).toBeNull();expect(r.activatedAt).toBeNull();
  }
@@ -43,8 +43,19 @@ test('source and tail boundaries reject negative, fractional, missing and out of
  expect((await fixture({sourceOffset:0,tailStart:0}).call()).mode).toBe('compact');
 });
 test('same upstream route preserves opaque checkpoint via real portable policy',async()=>{
- const native={role:'assistant',content:'opaque',message_type:'codex_compaction'};
+ const native={role:'assistant',content:JSON.stringify({kind:'native-checkpoint',version:1,provider:'codex',connectionId:'c',model:'gpt',payload:{type:'compaction',encrypted_content:'opaque'}}),message_type:'codex_compaction'};
  const f=fixture({model:'ssh:codex/work:gpt',contextMessages:[native]});
  expect((await f.call()).messages[0]).toBe(native);
  f.gen.model='codex:other';expect((await f.call()).fallback).toBe('incompatible_checkpoint');
+});
+
+test('pre-migration raw checkpoint uses complete canonical history, never current connection identity',async()=>{
+ const raw={role:'user',message_type:'codex_compaction',content:JSON.stringify({type:'compaction',encrypted_content:'old+opaque=='})};
+ const f=fixture({contextMessages:[raw]});const before=structuredClone(raw);
+ const result=await f.call();expect(result.mode).toBe('full');expect(result.fallback).toBe('incompatible_checkpoint');expect(result.messages).toBe(f.history);expect(raw).toEqual(before);
+ f.history.length=0;await expect(f.call()).rejects.toThrow('canonical history is unavailable');
+});
+test('malformed persisted checkpoint is not silently discarded',async()=>{
+ const f=fixture({contextMessages:[{role:'user',message_type:'codex_compaction',content:'{'}]});
+ await expect(f.call()).rejects.toThrow('Malformed persisted native checkpoint');
 });

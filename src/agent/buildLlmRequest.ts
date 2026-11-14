@@ -170,7 +170,14 @@ export default async function (
 
     return {
         instructions,
-        messages,
+        messages: messages.map(message => {
+            if (message.message_type !== "codex_compaction") return message;
+            let checkpoint: types.models.Checkpoint;
+            try { checkpoint = typeof message.content === "string" ? JSON.parse(message.content) : message.content; }
+            catch { throw new Error("Malformed persisted native checkpoint"); }
+            if (checkpoint?.kind !== "native-checkpoint" || checkpoint.version !== 1 || checkpoint.provider !== route.provider || checkpoint.connectionId !== route.connectionId || checkpoint.model !== route.model || checkpoint.payload?.type !== "compaction" || typeof checkpoint.payload.encrypted_content !== "string" || !checkpoint.payload.encrypted_content) throw new Error("Persisted native checkpoint is malformed or belongs to another connection/model");
+            return { type: "checkpoint", checkpoint };
+        }),
         bootstrapMessageCount: bootstrap.length,
         cacheableMessageCount,
         context: { mode: projection.mode, fallback: projection.fallback, revision: projection.revision },

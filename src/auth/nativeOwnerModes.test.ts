@@ -1,6 +1,5 @@
 import {test,expect} from 'bun:test';
 import settings from '../settings/browserApi';
-import llms from '../llms/settingsApi';
 import configGet from '../plugins/$route_$name_config_GET';
 import configPost from '../plugins/$route_$name_config_POST';
 import dialogs from '../../plugins/telegram/src/telegram/$route_api_dialogs_GET';
@@ -17,7 +16,7 @@ const modes = [
 ] as const;
 // A sentinel proves the guard has passed without invoking any real data operation.
 const reached=Symbol('authorized');
-for(const [name,fn,method] of [['settings',settings,'GET'],['llms',llms,'GET'],['config',configGet,'GET'],['dialogs',dialogs,'GET'],['messages',messages,'GET'],['avatar',avatar,'GET']] as const){
+for(const [name,fn,method] of [['settings',settings,'GET'],['config',configGet,'GET'],['dialogs',dialogs,'GET'],['messages',messages,'GET'],['avatar',avatar,'GET']] as const){
  for(const [mode,who,denied] of modes)test(`${name}: ${mode}`,async()=>{
  const stop: any=new Proxy(()=>{throw reached;}, {get:()=>stop});
  const ctx:any={fns:new Proxy({auth:{currentUser:async()=>who,verifyCsrf:async()=>true}}, {get:(t,k)=>k in t?(t as any)[k]:stop})};
@@ -26,7 +25,7 @@ for(const [name,fn,method] of [['settings',settings,'GET'],['llms',llms,'GET'],[
  expect(status).toBe(denied);
  });
 }
-for(const [name,fn] of [['settings',settings],['llms',llms],['config',configPost],['send',send]] as const){
+for(const [name,fn] of [['settings',settings],['config',configPost],['send',send]] as const){
  for(const [mode,who,denied] of modes)for(const csrf of [false,true])test(`${name} POST: ${mode}, csrf=${csrf}`,async()=>{
  let checked=false;const ctx:any={fns:{auth:{currentUser:async()=>who,verifyCsrf:async()=>{checked=true;if(csrf)throw reached;return false;}}}};
  const req=new Request('http://localhost/api',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});let status=0;

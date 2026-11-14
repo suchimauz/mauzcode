@@ -1,15 +1,16 @@
 # Model provider SDK v0
 
-This SDK registers LLM connection providers beside the existing `llm` / `llms`
-routing system. Registration does **not** change agent models, accounts or inference.
-The SDK provides connection storage, transport execution, provider operations and a
-Models settings surface. During the runtime migration, existing agents still use
-legacy routing until their owning modules switch to the models facade.
+This SDK is the production inference runtime. Agents, one-shot calls, compaction,
+model selection and usage all use the `models` facade. The retired `llm`, `llms`
+and `node` trees are preserved under `legacy/src/`, outside all scanned roots;
+their procedures, settings, hooks, compactors and HTTP routes are not loaded.
+There is no fallback to them. Applied migration records and legacy tables remain
+intact; retiring code is not a database rollback.
 
 ## Internal implementation navigation
 
 The public surface is a **minimal facade** of root procedures
-`ctx.fns.models.<name>`: `stream`, `call`, `compact`, `resolveRoute`, `listModels`, `setModelEnabled`,
+`ctx.fns.models.<name>`: `stream`, `call`, `compact`, `resolveRoute`, `tokenPrice`, `listModels`, `setModelEnabled`,
 `refreshAll`, `list`, `get`, `create`, `update`, `remove`, `test`, `usage` and
 `action`, plus `models.providers` (catalogue) and `models.api` (HTTP). Each facade
 entry delegates once to its implementation with unchanged options, callbacks,
@@ -74,8 +75,8 @@ its own connection and `models.localizationModel` (preserving native separators)
 then emits `{ type: "models.connectionRenamed", provider, from, to }` through
 `procs.events` **after commit**. `from` comes from the row locked by the transaction.
 Failed/no-op renames emit nothing. Models never writes `agents` or `kv`; the agent
-module's subscriber is responsible for updating its routes in a later migration
-stage. An instance-file-fixed localization setting cannot be rewritten: rename
+module's subscriber updates non-archived session routes and `kv.last-model`;
+archived sessions remain explicitly unset. An instance-file-fixed localization setting cannot be rewritten: rename
 fails atomically rather than silently leaving that route stale.
 
 ## Wire protocols
@@ -243,8 +244,9 @@ None of these send a network request. `StreamRequest.messages` is the
 OpenAI-shaped transcript, `tools` are neutral `ToolSpec[]` (`name`, `description`,
 JSON Schema `parameters`),
 and `onEvent` receives `text_delta`, `thinking_delta` and `tool_args_delta`.
-`StreamResult` matches the legacy `llm.stream` result (`text`, `thinking`,
-`finishReason`, `usage`, `toolCalls`). Agents still use legacy `llm.*` routing.
+`StreamResult` supplies `text`, `thinking`, `finishReason`, `usage` and `toolCalls`.
+Agent execution calls `models.resolveRoute` and `models.stream`; it measures
+request timings and owns goal authorization and run accounting.
 
 ### Provider-neutral tools
 
@@ -286,7 +288,7 @@ separate call). It sends `user` as one user message and optional neutral tools
   `sessionId` stays stable across attempts. There is no fallback chain.
 
 Every shared protocol also implements `stream`; the custom provider streams
-through its configured protocol. Legacy callers keep using `llm.call`.
+through its configured protocol. One-shot callers use `models.call`.
 
 ### Additive SDK contracts
 
@@ -343,7 +345,7 @@ always show a generic plug icon, whatever endpoint they use.
 
 The owner toggles models with `models.setModelEnabled({ id, model, enabled })`
 (API op `setModelEnabled`). Disabled models stay in `listModels` with
-`disabled: true`. The legacy `llm.modelPolicy` is not touched.
+`disabled: true`. No legacy model-policy settings are consulted.
 
 ## Built-in Codex provider
 
@@ -405,10 +407,14 @@ come from the stream `rate_limits` payload, else
 `x-codex-{primary,secondary}-used-percent/window-minutes/reset-at` headers,
 with no extra request.
 
-**Rollout and revert.** Production agents still use `llm.*`. This SDK path is
-used only by explicit `models.*` callers, and migration is a separate change.
-To revert, revert the commit. There is no hidden fallback to the legacy
-runtime in either direction.
+**Rollout and revert.** The production source path is exclusively `models.*`.
+Runtime retirement requires a fresh process after regenerating declarations and
+routes; a hot reload cannot prove old namespaces disappeared. Validate deployment
+separately from isolated worktree tests. Historical sources remain in `legacy/`.
+The agent-owned migration backs up active routes and `kv.last-model`; its `down`
+restores those backups, but never restores cleared archived model selections.
+Restored archived sessions require explicit selection (`MODEL_NOT_SELECTED`).
+No inference path falls back to the retired runtime.
 
 Login is the OpenAI device-code flow implemented natively over HTTP
 (`models.provider.codex.codexLogin`). No codex CLI is started and nothing runs on SSH instances,

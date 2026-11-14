@@ -76,7 +76,11 @@ export default function (
             // Native Claude compaction block: Anthropic requires it FIRST in the
             // request, in place of what it summarizes — hoisted after the loop.
             if (m?.message_type === "anthropic_compaction") {
-                try { const block = typeof m.content === "string" ? JSON.parse(m.content) : m.content; if (block?.type === "compaction") compactions.push(block); } catch {}
+                let block: { type?: string; content?: string; signature?: string };
+                try { block = typeof m.content === "string" ? JSON.parse(m.content) : m.content; }
+                catch { throw new Error("Malformed persisted Claude checkpoint"); }
+                if (block?.type !== "compaction" || typeof block.content !== "string" || !block.content.trim() || typeof block.signature !== "string" || !block.signature) throw new Error("Malformed persisted Claude checkpoint");
+                compactions.push(block);
                 continue;
             }
             // An opaque Codex checkpoint means nothing to Claude.
