@@ -15,7 +15,7 @@ export default async function (
         refresh?: boolean;
     },
 ): Promise<{ models: types.models.ModelInfo[]; source: "provider" | "manual"; cachedAt: number | null; error?: string }> {
-    const view = await ctx.fns.models.get({ id: opts.id });
+    const view = await ctx.fns.models.connections.get({ id: opts.id });
         const off = new Set(view.disabledModels);
         const mark = (models: types.models.ModelInfo[]) => models.map(m => ({ ...m, disabled: off.has(m.id) }));
         const manual: types.models.ModelInfo[] = (Array.isArray(view.config.models) ? view.config.models : []).filter((m): m is string => typeof m === "string" && !!m).map(id => ({ id }));
@@ -31,7 +31,7 @@ export default async function (
         if (cache && !opts.refresh) return fallback();
         const seen: string[] = [];
         try {
-            const { definition, conn } = await ctx.fns.models.resolve({ id: view.id });
+            const { definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id });
             const secret = conn.secret;
             conn.secret = async (key: string) => { const value = await secret(key); if (value) seen.push(value); return value; };
             const raw = await definition.listModels!(ctx, conn);
@@ -54,6 +54,6 @@ export default async function (
             await ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET models_cache=?::jsonb, models_cached_at=? WHERE id=?", params: [JSON.stringify(models), now, view.id] });
             return { models: mark(models), source: "provider", cachedAt: now };
         } catch (error) {
-            return fallback(ctx.fns.models.safeMessage({ message: error, secrets: seen, fallback: "Model discovery failed" }));
+            return fallback(ctx.fns.models.connections.safeMessage({ message: error, secrets: seen, fallback: "Model discovery failed" }));
         }
 }

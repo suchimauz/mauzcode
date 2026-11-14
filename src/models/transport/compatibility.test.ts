@@ -1,10 +1,9 @@
 import { expect, test } from 'bun:test';
-import rootSSE from '../parseSSE';
 import leafSSE from './parseSSE';
 import leafFetch from './fetch';
 import leafValidate from './validateTransport';
 
-for (const [name, parse] of [['root', rootSSE], ['leaf', leafSSE]] as const) {
+for (const [name, parse] of [['leaf', leafSSE]] as const) {
     test(`${name} SSE preserves streaming event boundaries and generator cancellation`, async () => {
         const ctx = { fns: { models: { transport: { parseSSE: (opts: Parameters<typeof leafSSE>[2]) => leafSSE(ctx as Context, null, opts) } } } };
         const body = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode('event: update\ndata: hello\ndata: world\n\ndata: done\n\n')); c.close(); } });

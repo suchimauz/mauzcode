@@ -26,7 +26,7 @@ export default async function (
             };
             const res = await ctx.fns.models.provider.codex.codexWireResponses({ conn: conn, a: a, sessionId: req.sessionId, body: body, signal: req.signal, extra: { "x-codex-turn-metadata": turnMetadata } });
             if (!res.body) throw ctx.fns.models.provider.codex.codexWireInterrupted({ error: new Error("empty stream"), signal: req.signal });
-            const bad = (message: string) => ctx.fns.models.failure({ message, status: 502, info: { code: "PROVIDER_ERROR", classification: "provider", acceptance: "accepted", retryable: false, replaySafe: false } });
+            const bad = (message: string) => ctx.fns.models.inference.failure({ message, status: 502, info: { code: "PROVIDER_ERROR", classification: "provider", acceptance: "accepted", retryable: false, replaySafe: false } });
             let item: { id?: unknown; encrypted_content?: unknown } | null = null, responseId = "", completed = false;
             const usage = { prompt_tokens: 0, completion_tokens: 0 };
             for await (const ev of ctx.fns.models.provider.codex.codexWireEvents({ body: res.body, signal: req.signal })) {

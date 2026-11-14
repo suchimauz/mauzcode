@@ -15,5 +15,5 @@ export default async function (
     const rows = opts.provider === undefined
         ? await ctx.fns.procs.db.select({ sql: "SELECT * FROM llm_connections ORDER BY created_at, id", params: [] })
         : await ctx.fns.procs.db.select({ sql: "SELECT * FROM llm_connections WHERE provider=? ORDER BY created_at, id", params: [String(opts.provider)] });
-    return rows.map(row => ctx.fns.models.toView({ row }));
+    return rows.map(row => ctx.fns.models.connections.toView({ row }));
 }

@@ -24,18 +24,27 @@ async function fixture(protocol = "openai-chat", suffix = "") {
     return { ctx, conn, requests, state, server };
 }
 
+async function viaProtocol(f: Awaited<ReturnType<typeof fixture>>, op: "models" | "generation") {
+    const protocol = f.ctx.fns.models.protocol.get({ id: String(f.conn.config.protocol) });
+    const endpoint = await f.ctx.fns.models.provider.custom.customEndpoint({ conn: f.conn, protocol });
+    if (op === "models") return await protocol.listModels(f.ctx, { fetch: f.conn.fetch, endpoint });
+    await protocol.probe(f.ctx, { fetch: f.conn.fetch, endpoint, model: String(f.conn.config.testModel) });
+    return [];
+}
+
 describe("custom protocol local HTTP requests", () => {
     for (const protocol of ["openai-chat", "openai-responses", "anthropic", "gemini"]) {
         test(protocol + " discovery, authentication and minimal generation", async () => {
             const f = await fixture(protocol, protocol.startsWith("openai") ? "/v1/" : "");
             try {
-                expect(await f.ctx.fns.models.customProtocol({ conn: f.conn, operation: "models" })).toEqual([{ id: "mock" }]);
-                await f.ctx.fns.models.customProtocol({ conn: f.conn, operation: "generation" });
+                expect(await viaProtocol(f, "models")).toEqual([{ id: "mock" }]);
+                await viaProtocol(f, "generation");
                 const [models, gen] = f.requests;
                 expect(models!.path).toBe(protocol === "gemini" ? "/v1beta/models" : "/v1/models");
                 expect(models!.method).toBe("GET");
                 expect(gen!.method).toBe("POST");
                 for (const r of f.requests) {
+                    expect(r.headers.get("accept")).toBe("application/json");
                     expect(r.headers.get("authorization")).toBe(protocol.startsWith("openai") ? "Bearer test-only-key" : null);
                     expect(r.headers.get("x-api-key")).toBe(protocol === "anthropic" ? "test-only-key" : null);
                     expect(r.headers.get("anthropic-version")).toBe(protocol === "anthropic" ? "2023-06-01" : null);
@@ -44,6 +53,7 @@ describe("custom protocol local HTTP requests", () => {
                 expect(gen!.path).toBe(({ "openai-chat": "/v1/chat/completions", "openai-responses": "/v1/responses", anthropic: "/v1/messages", gemini: "/v1beta/models/mock:generateContent" })[protocol]!);
                 if (protocol === "gemini") { expect(gen!.body.generationConfig.maxOutputTokens).toBe(1); expect(gen!.body.contents[0].parts[0].text).toBe("Hi"); }
                 else { expect(gen!.body.model).toBe("mock"); expect(gen!.body[protocol === "openai-responses" ? "max_output_tokens" : "max_tokens"]).toBe(1); expect(gen!.body.stream).toBe(false); }
+                expect(await provider.listModels!(f.ctx, f.conn)).toEqual([{ id: "mock" }, { id: "manual" }]);
                 f.state.generationStatus = 401;
                 expect((await provider.test(f.ctx, f.conn)).reason).toBe("generation-failed");
                 f.state.modelsStatus = 500;
@@ -56,15 +66,50 @@ describe("custom protocol local HTTP requests", () => {
             const f = await fixture(protocol, suffix);
             try {
                 f.conn.secret = async () => null;
-                await f.ctx.fns.models.customProtocol({ conn: f.conn, operation: "models" });
+                await viaProtocol(f, "models");
                 expect(f.requests[0]!.path).toBe(suffix + "models");
                 expect(f.requests[0]!.headers.has("authorization")).toBe(false);
                 expect(f.requests[0]!.headers.has("x-api-key")).toBe(false);
                 expect(f.requests[0]!.headers.has("x-goog-api-key")).toBe(false);
+                expect(f.requests[0]!.headers.get("anthropic-version")).toBe(protocol === "anthropic" ? "2023-06-01" : null);
                 f.state.malformed = true;
-                await expect(f.ctx.fns.models.customProtocol({ conn: f.conn, operation: "models" })).rejects.toThrow("catalogue");
+                await expect(viaProtocol(f, "models")).rejects.toThrow("catalogue");
+                await expect(provider.listModels!(f.ctx, f.conn)).rejects.toThrow("catalogue");
             } finally { f.server.stop(true); }
         }
+    });
+    test("protocol select options equal the shared protocol set in order", async () => {
+        const f = await fixture();
+        try {
+            const field = provider.fields.find(x => x.key === "protocol") as { options?: { value: string; label: string }[] };
+            expect(field.options!.map(o => ({ id: o.value, label: o.label }))).toEqual(f.ctx.fns.models.protocol.list({}));
+        } finally { f.server.stop(true); }
+    });
+    test("anthropic without a key still sends anthropic-version on discovery and probe", async () => {
+        const f = await fixture("anthropic");
+        try {
+            f.conn.secret = async () => null;
+            expect((await provider.test(f.ctx, f.conn)).reason).toBe("generation-ok");
+            expect(f.requests).toHaveLength(2);
+            for (const r of f.requests) { expect(r.headers.get("anthropic-version")).toBe("2023-06-01"); expect(r.headers.has("x-api-key")).toBe(false); }
+        } finally { f.server.stop(true); }
+    });
+    test("discovery failure without a test model returns models-failed without generation", async () => {
+        const f = await fixture();
+        try {
+            delete f.conn.config.testModel;
+            f.state.modelsStatus = 500;
+            expect(await provider.test(f.ctx, f.conn)).toMatchObject({ status: "unavailable", reason: "models-failed" });
+            expect(f.requests.map(r => r.method)).toEqual(["GET"]);
+            f.state.modelsStatus = 200; f.requests.length = 0;
+            expect(await provider.test(f.ctx, f.conn)).toMatchObject({ status: "available", reason: "models-ok" });
+            expect(f.requests.map(r => r.method)).toEqual(["GET"]);
+            f.conn.config.protocol = "other"; f.requests.length = 0;
+            expect((await provider.test(f.ctx, f.conn)).reason).toBe("models-failed");
+            f.conn.config.protocol = "openai-chat"; f.conn.config.baseUrl = "https://example.test?"; f.conn.config.testModel = "mock";
+            expect((await provider.test(f.ctx, f.conn)).reason).toBe("models-failed");
+            expect(f.requests).toHaveLength(0);
+        } finally { f.server.stop(true); }
     });
 });
 
@@ -72,9 +117,9 @@ describe("custom provider spec scenarios", () => {
     test("schema rejects unsupported protocol and invalid base URLs", async () => {
         const f = await fixture();
         try {
-            await expect(f.ctx.fns.models.validateConfig({ provider: "custom", config: { baseUrl: "https://example.test", protocol: "other" } })).rejects.toThrow();
+            await expect(f.ctx.fns.models.connections.validateConfig({ provider: "custom", config: { baseUrl: "https://example.test", protocol: "other" } })).rejects.toThrow();
             for (const baseUrl of ["relative", "ftp://example.test", "https://u:p@example.test", "https://example.test?q=1", "https://example.test#hash", "https://example.test?", "https://example.test#"]) {
-                await expect(f.ctx.fns.models.validateConfig({ provider: "custom", config: { baseUrl, protocol: "openai-chat" } })).rejects.toThrow();
+                await expect(f.ctx.fns.models.connections.validateConfig({ provider: "custom", config: { baseUrl, protocol: "openai-chat" } })).rejects.toThrow();
             }
             expect(provider.transports).toEqual(["direct", "socks", "ssh-tunnel"]);
         } finally { f.server.stop(true); }

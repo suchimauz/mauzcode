@@ -16,11 +16,11 @@ export default function (
     const { body, signal } = opts;
     async function* iterate(): AsyncGenerator<Record<string, any>> {
         try {
-            for await (const { data } of ctx.fns.models.parseSSE({ body })) {
+            for await (const { data } of ctx.fns.models.transport.parseSSE({ body })) {
                 if (!data || data === "[DONE]") continue;
                 let ev: unknown;
                 try { ev = JSON.parse(data); } catch {
-                    throw ctx.fns.models.failure({ message: "Codex sent a malformed stream event", status: 502, info: { code: "PROVIDER_ERROR", classification: "provider", acceptance: "uncertain", retryable: false, replaySafe: false } });
+                    throw ctx.fns.models.inference.failure({ message: "Codex sent a malformed stream event", status: 502, info: { code: "PROVIDER_ERROR", classification: "provider", acceptance: "uncertain", retryable: false, replaySafe: false } });
                 }
                 if (ev && typeof ev === "object") yield ev as Record<string, any>;
             }

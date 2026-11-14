@@ -39,7 +39,7 @@ export default async function (
             "x-client-request-id": sessionId,
             ...extra,
         };
-        if (signal?.aborted) throw ctx.fns.models.failure({ message: "Request cancelled before dispatch", status: 499, info: { code: "CANCELLED", classification: "cancelled", acceptance: "none", retryable: false, replaySafe: true } });
+        if (signal?.aborted) throw ctx.fns.models.inference.failure({ message: "Request cancelled before dispatch", status: 499, info: { code: "CANCELLED", classification: "cancelled", acceptance: "none", retryable: false, replaySafe: true } });
         let res: Response;
         try {
             res = await conn.fetch(`${BASE}/codex/responses`, { method: "POST", headers, body: JSON.stringify(body), signal });

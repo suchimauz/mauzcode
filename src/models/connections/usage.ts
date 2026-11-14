@@ -15,16 +15,16 @@ export default async function (
         refresh?: boolean;
     },
 ): Promise<types.models.UsageReport> {
-    const view = await ctx.fns.models.get({ id: opts.id });
+    const view = await ctx.fns.models.connections.get({ id: opts.id });
     if (!view.enabled) return { status: "disabled", reason: "disabled", checkedAt: Date.now() };
     const def = Object.hasOwn(ctx.state.models?.providers ?? {}, view.provider) ? ctx.state.models!.providers![view.provider]!.definition : undefined;
     if (!def?.usage) {
-        const t = await ctx.fns.models.test({ id: view.id, cached: opts.refresh !== true });
+        const t = await ctx.fns.models.connections.test({ id: view.id, cached: opts.refresh !== true });
         return { status: t.status, reason: t.reason, checkedAt: t.checkedAt };
     }
-    return await ctx.fns.models.cached({ connection: view, kind: "usage", reuse: opts.refresh !== true, run: async (): Promise<types.models.UsageReport> => {
+    return await ctx.fns.models.connections.cached({ connection: view, kind: "usage", reuse: opts.refresh !== true, run: async (): Promise<types.models.UsageReport> => {
         try {
-            const { definition, conn } = await ctx.fns.models.resolve({ id: view.id });
+            const { definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id });
             const r = await definition.usage!(ctx, conn);
             if (!r || !["available", "unavailable", "configured"].includes(r.status)) throw new Error("Provider returned an invalid usage report");
             const num = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? v : undefined;

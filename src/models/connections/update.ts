@@ -28,7 +28,7 @@ export default async function (
     },
 ): Promise<types.models.ConnectionView> {
     const invalid = (message: string, field?: string): never => { throw Object.assign(new Error(message), { code: "VALIDATION", status: 400, ...(field ? { field } : {}) }); };
-    const current = await ctx.fns.models.get({ id: opts.id });
+    const current = await ctx.fns.models.connections.get({ id: opts.id });
     const id = current.id;
     let accountName = current.accountName;
     if (opts.accountName !== undefined) {
@@ -42,11 +42,11 @@ export default async function (
     let transport = current.transport;
     if (reconfigure) {
         const stored = Object.entries(current.secrets).filter(([, set]) => set).map(([key]) => key);
-        const checked = await ctx.fns.models.validateConfig({ provider: current.provider, config: opts.config ?? current.config, secrets: opts.secrets, stored });
+        const checked = await ctx.fns.models.connections.validateConfig({ provider: current.provider, config: opts.config ?? current.config, secrets: opts.secrets, stored });
         config = checked.config; secrets = checked.secrets;
         if (opts.transport !== undefined) {
             const t = opts.transport;
-            try { await ctx.fns.models.validateTransport({ transport: t, allowed: ctx.state.models!.providers![current.provider]!.definition.transports }); }
+            try { await ctx.fns.models.transport.validateTransport({ transport: t, allowed: ctx.state.models!.providers![current.provider]!.definition.transports }); }
             catch (error) { invalid(error instanceof Error ? error.message : "Invalid transport", "transport"); }
             transport = t.kind === "socks" ? { kind: "socks", proxyId: t.proxyId } : t.kind === "ssh-tunnel" ? { kind: "ssh-tunnel", instance: t.instance } : { kind: "direct" };
         }
@@ -69,5 +69,5 @@ export default async function (
             params: [accountName, JSON.stringify(config), JSON.stringify(refs), JSON.stringify(transport), opts.enabled ?? current.enabled, Date.now(), id],
         });
     } });
-    return await ctx.fns.models.get({ id });
+    return await ctx.fns.models.connections.get({ id });
 }

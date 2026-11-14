@@ -22,8 +22,8 @@ async function setup(handler: Handler, transport: types.models.TransportSpec = {
     ctx.state.models.codexRefresh = {};
     ctx.state.models.loginFlows = {};
     const calls: Call[] = [];
-    ctx.state.registry.models.validateTransport = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec }) => o.transport;
-    ctx.state.registry.models.fetch = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec; url: string; init?: RequestInit }) => {
+    ctx.state.registry.models.transport.validateTransport = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec }) => o.transport;
+    ctx.state.registry.models.transport.fetch = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec; url: string; init?: RequestInit }) => {
         const call: Call = { url: o.url, method: o.init?.method ?? "GET", headers: Object.fromEntries(new Headers(o.init?.headers).entries()), body: String(o.init?.body ?? ""), transport: o.transport };
         calls.push(call);
         return handler(call);
@@ -31,12 +31,12 @@ async function setup(handler: Handler, transport: types.models.TransportSpec = {
     // SDK independence: any legacy llm call from the provider path fails loudly.
     for (const name of Object.keys(ctx.state.registry.llm ?? {})) ctx.state.registry.llm[name] = () => { throw new Error(`legacy llm.${name} called`); };
     const view = await ctx.fns.models.create({ provider: "codex", accountName: "me", config: {}, secrets: {}, transport });
-    const conn = async () => (await ctx.fns.models.resolve({ id: view.id })).conn;
+    const conn = async () => (await ctx.fns.models.connections.resolve({ id: view.id })).conn;
     return { ctx, calls, view, conn };
 }
 
 const store = async (ctx: Context, conn: types.models.ResolvedConnection, expSec: number) =>
-    ctx.fns.models.codexAuth({ conn, op: "store", tokens: { id_token: ID_TOKEN, access_token: access(expSec), refresh_token: REFRESH } });
+    ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", tokens: { id_token: ID_TOKEN, access_token: access(expSec), refresh_token: REFRESH } });
 
 const sse = (events: unknown[]) => new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
 
@@ -52,7 +52,7 @@ describe("codex device login", () => {
             return new Response("unexpected", { status: 500 });
         }, { kind: "socks", proxyId: "p1" } as types.models.TransportSpec);
         const c = await conn();
-        const started = await ctx.fns.models.codexLogin({ conn: c, op: "start", intervalMs: 5 });
+        const started = await ctx.fns.models.provider.codex.codexLogin({ conn: c, op: "start", intervalMs: 5 });
         expect(started).toMatchObject({ status: "pending", verificationUri: `${ISSUER}/codex/device`, userCode: "ABCD-1234" });
         await ctx.state.models!.loginFlows![view.id]!.done;
         const status = await ctx.fns.models.action({ id: view.id, action: "loginStatus" });
@@ -66,13 +66,13 @@ describe("codex device login", () => {
         expect(exchange.length).toBe(1);
         expect(exchange[0]!.headers["content-type"]).toBe("application/x-www-form-urlencoded");
         expect(Object.fromEntries(new URLSearchParams(exchange[0]!.body))).toEqual({ grant_type: "authorization_code", client_id: "app_EMoamEEZ73f0CkXaXp7hrann", code: "authcode-SECRET", redirect_uri: `${ISSUER}/deviceauth/callback`, code_verifier: "verifier-SECRET" });
-        const st = await ctx.fns.models.codexAuth({ conn: c, op: "status" });
+        const st = await ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "status" });
         expect(st).toMatchObject({ loggedIn: true, accountId: ACCOUNT });
     });
 
     test("404 on usercode reports device login unavailable", async () => {
         const { ctx, conn } = await setup(() => new Response("", { status: 404 }));
-        await expect(ctx.fns.models.codexLogin({ conn: await conn(), op: "start" })).rejects.toThrow(/not enabled/);
+        await expect(ctx.fns.models.provider.codex.codexLogin({ conn: await conn(), op: "start" })).rejects.toThrow(/not enabled/);
     });
 
     test("expiry, cancel and a failed exchange that is never retried", async () => {
@@ -83,22 +83,22 @@ describe("codex device login", () => {
             return new Response("boom", { status: 502 });
         });
         const c = await conn();
-        await ctx.fns.models.codexLogin({ conn: c, op: "start", intervalMs: 5, maxWaitMs: 30 });
+        await ctx.fns.models.provider.codex.codexLogin({ conn: c, op: "start", intervalMs: 5, maxWaitMs: 30 });
         await ctx.state.models!.loginFlows![view.id]!.done;
-        expect(await ctx.fns.models.codexLogin({ conn: c, op: "status" })).toMatchObject({ status: "expired", userCode: "WXYZ" });
+        expect(await ctx.fns.models.provider.codex.codexLogin({ conn: c, op: "status" })).toMatchObject({ status: "expired", userCode: "WXYZ" });
 
-        await ctx.fns.models.codexLogin({ conn: c, op: "start", intervalMs: 5 });
-        const cancelled = await ctx.fns.models.codexLogin({ conn: c, op: "cancel" });
+        await ctx.fns.models.provider.codex.codexLogin({ conn: c, op: "start", intervalMs: 5 });
+        const cancelled = await ctx.fns.models.provider.codex.codexLogin({ conn: c, op: "cancel" });
         expect(cancelled).toMatchObject({ status: "failed", message: "Login cancelled" });
         await ctx.state.models!.loginFlows![view.id]!.done;
 
         mode = "code";
         const before = calls.length;
-        await ctx.fns.models.codexLogin({ conn: c, op: "start", intervalMs: 5 });
+        await ctx.fns.models.provider.codex.codexLogin({ conn: c, op: "start", intervalMs: 5 });
         await ctx.state.models!.loginFlows![view.id]!.done;
-        expect(await ctx.fns.models.codexLogin({ conn: c, op: "status" })).toMatchObject({ status: "failed" });
+        expect(await ctx.fns.models.provider.codex.codexLogin({ conn: c, op: "status" })).toMatchObject({ status: "failed" });
         expect(calls.slice(before).filter(x => x.url === `${ISSUER}/oauth/token`).length).toBe(1);
-        expect((await ctx.fns.models.codexAuth({ conn: c, op: "status" })).loggedIn).toBe(false);
+        expect((await ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "status" })).loggedIn).toBe(false);
     });
 });
 
@@ -110,14 +110,14 @@ describe("codex token refresh", () => {
         });
         const c = await conn();
         await store(ctx, c, Math.floor(Date.now() / 1000) + 10);
-        const [a, b] = await Promise.all([ctx.fns.models.codexAuth({ conn: c, op: "token" }), ctx.fns.models.codexAuth({ conn: c, op: "token" })]);
+        const [a, b] = await Promise.all([ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "token" }), ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "token" })]);
         expect(calls.length).toBe(1);
         expect(Object.fromEntries(new URLSearchParams(calls[0]!.body))).toEqual({ grant_type: "refresh_token", client_id: "app_EMoamEEZ73f0CkXaXp7hrann", refresh_token: REFRESH });
         expect(a.accessToken).toBe(b.accessToken!);
         expect(tagOf(a.accessToken)).toBe("new");
         expect(a.accountId).toBe(ACCOUNT);
         // A fresh token needs no request.
-        await ctx.fns.models.codexAuth({ conn: c, op: "token" });
+        await ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "token" });
         expect(calls.length).toBe(1);
     });
 
@@ -125,8 +125,8 @@ describe("codex token refresh", () => {
         const { ctx, calls, view, conn } = await setup(() => new Response("{}", { status: 401 }));
         const c = await conn();
         await store(ctx, c, Math.floor(Date.now() / 1000) + 10);
-        await expect(ctx.fns.models.codexAuth({ conn: c, op: "token" })).rejects.toMatchObject({ code: "LOGIN_REQUIRED" });
-        expect(await ctx.fns.models.codexAuth({ conn: c, op: "status" })).toMatchObject({ loggedIn: false, needsLogin: true });
+        await expect(ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "token" })).rejects.toMatchObject({ code: "LOGIN_REQUIRED" });
+        expect(await ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "status" })).toMatchObject({ loggedIn: false, needsLogin: true });
         expect((await ctx.fns.models.test({ id: view.id })).reason).toBe("login-required");
         const n = calls.length;
         expect(await ctx.fns.models.action({ id: view.id, action: "logout" })).toEqual({ loggedIn: false, needsLogin: true });
@@ -146,7 +146,7 @@ describe("codex token refresh", () => {
         });
         const c = await conn();
         await store(ctx, c, Math.floor(Date.now() / 1000) + 10);
-        const got = await ctx.fns.models.codexAuth({ conn: c, op: "token" });
+        const got = await ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "token" });
         expect(tagOf(got.accessToken)).toBe("a");
         expect(got.expiresAt! - Date.now()).toBeGreaterThan(3700_000);
     });
@@ -188,7 +188,7 @@ describe("codex provider operations", () => {
         const c = await conn();
         await store(ctx, c, now() + 3600);
         expect(await ctx.fns.models.test({ id: view.id })).toMatchObject({ status: "unavailable", reason: "login-required" });
-        expect((await ctx.fns.models.codexAuth({ conn: c, op: "status" })).needsLogin).toBe(true);
+        expect((await ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "status" })).needsLogin).toBe(true);
     });
 
     test("stream parses SSE into text, thinking, tool calls and usage; disabled model never fetches", async () => {

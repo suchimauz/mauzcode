@@ -8,14 +8,20 @@ UI are separate implementation stages; do not assume those APIs are available ye
 
 ## Internal implementation navigation
 
-Public procedures remain `ctx.fns.models.<name>`. Existing plugins and callers
-need no migration: root signatures, synchronous helpers, async generators,
-provider ids, HTTP contracts, secret scoping and persisted connection/cache values
-are unchanged. Root files delegate dynamically to these implementation areas:
+The public surface is a **minimal facade** of root procedures
+`ctx.fns.models.<name>`: `stream`, `compact`, `listModels`, `setModelEnabled`,
+`refreshAll`, `list`, `get`, `create`, `update`, `remove`, `test`, `usage` and
+`action`, plus `models.providers` (catalogue) and `models.api` (HTTP). Each facade
+entry delegates once to its implementation with unchanged options, callbacks,
+signal and return/error identity. Every other model procedure lives in an
+implementation namespace and is called by its full name, e.g.
+`models.inference.resolveReasoning`, `models.transport.parseSSE`,
+`models.connections.resolve`, `models.provider.codex.codexInput`:
 
 | Directory / runtime namespace | Responsibility |
 | --- | --- |
 | `models/provider/{claude,codex,custom}` | Provider protocol helpers and declaration operations |
+| `models/protocol` | Closed set of shared wire protocols and their registry (see below) |
 | `models/transport` | Destination validation, HTTP transport and SSE parsing |
 | `models/catalog` | Model discovery/cache, refresh and per-model availability |
 | `models/connections` | CRUD, configuration validation, secret-free projections, resolution, actions and health/usage cache |
@@ -23,37 +29,81 @@ are unchanged. Root files delegate dynamically to these implementation areas:
 
 The singular `provider` directory is intentional: a `models/providers` namespace
 would collide with callable `models.providers`. Public types, declarations,
-routes, migrations, the provider loader, `api`, `providers` and `$start` remain at
-root. Shared runtime state remains `ctx.state.models`, not nested namespace state.
-Internal calls may use the public facade deliberately (including transport and
-provider seams used by offline fixtures); no facade calls itself or duplicates its
-implementation body.
+routes, migrations, the provider loader, the facade, `api`, `providers` and
+`$start` remain at root. Shared runtime state remains `ctx.state.models`.
+Code inside `src/models` calls implementation namespaces directly, never a root
+facade entry. `internalCompatibility.test.ts` pins the facade signatures and
+asserts that no other root procedure exists.
 
-### Reload and rollback
+## Wire protocols
 
-After adding/removing source files, run `ctx.fns.procs.dev.genTypes({})`.
-Reload new leaves before facades, then root declarations. Use a full procedure
-name (`models.connections.resolve`) or an **exact slash-delimited directory**
-(`models/connections`, `models/inference`, `models/provider/codex`).
-`models.provider.codex` is interpreted as a procedure, not a directory, and
-reloading `models` does not recursively reload nested implementations.
-Once leaves exist, `ctx.fns.procs.repl.load({ name: "models" })` reloads root
-facades and declarations. No route reload or service restart is needed when route
-sources are unchanged. Validate each changed procedure's documentation with
-`strict:true, typecheck:false`, then run one complete project typecheck for the
-settled batch (do not compile the whole project separately for each function).
+`models.protocol` owns four shared wire protocols: `openai-chat`,
+`openai-responses`, `anthropic` and `gemini`. Each one is a
+`types.models.Protocol` strategy object (`models.protocol.<name>.definition`) with
+`baseUrl(ctx, raw)` (validate and version the base URL), `defaultHeaders()`
+(protocol headers such as `anthropic-version`), `apiKeyHeaders(key)` (the standard
+auth header form), `listModels(ctx, { fetch, endpoint, signal? })` and
+`probe(ctx, { fetch, endpoint, model, signal? })` (one minimal non-streaming
+generation). `models.protocol.get({ id })` is the only id → implementation mapping
+and throws `Unsupported protocol` without a request; `models.protocol.list({})`
+returns `{ id, label }[]` in registry order.
 
-Each stage can be reverted independently: restore that stage's original root
-bodies, declarations and test wiring, remove only its added leaf files, regenerate
-types, then reload restored roots/declarations. Provider rollback restores the
-original declaration operation bodies; transport/catalog rollback restores the
-six delegates without altering `$start` timers; connections/inference rollback
-restores the nineteen delegates without changing storage or state ownership.
-A reload does **not** delete retained registry entries for removed files. Verify
-restored callers no longer reference them and run the isolated fresh-discovery
-and hot-reload tests (`internalCompatibility.test.ts`, `registryReload.test.ts`)
-without live credentials. Registry cleanup or an operational restart requires
-separate review; it is not an implicit rollback step.
+The **provider is the single entry point**: `ProviderDefinition.test` and
+`listModels` stay unchanged, and a protocol is an implementation detail of the
+provider. A protocol never sees the connection or its secrets. It only gets the
+transport-bound `conn.fetch` and a provider-built `types.models.ProtocolEndpoint`
+(`{ base, headers }`). The provider decides on authentication. For example,
+`models.provider.custom.customEndpoint` merges `Accept`, the protocol's
+`defaultHeaders()` and, when an API key is set, `apiKeyHeaders(key)` through one
+case-insensitive `Headers`. The custom provider's protocol select must equal
+`models.protocol.list({})`. Claude and Codex keep their own wire code. Plugins
+cannot add shared protocols.
+
+### Reload, unload and rollback
+
+`procs.repl.load` replaces loaded functions but never removes registry entries
+for deleted files; `procs.repl.unload({ name })` does, and only after the source
+is gone (it refuses names that are still scanned and is idempotent for absent
+ones). Unload does not stop running invocations, so for a change that removes
+procedures:
+
+1. Stop admitting new model operations and let in-flight calls drain; keep this
+   boundary until verification completes.
+2. Apply the source change (including deleted files), then run
+   `ctx.fns.procs.dev.genTypes({})`.
+3. Reload exact slash-delimited directories, leaves first:
+   `models/protocol/common`, `models/protocol/openaiChat`,
+   `models/protocol/openaiResponses`, `models/protocol/anthropic`,
+   `models/protocol/gemini`, `models/protocol`; then `models/transport`,
+   `models/connections`, `models/catalog`, `models/inference`,
+   `models/provider/claude`, `models/provider/codex`, `models/provider/custom`;
+   finally `models` (root facade and declarations). A dotted name such as
+   `models.provider.codex` is a procedure, not a directory, and reloading `models`
+   is not recursive.
+4. Once the replacement callers are loaded, `procs.repl.unload` each removed
+   exact name. For the facade reduction those were `models.assertModelEnabled`,
+   `models.cached`, `models.checkInput`, `models.claudeAuth`, `models.claudeLogin`,
+   `models.claudeRequest`, `models.codexAuth`, `models.codexFailure`,
+   `models.codexInput`, `models.codexLogin`, `models.codexQuota`,
+   `models.codexReasoningProfile`, `models.codexVersion`, `models.customProtocol`,
+   `models.failure`, `models.fetch`, `models.parseSSE`, `models.resolveReasoning`,
+   `models.resolve`, `models.safeMessage`, `models.toView`, `models.validateConfig`,
+   `models.validateTransport` and `models.provider.custom.customProtocol`. Never
+   mutate the registry directly.
+5. Verify the live registry (not only the source index): removed names are absent,
+   facade targets resolve and custom discovery/probing reaches `models.protocol`.
+   Then resume model operations. `facadeRemoval.test.ts` covers this sequence with the
+   real scanner, loader and unload and compares against a fresh boot;
+   `registryReload.test.ts` separately covers provider-declaration reload.
+
+Rollback: restore the previous source revision, regenerate types and reload each
+affected exact directory (including restored wrappers and
+`models/provider/custom`) before resuming calls. Unload new protocol procedures
+and `models.provider.custom.customEndpoint` only after their sources are removed
+and callers have drained, then verify that the previous live model catalogue is back.
+No persisted data needs to be undone. Validate each changed procedure with
+`strict:true, typecheck:false` and run one complete project typecheck for the
+settled batch.
 
 ## Declare a provider
 
@@ -139,7 +189,7 @@ HTTP endpoint or grant permission to invoke it.
 and `ctx.fns.models.compact({ connectionId, model, instructions, messages, sessionId, focus?, maxTokens?, signal? })`
 are the only entry points to a provider's `stream`/`compact`. Before calling the
 provider, they re-read the stored connection on **every** request
-(`models.assertModelEnabled`, no cache):
+(`models.inference.assertModelEnabled`, no cache):
 
 - disabled connection → code `CONNECTION_DISABLED`;
 - model in the connection's `disabledModels` → `Model <model> is disabled by user`,
@@ -171,7 +221,7 @@ fields) are unchanged.
 | Quota | — | `quota: { windows[{ name, usedPercent, windowMinutes?, resetAt? }], source }` | absent |
 | Failures | — | thrown `Error` with `code`, `status`, `retryable`, `replaySafe`, `failure: FailureInfo` | existing errors |
 
-`models.checkInput` validates all of this **before any network request**: an
+`models.inference.checkInput` validates all of this **before any network request**: an
 aborted signal → `CANCELLED`; a checkpoint whose provider, connection or model
 differs, or that is malformed, → `INVALID_INPUT`; `state` without `runId`, or
 bound to another provider, connection, session or run, → `INVALID_INPUT`.
@@ -179,7 +229,7 @@ bound to another provider, connection, session or run, → `INVALID_INPUT`.
 Use a new `runId` per logical run (one user turn including its tool
 continuations). Keep the `state` only in memory for that run, and do not persist it.
 
-Reasoning: for opted-in providers `models.resolveReasoning` uses the model's
+Reasoning: for opted-in providers `models.inference.resolveReasoning` uses the model's
 cached discovery metadata (`ModelInfo.reasoning`, read from `models_cache`, so
 inference never triggers discovery). Otherwise it falls back to the
 provider's documented profile. `auto` or omitted resolves to the default. An
@@ -212,15 +262,15 @@ The owner toggles models with `models.setModelEnabled({ id, model, enabled })`
 
 `$modelProvider_codex.ts` connects a ChatGPT subscription through the Codex
 backend. It has one optional field, `clientVersion`. Without it,
-`models.codexVersion` sends the documented SDK default **0.157.1** (the floor
+`models.provider.codex.codexVersion` sends the documented SDK default **0.157.1** (the floor
 that exposes the GPT-6 catalogue). The SDK never runs the codex CLI, a shell
 or an account-file lookup. The provider allows the `direct`, `socks` and
 `ssh-tunnel` transports.
 
-**Ownership.** The whole Codex path — conversion (`models.codexInput`), SSE
-framing (`models.parseSSE`), version, reasoning profile, failure
-classification (`models.codexFailure`) and quota extraction
-(`models.codexQuota`) — lives in `models`. It calls no `llm`, `llms`, `agent`
+**Ownership.** The whole Codex path — conversion (`models.provider.codex.codexInput`), SSE
+framing (`models.transport.parseSSE`), version, reasoning profile, failure
+classification (`models.provider.codex.codexFailure`) and quota extraction
+(`models.provider.codex.codexQuota`) — lives in `models`. It calls no `llm`, `llms`, `agent`
 or `session` function. Allowed infrastructure: `procs.db`, `secrets.*Local`
 (key from `secrets.localEncryptionKey`), `socksProxy`, `sshProvider`
 and `codexTunnel.openProduction` as SSH-tunnel transport. Every byte goes
@@ -274,7 +324,7 @@ To revert, revert the commit. There is no hidden fallback to the legacy
 runtime in either direction.
 
 Login is the OpenAI device-code flow implemented natively over HTTP
-(`models.codexLogin`). No codex CLI is started and nothing runs on SSH instances,
+(`models.provider.codex.codexLogin`). No codex CLI is started and nothing runs on SSH instances,
 so every login request goes through the selected transport. Actions:
 
 - `login`: returns `{ flowId, status, verificationUri, userCode, expiresAt }` and polls in the background;
@@ -286,7 +336,7 @@ The code-for-token exchange is never retried, and a flow expires after 15 minute
 Flows are process-local.
 
 Tokens are stored encrypted in `local_secrets` as `models/<id>.codex-auth` with
-compare-and-swap revisions (`models.codexAuth`). Refresh happens 60 s before
+compare-and-swap revisions (`models.provider.codex.codexAuth`). Refresh happens 60 s before
 expiry, through the transport, with one shared refresh per connection. A
 rejected refresh or a backend 401 sets `needsLogin`, and `test` then reports
 `login-required`. Models come from `/backend-api/codex/models`, usage windows

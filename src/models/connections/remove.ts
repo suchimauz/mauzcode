@@ -12,7 +12,7 @@ export default async function (
         id: string;
     },
 ): Promise<{ removed: string }> {
-    const { id } = await ctx.fns.models.get({ id: opts.id });
+    const { id } = await ctx.fns.models.connections.get({ id: opts.id });
     await ctx.fns.procs.db.transaction({ fn: async () => {
         const rows = await ctx.fns.procs.db.select({ sql: "DELETE FROM llm_connections WHERE id=? RETURNING secrets", params: [id] });
         if (!rows[0]) throw Object.assign(new Error("Connection not found"), { code: "NOT_FOUND", status: 404 });

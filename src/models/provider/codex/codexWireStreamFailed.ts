@@ -14,5 +14,5 @@ export default function (
     const { ev } = opts;
     
         const error = (ev.response?.error ?? ev.error ?? (ev.code || ev.message ? { code: ev.code, message: ev.message } : null)) as Record<string, unknown> | null;
-        return ctx.fns.models.failure(ctx.fns.models.provider.codex.codexFailure({ phase: "stream", status: 0, error }));
+        return ctx.fns.models.inference.failure(ctx.fns.models.provider.codex.codexFailure({ phase: "stream", status: 0, error }));
 }

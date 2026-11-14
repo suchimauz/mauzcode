@@ -1,21 +1,15 @@
 import { expect, test } from "bun:test";
-import rootVersion from "../../codexVersion";
-import rootProfile from "../../codexReasoningProfile";
-import rootQuota from "../../codexQuota";
-import rootFailure from "../../codexFailure";
-import rootInput from "../../codexInput";
 import leafVersion from "./codexVersion";
 import leafProfile from "./codexReasoningProfile";
 import leafQuota from "./codexQuota";
 import leafFailure from "./codexFailure";
 import leafInput from "./codexInput";
 
-// Static expected values characterized from root implementations before facade
-// migration. The fake registry also supports the eventual dynamic root delegates.
+// Static expected values characterized from the former root implementations.
 const sentinel = new Error("safe input failure");
 let failureOptions: Record<string, unknown> | undefined;
 const ctx = { fns: { models: {
-    failure: (opts: Record<string, unknown>) => { failureOptions = opts; return sentinel; },
+    inference: { failure: (opts: Record<string, unknown>) => { failureOptions = opts; return sentinel; } },
     provider: { codex: {
         codexVersion: (opts: Parameters<typeof leafVersion>[2]) => leafVersion(ctx, null, opts),
         codexReasoningProfile: (opts: Parameters<typeof leafProfile>[2]) => leafProfile(ctx, null, opts),
@@ -26,7 +20,6 @@ const ctx = { fns: { models: {
 } } } as unknown as Context;
 
 for (const [label, version, profile, quota, failure, input] of [
-    ["root", rootVersion, rootProfile, rootQuota, rootFailure, rootInput],
     ["leaf", leafVersion, leafProfile, leafQuota, leafFailure, leafInput],
 ] as const) {
     test(`${label}: version validation and reasoning boundaries preserve fixed contracts`, () => {

@@ -19,7 +19,7 @@ export default async function (
             const { input } = ctx.fns.models.provider.codex.codexInput({ messages: req.messages });
             // models.stream normalizes reasoning for this opted-in provider; direct callers must do the same.
             const applied = req.reasoning?.applied;
-            if (!applied) throw ctx.fns.models.failure({ message: "Codex requires SDK-resolved reasoning (call through models.stream)", status: 400, info: { code: "CAPABILITY_UNAVAILABLE", classification: "capability_unavailable", acceptance: "none", retryable: false, replaySafe: true } });
+            if (!applied) throw ctx.fns.models.inference.failure({ message: "Codex requires SDK-resolved reasoning (call through models.stream)", status: 400, info: { code: "CAPABILITY_UNAVAILABLE", classification: "capability_unavailable", acceptance: "none", retryable: false, replaySafe: true } });
             const body: Record<string, unknown> = {
                 model: req.model, store: false, stream: true, instructions: req.instructions, input,
                 text: { verbosity: "medium" }, prompt_cache_key: req.promptCacheKey || req.sessionId,

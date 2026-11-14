@@ -31,10 +31,10 @@ export default async function (
     const accountName = typeof opts.accountName === "string" ? opts.accountName.trim() : "";
     if (!accountName || accountName.length > 100) invalid("Account name is required (1–100 characters)", "accountName");
     if (opts.enabled !== undefined && typeof opts.enabled !== "boolean") invalid("enabled must be true or false", "enabled");
-    const { config, secrets } = await ctx.fns.models.validateConfig({ provider: opts.provider, config: opts.config, secrets: opts.secrets });
+    const { config, secrets } = await ctx.fns.models.connections.validateConfig({ provider: opts.provider, config: opts.config, secrets: opts.secrets });
     const transport = opts.transport ?? { kind: "direct" as const };
     const def = ctx.state.models!.providers![opts.provider]!.definition;
-    try { await ctx.fns.models.validateTransport({ transport, allowed: def.transports }); }
+    try { await ctx.fns.models.transport.validateTransport({ transport, allowed: def.transports }); }
     catch (error) { invalid(error instanceof Error ? error.message : "Invalid transport", "transport"); }
     const clean: types.models.TransportSpec = transport.kind === "socks" ? { kind: "socks", proxyId: transport.proxyId } : transport.kind === "ssh-tunnel" ? { kind: "ssh-tunnel", instance: transport.instance } : { kind: "direct" };
     const id = crypto.randomUUID();
@@ -51,5 +51,5 @@ export default async function (
             params: [id, opts.provider, accountName, JSON.stringify(config), JSON.stringify(refs), JSON.stringify(clean), opts.enabled ?? true, now, now],
         });
     } });
-    return await ctx.fns.models.get({ id });
+    return await ctx.fns.models.connections.get({ id });
 }

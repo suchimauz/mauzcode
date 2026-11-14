@@ -17,5 +17,5 @@ export default async function (
         ? await ctx.fns.procs.db.select({ sql: "SELECT * FROM llm_connections WHERE id=?", params: [id] })
         : [];
     if (!rows[0]) throw Object.assign(new Error("Connection not found"), { code: "NOT_FOUND", status: 404 });
-    return ctx.fns.models.toView({ row: rows[0] });
+    return ctx.fns.models.connections.toView({ row: rows[0] });
 }

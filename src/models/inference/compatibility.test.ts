@@ -3,13 +3,16 @@ import { expect, test } from "bun:test";
 async function fixture() {
     const ctx: any = { state: { models: { providers: {} } }, fns: { models: { inference: {}, connections: {} } } };
     for (const name of ["assertModelEnabled", "checkInput", "compact", "failure", "resolveReasoning", "stream"]) {
-        const root = (await import(`../${name}.ts`)).default;
         const leaf = (await import(`./${name}.ts`)).default;
-        ctx.fns.models[name] = (opts: unknown) => root(ctx, null, opts);
         ctx.fns.models.inference[name] = (opts: unknown) => leaf(ctx, null, opts);
     }
+    // Only stream and compact remain root facade delegates.
+    for (const name of ["compact", "stream"]) {
+        const root = (await import(`../${name}.ts`)).default;
+        ctx.fns.models[name] = (opts: unknown) => root(ctx, null, opts);
+    }
     const safeMessage = (await import("../connections/safeMessage.ts")).default;
-    ctx.fns.models.safeMessage = (opts: unknown) => safeMessage(ctx, null, opts as never);
+    ctx.fns.models.connections.safeMessage = (opts: unknown) => safeMessage(ctx, null, opts as never);
     const view = { id: "fixture-connection", provider: "fixture", enabled: true, disabledModels: [] as string[] };
     const calls = { resolve: 0, stream: 0, compact: 0 };
     const result = { text: "ok", thinking: "", toolCalls: [], finishReason: "stop", usage: { prompt_tokens: 7 }, quota: { source: "headers", windows: [] } };
@@ -26,8 +29,8 @@ async function fixture() {
         compact: async () => { calls.compact++; return { item: { type: "compaction", encrypted_content: "fixture" }, usage: {} }; },
     };
     ctx.state.models.providers.fixture = { definition };
-    ctx.fns.models.get = async () => view;
-    ctx.fns.models.resolve = async () => { calls.resolve++; return { view, definition, conn: {} }; };
+    ctx.fns.models.connections.get = async () => view;
+    ctx.fns.models.connections.resolve = async () => { calls.resolve++; return { view, definition, conn: {} }; };
     return { ctx, view, calls, result, definition, request: () => request };
 }
 

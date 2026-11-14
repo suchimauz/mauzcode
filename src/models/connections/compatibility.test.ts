@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test";
 
 const groups = {
-    connections: ["action", "cached", "create", "get", "list", "remove", "resolve", "safeMessage", "test", "toView", "update", "usage", "validateConfig"],
-    inference: ["assertModelEnabled", "checkInput", "compact", "failure", "resolveReasoning", "stream"],
+    connections: ["action", "create", "get", "list", "remove", "test", "update", "usage"],
+    inference: ["compact", "stream"],
+    catalog: ["listModels", "refreshAll", "setModelEnabled"],
 };
 
 for (const [group, names] of Object.entries(groups)) for (const name of names) {
     test(`models.${name} delegates once with unchanged options, result and error identity`, async () => {
         const root = (await import(`../${name}.ts`)).default;
-        const sync = ["safeMessage", "toView", "checkInput", "failure", "resolveReasoning"].includes(name);
+        const sync = false;
         const signal = new AbortController().signal;
         const onEvent = () => undefined;
         const opts = { signal, onEvent, marker: Symbol(name) };
@@ -35,7 +36,7 @@ for (const [group, names] of Object.entries(groups)) for (const name of names) {
     });
 }
 
-for (const path of ["../cached.ts", "./cached.ts"]) test(`${path}: shared root health state, revision invalidation and failed check eviction`, async () => {
+for (const path of ["./cached.ts"]) test(`${path}: shared root health state, revision invalidation and failed check eviction`, async () => {
     const cached = (await import(path)).default;
     const ctx: any = { state: { models: { health: {} } }, fns: { models: { connections: {} } } };
     const leaf = (await import("./cached.ts")).default;
@@ -59,7 +60,7 @@ for (const path of ["../cached.ts", "./cached.ts"]) test(`${path}: shared root h
     expect(Object.keys(health)).toHaveLength(0);
 });
 
-for (const path of ["../resolve.ts", "./resolve.ts"]) test(`${path}: resolution limits secrets to declared connection fields and preserves saved transport`, async () => {
+for (const path of ["./resolve.ts"]) test(`${path}: resolution limits secrets to declared connection fields and preserves saved transport`, async () => {
     const resolve = (await import(path)).default;
     const leaf = (await import("./resolve.ts")).default;
     const signal = new AbortController().signal;
@@ -68,7 +69,7 @@ for (const path of ["../resolve.ts", "./resolve.ts"]) test(`${path}: resolution 
     const view = { id: "connection-one", provider: "fixture", accountName: "work", config: { nested: { value: 1 } }, secrets: { token: true }, transport, enabled: true };
     const secrets: unknown[] = [], requests: unknown[] = [];
     const ctx: any = { state: { models: { providers: { fixture: { definition } } } }, fns: {
-        models: { get: async () => view, connections: {}, fetch: (opts: unknown) => { requests.push(opts); return Promise.resolve(new Response("ok")); } },
+        models: { connections: { get: async () => view }, transport: { fetch: (opts: unknown) => { requests.push(opts); return Promise.resolve(new Response("ok")); } } },
         secrets: { getLocal: async (opts: unknown) => { secrets.push(opts); return "fixture-value"; } },
     } };
     ctx.fns.models.connections.resolve = (opts: Parameters<typeof leaf>[2]) => leaf(ctx, null, opts);

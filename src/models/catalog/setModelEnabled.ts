@@ -21,12 +21,12 @@ export default async function (
     const model = typeof opts.model === "string" ? opts.model : "";
             if (!/^\S{1,200}$/.test(model)) throw Object.assign(new Error("Model id must be 1–200 characters without whitespace"), { code: "VALIDATION", field: "model", status: 400 });
             if (typeof opts.enabled !== "boolean") throw Object.assign(new Error("enabled must be true or false"), { code: "VALIDATION", field: "enabled", status: 400 });
-            const view = await ctx.fns.models.get({ id: opts.id });
+            const view = await ctx.fns.models.connections.get({ id: opts.id });
             const sql = opts.enabled
                 ? "UPDATE llm_connections SET disabled_models = array_remove(disabled_models, ?), updated_at = ? WHERE id = ?"
                 : "UPDATE llm_connections SET disabled_models = CASE WHEN ? = ANY(disabled_models) THEN disabled_models ELSE array_append(disabled_models, ?) END, updated_at = ? WHERE id = ?";
             const now = Math.max(Date.now(), view.updatedAt + 1);
             await ctx.fns.procs.db.run({ sql, params: opts.enabled ? [model, now, view.id] : [model, model, now, view.id] });
             try { await ctx.fns.procs.events.refresh({ topic: "llm-models", reason: "models-model-enabled" }); } catch (error) { ctx.fns.procs.log.debug({ event: "models.refresh", msg: String(error) }); }
-            return ctx.fns.models.get({ id: view.id });
+            return ctx.fns.models.connections.get({ id: view.id });
 }

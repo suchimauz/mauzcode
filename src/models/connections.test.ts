@@ -45,7 +45,7 @@ const noSecrets = (value: unknown) => { const json = JSON.stringify(value); expe
 describe("models.validateConfig", () => {
     test("missing required, unknown key, bad select, bad url, provider validate", async () => {
         const { ctx } = await setup();
-        const v = (config: Record<string, unknown>, secrets: Record<string, unknown> = { apiKey: KEY }) => ctx.fns.models.validateConfig({ provider: "acme", config, secrets });
+        const v = (config: Record<string, unknown>, secrets: Record<string, unknown> = { apiKey: KEY }) => ctx.fns.models.connections.validateConfig({ provider: "acme", config, secrets });
         await expect(v({})).rejects.toMatchObject({ code: "VALIDATION", field: "baseUrl" });
         await expect(v({ baseUrl: "https://a.example" }, {})).rejects.toMatchObject({ field: "apiKey" });
         await expect(v({ baseUrl: "https://a.example", nope: 1 })).rejects.toMatchObject({ field: "nope" });
@@ -54,7 +54,7 @@ describe("models.validateConfig", () => {
         await expect(v({ baseUrl: "https://a.example", limit: "5" })).rejects.toMatchObject({ field: "limit" });
         await expect(v({ baseUrl: "https://a.example", apiKey: KEY })).rejects.toMatchObject({ field: "apiKey" });
         await expect(v({ baseUrl: "https://forbidden.example" })).rejects.toThrow("forbidden host");
-        await expect(ctx.fns.models.validateConfig({ provider: "nope", config: {} })).rejects.toMatchObject({ code: "UNKNOWN_PROVIDER" });
+        await expect(ctx.fns.models.connections.validateConfig({ provider: "nope", config: {} })).rejects.toMatchObject({ code: "UNKNOWN_PROVIDER" });
         expect(await v({ baseUrl: "https://a.example", models: ["m1", "m1", " m2 "] })).toEqual({ config: { baseUrl: "https://a.example", protocol: "chat", beta: false, models: ["m1", "m2"] }, secrets: { apiKey: KEY } });
     });
 });

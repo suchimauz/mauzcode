@@ -23,7 +23,7 @@ async function setup(extra: Partial<types.models.ProviderDefinition> = {}) {
     ctx.state.models ??= {};
     ctx.state.models.providers = { acme: { owner: "core", module: "models", rel: "models/$modelProvider_acme.ts", definition: provider(seen, extra) } };
     ctx.state.models.health = {};
-    ctx.state.registry.models.fetch = async () => { seen.fetch++; return new Response("{}"); };
+    ctx.state.registry.models.transport.fetch = async () => { seen.fetch++; return new Response("{}"); };
     const conn = await ctx.fns.models.create({ provider: "acme", accountName: "work", config: {}, secrets: {} });
     return { ctx, seen, conn };
 }

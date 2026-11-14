@@ -43,7 +43,7 @@ describe("Claude protocol", () => {
     test("allow-list refuses methods, paths and non-https before transport", async () => {
         const { ctx, conn, calls } = await setup();
         for (const [url, method] of [["https://api.anthropic.com/evil", "GET"], ["https://api.anthropic.com/v1/messages", "GET"], ["http://api.anthropic.com/api/oauth/usage", "GET"]]) {
-            await expect(ctx.fns.models.claudeRequest({ conn, url: url!, init: { method } })).rejects.toMatchObject({ code: "PROXY_CONFIG", requestSent: false });
+            await expect(ctx.fns.models.provider.claude.claudeRequest({ conn, url: url!, init: { method } })).rejects.toMatchObject({ code: "PROXY_CONFIG", requestSent: false });
         }
         expect(calls).toHaveLength(0);
     });
@@ -111,8 +111,8 @@ describe("Claude protocol", () => {
     test("rate headers cache only observed windows, missing headers never mean zero", async () => {
         const { ctx, conn } = await setup();
         const snapshots: unknown[] = [];
-        ctx.state.registry.models.get = async () => ({ id: conn.id, updatedAt: 1 });
-        ctx.state.registry.models.cached = async (_c: unknown, _s: unknown, o: { run: () => Promise<unknown> }) => { const r = await o.run(); snapshots.push(r); return r; };
+        ctx.state.registry.models.connections.get = async () => ({ id: conn.id, updatedAt: 1 });
+        ctx.state.registry.models.connections.cached = async (_c: unknown, _s: unknown, o: { run: () => Promise<unknown> }) => { const r = await o.run(); snapshots.push(r); return r; };
         await claude.stream(ctx, conn, req); expect(snapshots).toHaveLength(0);
         conn.fetch = async () => new Response('data: {"type":"message_stop"}\n\n', { headers: { "anthropic-ratelimit-unified-5h-utilization": "0.42", "anthropic-ratelimit-unified-5h-reset": "2000000000" } });
         await claude.stream(ctx, conn, req);

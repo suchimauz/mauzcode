@@ -18,6 +18,6 @@ export default function (
         status?: number;
     },
 ): Error & { code: string; status: number; retryable: boolean; replaySafe: boolean; failure: types.models.FailureInfo } {
-    const message = ctx.fns.models.safeMessage({ message: opts.message, fallback: "Provider request failed" });
+    const message = ctx.fns.models.connections.safeMessage({ message: opts.message, fallback: "Provider request failed" });
     return Object.assign(new Error(message), { code: opts.info.code, status: opts.status ?? 502, retryable: opts.info.retryable, replaySafe: opts.info.replaySafe, failure: { ...opts.info } });
 }

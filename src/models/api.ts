@@ -22,12 +22,12 @@ export default async function (
     const fail = (error: unknown) => {
         const e = error as { status?: unknown; code?: unknown; field?: unknown } | null;
         const status = typeof e?.status === "number" && e.status >= 400 && e.status < 500 ? e.status : e?.code === "TRANSPORT" ? 400 : 422;
-        return reply({ error: ctx.fns.models.safeMessage({ message: error, fallback: "Model connection request failed" }), ...(typeof e?.code === "string" ? { code: e.code } : {}), ...(typeof e?.field === "string" ? { field: e.field } : {}) }, status);
+        return reply({ error: ctx.fns.models.connections.safeMessage({ message: error, fallback: "Model connection request failed" }), ...(typeof e?.code === "string" ? { code: e.code } : {}), ...(typeof e?.field === "string" ? { field: e.field } : {}) }, status);
     };
     if (req.method === "GET") {
         try {
             const [connections, proxies, instances] = await Promise.all([
-                ctx.fns.models.list({}),
+                ctx.fns.models.connections.list({}),
                 ctx.fns.socksProxy.list({}).catch(() => []),
                 ctx.fns.sshInstance.list({}).catch(() => []),
             ]);
@@ -65,11 +65,11 @@ export default async function (
     try {
         switch (data.action) {
             case "providers": return reply({ providers: ctx.fns.models.providers({}) });
-            case "list": return reply({ connections: await ctx.fns.models.list({ ...(typeof data.provider === "string" ? { provider: data.provider } : {}) }) });
-            case "get": return reply({ connection: await ctx.fns.models.get({ id }) });
+            case "list": return reply({ connections: await ctx.fns.models.connections.list({ ...(typeof data.provider === "string" ? { provider: data.provider } : {}) }) });
+            case "get": return reply({ connection: await ctx.fns.models.connections.get({ id }) });
             case "create": {
                 if (typeof data.provider !== "string") return reply({ error: "Provider required", field: "provider" }, 400);
-                const connection = await ctx.fns.models.create({
+                const connection = await ctx.fns.models.connections.create({
                     provider: data.provider,
                     accountName: typeof data.accountName === "string" ? data.accountName : "",
                     config: record(data.config) ?? {},
@@ -80,7 +80,7 @@ export default async function (
                 return reply({ connection }, 201);
             }
             case "update": {
-                const connection = await ctx.fns.models.update({
+                const connection = await ctx.fns.models.connections.update({
                     id,
                     ...(optional<string>("accountName") !== undefined ? { accountName: data.accountName as string } : {}),
                     ...(record(data.config) ? { config: data.config as Record<string, unknown> } : {}),
@@ -92,18 +92,18 @@ export default async function (
             }
             case "remove": {
                 if (data.confirmed !== true) return reply({ error: "Confirm removal before continuing" }, 400);
-                return reply(await ctx.fns.models.remove({ id }));
+                return reply(await ctx.fns.models.connections.remove({ id }));
             }
             case "setModelEnabled": {
                 if (typeof data.enabled !== "boolean") return reply({ error: "enabled must be true or false", field: "enabled" }, 400);
-                return reply({ connection: await ctx.fns.models.setModelEnabled({ id, model: typeof data.model === "string" ? data.model : "", enabled: data.enabled }) });
+                return reply({ connection: await ctx.fns.models.catalog.setModelEnabled({ id, model: typeof data.model === "string" ? data.model : "", enabled: data.enabled }) });
             }
-            case "test": return reply({ result: await ctx.fns.models.test({ id }) });
-            case "models": return reply(await ctx.fns.models.listModels({ id, refresh: data.refresh === true }));
-            case "usage": return reply({ usage: await ctx.fns.models.usage({ id, refresh: data.refresh === true }) });
+            case "test": return reply({ result: await ctx.fns.models.connections.test({ id }) });
+            case "models": return reply(await ctx.fns.models.catalog.listModels({ id, refresh: data.refresh === true }));
+            case "usage": return reply({ usage: await ctx.fns.models.connections.usage({ id, refresh: data.refresh === true }) });
             case "action": {
                 if (typeof data.name !== "string" || !data.name) return reply({ error: "Action name required" }, 400);
-                return reply({ result: await ctx.fns.models.action({ id, action: data.name, input: (data.input ?? null) as types.models.ActionValue }) });
+                return reply({ result: await ctx.fns.models.connections.action({ id, action: data.name, input: (data.input ?? null) as types.models.ActionValue }) });
             }
             default: return reply({ error: "Unknown action" }, 400);
         }

@@ -30,8 +30,8 @@ async function setup(opts: { transport?: types.models.TransportSpec; config?: Re
         ctx.state.registry[ns][name] = () => { legacy.push(`${ns}.${name}`); throw new Error(`legacy ${ns}.${name} called`); };
     const calls: Call[] = [];
     const replies: Reply[] = [];
-    ctx.state.registry.models.validateTransport = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec }) => o.transport;
-    ctx.state.registry.models.fetch = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec; url: string; init?: RequestInit }) => {
+    ctx.state.registry.models.transport.validateTransport = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec }) => o.transport;
+    ctx.state.registry.models.transport.fetch = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec; url: string; init?: RequestInit }) => {
         calls.push({ url: o.url, method: o.init?.method ?? "GET", headers: Object.fromEntries(new Headers(o.init?.headers).entries()), body: String(o.init?.body ?? ""), transport: o.transport, signal: o.init?.signal ?? undefined });
         if (o.url.includes("/codex/models")) return Response.json({ models: opts.models ?? [] });
         const r = replies.shift();
@@ -39,8 +39,8 @@ async function setup(opts: { transport?: types.models.TransportSpec; config?: Re
         return typeof r === "function" ? r() : r;
     };
     const view = await ctx.fns.models.create({ provider: "codex", accountName: "me", config: opts.config ?? {}, secrets: {}, transport: opts.transport ?? { kind: "direct" } });
-    const { conn } = await ctx.fns.models.resolve({ id: view.id });
-    await ctx.fns.models.codexAuth({ conn, op: "store", tokens: { id_token: ID_TOKEN, access_token: TOKEN, refresh_token: "rt-SECRET" } });
+    const { conn } = await ctx.fns.models.connections.resolve({ id: view.id });
+    await ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", tokens: { id_token: ID_TOKEN, access_token: TOKEN, refresh_token: "rt-SECRET" } });
     const stream = (o: Partial<Parameters<typeof ctx.fns.models.stream>[0]> = {}) =>
         ctx.fns.models.stream({ connectionId: view.id, model: "gpt-5", instructions: "sys", messages: [{ role: "user", content: "hi" }], sessionId: "s1", ...o });
     return { ctx, calls, replies, view, legacy, stream };
@@ -188,9 +188,9 @@ describe("reasoning normalization", () => {
         const { calls, stream, ctx } = await setup();
         await expect(stream({ model: "mystery-1" })).rejects.toMatchObject({ code: "CAPABILITY_UNAVAILABLE" });
         await expect(stream({ reasoningEffort: "turbo" })).rejects.toMatchObject({ code: "INVALID_INPUT" });
-        expect(() => ctx.fns.models.resolveReasoning({ model: "m", metadata: { supported: [], default: "low" } })).toThrow(/nonempty/);
-        expect(() => ctx.fns.models.resolveReasoning({ model: "m", metadata: { supported: ["low"], default: "high" } })).toThrow(/default/);
-        expect(() => ctx.fns.models.resolveReasoning({ model: "m", metadata: { supported: ["low", "low"], default: "low" } })).toThrow(/unique/);
+        expect(() => ctx.fns.models.inference.resolveReasoning({ model: "m", metadata: { supported: [], default: "low" } })).toThrow(/nonempty/);
+        expect(() => ctx.fns.models.inference.resolveReasoning({ model: "m", metadata: { supported: ["low"], default: "high" } })).toThrow(/default/);
+        expect(() => ctx.fns.models.inference.resolveReasoning({ model: "m", metadata: { supported: ["low", "low"], default: "low" } })).toThrow(/unique/);
         expect(calls.filter(c => c.url.endsWith("/responses")).length).toBe(0);
     });
 });
@@ -273,8 +273,8 @@ describe("failures and observations", () => {
         ]);
         expect(JSON.stringify(results.map(e => e.message))).not.toMatch(/SECRET|boom|slow down/);
         expect(calls.filter(c => c.url.endsWith("/responses")).length).toBe(5);
-        const { conn } = await ctx.fns.models.resolve({ id: view.id });
-        expect((await ctx.fns.models.codexAuth({ conn, op: "status" })).needsLogin).toBe(true);
+        const { conn } = await ctx.fns.models.connections.resolve({ id: view.id });
+        expect((await ctx.fns.models.provider.codex.codexAuth({ conn, op: "status" })).needsLogin).toBe(true);
     });
 
     test("failed, truncated and malformed streams are not replies and are never replayed", async () => {
@@ -348,8 +348,8 @@ describe("architecture and transports", () => {
     });
 
     test("static: Codex SDK sources reference no legacy namespace or agent types", async () => {
-        const files = ["$modelProvider_codex.ts", "codexInput.ts", "parseSSE.ts", "codexVersion.ts", "codexFailure.ts", "codexQuota.ts", "codexReasoningProfile.ts", "resolveReasoning.ts", "checkInput.ts", "failure.ts", "stream.ts", "compact.ts", "codexAuth.ts", "codexLogin.ts", "StreamRequest.ts", "StreamResult.ts", "CompactRequest.ts", "CompactResult.ts", "Checkpoint.ts", "ProviderState.ts"];
-        // The original entry points remain facades; audit the actual protocol leaves too.
+        const files = ["$modelProvider_codex.ts", "transport/parseSSE.ts", "inference/resolveReasoning.ts", "inference/checkInput.ts", "inference/failure.ts", "stream.ts", "compact.ts", "StreamRequest.ts", "StreamResult.ts", "CompactRequest.ts", "CompactResult.ts", "Checkpoint.ts", "ProviderState.ts"];
+        // Audit the root facades, inference/transport leaves and every Codex protocol leaf.
         for await (const leaf of new Bun.Glob("*.ts").scan(`${import.meta.dir}/provider/codex`)) {
             if (!leaf.endsWith(".test.ts")) files.push(`provider/codex/${leaf}`);
         }

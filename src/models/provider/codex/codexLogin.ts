@@ -80,7 +80,7 @@ export default async function (
                     await ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", tokens });
                     finish("succeeded", "Logged in");
                 } catch (error) {
-                    if (flow.status === "pending") finish("failed", signal.aborted ? "Login cancelled" : ctx.fns.models.safeMessage({ message: error, fallback: "Login failed" }));
+                    if (flow.status === "pending") finish("failed", signal.aborted ? "Login cancelled" : ctx.fns.models.connections.safeMessage({ message: error, fallback: "Login failed" }));
                 }
             })();
             flow.done.catch(() => undefined);

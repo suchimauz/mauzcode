@@ -36,9 +36,9 @@ export default function (
         signal?: AbortSignal;
     },
 ): void {
-    const invalid = (message: string) => ctx.fns.models.failure({ message, status: 400, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
-    const unsupported = (message: string) => ctx.fns.models.failure({ message, status: 400, info: { code: "UNSUPPORTED", classification: "unsupported", acceptance: "none", retryable: false, replaySafe: true } });
-    if (opts.signal?.aborted) throw ctx.fns.models.failure({ message: "Request cancelled before dispatch", status: 499, info: { code: "CANCELLED", classification: "cancelled", acceptance: "none", retryable: false, replaySafe: true } });
+    const invalid = (message: string) => ctx.fns.models.inference.failure({ message, status: 400, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
+    const unsupported = (message: string) => ctx.fns.models.inference.failure({ message, status: 400, info: { code: "UNSUPPORTED", classification: "unsupported", acceptance: "none", retryable: false, replaySafe: true } });
+    if (opts.signal?.aborted) throw ctx.fns.models.inference.failure({ message: "Request cancelled before dispatch", status: 499, info: { code: "CANCELLED", classification: "cancelled", acceptance: "none", retryable: false, replaySafe: true } });
     if (!Array.isArray(opts.messages)) throw invalid("messages must be an array");
     if (opts.runId !== undefined && (typeof opts.runId !== "string" || !opts.runId || opts.runId.length > 200)) throw invalid("runId must be a nonempty string up to 200 characters");
     opts.messages.forEach((raw, index) => {

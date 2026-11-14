@@ -21,136 +21,6 @@
       "returnType": "Promise<Response>",
       "generator": false
     },
-    "assertModelEnabled": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Connection UUID. */\n        id: string;\n        /** Provider-native model id requested for inference. */\n        model: string;\n    }"
-      ],
-      "returnType": "Promise<types.models.ConnectionView>",
-      "generator": false
-    },
-    "cached": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Connection identity and revision. */\n        connection: { id: string; updatedAt: number };\n        /** Which check is cached. */\n        kind: \"test\" | \"usage\";\n        /** Performs the check when no fresh result exists. */\n        run: () => Promise<types.models.UsageReport | types.models.TestResult>;\n        /** Return a fresh cached result instead of running again. @default true */\n        reuse?: boolean;\n        /** Cache lifetime in milliseconds. @default 60000 @minimum 0 */\n        ttlMs?: number;\n    }"
-      ],
-      "returnType": "Promise<types.models.UsageReport | types.models.TestResult>",
-      "generator": false
-    },
-    "checkInput": {
-      "async": false,
-      "parameters": [
-        "ctx: Context",
-        "_session: Session | null",
-        "opts: {\n        /** Registered provider id of the connection. */\n        provider: string;\n        /** Connection UUID. */\n        connectionId: string;\n        /** Provider-native model id. */\n        model: string;\n        /** Session correlation id. */\n        sessionId: string;\n        /** Provider capability opt-ins. */\n        capabilities?: types.models.ProviderDefinition[\"capabilities\"];\n        /** Ordered input to inspect for checkpoint entries. */\n        messages: (Record<string, unknown> | types.models.CheckpointEntry)[];\n        /** Logical run id, when any. */\n        runId?: string;\n        /** Submitted continuation state, when any. */\n        state?: types.models.ProviderState;\n        /** Cancellation signal. */\n        signal?: AbortSignal;\n    }"
-      ],
-      "returnType": "void",
-      "generator": false
-    },
-    "claudeAuth": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Resolved connection supplying the network transport. */\n        conn: types.models.ResolvedConnection;\n        /** Credential operation. */\n        op: \"status\" | \"token\" | \"store\" | \"markLogin\" | \"clear\";\n        /** OAuth response required for store, with refresh token and positive expiry. */\n        tokens?: {access_token:string;refresh_token?:string;expires_in?:number};\n        /** Pending login abort signal; cancellation rolls back a serialized store before it completes. */\n        signal?: AbortSignal;\n    }"
-      ],
-      "returnType": "Promise<{loggedIn:boolean;needsLogin:boolean;expiresAt:number|null;accessToken?:string}>",
-      "generator": false
-    },
-    "claudeLogin": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Resolved connection transport for token exchange. */\n        conn: types.models.ResolvedConnection;\n        /** Login operation. */\n        op: \"start\" | \"status\" | \"submit\" | \"cancel\";\n        /** Exact current flow identifier required for submission. */\n        flowId?: string;\n        /** Authorization code, code#state or callback URL; never logged or returned. */\n        code?: string;\n    }"
-      ],
-      "returnType": "Promise<Omit<types.models.LoginFlow, \"abort\" | \"done\"> | null>",
-      "generator": false
-    },
-    "claudeRequest": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Resolved connection supplying the only permitted network transport. */\n        conn: types.models.ResolvedConnection;\n        /** Exact HTTPS Claude subscription endpoint. */\n        url: string;\n        /** HTTP method, headers, body and cancellation signal. */\n        init: RequestInit;\n    }"
-      ],
-      "returnType": "Promise<Response>",
-      "generator": false
-    },
-    "codexAuth": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Resolved codex connection; its fetch is the only network path. */\n        conn: types.models.ResolvedConnection;\n        /** Operation to perform. */\n        op: \"status\" | \"token\" | \"store\" | \"markLogin\" | \"clear\";\n        /** OAuth token response to persist; required for op store. */\n        tokens?: { id_token?: string; access_token: string; refresh_token?: string };\n    }"
-      ],
-      "returnType": "Promise<{ loggedIn: boolean; needsLogin: boolean; accountId: string | null; expiresAt: number | null; accessToken?: string }>",
-      "generator": false
-    },
-    "codexFailure": {
-      "async": false,
-      "parameters": [
-        "_ctx: Context",
-        "_session: Session | null",
-        "opts: {\n        /** Whether the error came as an HTTP status before streaming or as a stream event. */\n        phase: \"http\" | \"stream\";\n        /** HTTP status of the response. */\n        status: number;\n        /** Parsed upstream error object, when any (code, type, message, resets_at, resets_in_seconds). */\n        error?: Record<string, unknown> | null;\n        /** Retry-After header value, when any. */\n        retryAfter?: string | null;\n        /** Clock in epoch milliseconds, for retry timing. @default Date.now() */\n        now?: number;\n    }"
-      ],
-      "returnType": "{ info: types.models.FailureInfo; message: string; status: number }",
-      "generator": false
-    },
-    "codexInput": {
-      "async": false,
-      "parameters": [
-        "ctx: Context",
-        "_session: Session | null",
-        "opts: {\n        /** Ordered SDK input: chat messages and checkpoint entries. */\n        messages: (Record<string, unknown> | types.models.CheckpointEntry)[];\n    }"
-      ],
-      "returnType": "{ instructions: string; input: Record<string, unknown>[] }",
-      "generator": false
-    },
-    "codexLogin": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Resolved codex connection whose fetch carries every login request; resolve it with a long per-request timeout. */\n        conn: types.models.ResolvedConnection;\n        /** Operation to perform. */\n        op: \"start\" | \"status\" | \"cancel\";\n        /** Override of the server poll interval, for tests. @minimum 1 @maximum 60000 */\n        intervalMs?: number;\n        /** Override of the 15-minute login expiry, for tests. @default 900000 @minimum 1 @maximum 900000 */\n        maxWaitMs?: number;\n    }"
-      ],
-      "returnType": "Promise<{ kind: \"device-code\"; flowId: string; status: types.models.LoginFlow[\"status\"]; verificationUri?: string; userCode?: string; expiresAt: number; message?: string } | null>",
-      "generator": false
-    },
-    "codexQuota": {
-      "async": false,
-      "parameters": [
-        "_ctx: Context",
-        "_session: Session | null",
-        "opts: {\n        /** Response headers. */\n        headers?: Headers;\n        /** rate_limits object from the stream, when any. */\n        rateLimits?: Record<string, unknown> | null;\n    }"
-      ],
-      "returnType": "types.models.QuotaObservation | null",
-      "generator": false
-    },
-    "codexReasoningProfile": {
-      "async": false,
-      "parameters": [
-        "_ctx: Context",
-        "_session: Session | null",
-        "opts: {\n        /** Codex model id. */\n        model: string;\n    }"
-      ],
-      "returnType": "types.models.ReasoningCapabilities | null",
-      "generator": false
-    },
-    "codexVersion": {
-      "async": false,
-      "parameters": [
-        "_ctx: Context",
-        "_session: Session | null",
-        "opts: {\n        /** Non-secret Codex connection configuration. */\n        config: types.models.ResolvedConnection[\"config\"];\n    }"
-      ],
-      "returnType": "string",
-      "generator": false
-    },
     "compact": {
       "async": true,
       "parameters": [
@@ -169,36 +39,6 @@
         "opts: {\n        /** Registered provider id. */\n        provider: string;\n        /** Display account name; need not be unique. */\n        accountName: string;\n        /** Non-secret configuration; the core key `models` holds manual model ids. */\n        config?: Record<string, unknown>;\n        /** Secret field values keyed by field; null or absent means not set. */\n        secrets?: Record<string, string | null>;\n        /** Outbound transport. @default { kind: \"direct\" } */\n        transport?: types.models.TransportSpec;\n        /** Whether tests, model listing and usage may use the network. @default true */\n        enabled?: boolean;\n    }"
       ],
       "returnType": "Promise<types.models.ConnectionView>",
-      "generator": false
-    },
-    "customProtocol": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Resolved custom connection with baseUrl, protocol, optional testModel and transport-bound fetch. */\n        conn: types.models.ResolvedConnection;\n        /** Discover models or send one minimal generation using config.testModel. */\n        operation: \"models\" | \"generation\";\n    }"
-      ],
-      "returnType": "Promise<types.models.ModelInfo[]>",
-      "generator": false
-    },
-    "failure": {
-      "async": false,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Failure classification and replay metadata. */\n        info: types.models.FailureInfo;\n        /** Safe human-readable message without upstream bodies or secrets. */\n        message: string;\n        /** HTTP status the models API should answer with. @default 502 */\n        status?: number;\n    }"
-      ],
-      "returnType": "Error & { code: string; status: number; retryable: boolean; replaySafe: boolean; failure: types.models.FailureInfo }",
-      "generator": false
-    },
-    "fetch": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Saved transport bound to this connection. */\n        transport: types.models.TransportSpec;\n        /** Absolute credential-free HTTP(S) destination. */\n        url: string;\n        /** Request options; redirects always fail and proxy methods must be GET or POST. */\n        init?: RequestInit;\n        /** Cancellation combined with init.signal through body EOF. */\n        signal?: AbortSignal;\n        /** Total deadline including setup and body streaming. @default 120000 @minimum 1 @maximum 3600000 */\n        timeoutMs?: number;\n    }"
-      ],
-      "returnType": "Promise<Response>",
       "generator": false
     },
     "get": {
@@ -231,16 +71,6 @@
       "returnType": "Promise<{ models: types.models.ModelInfo[]; source: \"provider\" | \"manual\"; cachedAt: number | null; error?: string }>",
       "generator": false
     },
-    "parseSSE": {
-      "async": true,
-      "parameters": [
-        "_ctx: Context",
-        "_session: Session | null",
-        "opts: {\n        /** Response byte stream. */\n        body: ReadableStream<Uint8Array>;\n        /** Maximum wait between chunks in milliseconds. @default 120000 @minimum 1 */\n        idleTimeoutMs?: number;\n    }"
-      ],
-      "returnType": "AsyncGenerator<{ event: string | null; data: string }>",
-      "generator": true
-    },
     "providers": {
       "async": false,
       "parameters": [
@@ -269,36 +99,6 @@
         "opts: {\n        /** Connection UUID. */\n        id: string;\n    }"
       ],
       "returnType": "Promise<{ removed: string }>",
-      "generator": false
-    },
-    "resolve": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Connection UUID. */\n        id: string;\n        /** Cancellation applied to every request made through the resolved fetch. */\n        signal?: AbortSignal;\n        /** Deadline for each request made through the resolved fetch. @default 30000 @minimum 1 @maximum 3600000 */\n        timeoutMs?: number;\n    }"
-      ],
-      "returnType": "Promise<{ view: types.models.ConnectionView; definition: types.models.ProviderDefinition; conn: types.models.ResolvedConnection }>",
-      "generator": false
-    },
-    "resolveReasoning": {
-      "async": false,
-      "parameters": [
-        "ctx: Context",
-        "_session: Session | null",
-        "opts: {\n        /** Provider-native model id, used in diagnostics. */\n        model: string;\n        /** Caller reasoning preference; omitted means auto. */\n        preference?: string;\n        /** Reasoning capabilities reported by model discovery, when known. */\n        metadata?: { supported: unknown; default: unknown } | null;\n        /** Documented SDK profile for this model, or null when none applies. */\n        profile?: types.models.ReasoningCapabilities | null;\n    }"
-      ],
-      "returnType": "types.models.ReasoningResolution",
-      "generator": false
-    },
-    "safeMessage": {
-      "async": false,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Error, string or unknown thrown value. */\n        message: unknown;\n        /** Plain secret values of the connection that must never appear. */\n        secrets?: string[];\n        /** Text used when nothing safe remains. @default \"Request failed\" */\n        fallback?: string;\n    }"
-      ],
-      "returnType": "string",
       "generator": false
     },
     "setModelEnabled": {
@@ -331,16 +131,6 @@
       "returnType": "Promise<types.models.TestResult>",
       "generator": false
     },
-    "toView": {
-      "async": false,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Raw llm_connections row as returned by procs.db.select. */\n        row: Record<string, unknown>;\n    }"
-      ],
-      "returnType": "types.models.ConnectionView",
-      "generator": false
-    },
     "update": {
       "async": true,
       "parameters": [
@@ -359,26 +149,6 @@
         "opts: {\n        /** Connection UUID. */\n        id: string;\n        /** Ignore a cached result and query again. @default false */\n        refresh?: boolean;\n    }"
       ],
       "returnType": "Promise<types.models.UsageReport>",
-      "generator": false
-    },
-    "validateConfig": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Registered provider id. */\n        provider: string;\n        /** Submitted non-secret configuration; the core key `models` holds manual model ids. */\n        config?: Record<string, unknown>;\n        /** Submitted secret changes: string sets, null clears, absent keys keep the stored value. */\n        secrets?: Record<string, unknown>;\n        /** Secret field keys that currently hold a stored value (update only). */\n        stored?: string[];\n    }"
-      ],
-      "returnType": "Promise<{ config: types.models.ResolvedConnection[\"config\"]; secrets: Record<string, string | null> }>",
-      "generator": false
-    },
-    "validateTransport": {
-      "async": true,
-      "parameters": [
-        "ctx: Context",
-        "session: Session | null",
-        "opts: {\n        /** Transport selection with its saved proxy or SSH reference. */\n        transport: types.models.TransportSpec;\n        /** Allowed transports declared by the selected provider. */\n        allowed: types.models.TransportSpec[\"kind\"][];\n    }"
-      ],
-      "returnType": "Promise<void>",
       "generator": false
     }
   },

@@ -21,5 +21,5 @@ export default async function (
         try { const j = JSON.parse(text); error = (j?.error && typeof j.error === "object" ? j.error : j) as Record<string, unknown>; } catch { /* non-JSON body: classify by status */ }
         if (res.status === 401) await ctx.fns.models.provider.codex.codexAuth({ conn, op: "markLogin" });
         const f = ctx.fns.models.provider.codex.codexFailure({ phase: "http", status: res.status, error, retryAfter: res.headers.get("retry-after") });
-        throw ctx.fns.models.failure(f);
+        throw ctx.fns.models.inference.failure(f);
 }

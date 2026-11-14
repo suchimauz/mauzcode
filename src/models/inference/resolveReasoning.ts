@@ -22,11 +22,11 @@ export default function (
     },
 ): types.models.ReasoningResolution {
     const order: types.models.ReasoningLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
-    const invalid = (message: string) => ctx.fns.models.failure({ message, status: 400, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
+    const invalid = (message: string) => ctx.fns.models.inference.failure({ message, status: 400, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
     const requested = (opts.preference ?? "auto") as types.models.ReasoningLevel | "auto";
     if (requested !== "auto" && !order.includes(requested)) throw invalid(`Unknown reasoning preference ${JSON.stringify(String(opts.preference).slice(0, 40))}`);
     const raw = opts.metadata ?? opts.profile ?? null;
-    if (!raw) throw ctx.fns.models.failure({ message: `No reasoning capabilities are known for model ${opts.model}`, status: 400, info: { code: "CAPABILITY_UNAVAILABLE", classification: "capability_unavailable", acceptance: "none", retryable: false, replaySafe: true } });
+    if (!raw) throw ctx.fns.models.inference.failure({ message: `No reasoning capabilities are known for model ${opts.model}`, status: 400, info: { code: "CAPABILITY_UNAVAILABLE", classification: "capability_unavailable", acceptance: "none", retryable: false, replaySafe: true } });
     const source: types.models.ReasoningCapabilities["source"] = opts.metadata ? "metadata" : "profile";
     const supported = raw.supported;
     if (!Array.isArray(supported) || !supported.length || supported.some(l => !order.includes(l)) || new Set(supported).size !== supported.length)

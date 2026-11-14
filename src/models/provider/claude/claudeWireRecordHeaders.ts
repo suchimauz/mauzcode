@@ -23,6 +23,6 @@ export default async function (
             windows.push({ label: label!, usedPercent: Math.max(0, Math.min(100, Number(raw) * 100)), ...(reset !== null && Number.isFinite(Number(reset)) && Number(reset) > 0 ? { resetAt: Number(reset) * 1000 } : {}) });
         }
         if (!windows.length) return;
-        const connection = await ctx.fns.models.get({ id: conn.id });
-        await ctx.fns.models.cached({ connection, kind: "usage", reuse: false, run: async () => ({ status: "available", reason: "usage-headers", checkedAt: Date.now(), windows }) });
+        const connection = await ctx.fns.models.connections.get({ id: conn.id });
+        await ctx.fns.models.connections.cached({ connection, kind: "usage", reuse: false, run: async () => ({ status: "available", reason: "usage-headers", checkedAt: Date.now(), windows }) });
 }

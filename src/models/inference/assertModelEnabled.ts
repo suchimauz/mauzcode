@@ -15,7 +15,7 @@ export default async function (
         model: string;
     },
 ): Promise<types.models.ConnectionView> {
-    const view = await ctx.fns.models.get({ id: opts.id });
+    const view = await ctx.fns.models.connections.get({ id: opts.id });
         const model = String(opts.model ?? "");
         if (!view.enabled) throw Object.assign(new Error("Connection " + view.accountName + " is disabled"), { code: "CONNECTION_DISABLED", status: 409, retryable: false, replaySafe: false });
         if (view.disabledModels.includes(model)) throw Object.assign(new Error("Model " + model + " is disabled by user"), { code: "MODEL_DISABLED_BY_USER", status: 409, retryable: false, replaySafe: false });

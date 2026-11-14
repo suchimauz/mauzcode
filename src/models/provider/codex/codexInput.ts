@@ -13,7 +13,7 @@ export default function (
     },
 ): { instructions: string; input: Record<string, unknown>[] } {
     type Part = { type: string; text?: string; data?: string; mimeType?: string; fileName?: string; path?: string; extractedText?: string };
-        const invalid = (message: string) => ctx.fns.models.failure({ message, status: 400, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
+        const invalid = (message: string) => ctx.fns.models.inference.failure({ message, status: 400, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
         const parts = (content: unknown): Part[] => {
             if (typeof content === "string") return content ? [{ type: "text", text: content }] : [];
             if (!Array.isArray(content)) return content == null ? [] : [{ type: "text", text: JSON.stringify(content) }];

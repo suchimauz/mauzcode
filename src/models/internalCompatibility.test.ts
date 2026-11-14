@@ -8,6 +8,14 @@ import load from "../procs/boot/load";
 const baseline = await Bun.file(join(import.meta.dir, "fixtures/public-contract.baseline.json")).json();
 const normalize = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "").replace(/_session/g, "session");
 
+test("root model procedures are exactly the minimal facade plus providers and api", async () => {
+    const roots = [...new Bun.Glob("*.ts").scanSync(import.meta.dir)]
+        .filter(file => !file.endsWith(".test.ts") && !file.startsWith("$") && /^[a-z]/.test(file))
+        .map(file => file.slice(0, -3)).sort();
+    expect(roots).toEqual(Object.keys(baseline.procedures).sort());
+    expect(roots).toEqual(["action", "api", "compact", "create", "get", "list", "listModels", "providers", "refreshAll", "remove", "setModelEnabled", "stream", "test", "update", "usage"]);
+});
+
 test("original public model signatures, async declarations, types and HTTP route contracts survive", async () => {
     for (const [name, contract] of Object.entries(baseline.procedures) as [string, { async: boolean; generator: boolean; parameters: string[]; returnType: string | null }][]) {
         const text = await readFile(join(import.meta.dir, `${name}.ts`), "utf8");
@@ -74,7 +82,7 @@ test("fresh discovery preserves callable providers, nested dynamic facades, miss
             const visit = (node: ts.Node): void => {
                 if (ts.isCallExpression(node)) {
                     const expression = node.expression.getText(sf);
-                    if (/^ctx\.fns\.models\.(provider|transport|catalog|connections|inference)\./.test(expression)) {
+                    if (/^ctx\.fns\.models\.(provider|transport|catalog|connections|inference|protocol)\./.test(expression)) {
                         let value: unknown = ctx.state.registry;
                         for (const part of expression.slice("ctx.fns.".length).split(".")) value = (value as Record<string, unknown>)?.[part];
                         expect(typeof value, `${file}: ${expression}`).toBe("function");

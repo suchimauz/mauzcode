@@ -16,6 +16,6 @@ export default function (
     const { error, signal } = opts;
     
         if ((error as { failure?: unknown })?.failure) return error as Error;
-        if (signal?.aborted) return ctx.fns.models.failure({ message: "Codex request cancelled", status: 499, info: { code: "CANCELLED", classification: "cancelled", acceptance: "uncertain", retryable: false, replaySafe: false } });
-        return ctx.fns.models.failure({ message: "Codex connection failed before a terminal response", status: 502, info: { code: "TRANSPORT", classification: "transport", acceptance: "uncertain", retryable: true, replaySafe: false } });
+        if (signal?.aborted) return ctx.fns.models.inference.failure({ message: "Codex request cancelled", status: 499, info: { code: "CANCELLED", classification: "cancelled", acceptance: "uncertain", retryable: false, replaySafe: false } });
+        return ctx.fns.models.inference.failure({ message: "Codex connection failed before a terminal response", status: 502, info: { code: "TRANSPORT", classification: "transport", acceptance: "uncertain", retryable: true, replaySafe: false } });
 }

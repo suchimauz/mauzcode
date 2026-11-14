@@ -33,11 +33,11 @@ export default async function (
         signal?: AbortSignal;
     },
 ): Promise<types.models.CompactResult> {
-    const view = await ctx.fns.models.assertModelEnabled({ id: opts.connectionId, model: opts.model });
+    const view = await ctx.fns.models.inference.assertModelEnabled({ id: opts.connectionId, model: opts.model });
         const def = Object.hasOwn(ctx.state.models?.providers ?? {}, view.provider) ? ctx.state.models!.providers![view.provider]!.definition : undefined;
         if (!def?.compact) throw Object.assign(new Error("Provider " + view.provider + " does not support compact"), { code: "UNSUPPORTED", status: 400, retryable: false });
-        ctx.fns.models.checkInput({ provider: view.provider, connectionId: view.id, model: opts.model, sessionId: opts.sessionId, capabilities: def.capabilities, messages: opts.messages, signal: opts.signal });
-        const { definition, conn } = await ctx.fns.models.resolve({ id: view.id, signal: opts.signal, timeoutMs: 600000 });
+        ctx.fns.models.inference.checkInput({ provider: view.provider, connectionId: view.id, model: opts.model, sessionId: opts.sessionId, capabilities: def.capabilities, messages: opts.messages, signal: opts.signal });
+        const { definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id, signal: opts.signal, timeoutMs: 600000 });
         const { connectionId: _c, ...req } = opts;
         const result = await definition.compact!(ctx, conn, req);
         if (!def.capabilities?.checkpoints) return result;

@@ -9,15 +9,15 @@ export default async function (
     opts: {},
 ): Promise<{ refreshed: number; failed: { id: string; error: string }[] }> {
     const providers = ctx.state.models?.providers ?? {};
-        const connections = (await ctx.fns.models.list({})).filter(c => c.enabled && Object.hasOwn(providers, c.provider) && !!providers[c.provider]!.definition.listModels);
+        const connections = (await ctx.fns.models.connections.list({})).filter(c => c.enabled && Object.hasOwn(providers, c.provider) && !!providers[c.provider]!.definition.listModels);
         let refreshed = 0;
         const failed: { id: string; error: string }[] = [];
         for (const c of connections) {
             try {
-                const r = await ctx.fns.models.listModels({ id: c.id, refresh: true });
+                const r = await ctx.fns.models.catalog.listModels({ id: c.id, refresh: true });
                 if (r.error) failed.push({ id: c.id, error: r.error }); else refreshed++;
             } catch (error) {
-                failed.push({ id: c.id, error: ctx.fns.models.safeMessage({ message: error, fallback: "Model discovery failed" }) });
+                failed.push({ id: c.id, error: ctx.fns.models.connections.safeMessage({ message: error, fallback: "Model discovery failed" }) });
             }
         }
         return { refreshed, failed };
