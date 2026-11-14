@@ -116,6 +116,9 @@ describe("aggregated usage, quotas and icons", () => {
         expect(body.accounts[0]).toMatchObject({ provider: "codex", account: "me", kind: "quota", tone: "error", planType: "pro", windows: { fiveHour: { usedPercent: 80, tone: "error" }, weekly: { usedPercent: 30, tone: "warning" } } });
         expect(body.accounts[1]).toMatchObject({ provider: "claude", kind: "status", status: "unavailable", tone: "error" });
         expect(body.accounts[2]).toMatchObject({ provider: "custom", kind: "status", status: "unknown" });
+        // Quota cards carry the shared provider mark: brands for codex/claude, the plug for custom.
+        for (const a of body.accounts) expect(a.icon).toEqual(await ctx.fns.frontendBridge.modelMark({ provider: a.provider }));
+        expect(body.accounts[0].icon.src).not.toEqual(body.accounts[1].icon.src);
         expect(llmCalls()).toBe(0);
     });
     test("provider icons come from registered declarations only", async () => {

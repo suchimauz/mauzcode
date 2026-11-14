@@ -30,6 +30,6 @@ export function useQuotas(intervalMs = 60000) {
     void read();
     return () => { controller.abort(); clearTimeout(timer); document.removeEventListener('visibilitychange', onVisibility); };
   }, [intervalMs]);
-  const withIcons = useMemo(() => accounts && accounts.map(a => a.icon !== undefined || !icons[a.provider] ? a : { ...a, icon: icons[a.provider] }), [accounts, icons]);
+  const withIcons = useMemo(() => accounts && accounts.map(a => a.icon || !icons[a.provider] ? a : { ...a, icon: icons[a.provider] }), [accounts, icons]);
   return { accounts: withIcons, error };
 }

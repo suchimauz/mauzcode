@@ -34,7 +34,10 @@ export default async function (
       if(!json)return new Response(null,{status:303,headers:{...headers,location:'/?sidebarDraft='+encodeURIComponent(id)+'&presentation=sidebar'}});
       const rows=await ctx.fns.procs.db.select({sql:"SELECT a.id,a.title FROM agents a LEFT JOIN sidebar_bindings sb ON sb.agent_id=a.id AND sb.state='active' WHERE a.archived_at IS NULL AND sb.id IS NULL ORDER BY a.updated_at DESC LIMIT 200"});
       const q=(u.searchParams.get('q')||'').trim().toLocaleLowerCase();
-      return Response.json({bindingId:id,title:b.title,model:await ctx.fns.settings.modelDefault({}),state:b.first_send_state,csrfToken:await ctx.fns.auth.csrfToken({req}),chats:rows.filter(a=>!q||String(a.title+' '+a.id).toLocaleLowerCase().includes(q)).slice(0,10)},{headers});
+      const model=await ctx.fns.settings.modelDefault({});
+      // Same display name and mark as the pickers; both are cosmetic, so failures fall back to the route.
+      const [modelLabel,modelIcon]=model?await Promise.all([ctx.fns.models.displayNames({routes:[model]}).then(n=>n[model]??model).catch(()=>model),ctx.fns.frontendBridge.iconData({model}).catch(()=>null)]):['',null];
+      return Response.json({bindingId:id,title:b.title,model,modelLabel,modelIcon,state:b.first_send_state,csrfToken:await ctx.fns.auth.csrfToken({req}),chats:rows.filter(a=>!q||String(a.title+' '+a.id).toLocaleLowerCase().includes(q)).slice(0,10)},{headers});
     }
     const form=await req.clone().formData();
     if(!await ctx.fns.auth.verifyCsrf({req,token:req.headers.get('x-csrf-token')||String(form.get('_csrf')||'')}))return deny('CSRF verification failed');

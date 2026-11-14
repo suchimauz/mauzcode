@@ -25,5 +25,5 @@ export default async function (
     // The stored selection is shown as is; an unavailable or empty model is never replaced by a default here.
     const enabledDefault = await ctx.fns.settings.modelDefault({}).then(model=>models.some(m=>m.model===model&&!m.disabled)?model:"").catch(()=>"");
     const live = ctx.state.agent?.[opts.agentId];
-    return {version:1,agentId:opts.agentId,model:currentModel,label:current?.label??(currentModel.slice(currentModel.indexOf(":",Math.max(0,currentModel.indexOf("/")))+1)||currentModel),icon:currentModel?await ctx.fns.frontendBridge.iconData({model:currentModel}):null,running:row.run_state==="running" || Number(live?.activeRunCount ?? 0)>0,defaultModel:enabledDefault,models,groups:catalogue.groups,effort:ctx.fns.frontendBridge.modelEffort({reasoning:current?.reasoning??null,requested})};
+    return {version:1,agentId:opts.agentId,model:currentModel,label:current?.label??(currentModel?(await ctx.fns.models.displayNames({routes:[currentModel]}))[currentModel]??currentModel:""),icon:currentModel?await ctx.fns.frontendBridge.iconData({model:currentModel}):null,running:row.run_state==="running" || Number(live?.activeRunCount ?? 0)>0,defaultModel:enabledDefault,models,groups:catalogue.groups,effort:ctx.fns.frontendBridge.modelEffort({reasoning:current?.reasoning??null,requested})};
 }

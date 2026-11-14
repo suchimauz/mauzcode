@@ -253,7 +253,7 @@ describe("models.api", () => {
         noSecrets(bodies);
         expect((bodies[4] as any).connection).toMatchObject({ accountName: "w2", secrets: { apiKey: true, org: false } });
         expect(bodies[5]).toMatchObject({ result: { status: "available" } });
-        expect(bodies[6]).toEqual({ models: [{ id: "m", disabled: false }], source: "manual", cachedAt: null });
+        expect(bodies[6]).toEqual({ models: [{ id: "m", label: "M", disabled: false }], source: "manual", cachedAt: null });
         expect(bodies[8]).toEqual({ result: { got: 1 } });
         const bad = await post({ action: "create", provider: "acme", accountName: "", config: {}, secrets: {} });
         expect(bad.status).toBe(400); expect(await bad.json()).toMatchObject({ field: "accountName" });

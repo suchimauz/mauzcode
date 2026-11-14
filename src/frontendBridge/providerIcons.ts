@@ -15,9 +15,9 @@ export default async function (
 ): Promise<Response> {
     const headers = { 'Cache-Control': 'private, max-age=300', 'Vary': 'Cookie' };
     if (opts.req.method !== 'GET') return Response.json({ error: 'Method not allowed' }, { status: 405, headers: { ...headers, Allow: 'GET' } });
-    // Marks come only from registered model provider declarations; no hard-coded legacy provider list.
+    // Registered providers only; each mark comes from the shared resolver (brand, else plug, else declared icon).
     const icons = Object.fromEntries(await Promise.all(ctx.fns.models.providers({}).map(async p => {
-        try { return [p.id, await ctx.fns.frontendBridge.declaredIcon({ icon: p.icon ?? null })] as const; } catch { return [p.id, null] as const; }
+        try { return [p.id, await ctx.fns.frontendBridge.modelMark({ provider: p.id }) ?? await ctx.fns.frontendBridge.declaredIcon({ icon: p.icon ?? null })] as const; } catch { return [p.id, null] as const; }
     })));
     return Response.json({ icons }, { headers });
 }

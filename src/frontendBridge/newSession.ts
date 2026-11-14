@@ -28,7 +28,7 @@ export default async function (
     if(req.method==='GET'){
         const url=new URL(req.url),model=url.searchParams.get('model')||enabledDefault,requested=url.searchParams.get('effort')||'auto';
         if(!models.some(m=>m.model===model&&!m.disabled)||!efforts.includes(requested))return reply({error:'Invalid model or effort'},400);
-        return reply({promptPresets:await ctx.fns.agent.listPromptPresets({}),version:1,model,label:models.find(m=>m.model===model)?.label??model.slice(model.lastIndexOf(':')+1),icon:await ctx.fns.frontendBridge.iconData({model}),defaultModel:enabledDefault,models,groups:catalogue.groups,effort:ctx.fns.frontendBridge.modelEffort({reasoning:reasoningOf(model),requested}),csrfToken:await ctx.fns.auth.csrfToken({req})});
+        return reply({promptPresets:await ctx.fns.agent.listPromptPresets({}),version:1,model,label:models.find(m=>m.model===model)?.label??(model?(await ctx.fns.models.displayNames({routes:[model]}))[model]??model:''),icon:await ctx.fns.frontendBridge.iconData({model}),defaultModel:enabledDefault,models,groups:catalogue.groups,effort:ctx.fns.frontendBridge.modelEffort({reasoning:reasoningOf(model),requested}),csrfToken:await ctx.fns.auth.csrfToken({req})});
     }
     const contentType=req.headers.get('content-type')?.split(';')[0]?.trim();
     let data:{requestKey?:string;projectId?:string;model?:string;effort?:string;mascot?:string;text?:string;title?:string;workspaceDir?:string;createWorkspaceDir?:string;promptPreset?:string[];systemPrompt?:string};

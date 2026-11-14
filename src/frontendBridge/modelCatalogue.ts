@@ -1,7 +1,7 @@
 /**
  * Build the UI model catalogue from stored model connections
  *
- * Use for every React model picker and model label projection. Lists registered connections through models.list and each catalogue through models.listModels (persistent cache; the provider is asked only when nothing is cached). Routes are provider/accountName:modelId, the group label is the connection account name and the display label is ModelInfo.label or the id. Models of disabled connections and owner-disabled models are flagged disabled. A connection whose provider is not registered (its catalogue is not requested), whose catalogue call throws (reported with a fixed safe message, never the raw exception), or whose catalogue is empty with an error is reported as unavailable while the others are still listed. When the provider errors but cached or manual models exist, those models stay usable and the group carries the error with unavailable false (degraded). Never mutates agents or connections and never returns secrets.
+ * Use for every React model picker and model label projection. Lists registered connections through models.list and each catalogue through models.listModels (persistent cache; the provider is asked only when nothing is cached). Routes are provider/accountName:modelId, the group label is the connection account name and the display label comes from models.displayNames (catalogue label, then models.dev, then a prettified id). Models of disabled connections and owner-disabled models are flagged disabled. A connection whose provider is not registered (its catalogue is not requested), whose catalogue call throws (reported with a fixed safe message, never the raw exception), or whose catalogue is empty with an error is reported as unavailable while the others are still listed. When the provider errors but cached or manual models exist, those models stay usable and the group carries the error with unavailable false (degraded). Never mutates agents or connections and never returns secrets.
  */
 export default async function (
     ctx: Context,
@@ -32,5 +32,9 @@ export default async function (
                 ...(info.reasoning ? { reasoning: info.reasoning } : {}),
             });
         }
+        // One naming pass for the whole catalogue: provider labels first, then models.dev, then a prettified id.
+        const labels = Object.fromEntries(catalogues.flatMap(({ connection, list }) => list.filter(info => info.label?.trim()).map(info => [connection.provider + "/" + connection.accountName + ":" + info.id, info.label!.trim()] as const)));
+        const names = await ctx.fns.models.displayNames({ routes: models.map(m => m.model), labels }).catch(() => ({} as Record<string, string>));
+        for (const m of models) m.label = names[m.model] || m.label;
         return { groups, models };
 }

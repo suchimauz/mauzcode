@@ -27,7 +27,7 @@ export function LifecycleRow({ event }: { event: ChatEvent }) {
       body = text('reason') === 'wake' ? 'Квота восстановлена' : text('reason') === 'model-switch' ? 'Модель изменена' : 'Пауза снята вручную';
       if (data.resumed) body += ' — продолжается незавершённая работа';
       break;
-    case 'model_changed': title = 'Модель изменена'; body = `${text('from', '?')} → ${text('to', '?')}`; break;
+    case 'model_changed': title = 'Модель изменена'; body = `${text('fromLabel') || text('from', '?')} → ${text('toLabel') || text('to', '?')}`; break;
     case 'team_update':
       title = ({ 'task.completed': 'Шаг выполнен', 'plan.completed': 'План завершён', answer: 'Ответ агента', blocked: 'Нужна помощь', failed: 'Ошибка выполнения' } as Record<string, string>)[text('event')] ?? 'Событие команды';
       subtitle = [text('memberId'), text('taskTitle')].filter(Boolean).join(' · ');

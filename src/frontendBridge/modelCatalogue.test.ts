@@ -4,6 +4,8 @@ import effort from './modelEffort';
 
 const connection = (over: any) => ({ id: 'c1', provider: 'claude', providerRegistered: true, accountName: 'work', enabled: true, disabledModels: [], ...over });
 const fixture = (lists: Record<string, any>) => ({ fns: { models: {
+    // Stub naming: catalogue labels win, everything else gets a visible resolver marker.
+    displayNames: async ({ routes, labels }: any) => Object.fromEntries(routes.map((r: string) => [r, labels?.[r] ?? 'Named ' + r.slice(r.indexOf(':') + 1)])),
     providers: () => [{ id: 'claude' }, { id: 'codex' }, { id: 'custom' }],
     list: async () => [
         connection({}),
@@ -32,10 +34,10 @@ test('groups models by connection account with labels, routes, reasoning and dis
     ]);
     expect(result.models.map(m => [m.model, m.label, m.groupLabel, m.disabled])).toEqual([
         ['claude/work:claude-opus-5', 'Opus 5', 'work', false],
-        ['codex/me:gpt-5:mini', 'gpt-5:mini', 'me', false],
-        ['codex/me:gpt-off', 'gpt-off', 'me', true],
-        ['codex/me:gpt-x', 'gpt-x', 'me', true],
-        ['custom/local:llama', 'llama', 'local', true],
+        ['codex/me:gpt-5:mini', 'Named gpt-5:mini', 'me', false],
+        ['codex/me:gpt-off', 'Named gpt-off', 'me', true],
+        ['codex/me:gpt-x', 'Named gpt-x', 'me', true],
+        ['custom/local:llama', 'Named llama', 'local', true],
     ]);
     expect(result.models[0]!.reasoning).toEqual({ supported: ['low', 'high'], default: 'high' });
 });
@@ -91,4 +93,17 @@ test('unexpected catalogue throws never leak their raw message into the projecti
     expect(JSON.stringify(result)).not.toContain('postgres://');
     expect(result.groups[0]).toMatchObject({ unavailable: true, error: 'Model list could not be loaded' });
     expect(result.models.map(m => m.model)).toEqual(['codex/me:gpt']);
+});
+
+test('display names come from models.displayNames with catalogue labels; a resolver failure keeps ids', async () => {
+    const lists = { c1: { models: [{ id: 'claude-opus-5', label: 'Opus 5' }, { id: 'claude-opus-4-5' }], source: 'provider', cachedAt: 1 } };
+    const ctx = fixture(lists);
+    let seen: any;
+    ctx.fns.models.displayNames = async (o: any) => { seen = o; return { 'claude/work:claude-opus-5': 'Opus 5', 'claude/work:claude-opus-4-5': 'Claude Opus 4.5' }; };
+    const named = await catalogue(ctx, null, {});
+    expect(seen.labels).toEqual({ 'claude/work:claude-opus-5': 'Opus 5' });
+    expect(named.models.filter(m => m.provider === 'claude').map(m => m.label)).toEqual(['Opus 5', 'Claude Opus 4.5']);
+    ctx.fns.models.displayNames = async () => { throw new Error('offline'); };
+    const raw = await catalogue(ctx, null, {});
+    expect(raw.models.filter(m => m.provider === 'claude').map(m => m.label)).toEqual(['Opus 5', 'claude-opus-4-5']);
 });

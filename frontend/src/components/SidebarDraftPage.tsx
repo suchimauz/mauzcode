@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { requestJson } from '../sdk/api';
 import './people-draft.css';
-type Draft = { title:string; model:string; state:string; csrfToken:string; chats:{id:string;title:string}[]; agentId?:string };
+import { NavigationChatIcon } from './mauzcode/NavigationChatIcon';
+import type { NavigationIcon } from '../lib/navigation';
+type Draft = { title:string; model:string; modelLabel?:string; modelIcon?:NavigationIcon|null; state:string; csrfToken:string; chats:{id:string;title:string}[]; agentId?:string };
 /** Browser-tab draft: opening never creates an agent; the server claims the first send once. */
 export function SidebarDraftPage({bindingId,onCreated}:{bindingId:string;onCreated:(id:string)=>void}) {
   const [data,setData]=useState<Draft|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[query,setQuery]=useState('');
@@ -15,7 +17,7 @@ export function SidebarDraftPage({bindingId,onCreated}:{bindingId:string;onCreat
   }
   const submit=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();void send(new FormData(e.currentTarget));};
   const blocked=busy||!!data&&data.state!=='draft';
-  return <section className="people-draft-page" aria-label="Browser tab chat"><h1>{data?.title||'Browser tab chat'}</h1>{error&&<p role="alert">{error}</p>}{!data?<p role="status">{error?'Draft unavailable':'Loading draft…'}</p>:<><p>{data.model}</p>{data.state!=='draft'&&<p role="status">First submission {data.state}. Reopen this page to inspect its result; do not resend automatically.</p>}
+  return <section className="people-draft-page" aria-label="Browser tab chat"><h1>{data?.title||'Browser tab chat'}</h1>{error&&<p role="alert">{error}</p>}{!data?<p role="status">{error?'Draft unavailable':'Loading draft…'}</p>:<><p className="people-draft-model" title={data.model}><NavigationChatIcon icon={data.modelIcon} /> {data.modelLabel||data.model}</p>{data.state!=='draft'&&<p role="status">First submission {data.state}. Reopen this page to inspect its result; do not resend automatically.</p>}
     <label>Find an existing chat<input type="search" value={query} onChange={e=>setQuery(e.target.value)} /></label><ul>{data.chats.filter(c=>(c.title+' '+c.id).toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(c=><li key={c.id}><button disabled={blocked} onClick={()=>{const f=new FormData();f.set('action','attach');f.set('existingAgent',c.id);void send(f);}}>{c.title||'Untitled'} · {c.id}</button></li>)}</ul>
     <form onSubmit={submit}><label>First message<textarea name="text" rows={5} /></label><label>Attachments<input name="files" type="file" multiple /></label><button disabled={blocked}>{busy?'Creating chat…':'Send and create chat'}</button></form></>}
   </section>;

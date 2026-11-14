@@ -1,7 +1,7 @@
 /**
  * Owner-only HTTP API for model providers and connections
  *
- * Backs GET/POST /models/api for the Models settings tab. GET returns the provider catalogue, secret-free connections, inert provider logos (`providerLogos` by provider id; null for `custom` and unknown providers), saved SOCKS proxies, trusted SSH instance names and a cookie-bound CSRF token. POST takes one JSON object `{ action, ... }` with action `providers`, `list`, `get`, `create`, `update`, `remove`, `test`, `models` (cached list; `refresh: true` asks the provider and updates the cache), `usage`, `setModelEnabled` (`{ id, model, enabled }`, returns the updated connection) or `action`; it requires same origin, a valid `x-csrf-token`, `application/json` and at most 64 KiB. Non-owners get 403, anonymous 401. Responses never contain secret values or references.
+ * Backs GET/POST /models/api for the Models settings tab. GET returns the provider catalogue, secret-free connections, inert provider logos (`providerLogos` by provider id from frontendBridge.modelMark: brand marks, the generic plug for `custom`, null only when resolution fails), saved SOCKS proxies, trusted SSH instance names and a cookie-bound CSRF token. POST takes one JSON object `{ action, ... }` (action `models` returns every model with the shared display name in `label`, for all providers) with action `providers`, `list`, `get`, `create`, `update`, `remove`, `test`, `models` (cached list; `refresh: true` asks the provider and updates the cache), `usage`, `setModelEnabled` (`{ id, model, enabled }`, returns the updated connection) or `action`; it requires same origin, a valid `x-csrf-token`, `application/json` and at most 64 KiB. Non-owners get 403, anonymous 401. Responses never contain secret values or references.
  * @param opts.req Incoming GET or JSON POST request.
  */
 export default async function (
@@ -31,11 +31,10 @@ export default async function (
                 ctx.fns.socksProxy.list({}).catch(() => []),
                 ctx.fns.sshInstance.list({}).catch(() => []),
             ]);
-            // Inert brand marks for known providers; the custom provider always uses the generic UI icon.
+            // Inert marks from the shared resolver: brand for known providers, the generic plug for custom.
             const providers = ctx.fns.models.providers({});
             const providerLogos = Object.fromEntries(await Promise.all(providers.map(async p => {
-                if (p.id === "custom") return [p.id, null] as const;
-                try { return [p.id, await ctx.fns.frontendBridge.iconData({ model: `${p.id}:x` })] as const; } catch { return [p.id, null] as const; }
+                try { return [p.id, await ctx.fns.frontendBridge.modelMark({ provider: p.id })] as const; } catch { return [p.id, null] as const; }
             })));
             return reply({
                 providers,
@@ -99,7 +98,19 @@ export default async function (
                 return reply({ connection: await ctx.fns.models.catalog.setModelEnabled({ id, model: typeof data.model === "string" ? data.model : "", enabled: data.enabled }) });
             }
             case "test": return reply({ result: await ctx.fns.models.connections.test({ id }) });
-            case "models": return reply(await ctx.fns.models.catalog.listModels({ id, refresh: data.refresh === true }));
+            case "models": {
+                // Every provider's list carries the shared display name (provider label, else models.dev, else prettified id), like the pickers.
+                const list = await ctx.fns.models.catalog.listModels({ id, refresh: data.refresh === true });
+                let view: types.models.ConnectionView | null = null;
+                try { view = await ctx.fns.models.connections.get({ id }); } catch { view = null; /* names are cosmetic; keep the plain list */ }
+                if (!view || !list.models.length) return reply(list);
+                const conn = view;
+                const route = (model: string) => conn.provider + "/" + conn.accountName + ":" + model;
+                const labels = Object.fromEntries(list.models.filter(m => m.label?.trim()).map(m => [route(m.id), m.label!.trim()]));
+                let names: Record<string, string> = {};
+                try { names = await ctx.fns.models.catalog.displayNames({ routes: list.models.map(m => route(m.id)), labels }); } catch { names = {}; /* fall back to provider labels */ }
+                return reply({ ...list, models: list.models.map(m => ({ ...m, label: names[route(m.id)] || m.label })) });
+            }
             case "usage": return reply({ usage: await ctx.fns.models.connections.usage({ id, refresh: data.refresh === true }) });
             case "action": {
                 if (typeof data.name !== "string" || !data.name) return reply({ error: "Action name required" }, 400);

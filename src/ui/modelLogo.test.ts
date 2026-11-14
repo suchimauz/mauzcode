@@ -76,3 +76,15 @@ test('SSH keeps exact provider mark with a small terminal corner badge in every 
     expect(render('mauzcode/node:codex/work:o3')).toContain('ph-arrows-left-right');
     expect(render('mauzcode/node:codex/work:o3')).not.toContain('ph-terminal-window');
 });
+test('model id decides the brand before the provider; unknown custom models stay generic', () => {
+    const svg = (model: string) => render(model).match(/<svg[\s\S]*?<\/svg>/)?.[0];
+    expect(svg('custom/gate:claude-x')).toBe(svg('claude/a:x'));
+    expect(svg('custom/gate:gpt-5')).toBe(svg('codex/a:x'));
+    expect(svg('custom/gate:gemma4-26b')).toBe(svg('custom/gate:gemini-3-pro'));
+    expect(svg('custom/gate:gemma4-26b')).toBeDefined();
+    for (const model of ['custom/gate:qwen3.8-flash', 'custom/gate:meta-llama/llama-4', 'custom/gate:mistral-large', 'custom/gate:deepseek-v4']) expect(render(model)).toContain('<svg');
+    expect(new Set(['qwen3', 'llama-4', 'mistral-large', 'deepseek-v4', 'gemma4', 'claude-x'].map(id => svg(`custom/g:${id}`))).size).toBe(6);
+    expect(render('custom/gate:foo')).toContain('ph-cpu');
+    expect(svg('claude/a:some-alias')).toBe(svg('claude/a:x'));
+    expect(svg('codex/a:o3')).toBe(svg('codex/a:x'));
+});

@@ -22,7 +22,10 @@ export default async function (
     const lastReply=new Map<string,number>(dates.map(r=>[String(r.agent_id),Number(r.ts)]));
     const iconRows=await ctx.fns.procs.db.select({sql:"SELECT id,icon,model,color_hue,reasoning_effort,created_at FROM agents WHERE visibility='nav'"});
     const catalogue=new Map((await ctx.fns.frontendBridge.modelCatalogue({})).models.map(m=>[m.model,m]));
-    const modelLabel=(model:string)=>catalogue.get(model)?.label??(model.slice(model.indexOf(':',Math.max(0,model.indexOf('/')))+1)||model);
+    // Routes no longer in the catalogue (stale selections) get names from the same resolver.
+    const stale=[...new Set(iconRows.map(row=>String(row.model??'')))].filter(model=>model&&!catalogue.has(model));
+    const staleNames:Record<string,string>=stale.length?await ctx.fns.models.displayNames({routes:stale}).catch(()=>({})):{};
+    const modelLabel=(model:string)=>catalogue.get(model)?.label??staleNames[model]??(model.slice(model.indexOf(':',Math.max(0,model.indexOf('/')))+1)||model);
     const icons=new Map(await Promise.all(iconRows.map(async row=>[String(row.id),await ctx.fns.frontendBridge.iconData({icon:row.icon,model:row.model})] as const)));
     // Reasoning comes from the cached connection catalogue; share one projection per distinct pair.
     const efforts=new Map<string,{requested:types.models.ReasoningLevel|'auto';applied:types.models.ReasoningLevel|'auto';label:string|null;downgraded:boolean}>();

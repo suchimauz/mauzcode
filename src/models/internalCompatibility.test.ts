@@ -12,8 +12,8 @@ test("root model procedures are exactly the minimal facade plus providers and ap
     const roots = [...new Bun.Glob("*.ts").scanSync(import.meta.dir)]
         .filter(file => !file.endsWith(".test.ts") && !file.startsWith("$") && /^[a-z]/.test(file))
         .map(file => file.slice(0, -3)).sort();
-    expect(roots).toEqual([...Object.keys(baseline.procedures), "resolveRoute", "tokenPrice"].sort());
-    expect(roots).toEqual(["action", "api", "call", "compact", "create", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
+    expect(roots).toEqual([...Object.keys(baseline.procedures), "displayNames", "resolveRoute", "tokenPrice"].sort());
+    expect(roots).toEqual(["action", "api", "call", "compact", "create", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
 });
 
 test("original public model signatures, async declarations, types and HTTP route contracts survive", async () => {

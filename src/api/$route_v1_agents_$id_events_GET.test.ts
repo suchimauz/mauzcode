@@ -162,3 +162,19 @@ test('lifecycle projection allowlists display fields without leaking arbitrary p
     expect(body.events[6].htmlSource).toBeNull();
     expect(body.events[7].htmlSource).toBeNull();
 });
+
+test('model_changed carries shared display names beside raw routes', async () => {
+    const events:any[]=[{idx:1,ts:1,type:'model_changed',from:'claude/a:claude-opus-4-5',to:'codex/b:gpt-5'}];
+    let asked:string[]=[];
+    const ctx:any={state:{},fns:{auth:{author:async()=>null},mentions:{parse:async()=>[]},models:{displayNames:async({routes}:any)=>{asked=routes;return {'claude/a:claude-opus-4-5':'Claude Opus 4.5','codex/b:gpt-5':'GPT-5'};}},procs:{db:{select:async({sql}:any)=>sql.includes('SELECT 1')?[{exists:1}]:[{run_state:'idle',next_run_at:null}]}},session:{getEvents:async()=>events,getMaxEventIdx:async()=>1}}};
+    const body:any=await (await route(ctx,null,{req:new Request('http://local/api/v1/agents/a/events'),params:{id:'a'}})).json();
+    expect(asked).toEqual(['claude/a:claude-opus-4-5','codex/b:gpt-5']);
+    expect(body.events[0].lifecycle).toEqual({from:'claude/a:claude-opus-4-5',to:'codex/b:gpt-5',fromLabel:'Claude Opus 4.5',toLabel:'GPT-5'});
+});
+
+test('model_changed keeps raw routes when naming fails', async () => {
+    const events:any[]=[{idx:1,ts:1,type:'model_changed',from:'x/a:m1',to:'x/a:m2'}];
+    const ctx:any={state:{},fns:{auth:{author:async()=>null},mentions:{parse:async()=>[]},models:{displayNames:async()=>{throw new Error('down');}},procs:{db:{select:async({sql}:any)=>sql.includes('SELECT 1')?[{exists:1}]:[{run_state:'idle',next_run_at:null}]}},session:{getEvents:async()=>events,getMaxEventIdx:async()=>1}}};
+    const body:any=await (await route(ctx,null,{req:new Request('http://local/api/v1/agents/a/events'),params:{id:'a'}})).json();
+    expect(body.events[0].lifecycle).toEqual({from:'x/a:m1',to:'x/a:m2'});
+});

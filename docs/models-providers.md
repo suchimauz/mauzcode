@@ -10,7 +10,7 @@ intact; retiring code is not a database rollback.
 ## Internal implementation navigation
 
 The public surface is a **minimal facade** of root procedures
-`ctx.fns.models.<name>`: `stream`, `call`, `compact`, `resolveRoute`, `tokenPrice`, `listModels`, `setModelEnabled`,
+`ctx.fns.models.<name>`: `stream`, `call`, `compact`, `resolveRoute`, `tokenPrice`, `displayNames`, `listModels`, `setModelEnabled`,
 `refreshAll`, `list`, `get`, `create`, `update`, `remove`, `test`, `usage` and
 `action`, plus `models.providers` (catalogue) and `models.api` (HTTP). Each facade
 entry delegates once to its implementation with unchanged options, callbacks,

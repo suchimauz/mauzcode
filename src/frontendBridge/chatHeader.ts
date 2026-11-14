@@ -63,7 +63,7 @@ export default async function (
         const model=String(row.model??'');
         return {id:String(row.id),title:String(row.title??''),icon:await ctx.fns.frontendBridge.iconData({icon:row.icon,model:row.model}),colorHue:row.color_hue==null?null:Number(row.color_hue),runState:String(row.run_state??'idle'),
             tokens:(details.coverage?.tokenRequests??0)>0&&input!=null&&output!=null?finite(input+output):null,
-            durationMs:finite(row.duration_ms),modelLabel:(await catalogue).get(model)?.label??(model.slice(model.indexOf(':',Math.max(0,model.indexOf('/')))+1)||model),lastReplyAt:finite(row.last_reply_at)};
+            durationMs:finite(row.duration_ms),modelLabel:(await catalogue).get(model)?.label??(model?(await ctx.fns.models.displayNames({routes:[model]}))[model]??model:''),lastReplyAt:finite(row.last_reply_at)};
     }));
     };
     const [children,siblings]=await Promise.all([loadChildren(agentId),parent?loadChildren(parent.id):Promise.resolve([])]);

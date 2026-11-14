@@ -312,7 +312,8 @@ Forms at `GET /settings/declared` render every declaration with title/descriptio
 Inference uses `models.resolveRoute`, `models.stream`, `models.call` and
 `models.compact`. Provider descriptors declare system preambles, pricing vendors
 and native compaction; agent code does not infer these from provider names.
-`models.tokenPrice` exposes pricing. `models.connectionRenamed` carries
+`models.tokenPrice` exposes pricing; `models.displayNames` gives UI display names
+(catalogue label, then the shared models.dev snapshot, then a prettified id). `models.connectionRenamed` carries
 `{ provider, from, to }` after commit; the agent subscriber rewrites active routes
 and `kv.last-model`, while models owns its localization setting only.
 
