@@ -8,16 +8,28 @@
 // don't" is a oneOf, which strict decoding does not accept, and "oldText must
 // not be empty" is not expressible at all. Better to say it in the one place
 // that can say it precisely, in words the model can act on.
-/** Validates semantic constraints for edit operations. */
+/**
+ * Validates the edit tool's argument combinations and edit operations, returning human-readable complaints (empty when valid).
+ *
+ * Checks readId/mode/path pairing, mode homogeneity of edits and per-op required fields before any file is touched.
+ * @param opts.args The edit tool's arguments as the model sent them (readId, mode, path, host, edits).
+ */
 export default function (
     _ctx: Context,
     _session: Session | null,
-    opts: { /** Command-line arguments. */ args: { path?: string; edits?: types.tools.EditOp[] } },
+    opts: { /** The edit tool's arguments as the model sent them (readId, mode, path, host, edits). */ args: { readId?: string; mode?: string; path?: string; host?: string; edits?: types.tools.EditOp[] } },
 ): string[] {
-    const edits = opts.args?.edits ?? [];
+    const a = opts.args ?? {};
+    const edits = a.edits ?? [];
     const errors: string[] = [];
 
-    if (!edits.length) return ["`edits` is empty — nothing to do"];
+    // Flat schema, combinations checked here (no oneOf for providers to mangle).
+    if (a.readId != null && !a.mode) errors.push("`readId` needs `mode`: literal (oldText/newText) or anchor (op/anchor)");
+    if (a.mode != null && a.readId == null) errors.push("`mode` needs `readId` — read the file first and pass the readId from the first result line");
+    if (a.mode != null && a.mode !== "literal" && a.mode !== "anchor") errors.push("`mode` must be literal or anchor");
+    if (a.readId == null && !a.path) errors.push("pass `readId` (from read) or `path`");
+    if (!edits.length) errors.push("`edits` is empty — nothing to do");
+    if (errors.length) return errors;
 
     const anchored = ["replaceLines", "insertBefore", "insertAfter", "delete"];
     let literal = 0;
@@ -27,6 +39,15 @@ export default function (
         const op = e.op ?? (e.oldText != null ? "replace" : undefined);
         if (!op) {
             errors.push(`edits[${i}] needs either oldText/newText, or op with an anchor`);
+            return;
+        }
+
+        if (a.mode === "anchor" && (op === "replace" || e.oldText != null || e.newText != null || e.all != null)) {
+            errors.push(`edits[${i}] uses oldText/newText/all, but mode is anchor`);
+            return;
+        }
+        if (a.mode === "literal" && (op !== "replace" || e.anchor != null || e.endAnchor != null || e.text != null)) {
+            errors.push(`edits[${i}] uses op/anchor/endAnchor/text, but mode is literal`);
             return;
         }
 

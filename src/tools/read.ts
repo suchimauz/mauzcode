@@ -1,11 +1,14 @@
 // Read a file, optionally a line range, optionally in hashline form (anchors
-// instead of line numbers — what `edit` consumes). Declared by $tool_read.md;
-// callable by hand as ctx.fns.tools.read({ path, hashline: true }).
+// instead of line numbers). Text results start with a `readId:` line — the
+// receipt `edit` and `write` need. Declared by $tool_read.md; callable by hand
+// as ctx.fns.tools.read({ path, hashline: true }) (no readId without a session).
 /**
  * Reads a workspace file as text, a line range, hashline anchors, or an image
  *
  * Returns file text, optionally sliced by line range or prefixed with stable
- * hashline anchors for `edit`. A path ending in .png, .jpg, .jpeg, .gif or .webp
+ * hashline anchors. Text results start with a `readId:` header line naming the
+ * receipt for the exact version and delivered range, which `edit` and `write`
+ * take; session-less calls, binary files and images get no readId. A path ending in .png, .jpg, .jpeg, .gif or .webp
  * returns the image as model-visible content so agents can look at screenshots.
  * @param opts.path File path, relative to the workspace or absolute.
  * @param opts.startLine First line to return, one-based. @default 1 @minimum 1
@@ -58,16 +61,20 @@ export default async function (
         const image = await ctx.fns.agent.imageContent({ path });
         return { output: `[image: ${opts.path}]`, content: [image] };
     }
-    if (opts.hashline) {
-        const r = await ctx.fns.files.readHashline({
-            path, host, startLine: opts.startLine, endLine: opts.endLine, maxLines: opts.maxLines,
-        });
-        return r.text;
+    // Text: deliver through a snapshot so the result carries a readId for the
+    // exact version and range shown (first line; none without a session).
+    const snap = await ctx.fns.files.snapshot({ path, host });
+    if (!snap.exists) throw new Error(`no such file: ${host ? host + ":" : ""}${path}`);
+    if (snap.binary) {
+        // Binary or invalid UTF-8: shown as before, never with a receipt.
+        const text = await ctx.fns.files.read({ path, host });
+        const start = Math.max(1, opts.startLine ?? 1);
+        const lines = text.replaceAll("\r\n", "\n").split("\n");
+        let end = Math.max(start, opts.endLine ?? lines.length);
+        if (opts.maxLines != null) end = Math.min(end, start + Math.max(0, opts.maxLines - 1));
+        return lines.slice(start - 1, end).join("\n");
     }
-    const text = await ctx.fns.files.read({ path, host });
-    const start = Math.max(1, opts.startLine ?? 1);
-    const lines = text.replaceAll("\r\n", "\n").split("\n");
-    let end = Math.max(start, opts.endLine ?? lines.length);
-    if (opts.maxLines != null) end = Math.min(end, start + Math.max(0, opts.maxLines - 1));
-    return lines.slice(start - 1, end).join("\n");
+    return ctx.fns.files.deliver({
+        snapshot: snap, startLine: opts.startLine, endLine: opts.endLine, maxLines: opts.maxLines, hashline: opts.hashline,
+    }).text;
 }

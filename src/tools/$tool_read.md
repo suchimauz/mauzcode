@@ -1,12 +1,13 @@
 ---
 description: >-
-  Read a file, optionally a line range. With hashline the lines come back prefixed with stable
-  anchors — read that way when you intend to edit the file afterwards. An image path (.png, .jpg,
+  Read a file, optionally a line range. Text results start with a line
+  `readId: <id> · lines a-b of N · complete|partial` — pass that readId to edit or write. With
+  hashline the lines come back prefixed with stable anchors for anchor-mode edits. An image path (.png, .jpg,
   .jpeg, .gif, .webp) returns the picture itself, so you can look at screenshots.
 marker: read
 promptSnippet: "read files, whole or by line range"
 promptGuidelines:
-  - "Read a file in hashline mode before editing it — an edit addresses anchors, not line numbers."
+  - "Before editing, read the file or the range you will change and keep the readId from the first result line; read with hashline when you will edit by anchors."
   - "To look at a screenshot or any image, read its path: the image is attached to the result and you see it."
 parameters:
   type: object
@@ -74,4 +75,6 @@ Same body rules. Result rows carry an anchor per line:
     11a|first line
     22b|second line
 
-Use this before `§edit` — the anchors are what an edit addresses.
+Use this before an anchor-mode edit — the anchors are what it addresses.
+
+Every text result starts with a `readId:` line (none for images, binary files or calls without a session).

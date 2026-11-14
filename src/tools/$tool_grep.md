@@ -2,11 +2,11 @@
 description: >-
   Search file contents. Returns ripgrep-style rows — "path:line:column: text", context lines as
   "path-line- text". Respects .gitignore and skips binaries. With hashline the line number is
-  replaced by a stable anchor, ready to use with edit. path may be a directory or a single file.
+  replaced by a stable anchor that helps locate code; to edit, read that range and use the read's readId. path may be a directory or a single file.
 marker: grep
 promptSnippet: "search file contents (respects .gitignore)"
 promptGuidelines:
-  - "Search in hashline mode when you want anchors from the search results to edit with."
+  - "To change what grep found: grep, read the range, then edit with the readId from that read."
   - "Use literal:true to search for text that contains regex characters instead of escaping them."
 parameters:
   type: object
@@ -46,7 +46,7 @@ parameters:
       description: "Seconds before the search is cut short, returning what it found so far."
     hashline:
       type: boolean
-      description: "Return anchors instead of line numbers, ready for edit."
+      description: "Return anchors instead of line numbers, to locate code. To edit, read that range and use its readId."
   required: [pattern]
   additionalProperties: false
 ---
@@ -73,4 +73,4 @@ Same request shape; the rows carry anchors instead of line numbers:
     §result:grep:hashline
     src/x.ts:12ab:5: matched line text
 
-Useful when you want searchable anchors for later editing.
+Anchors locate code; they carry no readId. Read the range before editing it.

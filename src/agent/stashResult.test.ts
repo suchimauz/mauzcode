@@ -54,3 +54,14 @@ test('storage failure is explicit, bounded and never claims a readable reference
         expect(r.content.length).toBeLessThan(3200);
     }
 });
+
+test('a read result keeps its readId line in the preview even when the head is cut away', async () => {
+    const h = harness();
+    const head = 'readId: rabcdefgh · lines 1-900 of 900 · complete';
+    const text = head + '\n' + 'y'.repeat(7000);
+    const r = await h.run(text, 'read');
+    expect(r.content.startsWith(head)).toBe(true);
+    // bash keeps the tail, but a readId never appears there: nothing is prepended
+    const b = await h.run('z'.repeat(7000), 'bash');
+    expect(b.content).not.toContain('readId:');
+});

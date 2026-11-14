@@ -109,7 +109,7 @@ describe.skipIf(!enabled)("remote over ssh (docker sshd)", () => {
         await R().writeFile({ host: "plain", path, content: "1\n" });
         const before = await R().readFile({ host: "plain", path });
         await R().exec({ host: "plain", command: "echo 2 >> cas.txt" });
-        await expect(R().writeFile({ host: "plain", path, content: "mine\n", expectedContent: before })).rejects.toThrow("changed on the server");
+        await expect(R().writeFile({ host: "plain", path, content: "mine\n", expectedContent: before })).rejects.toThrow("changed since it was read");
         expect(await R().readFile({ host: "plain", path })).toBe("1\n2\n");
         // unchanged file: the guarded write goes through
         const now = await R().readFile({ host: "plain", path });
@@ -306,7 +306,7 @@ describe.skipIf(!enabled)("remote over ssh (docker sshd)", () => {
         const base = await R().readFile({ host: "plain", path: "wm/race.txt" });
         const results = await Promise.allSettled([1, 2, 3, 4].map(i => R().writeFile({ host: "plain", path: "wm/race.txt", content: `w${i}\n`, expectedContent: base })));
         expect(results.filter(r => r.status === "fulfilled").length).toBe(1);
-        expect(results.filter(r => r.status === "rejected").every((r: any) => /changed on the server/.test(String(r.reason)))).toBe(true);
+        expect(results.filter(r => r.status === "rejected").every((r: any) => /changed since it was read/.test(String(r.reason)))).toBe(true);
     });
 
     test("review: exec caps captured output and still times out while stdin is pending", async () => {

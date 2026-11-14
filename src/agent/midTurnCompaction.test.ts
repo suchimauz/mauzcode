@@ -60,7 +60,7 @@ describe('owned mid-turn compaction', () => {
         agent.scratchpad.mockLLM = { turns: Array.from({ length: 4 }, () => ({ toolCalls: [{ name: 'read', args: { path: 'x' } }] })), defaultText: 'done' };
         await ctx.fns.session.save({ agent });
         let effects = 0, attempts = 0;
-        ctx.state.registry.files.read = () => { effects++; return 'finished'; };
+        ctx.state.registry.tools.read = () => { effects++; return 'finished'; };
         ctx.state.registry.agent.autoCompactIfNeeded = async (_c: any, _s: any, o: any) => {
             const messages = await ctx.fns.session.getMessages({ id: agent.id });
             expect(messages.filter((m: any) => m.role === 'tool').every((m: any) => m.content === 'finished')).toBe(true);

@@ -7,7 +7,10 @@ async function setup() {
     ctx.fns.files.readHashline = async (_c: any, _s: any, o: any) => ({ text: `HASH:${o.path}` });
     ctx.fns.files.write = async (c: any, _s: any, o: any) => { ((c.state as any).__written ??= {})[o.path] = o.content; };
     ctx.fns.files.grep = async () => [{ path: 'a.ts', line: 2, column: 3, text: 'foo' }];
-    ctx.fns.files.applyEdits = async (_c: any, _s: any, o: any) => ({ path: o.path, bytes: 12 });
+    const snap = (path: string) => ({ path, exists: true, version: 'v', binary: false, size: 7, bom: false, eol: '\n', finalNewline: false,
+        lines: ['a', 'b', 'c', 'd'].map((text, i) => ({ text, eol: i < 3 ? '\n' : '' })), text: 'a\nb\nc\nd' });
+    ctx.fns.files.snapshot = async (_c: any, _s: any, o: any) => snap(o.path);
+    ctx.fns.files.applyEdits = async (_c: any, _s: any, o: any) => ({ path: o.path, bytes: 12, version: 'v2', changed: { start: 1, end: 1, added: 1, removed: 1 }, snapshot: snap(o.path) });
     return ctx;
 }
 
@@ -32,7 +35,8 @@ describe('tools registry', () => {
         const ok = await ctx.fns.tools.call({ name: 'edit', args: {
             path: 'a.ts', edits: [{ oldText: 'x', newText: 'y' }],
         } });
-        expect(ok).toEqual({ output: 'edited a.ts (12 bytes, 1 edit)', isError: false, handlerExecuted: true });
+        // legacy path-only form: applied, but flagged as unchecked (no session → no readId)
+        expect(ok).toEqual({ output: 'applied: a.ts (12 bytes, 1 edit; lines 1-1 now, 1 line replaced)\nwarning: no readId — edit was applied to the current file without a version check', isError: false, handlerExecuted: true });
 
         // the text DSL is gone from the tool's surface: it is a marker detail
         const boom = await ctx.fns.tools.call({ name: 'edit', args: { script: '@a.ts' } });
@@ -92,7 +96,7 @@ describe('tools registry', () => {
         expect(responses.parameters.properties.host.type).toBe('string');
 
         const anthropic = ctx.fns.tools.schemas({ api: 'anthropic' }).find((t: any) => t.name === 'write');
-        expect(anthropic.input_schema.required).toEqual(['path', 'content']);
+        expect(anthropic.input_schema.required).toEqual(['content']);
         expect(anthropic.parameters).toBeUndefined();
 
         // optional options make strict decoding illegal — ship non-strict rather than not at all
@@ -110,7 +114,7 @@ describe('prompt assembly', () => {
 
         expect(section).toContain('- `read` — read files, whole or by line range');
         // guidelines are merged from the tools that contribute them, deduped
-        expect(section).toContain('Read a file in hashline mode before editing it');
+        expect(section).toContain('keep the readId from the first result line');
     });
 
 

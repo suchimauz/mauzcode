@@ -40,7 +40,7 @@ describe("agent goal loop", () => {
     });
     test("does not check goal before executing tool calls", async () => {
         const ctx: any = await mkTestCtx();
-        ctx.fns.files.read = async () => "FILE";
+        ctx.fns.tools.read = async () => "FILE";
         const agent = await ctx.fns.agent.start({ model: "mock:test" });
         agent.scratchpad.mockLLM = { turns: [
             { text: "reading", toolCalls: [{ name: "read", args: { path: "a" } }] },
