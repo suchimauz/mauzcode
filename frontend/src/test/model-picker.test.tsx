@@ -128,3 +128,12 @@ it('keeps same-named accounts of different providers in separate groups and show
  expect(teams[1]).toHaveTextContent('Недоступно');
  expect(teams[1]).toHaveTextContent('HTTP 401');
 });
+
+it('shows an explicitly unset model as unselected without substituting a default',async()=>{
+ const unset:ModelSettings={...structuredClone(original),model:'',label:'',icon:null};
+ vi.stubGlobal('fetch',vi.fn(async()=>json(unset)));
+ render(<ModelPicker {...props}/>);
+ const trigger=await screen.findByRole('button',{name:'Выбрать модель: Model'});
+ expect(trigger).toHaveAttribute('title','Выбрать модель');
+ expect(trigger.textContent).not.toContain('gpt');
+});

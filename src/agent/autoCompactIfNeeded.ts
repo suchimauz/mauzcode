@@ -25,6 +25,8 @@ export default async function (
     },
 ): Promise<{ status: "compacted" | "below_threshold" | "no_compactor" | "already_compact" | "busy" | "failed" | "stale" | "not_needed" | "over_threshold"; estimatedTokens: number; source?: "provider" | "estimate"; threshold?: number; contextWindow?: number; error?: string }> {
     const agent = opts.agent;
+    // No selected model: nothing to measure against and no compactor to run.
+    if (typeof agent.model !== "string" || !agent.model.trim()) return { status: "not_needed", estimatedTokens: 0 };
     let hasCompactor = true;
     try { (await ctx.fns.compaction.resolve({ model: agent.model })); } catch { hasCompactor = false; }
     const row = ((await ctx.fns.procs.db.select({ sql: "SELECT run_state, run_token, sleep_context FROM agents WHERE id = ? AND archived_at IS NULL", params: [agent.id] })) as any[])[0];

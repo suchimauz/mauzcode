@@ -59,7 +59,7 @@ export default async function (
     const child = forkContext
         ? await ctx.fns.session.fork({ id: parentAgent.id, visibility: "team" })
         : await ctx.fns.agent.start({
-            model: parentAgent.model,
+            model: ctx.fns.agent.requireModel({ model: parentAgent.model, agentId: parentAgent.id }),
             systemPrompt: parentAgent.systemPrompt,
             // A delegated child works where its parent works.
             workspaceDir: parentAgent.workspaceDir,

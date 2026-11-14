@@ -19,12 +19,12 @@ export default async function (
     },
 ): Promise<{ text: string; thinking: string; finishReason: string | null; usage: { prompt_tokens?: number; completion_tokens?: number }; toolCalls: { id: string; name: string; args: any }[] }> {
     const { agent } = opts;
-    const ep = await ctx.fns.llm.resolveEndpoint({ model: agent.model });
+    const ep = await ctx.fns.llm.resolveEndpoint({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }) });
     if ((ep.provider === "mauzcode" ? ep.upstream : ep.provider) !== "xai") throw new Error("streamXai requires an xai model route");
     // Node bearer authenticates the relay; only the host may refresh provider OAuth.
     const apiKey = ep.provider === "mauzcode" ? ep.apiKey : await ctx.fns.llm.getXaiOAuthToken({ account: ep.account });
     if (!apiKey) throw new Error(`${ep.provider}: no credentials`);
-    const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: agent.model, effort: agent.reasoningEffort ?? "auto" });
+    const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }), effort: agent.reasoningEffort ?? "auto" });
     const { instructions, messages: convo } = await ctx.fns.agent.buildLlmRequest({ agent });
     const { input } = ctx.fns.llm.toCodexInput({ messages: convo as any });
     const body: any = { model: ep.modelId, store: false, stream: true, instructions, input, prompt_cache_key: await ctx.fns.agent.cacheRoot({ agent }), include: ["reasoning.encrypted_content"] };

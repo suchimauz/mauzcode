@@ -19,7 +19,7 @@ export default async function (
     },
 ): Promise<{ text: string; thinking: string; toolCalls: Array<{ id: string; name: string; args: Record<string, any>; thoughtSignature?: string; geminiParts?: Array<Record<string, any>> }>; finishReason: string | null; usage: Record<string, any> | null; requestedModel: string; responseModel: string | null }> {
     const {agent}=opts;
-    const ep=await ctx.fns.llm.resolveEndpoint({model:agent.model});
+    const ep=await ctx.fns.llm.resolveEndpoint({model:ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id })});
     const request=await ctx.fns.agent.buildLlmRequest({agent});
     const contents=await ctx.fns.llm.toGeminiContents({messages:request.messages});
     const wire=ctx.fns.tools.schemas({ only: agent.tools, api: 'openai' });
@@ -28,6 +28,6 @@ export default async function (
      if(!f || typeof f.name !== 'string') throw new Error('Gemini invalid tool declaration');
      return {name:f.name,description:f.description,parameters:f.parameters};
     });
-    const generationConfig=await ctx.fns.llm.geminiGenerationConfig({model:agent.model,modelId:ep.modelId,reasoningEffort:agent.reasoningEffort});
-    return ctx.fns.llm.geminiGenerate({model:agent.model,contents,system:request.instructions,generationConfig,tools,stream:true,signal:opts.signal,sessionId:agent.id,onEvent:opts.onEvent});
+    const generationConfig=await ctx.fns.llm.geminiGenerationConfig({model:ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }),modelId:ep.modelId,reasoningEffort:agent.reasoningEffort});
+    return ctx.fns.llm.geminiGenerate({model:ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }),contents,system:request.instructions,generationConfig,tools,stream:true,signal:opts.signal,sessionId:agent.id,onEvent:opts.onEvent});
 }

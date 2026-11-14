@@ -24,9 +24,9 @@ export default async function (
     toolCalls: { id: string; name: string; args: any }[];
 }> {
     const { agent } = opts;
-    const ep = await ctx.fns.llm.resolveEndpoint({ model: agent.model });
+    const ep = await ctx.fns.llm.resolveEndpoint({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }) });
 
-    const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: agent.model, effort: agent.reasoningEffort ?? "auto" });
+    const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }), effort: agent.reasoningEffort ?? "auto" });
     // buildLlmRequest keeps the required Claude Code identity in the top-level
     // system field for both externally managed and mauzcode-managed OAuth.
     const { instructions: system, messages: convo, cacheableMessageCount } = await ctx.fns.agent.buildLlmRequest({ agent });
@@ -54,7 +54,7 @@ export default async function (
 
     // "auto" as the applied level (Claude 5 default) sends nothing: the model decides, as before levels existed.
     if (ep.provider === "opencode") {
-        Object.assign(body, await ctx.fns.llm.opencodeReasoningBody({ model: agent.model, modelId: ep.modelId, api: "anthropic", effort: agent.reasoningEffort }));
+        Object.assign(body, await ctx.fns.llm.opencodeReasoningBody({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }), modelId: ep.modelId, api: "anthropic", effort: agent.reasoningEffort }));
     } else if (reasoning.mode === "anthropic-adaptive" && (reasoning.applied as string) === "auto") {
     } else if (reasoning.mode === "anthropic-adaptive" && reasoning.applied !== "off") {
         body.thinking = { type: "adaptive" };

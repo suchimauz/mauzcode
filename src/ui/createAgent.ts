@@ -39,7 +39,7 @@ export default async function (
             }
             finally { agent.isStreaming = false; }
         });
-        return { id: agent.id, model: agent.model, opened: opts.open !== false, started: true, offset };
+        return { id: agent.id, model, opened: opts.open !== false, started: true, offset };
     }
-    return { id: agent.id, model: agent.model, opened: opts.open !== false, started: false };
+    return { id: agent.id, model, opened: opts.open !== false, started: false };
 }

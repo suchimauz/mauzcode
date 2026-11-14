@@ -16,9 +16,9 @@ export default async function (
         /** Callback invoked for each streamed model event. */ onEvent?: (ev: any) => void },
 ) {
     const { agent } = opts;
-    const ep = await ctx.fns.llm.resolveEndpoint({ model: agent.model });
+    const ep = await ctx.fns.llm.resolveEndpoint({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }) });
     const started = performance.now();
-    const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: agent.model, effort: agent.reasoningEffort ?? "auto" });
+    const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }), effort: agent.reasoningEffort ?? "auto" });
     let firstEventMs: number | undefined;
     const onEvent = (ev: any) => {
         if (ev?.type === 'text_delta' || ev?.type === 'thinking_delta') firstEventMs ??= Math.round((performance.now() - started) * 100) / 100;

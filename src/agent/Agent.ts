@@ -1,6 +1,7 @@
 export type Agent = {
     id: string;
-    model: string;
+    /** Selected provider/account:model route. Rows archived before the model-routes migration load as null; guard model-dependent work with agent.requireModel. */
+    model: string | null;
     /** Optional automatic compaction context-window percentage (15–95); null/undefined inherits the current global setting. */
     autoCompactWindowPercent?: number | null;
     title: string;

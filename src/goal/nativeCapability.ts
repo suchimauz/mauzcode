@@ -28,6 +28,7 @@ export default async function (
     if(canonical(tool.parameters)!==canonical(contract.parameters))return fail('native_goal_schema_mismatch');
     selected.push(tool);
     }
+    if(typeof owner.model!=='string'||!owner.model.trim()) return fail('model_not_selected');
     const route=await ctx.fns.models.resolveRoute({route:owner.model});
     const wire=ctx.fns.agent.wireTools({agent:owner});
     for(const tool of selected){const declaration=wire.find(t=>t.name===tool.wireName);if(!declaration||canonical(declaration.parameters)!==canonical(tool.parameters))return fail('native_goal_tools_filtered');}

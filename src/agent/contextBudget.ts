@@ -19,6 +19,7 @@ export default async function (
     if (!agent) throw new Error("Agent not found");
     const rows = await ctx.fns.procs.db.select({ sql: "SELECT model, sleep_context FROM agents WHERE id = ?", params: [opts.agentId] }) as Array<{ model: string; sleep_context: Record<string, unknown> | null }>;
     if (!rows[0]) throw new Error("Agent not found");
+    ctx.fns.agent.requireModel({ model: rows[0].model, agentId: opts.agentId });
     const messages = await ctx.fns.session.getMessages({ id: opts.agentId });
     const snapshot = { ...agent, model: rows[0].model, sleepContext: rows[0].sleep_context, messages };
     const request = await ctx.fns.agent.buildLlmRequest({ agent: snapshot, preview: true });

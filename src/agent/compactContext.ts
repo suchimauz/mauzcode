@@ -22,6 +22,7 @@ export default async function (
     },
 ): Promise<{ status: "compacted" | "not_needed" | "stale"; revision?: number; tokensBefore: number; tokensAfter?: number; keptMessages?: number; summary?: string }> {
     const parent = opts.agent;
+    const model = ctx.fns.agent.requireModel({ model: parent.model, agentId: parent.id });
     const midTurn = !!opts.signal;
     const controller = parent.abortController;
     // A failed or stale draft is cleared in the row; mirror the durable value
@@ -43,28 +44,28 @@ export default async function (
     const fingerprintSql = "SELECT md5(COALESCE(jsonb_agg(to_jsonb(m) ORDER BY idx)::text, '[]')) AS fingerprint FROM messages m WHERE agent_id = ?";
     const fingerprint = ((await ctx.fns.procs.db.select({ sql: fingerprintSql, params: [parent.id] })) as any[])[0].fingerprint;
     // Capture must describe the messages read above, not a concurrent append/edit.
-    if (JSON.stringify(await ctx.fns.session.getMessages({ id: parent.id })) !== JSON.stringify(rootMessages)) return { status: "stale", tokensBefore: await ctx.fns.compaction.estimateTokens({ messages: rootMessages, model: parent.model }) };
+    if (JSON.stringify(await ctx.fns.session.getMessages({ id: parent.id })) !== JSON.stringify(rootMessages)) return { status: "stale", tokensBefore: await ctx.fns.compaction.estimateTokens({ messages: rootMessages, model }) };
     const sleep = ctx.fns.agent.normalizeSleepContext({ sleepContext: row.sleep_context });
     if (sleep?.draftRevision != null) throw new Error("compaction already running");
 
     const oldHead = sleep?.activeRevision ?? null;
-    const projection = await ctx.fns.compaction.project({ model: parent.model, messages: rootMessages, sleepContext: sleep });
+    const projection = await ctx.fns.compaction.project({ model, messages: rootMessages, sleepContext: sleep });
     const effective = projection.messages;
     // Validity compares estimate with estimate; the reported "before" uses the
     // shared provider-backed measurement when a fresh one exists.
-    const tokensBefore = await ctx.fns.compaction.estimateTokens({ messages: effective, model: parent.model });
-    const measuredBefore = await ctx.fns.agent.contextTokens({ agentId: parent.id, model: parent.model, fallbackTokens: tokensBefore });
+    const tokensBefore = await ctx.fns.compaction.estimateTokens({ messages: effective, model });
+    const measuredBefore = await ctx.fns.agent.contextTokens({ agentId: parent.id, model, fallbackTokens: tokensBefore });
     // Budget complete exchanges, not a minimum text-message count: one image
     // or parallel tool batch must not make the retained suffix unbounded.
-    const { tailStart } = await ctx.fns.compaction.selectTail({ messages: rootMessages, model: parent.model });
+    const { tailStart } = await ctx.fns.compaction.selectTail({ messages: rootMessages, model });
     if (tailStart <= Math.max(0, projection.tailStart ?? 0)) return { status: "not_needed", tokensBefore };
     const revision = Math.max(0, ...(sleep?.generations ?? []).map((g: any) => Number(g.revision ?? 0))) + 1;
     const createdAt = Date.now();
     const draftOwner = ((ctx.state as any).compactionOwner ??= crypto.randomUUID());
-    const child = await ctx.fns.agent.start({ model: parent.model, systemPrompt: parent.systemPrompt, title: (parent.title || parent.id) + " · compact", workspaceDir: parent.workspaceDir, workspaceHost: parent.workspaceHost, parentId: parent.id, forkOffset: 0, visibility: "hidden" });
+    const child = await ctx.fns.agent.start({ model, systemPrompt: parent.systemPrompt, title: (parent.title || parent.id) + " · compact", workspaceDir: parent.workspaceDir, workspaceHost: parent.workspaceHost, parentId: parent.id, forkOffset: 0, visibility: "hidden" });
     child.scratchpad = { compaction: { sourceAgentId: parent.id, revision, status: "draft" } };
     await ctx.fns.session.updateScratchpad({ id: child.id, scratchpad: child.scratchpad });
-    const generation: any = { revision, kind: "compaction", status: "draft", contextAgentId: child.id, sourceAgentId: parent.id, sourceOffset: sourceFrontier, sourceFrontier, tailStart, summary: "", ...(opts.instructions?.trim() ? { instructions: opts.instructions.trim() } : {}), tokensBefore, tokensAfter: 0, model: parent.model, createdAt };
+    const generation: any = { revision, kind: "compaction", status: "draft", contextAgentId: child.id, sourceAgentId: parent.id, sourceOffset: sourceFrontier, sourceFrontier, tailStart, summary: "", ...(opts.instructions?.trim() ? { instructions: opts.instructions.trim() } : {}), tokensBefore, tokensAfter: 0, model, createdAt };
     const draftContext = { mode: sleep?.mode ?? "full", activeRevision: oldHead, draftRevision: revision, draftOwner, generations: await ctx.fns.compaction.retainGenerations({ generations: [...(sleep?.generations ?? []), generation], activeRevision: oldHead, draftRevision: revision }) };
     const draftAt = Date.now();
     if (!ownsRun()) { await ctx.fns.session.archive({ id: child.id }); return { status: "stale", tokensBefore }; }
@@ -77,7 +78,7 @@ export default async function (
     try {
       await ctx.fns.session.appendEventWithHtml({ id: parent.id, type: "compaction_start", payload: { revision } });
       // Provider-specific strategy from `$compaction_<provider>.ts`, else `$compaction_default.ts`.
-      const compactor = (await ctx.fns.compaction.resolve({ model: child.model }));
+      const compactor = (await ctx.fns.compaction.resolve({ model }));
       const instructions = await ctx.fns.agent.fullSystemPrompt({ agent: parent });
       opts.signal?.throwIfAborted();
       let onAbort: (() => void) | undefined;
@@ -86,7 +87,7 @@ export default async function (
         opts.signal!.addEventListener('abort', onAbort, { once: true });
       }) : null;
       const pendingSummary = compactor.compact(ctx, session, {
-        model: child.model,
+        model,
         sessionId: child.id,
         instructions,
         focus: opts.instructions?.trim() || undefined,
@@ -98,7 +99,7 @@ export default async function (
       });
       const summary = result.summary;
       const summaryMessage: any = result.message;
-      const tokensAfter = await ctx.fns.compaction.estimateTokens({ messages: [summaryMessage, ...rootMessages.slice(tailStart)], model: parent.model });
+      const tokensAfter = await ctx.fns.compaction.estimateTokens({ messages: [summaryMessage, ...rootMessages.slice(tailStart)], model });
       generation.compactor = compactor.provider;
       if (parent.jevCompactionEnabled === true) {
         generation.preservationReview = await ctx.fns.agent.reviewCompaction({
@@ -149,7 +150,7 @@ export default async function (
         return { status: "stale", tokensBefore };
       }
       parent.sleepContext = next;
-      await ctx.fns.session.appendEventWithHtml({ id: parent.id, type: "compaction_completed", payload: { revision, tokensBefore: measuredBefore.tokens, tokensBeforeSource: measuredBefore.source, tokensAfter: Math.round(tokensAfter * (await ctx.fns.compaction.calibration({ model: parent.model })).factor), tokensAfterEstimated: true, keptMessages: rootMessages.length - tailStart, summary } });
+      await ctx.fns.session.appendEventWithHtml({ id: parent.id, type: "compaction_completed", payload: { revision, tokensBefore: measuredBefore.tokens, tokensBeforeSource: measuredBefore.source, tokensAfter: Math.round(tokensAfter * (await ctx.fns.compaction.calibration({ model })).factor), tokensAfterEstimated: true, keptMessages: rootMessages.length - tailStart, summary } });
       // The draft child has done its only job. Archive it here and in the catch
       // below: otherwise every compaction — successful or failed — leaves a hidden
       // agent row behind that later looks like unfinished delegated work.

@@ -47,7 +47,8 @@ export default async function (
     }
     // A checkpoint may already summarize the omitted row. Fail closed to full
     // history rather than leaking its instructions through a compact summary.
-    const projection = await ctx.fns.compaction.project({ model: agent.model, messages: fullHistory, sleepContext: omitted.size || authority ? null : agent.sleepContext });
+    const model = ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id });
+    const projection = await ctx.fns.compaction.project({ model, messages: fullHistory, sleepContext: omitted.size || authority ? null : agent.sleepContext });
     const raw = projection.messages;
 
     // A call with no result is a transcript every provider refuses, and a run
@@ -78,7 +79,7 @@ export default async function (
     // agent.syncWorldState now and travel as a persisted tail row, for the same
     // reason as the function catalogue: a block that changes between requests
     // must not rewrite history the provider has already cached.
-    const route = await ctx.fns.models.resolveRoute({ route: agent.model });
+    const route = await ctx.fns.models.resolveRoute({ route: model });
 
     // Nothing per-turn lives in the bootstrap: every byte there is the cached
     // prefix shared by all later requests and by transcript-sharing forks.

@@ -31,7 +31,7 @@ export default async function (
     const { instructions: sys, messages: convo } = await ctx.fns.agent.buildLlmRequest({ agent });
     const messages: any[] = [];
     if (sys) messages.push({ role: "system", content: sys });
-    const ep = await ctx.fns.llm.resolveEndpoint({ model: agent.model });
+    const ep = await ctx.fns.llm.resolveEndpoint({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }) });
     const wireMessages = ctx.fns.llm.toOpenAIMessages({ messages: convo });
     if ((ep.upstream ?? ep.provider) === "zai-coding") {
         // Reasoning is retained with the canonical tool-call JSON, so it survives
@@ -59,16 +59,16 @@ export default async function (
         body.max_tokens = 8192;
     }
     if ((ep.upstream ?? ep.provider) === "zai-coding" && /^glm-5\.3(?:-flashx?)?$/.test(ep.modelId)) {
-        const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: agent.model, effort: agent.reasoningEffort ?? "auto" });
+        const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }), effort: agent.reasoningEffort ?? "auto" });
         body.thinking = { type: "enabled" };
         body.reasoning_effort = reasoning.applied === "xhigh" ? "max" : reasoning.applied;
     }
     // Groq GPT-OSS has a bounded effort control; auto leaves the gateway default untouched.
     if ((ep.upstream ?? ep.provider) === "groq" && /^openai\/gpt-oss-(20b|120b)$/.test(ep.modelId) && agent.reasoningEffort && agent.reasoningEffort !== "auto") {
-        const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: agent.model, effort: agent.reasoningEffort });
+        const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }), effort: agent.reasoningEffort });
         body.reasoning_effort = reasoning.applied;
     }
-    if (ep.provider === "opencode") Object.assign(body, await ctx.fns.llm.opencodeReasoningBody({ model: agent.model, modelId: ep.modelId, api: "openai", effort: agent.reasoningEffort }));
+    if (ep.provider === "opencode") Object.assign(body, await ctx.fns.llm.opencodeReasoningBody({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }), modelId: ep.modelId, api: "openai", effort: agent.reasoningEffort }));
     // OpenAI-compatible providers do not consistently accept OpenAI's cache
     // extension. Groq currently rejects prompt_cache_key with HTTP 400.
     if (ep.provider === "openai") body.prompt_cache_key = await ctx.fns.agent.cacheRoot({ agent });

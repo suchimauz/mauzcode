@@ -142,6 +142,9 @@ export default async function (
         await assertRunActive();
     }
 
+    // An explicitly unset model (e.g. a restored archived agent) fails before any
+    // lifecycle, goal accounting or provider work; never substitute a default.
+    ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id });
     await ctx.fns.agent.recordRunLifecycle({ agentId: agent.id, runId: lifecycleId, status: 'open' });
     lifecycleStarted = true;
     await assertRunActive();
@@ -441,7 +444,8 @@ export default async function (
                     if (!ac.signal.aborted && agent.abortController === ac) notifyStream();
                 }, 350);
             };
-            const route = await ctx.fns.models.resolveRoute({ route: agent.model });
+            const requestModel = ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id });
+            const route = await ctx.fns.models.resolveRoute({ route: requestModel });
             goalProvider = route.provider;
             if (goalRun?.sealed) throw new DOMException('Run accounting sealed for Stop', 'AbortError');
             goalRun?.pendingRequests.add(goalRequestId);
@@ -463,15 +467,15 @@ export default async function (
             await assertRunActive();
             // Messages persisted after this point are not measured by this request's usage.
             const coveredRows = await ctx.fns.procs.db.select({ sql: 'SELECT MAX(idx) AS idx FROM messages WHERE agent_id = ?', params: [agent.id] }) as Array<{ idx: number | string | null }>;
-            requestCoverage = { model: agent.model, coveredIdx: coveredRows[0]?.idx == null ? -1 : Number(coveredRows[0].idx) };
+            requestCoverage = { model: requestModel, coveredIdx: coveredRows[0]?.idx == null ? -1 : Number(coveredRows[0].idx) };
             // Local estimate of the same request for provider calibration; runs beside the
             // stream and never fails the run.
             const coverage = requestCoverage;
             const estimating = (async () => {
-                const source = await ctx.fns.compaction.tokenizer({ model: agent.model }) ? 'tokenizer' as const : 'heuristic' as const;
+                const source = await ctx.fns.compaction.tokenizer({ model: requestModel }) ? 'tokenizer' as const : 'heuristic' as const;
                 const request = await ctx.fns.agent.buildLlmRequest({ agent, preview: true });
                 const tools = ctx.fns.agent.wireTools({ agent });
-                coverage.estimatedPromptTokens = await ctx.fns.compaction.estimateTokens({ model: agent.model, messages: [
+                coverage.estimatedPromptTokens = await ctx.fns.compaction.estimateTokens({ model: requestModel, messages: [
                     ...request.messages,
                     ...(request.instructions ? [{ role: 'system', content: request.instructions }] : []),
                     ...(tools.length ? [{ role: 'system', content: JSON.stringify(tools) }] : []),

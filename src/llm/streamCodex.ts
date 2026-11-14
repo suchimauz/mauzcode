@@ -26,12 +26,12 @@ export default async function (
     toolCalls: { id: string; name: string; args: any }[];
 }> {
     const { agent } = opts;
-    const ep = await ctx.fns.llm.resolveEndpoint({ model: agent.model });
+    const ep = await ctx.fns.llm.resolveEndpoint({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }) });
     // Through a MauzCode node the bearer is our node token and the host adds the
     // ChatGPT account headers itself (docs/mauzcode-node.md).
     const viaNode = ep.provider === "mauzcode";
     const apiKey = viaNode || ep.provider === "opencode" || ep.ssh ? ep.apiKey : (await ctx.fns.llm.refreshCodex({ account: ep.account }) ?? ep.apiKey);
-    const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: agent.model, effort: agent.reasoningEffort ?? "auto" });
+    const reasoning = await ctx.fns.llm.resolveReasoningEffort({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }), effort: agent.reasoningEffort ?? "auto" });
     if (!apiKey && ep.provider !== "opencode") throw new Error("codex: no access_token (run /settings → login)");
     const accountId = viaNode || ep.provider === "opencode" || ep.ssh ? "" : extractAccountId(apiKey!);
 
@@ -49,7 +49,7 @@ export default async function (
     };
 
     if (ep.provider === "opencode") {
-        Object.assign(body, await ctx.fns.llm.opencodeReasoningBody({ model: agent.model, modelId: ep.modelId, api: "responses", effort: agent.reasoningEffort }));
+        Object.assign(body, await ctx.fns.llm.opencodeReasoningBody({ model: ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }), modelId: ep.modelId, api: "responses", effort: agent.reasoningEffort }));
     } else body.reasoning = { effort: reasoning.applied === "off" ? "none" : reasoning.applied, summary: "auto" };
     // Native function_call items, in JSON protocol mode only (agent.wireTools).
     const tools = ctx.fns.tools.schemas({ only: agent.tools, api: "responses" });

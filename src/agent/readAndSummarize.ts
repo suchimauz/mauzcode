@@ -66,7 +66,7 @@ export default async function (
         content.length > sliced.length ? '[truncated; original chars=' + content.length + ']' : '',
     ].filter(Boolean).join('\n');
 
-    const route = await ctx.fns.models.resolveRoute({ route: model || agent.model });
+    const route = await ctx.fns.models.resolveRoute({ route: model || ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id }) });
     const result = await ctx.fns.models.call({
         connectionId: route.connectionId,
         model: route.model,
