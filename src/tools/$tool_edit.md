@@ -1,81 +1,76 @@
 ---
 description: >-
-  Edit an existing file in place. `path` names the file, `edits` lists the changes. The usual
-  edit is a literal replacement — oldText must appear exactly once unless all is set. Anchored
-  edits address lines by the anchors a hashline read returns, and are refused if the anchor moved.
+  Edit a file you have read. Pass the readId from the first line of the read result, a mode, and
+  the edits. mode literal: oldText/newText replacements — oldText must appear exactly once in the
+  lines you read, unless all is set. mode anchor: line ops addressed by the anchors of a hashline
+  read. The result starts with a status — applied, conflict, invalid, expired or busy — and carries
+  a new readId; on conflict it also carries the current content of the same lines.
 marker: edit
 validate: tools.editValidate
 promptSnippet: "edit files in place"
 promptGuidelines:
+  - "Read the file (or the range you will change) first and pass its readId; the edit is refused if the file changed since, with the fresh content in the same result."
   - "An edit replaces exact text, so copy oldText verbatim from what you read, including indentation, and give enough of it to be unique."
-  - "Several changes to one file belong in one edit call with several entries in edits, not in several calls."
+  - "Several changes to one file belong in one edit call with several entries in edits, not in several calls. Use the readId the result returns for the next edit."
 parameters:
   type: object
   properties:
+    readId:
+      type: string
+      description: "The readId from the first line of a read result (or of a previous edit result). Names the file, host and version."
+    mode:
+      type: string
+      enum: [literal, anchor]
+      description: "literal: every edit has oldText/newText. anchor: every edit has op and anchor (from a hashline read). Required with readId."
+    path:
+      type: string
+      description: "Optional with readId (must name the same file)."
     host:
       type: string
       description: "SSH server alias from ~/.ssh/config (list: ctx.fns.remote.servers({})), or \"local\". Omit to act in the agent workspace — local, or remote when the workspace has a host. On the workspace host relative paths resolve against the workspace dir; on other hosts against the remote home."
-    path:
-      type: string
-      description: "File to edit."
     edits:
       type: array
-      description: "Changes to apply. Each is matched against the file as it stands, not against the result of the previous one."
+      description: "Changes to apply, all of one mode. Each is matched against the file as it was read, not against the result of the previous one."
       items:
         type: object
         properties:
           op:
             type: string
             enum: [replace, replaceLines, insertBefore, insertAfter, delete]
-            description: "Defaults to replace when oldText is given."
+            description: "mode anchor: replaceLines, insertBefore, insertAfter or delete. mode literal: omit (replace)."
           oldText:
             type: string
-            description: "op=replace — exact text to find. Must match once unless all is true."
+            description: "mode literal — exact text to find, as read shows it (LF line breaks). Must match once in the lines read, unless all is true."
           newText:
             type: string
-            description: "op=replace — text to put in its place. Empty string deletes it."
+            description: "mode literal — text to put in its place. Empty string deletes it."
           all:
             type: boolean
-            description: "op=replace — replace every occurrence instead of requiring exactly one."
+            description: "mode literal — replace every occurrence in the lines read instead of requiring exactly one."
           anchor:
             type: string
-            description: "Anchored ops — the anchor from a hashline read. BOF/EOF work for inserts."
+            description: "mode anchor — an anchor from a hashline read, inside the lines read. BOF/EOF work for inserts."
           endAnchor:
             type: string
-            description: "Anchored ops — last anchor of the range, for replaceLines and delete."
+            description: "mode anchor — last anchor of the range, for replaceLines and delete."
           text:
             type: string
-            description: "Anchored ops — the replacement or inserted lines."
+            description: "mode anchor — the replacement or inserted lines."
         additionalProperties: false
-  required: [path, edits]
+  required: [edits]
   additionalProperties: false
 ---
-### `§edit` / `§edit:hashline`
+Statuses (first line of the result):
 
-The marker form takes the anchored script as its body — it is translated into the same
-structured edits the tool takes. `§edit` is shorthand for `§edit:hashline`.
+- `applied` — written; the result has a new `readId` and the edited lines, ready for the next edit.
+- `conflict` — the file changed since it was read; nothing was written. The current content of the
+  same lines and a new `readId` follow — redo the edit against them.
+- `invalid` — the request was wrong (mixed modes, an anchor outside the lines read, oldText found
+  0 or several times, a no-op, overlapping edits); nothing was written.
+- `expired` — the readId is unknown, expired (30 minutes), from another session, or lost on
+  restart; nothing was written. Read again.
+- `busy` — another MauzCode writer holds the file lock; nothing was written. The message names the
+  lock directory and its owner.
 
-Rules:
-- Read the file first with `§read:hashline`.
-- Copy anchors exactly.
-- The first non-blank line must be `@PATH`.
-- Payload lines must start with `|`.
-
-Ops:
-- `+ ANCHOR` — insert after anchor
-- `< ANCHOR` — insert before anchor
-- `- A..B` — delete range
-- `= A..B` — replace range
-- `= A` — replace one line
-- `replace "old" "new"` — literal replacement; requires exactly one match
-- `replace-all "old" "new"` — replace every literal match; requires at least one
-- Replace arguments are JSON strings, so use `\n`, `\"`, and `\\` escapes as needed.
-
-Example body:
-    @src/foo.ts
-    = 22ab
-    |const x = 1;
-
-Result:
-    §result:edit:hashline
-    edited src/foo.ts (123 bytes)
+Line endings, the final newline and a BOM are kept; lines you do not touch keep their bytes. The
+lock coordinates MauzCode writers only — `bash`, direct fs calls and editors do not take it.

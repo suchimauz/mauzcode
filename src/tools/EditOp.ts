@@ -1,20 +1,18 @@
-// One entry of the `edit` tool's `edits` array — the structured form of what
-// the hashline text DSL spells out in a line. Mirrors $tool_edit.md's schema;
-// agent.markerArgs produces these from a §edit body, a JSON tool call sends
-// them directly.
+// One entry of the `edit` tool's `edits` array. Mirrors $tool_edit.md's schema.
+// mode literal uses oldText/newText/all; mode anchor uses op/anchor/endAnchor/text.
 export type EditOp = {
-    /** Defaults to "replace" when oldText is given. */
+    /** mode anchor: the line op. mode literal: omitted or "replace". */
     op?: "replace" | "replaceLines" | "insertBefore" | "insertAfter" | "delete";
-    /** op=replace — exact text to find; must match once unless `all`. */
+    /** mode literal — exact text to find (LF view); must match once in the lines read unless `all`. */
     oldText?: string;
-    /** op=replace — what to put in its place; "" deletes. */
+    /** mode literal — what to put in its place; "" deletes. */
     newText?: string;
-    /** op=replace — replace every occurrence. */
+    /** mode literal — replace every occurrence in the lines read. */
     all?: boolean;
-    /** Anchored ops — the anchor a hashline read returned (BOF/EOF for inserts). */
+    /** mode anchor — an anchor from a hashline read inside the lines read (BOF/EOF for inserts). */
     anchor?: string;
-    /** Anchored ops — last anchor of the range. */
+    /** mode anchor — last anchor of the range. */
     endAnchor?: string;
-    /** Anchored ops — replacement or inserted lines. */
+    /** mode anchor — replacement or inserted lines. */
     text?: string;
 };

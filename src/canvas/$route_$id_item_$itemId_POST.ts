@@ -52,7 +52,14 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
             if (body.fileAction === 'save') {
                 if (typeof body.content !== 'string' || body.content.length > 1024 * 1024) return new Response('Invalid text content', { status: 400 });
                 if (body.expectedContent !== content) return new Response('File changed on disk; reload before saving', { status: 409 });
-                await ctx.fns.files.write({ path, host, content: body.content, expectedContent: content });
+                try {
+                    // Checked again inside the commit lock, so a concurrent agent edit is never overwritten.
+                    await ctx.fns.files.write({ path, host, content: body.content, expectedContent: body.expectedContent });
+                } catch (error) {
+                    const refused = ctx.fns.files.refusalOf({ error });
+                    if (refused) return new Response(refused.code === 'busy' ? 'File is being saved by another writer; try again' : 'File changed on disk; reload before saving', { status: 409 });
+                    throw error;
+                }
                 return Response.json({ path, root, content: body.content, previewKind });
             }
             return Response.json({ path, root, content, previewKind });

@@ -19,7 +19,7 @@ async function mkAgent(ctx: any, turns: any[]) {
 describe('agent.run', () => {
     test('a tool call round-trips: assistant row carries the call, a tool row answers it by id', async () => {
         const ctx: any = await mkCtx();
-        ctx.fns.files.read = async (_c: any, _s: any, o: any) => `CONTENT OF ${o.path}`;
+        ctx.fns.tools.read = async (_c: any, _s: any, o: any) => `CONTENT OF ${o.path}`;
 
         const agent = await mkAgent(ctx, [
             { text: 'Смотрю файл.', toolCalls: [{ name: 'read', args: { path: 'src/x.ts' } }] },
@@ -44,7 +44,7 @@ describe('agent.run', () => {
 
     test('parallel calls in one reply each get their own answer', async () => {
         const ctx: any = await mkCtx();
-        ctx.fns.files.read = async (_c: any, _s: any, o: any) => `READ:${o.path}`;
+        ctx.fns.tools.read = async (_c: any, _s: any, o: any) => `READ:${o.path}`;
         ctx.fns.files.grep = async () => [{ path: 'a.ts', line: 1, column: 2, text: 'hit' }];
 
         const agent = await mkAgent(ctx, [
@@ -98,7 +98,7 @@ describe('agent.run', () => {
 
 describe('transcript surgery keeps JSON pairs intact', () => {
     async function withPair(ctx: any) {
-        ctx.fns.files.read = async () => 'FILE';
+        ctx.fns.tools.read = async () => 'FILE';
         const agent = await ctx.fns.agent.start({ model: 'mock:test' });
             agent.scratchpad.mockLLM = { turns: [
             { toolCalls: [{ name: 'read', args: { path: 'a.ts' } }] },
@@ -228,7 +228,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
         const agent = await mkAgent(ctx, []);
         let sampled = 0;
         let ran = 0;
-        ctx.fns.files.read = async () => { ran++; return 'read'; };
+        ctx.fns.tools.read = async () => { ran++; return 'read'; };
         ctx.fns.llm.stream = async () => {
             sampled++;
             if (sampled === 6) return { text: 'done', usage: null, finishReason: 'stop', toolCalls: [] };

@@ -15,7 +15,13 @@ export default async function (ctx: Context, _session: Session | null, opts: { /
         const data=await response.json();
         if(typeof data.content!=='string') return new Response('File is not editable text',{status:400});
         if(data.content!==body.expectedContent) return new Response('File changed on disk; reload before saving',{status:409});
-        await ctx.fns.files.write({path,host,content:body.content,expectedContent:data.content});
+        // The comparison above is a fast path; the authoritative one runs inside the commit lock.
+        await ctx.fns.files.write({path,host,content:body.content,expectedContent:body.expectedContent});
         return Response.json({...data,content:body.content},{headers:{'cache-control':'no-store'}});
-    } catch { return new Response('File could not be saved',{status:400}); }
+    } catch (error) {
+        const refused=ctx.fns.files.refusalOf({error});
+        if(refused?.code==='conflict') return new Response('File changed on disk; reload before saving',{status:409});
+        if(refused?.code==='busy') return new Response('File is being saved by another writer; try again',{status:409});
+        return new Response('File could not be saved',{status:400});
+    }
 }

@@ -22,8 +22,12 @@ export default async function (
     if (output.length <= LIMIT) return { content: output };
 
     const fromTail = kind === "bash";
-    const { preview, ref: result_ref, storageError } = await ctx.fns.resultStore.prepare({ownerAgentId:agent.id,kind,text:output,inlineLimit:LIMIT,tail:fromTail});
+    const { preview: cut, ref: result_ref, storageError } = await ctx.fns.resultStore.prepare({ownerAgentId:agent.id,kind,text:output,inlineLimit:LIMIT,tail:fromTail});
     const label = `${fromTail ? "tail" : "head"} preview of ${output.length} characters`;
+    // A read result's first line is its readId; whichever end the preview keeps,
+    // the receipt stays visible so the agent can still edit without rereading.
+    const receiptLine = ["read", "edit", "write"].includes(kind) ? /^readId: [^\n]{1,200}$/m.exec(output.slice(0, 2000))?.[0] : undefined;
+    const preview = receiptLine && !cut.includes(receiptLine) ? `${receiptLine}\n…\n${cut}` : cut;
     if (!result_ref) {
         const reason = storageError ?? "unavailable";
         const note = `[${label} — result storage failed: ${reason}. Full output was NOT saved; no retrieval reference is available.]`;
