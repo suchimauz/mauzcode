@@ -132,7 +132,8 @@ See proposal.md for the motivation. Current state:
     - An architecture test fails on `fns.models.(inference|connections|catalog|transport|protocol|provider).` outside `src/models`.
     - `code.quality` must report no calls to missing names.
 
-17. **Agent migration is owned by `agent`.** `src/agent/$migration_<ts>_model_routes.ts` creates `agent_model_routes_backup(agent_id, old_model)` and rewrites `archived_at IS NULL` agents per the `legacy-llm-retirement` rules. It reads connections through `models.list` (facade), not through SQL on `llm_connections`. `down` restores from the backup and drops it.
+17. **Agent migration is owned by `agent`.** `src/agent/$migration_<ts>_model_routes.ts` creates `agent_model_routes_backup(agent_id, old_model)` and rewrites `archived_at IS NULL` agents per the `legacy-llm-retirement` rules. It reads connections through `models.list` (facade), not through SQL on `llm_connections`. `down` restores only the backed-up active-agent routes and last-used model, then drops the backup.
+    - For every agent archived at migration time, clear the model selection without saving its former value. This is intentionally irreversible, including on `down`. Represent the unset model explicitly in storage and runtime types rather than as a fake route; adapt schema constraints and consumers as needed. Restoring such an agent must preserve the unset state, show "Choose a model", and block execution with non-retryable `MODEL_NOT_SELECTED` before any provider request. Neither restore nor run may call `settings.modelDefault` to fill it automatically. An explicit valid model selection unblocks execution.
     - It also rewrites `kv.last-model` by the same rules, backing it up in the same table (key `kv:last-model`).
     - "First connection" means the earliest `created_at`, ties broken by `id`.
     - When a route has no target connection (for example kimi), the value is left unchanged and logged; its runs fail with `LEGACY_ROUTE`.
@@ -145,7 +146,7 @@ See proposal.md for the motivation. Current state:
 - [Rename event lost (process crash between update and subscriber)] → Resolution then fails loudly with `CONNECTION_NOT_FOUND`. The subscriber is idempotent, and the owner can rename again or pick a model.
 - [Facade grows] → Only two entries, each a single delegation pinned by the compatibility test. Localization and usage aggregation stay outside models.
 - [Loss of fallback models and node relay] → Out of scope. Calls fail visibly instead of switching models.
-- [Archived agents become unusable on restore] → Accepted. The error tells the owner to pick a model.
+- [Archived agents lose their model selection permanently] → Accepted; no backup or rollback restoration. On restore, the owner must explicitly select a model before running.
 
 ## Migration Plan
 
@@ -154,4 +155,4 @@ See proposal.md for the motivation. Current state:
 3. Apply the agent-route and settings migrations. Verify one codex and one claude agent turn with a tool call and a compaction.
 4. Move the legacy trees to `legacy/`, run genTypes, the guard tests, `code.quality` and one full typecheck, then restart.
 
-Rollback: revert the commits and run the agent migration `down`. Settings copies are additive, and legacy settings remain.
+Rollback restores active-agent routes and `kv.last-model` through the agent migration `down`; archived model selections are never restored. Reverting code must account for the unset archived model state rather than assuming all agents have a route. Settings copies are additive, and legacy settings remain.

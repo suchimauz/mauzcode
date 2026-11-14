@@ -43,7 +43,8 @@
 
 ## 7. Agent data migration
 
-- [ ] 7.1 Add `src/agent/$migration_<ts>_model_routes.ts` with a backup table and a reversible `down`, timestamped after the model-owned unique-index migration, reading connections through `models.list` (first = earliest `created_at`, then `id`) and mapping only non-archived agents and `kv.last-model` per the `legacy-llm-retirement` rules (no target connection → unchanged and logged); verify on a DB copy that the 11 codex agents become `codex/su4imauz:*`, the 3 claude-code agents become `claude/2yfl55fsh:claude-opus-5-5`, `last-model` becomes `claude/2yfl55fsh:claude-opus-5-5`, archived rows are unchanged, the migration order test passes and `down` restores everything
+- [ ] 7.1 Add `src/agent/$migration_<ts>_model_routes.ts` with a backup table and `down` for active-agent routes and `kv.last-model` only, timestamped after the model-owned unique-index migration, reading connections through `models.list` (first = earliest `created_at`, then `id`) and mapping only non-archived agents and `kv.last-model` per the `legacy-llm-retirement` rules (no target connection → unchanged and logged); verify on a DB copy that the 11 codex agents become `codex/su4imauz:*`, the 3 claude-code agents become `claude/2yfl55fsh:claude-opus-5-5`, `last-model` becomes `claude/2yfl55fsh:claude-opus-5-5`, archived model selections are cleared without backup regardless of route format, the migration order test passes and `down` restores only the backed-up values, never archived model selections
+- [ ] 7.2 Support an explicit unset model in agent storage and runtime types; ensure restore preserves it, the UI asks for model selection, and execution fails with non-retryable `MODEL_NOT_SELECTED` before provider calls without filling a last-used/default model. Test an archived codex route that was already resolvable, restore without selection, explicit selection enabling a run, and rollback without recovery of cleared selections
 
 ## 8. Retire legacy runtime
 
@@ -55,4 +56,4 @@
 
 - [ ] 9.1 Run `code.quality({})` (ok, no calls to missing names) and one full `procs.dev.typecheck({})` with no new errors
 - [ ] 9.2 Live check: an agent on `codex/su4imauz` and one on `claude/2yfl55fsh` each complete a turn with a tool call and a compaction; reasoning and model switches work from the UI
-- [ ] 9.3 Live check: the new-session picker lists models of all three connections, a disabled model cannot be selected or called, usage and prices are visible, renaming a connection keeps its agents working, and a restored archived agent fails with `LEGACY_ROUTE` without a provider request
+- [ ] 9.3 Live check: the new-session picker lists models of all three connections, a disabled model cannot be selected or called, usage and prices are visible, renaming a connection keeps its agents working, and a restored archived agent fails with `MODEL_NOT_SELECTED` without a provider request or automatic model fallback until the owner explicitly selects a model

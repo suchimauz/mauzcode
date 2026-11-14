@@ -62,12 +62,21 @@ Settings status SHALL report only environment key presence and MUST NOT query le
 - **WHEN** the settings status is requested
 - **THEN** it returns environment key flags without calling any `llm` procedure
 
-### Requirement: Archived agents stay on legacy routes
-Archived agents SHALL NOT be migrated. When an archived agent is restored and runs, it MUST fail with `LEGACY_ROUTE` until the owner chooses a model.
+### Requirement: Archived model selections are cleared permanently
+The migration SHALL clear every archived agent's model regardless of route format, without backup or rollback restoration. Storage and runtime types MUST support an unset model. Restore MUST preserve it and prompt for explicit selection. Until selection, execution MUST fail with non-retryable `MODEL_NOT_SELECTED` before provider requests. Restore and run MUST NOT automatically fill a last-used or default model.
 
 #### Scenario: Restore an archived agent
-- **WHEN** an archived agent with `anthropic-oauth/whims-hue_7v:claude-opus-5-5` is restored and run
-- **THEN** the run fails with `LEGACY_ROUTE` and no provider request is sent
+- **WHEN** an agent whose model was cleared by the migration is restored and run
+- **THEN** the model stays unset, the UI asks the owner to choose a model, and execution fails with `MODEL_NOT_SELECTED` without retry or provider request
+
+#### Scenario: Previously valid codex route
+- **GIVEN** an archived agent has `codex/su4imauz:gpt-6-astra` and that route resolves to an enabled connection
+- **WHEN** the migration runs
+- **THEN** its model selection is still cleared without backup, and restoring it requires explicit model selection
+
+#### Scenario: Rollback does not recover archived selections
+- **WHEN** the migration is reverted
+- **THEN** former model selections of agents archived at migration time are not restored, while backed-up active-agent routes and the last-used model are restored
 
 #### Scenario: Owner picks a model
 - **WHEN** the owner sets a resolvable model on that restored agent
