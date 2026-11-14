@@ -1,7 +1,7 @@
 /**
  * Normalize a reasoning preference against validated model capabilities
  *
- * SDK reasoning normalization used by models.stream for providers declaring capabilities.reasoning. Uses discovery metadata when present, otherwise the provider's documented profile. Omitted or auto resolves to the default; a supported level is kept; otherwise the nearest supported level at or below the request, else the lowest supported level above it. Fails INVALID_INPUT for a preference outside the SDK enumeration or invalid metadata (empty, duplicate or unknown levels, unsupported default) and CAPABILITY_UNAVAILABLE when neither metadata nor a profile applies — never guesses or sends auto.
+ * SDK reasoning normalization used by models.stream for providers declaring capabilities.reasoning. Uses discovery metadata when present, otherwise the provider's documented profile. Omitted or auto resolves to the default, or to "auto" (send nothing) when the capabilities declare no default; a supported level is kept; otherwise the nearest supported level at or below the request, else the lowest supported level above it. Fails INVALID_INPUT for a preference outside the SDK enumeration or invalid metadata (empty, duplicate or unknown levels, unsupported default, wire values that are empty, over 40 characters or for unsupported levels, non-boolean disable). The applied level's declared wire value and the disable flag are returned for shared protocols and CAPABILITY_UNAVAILABLE when neither metadata nor a profile applies — never guesses or sends auto.
  * @param opts.model Provider-native model id, used in diagnostics.
  * @param opts.preference Caller reasoning preference; omitted means auto.
  * @param opts.metadata Reasoning capabilities reported by model discovery, when known.
@@ -16,7 +16,7 @@ export default function (
         /** Caller reasoning preference; omitted means auto. */
         preference?: string;
         /** Reasoning capabilities reported by model discovery, when known. */
-        metadata?: { supported: unknown; default: unknown } | null;
+        metadata?: { supported: unknown; default?: unknown; wire?: unknown; disable?: unknown } | null;
         /** Documented SDK profile for this model, or null when none applies. */
         profile?: types.models.ReasoningCapabilities | null;
     },
@@ -32,11 +32,21 @@ export default function (
     if (!Array.isArray(supported) || !supported.length || supported.some(l => !order.includes(l)) || new Set(supported).size !== supported.length)
         throw invalid(`Invalid reasoning ${source} for model ${opts.model}: supported levels must be a nonempty unique SDK enumeration`);
     const levels = supported as types.models.ReasoningLevel[];
-    if (!levels.includes(raw.default as types.models.ReasoningLevel)) throw invalid(`Invalid reasoning ${source} for model ${opts.model}: default is not supported`);
+    const def = raw.default;
+    if (def !== undefined && !levels.includes(def as types.models.ReasoningLevel)) throw invalid(`Invalid reasoning ${source} for model ${opts.model}: default is not supported`);
+    const wire = raw.wire;
+    if (wire !== undefined && (!wire || typeof wire !== "object" || Array.isArray(wire) || Object.entries(wire).some(([l, v]) => !levels.includes(l as types.models.ReasoningLevel) || typeof v !== "string" || !v || v.length > 40)))
+        throw invalid(`Invalid reasoning ${source} for model ${opts.model}: wire values must be nonempty strings for supported levels`);
+    if (raw.disable !== undefined && typeof raw.disable !== "boolean") throw invalid(`Invalid reasoning ${source} for model ${opts.model}: disable must be boolean`);
     const base = { source, ...(source === "profile" && opts.profile?.profile ? { profile: opts.profile.profile } : {}) };
-    if (requested === "auto") return { requested, applied: raw.default as types.models.ReasoningLevel, fallbackReason: null, ...base };
-    if (levels.includes(requested)) return { requested, applied: requested, fallbackReason: null, ...base };
+    // Wire and disable are attached only to a concrete applied level; auto sends nothing.
+    const extra = (applied: types.models.ReasoningLevel) => {
+        const value = (wire as Partial<Record<types.models.ReasoningLevel, string>> | undefined)?.[applied];
+        return { ...(value ? { wire: value } : {}), ...(applied === "off" && raw.disable === true ? { disable: true } : {}) };
+    };
+    if (requested === "auto") return def === undefined ? { requested, applied: "auto", fallbackReason: null, ...base } : { requested, applied: def as types.models.ReasoningLevel, fallbackReason: null, ...base, ...extra(def as types.models.ReasoningLevel) };
+    if (levels.includes(requested)) return { requested, applied: requested, fallbackReason: null, ...base, ...extra(requested) };
     const at = order.indexOf(requested);
     const applied = order.slice(0, at).reverse().find(l => levels.includes(l)) ?? order.slice(at + 1).find(l => levels.includes(l))!;
-    return { requested, applied, fallbackReason: `${requested} is unsupported by ${opts.model}; using ${applied}`, ...base };
+    return { requested, applied, fallbackReason: `${requested} is unsupported by ${opts.model}; using ${applied}`, ...base, ...extra(applied) };
 }

@@ -1,7 +1,7 @@
 /**
  * Stream one Gemini generateContent generation through a provider-supplied endpoint
  *
- * Shared gemini protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript with llm.toGeminiContents, sends POST {base}/models/{model}:streamGenerateContent?alt=sse with systemInstruction, optional tools and generationConfig (temperature, maxOutputTokens from maxTokens, responseMimeType application/json and responseSchema from responseFormat). Reports text, thought and function-call argument deltas and returns a StreamResult (STOP → stop, MAX_TOKENS → length, function calls → tool_calls). HTTP errors become classified SDK failures; a stream without a finish reason or with malformed data fails with acceptance uncertain.
+ * Shared gemini protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript with llm.toGeminiContents, sends POST {base}/models/{model}:streamGenerateContent?alt=sse with systemInstruction, optional tools and generationConfig (temperature, maxOutputTokens from maxTokens, responseMimeType application/json and responseSchema from responseFormat). Reports text, thought and function-call argument deltas and returns a StreamResult (STOP → stop, MAX_TOKENS → length, function calls → tool_calls). HTTP errors become classified SDK failures; a stream without a finish reason or with malformed data fails with acceptance uncertain. SDK-resolved low/medium/high reasoning is sent as generationConfig.thinkingConfig.thinkingLevel; other levels send nothing.
  * @param opts.fetch Transport-bound fetch of the connection.
  * @param opts.endpoint Provider-built versioned base and headers.
  * @param opts.request Streaming request without checkpoint entries.
@@ -31,6 +31,8 @@ export default async function (
         ...(req.maxTokens !== undefined ? { maxOutputTokens: req.maxTokens } : {}),
         ...(format ? { responseMimeType: "application/json" } : {}),
         ...(format?.type === "json_schema" ? { responseSchema: format.schema } : {}),
+        // Gemini thinking levels are sent only for exact low/medium/high SDK levels; auto and others send nothing.
+        ...(req.reasoning && ["low", "medium", "high"].includes(req.reasoning.applied) ? { thinkingConfig: { thinkingLevel: req.reasoning.wire ?? req.reasoning.applied } } : {}),
     };
     const body: Record<string, unknown> = {
         contents,

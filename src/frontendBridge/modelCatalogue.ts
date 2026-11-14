@@ -7,11 +7,11 @@ export default async function (
     ctx: Context,
     session: Session | null,
     opts: {},
-): Promise<{ groups: Array<{ connectionId: string; provider: string; accountName: string; enabled: boolean; unavailable: boolean; error?: string }>; models: Array<{ provider: string; model: string; label: string; groupLabel: string; connectionId: string; disabled: boolean; reasoning?: { supported: types.models.ReasoningLevel[]; default: types.models.ReasoningLevel } }> }> {
+): Promise<{ groups: Array<{ connectionId: string; provider: string; accountName: string; enabled: boolean; unavailable: boolean; error?: string }>; models: Array<{ provider: string; model: string; label: string; groupLabel: string; connectionId: string; disabled: boolean; reasoning?: { supported: types.models.ReasoningLevel[]; default?: types.models.ReasoningLevel } }> }> {
     const connections = await ctx.fns.models.list({});
         const registered = new Set(ctx.fns.models.providers({}).map(provider => provider.id));
         const groups: Array<{ connectionId: string; provider: string; accountName: string; enabled: boolean; unavailable: boolean; error?: string }> = [];
-        const models: Array<{ provider: string; model: string; label: string; groupLabel: string; connectionId: string; disabled: boolean; reasoning?: { supported: types.models.ReasoningLevel[]; default: types.models.ReasoningLevel } }> = [];
+        const models: Array<{ provider: string; model: string; label: string; groupLabel: string; connectionId: string; disabled: boolean; reasoning?: { supported: types.models.ReasoningLevel[]; default?: types.models.ReasoningLevel } }> = [];
         // One failing catalogue must not hide the other connections: report it as unavailable instead.
         const catalogues = await Promise.all(connections.map(async connection => {
             if (!connection.providerRegistered || !registered.has(connection.provider))

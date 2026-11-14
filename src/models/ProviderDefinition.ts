@@ -23,6 +23,8 @@ export type ProviderDefinition = {
     validate?: (ctx: Context, config: types.models.ResolvedConnection["config"]) => void | Promise<void>;
     /** Optional streaming inference; called only through models.stream after the enabled checks. Send traffic only through conn.fetch. */
     stream?: (ctx: Context, conn: types.models.ResolvedConnection, req: types.models.StreamRequest) => Promise<types.models.StreamResult>;
+    /** Optional per-model shared-protocol routing, mutually exclusive with stream: models.stream runs every check, then streams through the returned shared protocol over conn.fetch. Never perform inference here. */
+    route?: (ctx: Context, conn: types.models.ResolvedConnection, req: { model: string; info: types.models.ModelInfo | null; sessionId: string }) => Promise<types.models.ProtocolRoute>;
     /** Optional native transcript compaction; called only through models.compact after the enabled checks. */
     compact?: (ctx: Context, conn: types.models.ResolvedConnection, req: types.models.CompactRequest) => Promise<types.models.CompactResult>;
     /** Additive SDK features this provider opts into; omitted means none. */

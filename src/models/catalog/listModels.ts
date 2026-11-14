@@ -48,8 +48,19 @@ export default async function (
                 // Reasoning metadata is cached only when well-formed; models.stream re-validates it before use.
                 const levels = ["off", "minimal", "low", "medium", "high", "xhigh"];
                 const r = m.reasoning;
-                const reasoning = r && Array.isArray(r.supported) && r.supported.length && r.supported.every(l => levels.includes(l)) && r.supported.includes(r.default) ? { supported: [...r.supported], default: r.default } : undefined;
-                models.push({ id: m.id, ...(reasoning ? { reasoning } : {}), ...(typeof m.label === "string" ? { label: m.label.slice(0, 200) } : {}), ...(typeof m.description === "string" ? { description: m.description.slice(0, 500) } : {}), ...(contextWindow ? { contextWindow } : {}), ...(maxOutputTokens ? { maxOutputTokens } : {}) });
+                const ok = !!r && Array.isArray(r.supported) && r.supported.length > 0 && r.supported.every(l => levels.includes(l)) && new Set(r.supported).size === r.supported.length && (r.default === undefined || r.supported.includes(r.default));
+                const wire = ok && r!.wire && typeof r!.wire === "object" && !Array.isArray(r!.wire)
+                    ? Object.fromEntries(Object.entries(r!.wire).filter(([l, v]) => r!.supported.includes(l as types.models.ReasoningLevel) && typeof v === "string" && v.length > 0 && v.length <= 40)) as Partial<Record<types.models.ReasoningLevel, string>>
+                    : undefined;
+                const reasoning: types.models.ModelInfo["reasoning"] = ok ? {
+                    supported: [...r!.supported],
+                    ...(r!.default !== undefined ? { default: r!.default } : {}),
+                    ...(wire && Object.keys(wire).length ? { wire } : {}),
+                    ...(r!.disable === true ? { disable: true } : {}),
+                } : undefined;
+                const protocols: string[] = ["openai-chat", "openai-responses", "anthropic", "gemini"];
+                const protocol = typeof m.protocol === "string" && protocols.includes(m.protocol) ? m.protocol : undefined;
+                models.push({ id: m.id, ...(reasoning ? { reasoning } : {}), ...(protocol ? { protocol } : {}), ...(typeof m.label === "string" ? { label: m.label.slice(0, 200) } : {}), ...(typeof m.description === "string" ? { description: m.description.slice(0, 500) } : {}), ...(contextWindow ? { contextWindow } : {}), ...(maxOutputTokens ? { maxOutputTokens } : {}) });
             }
             const now = Date.now();
             // The cache is metadata, not configuration: updated_at stays put so health caches survive.

@@ -1,7 +1,7 @@
 /**
  * Stream one inference turn through a model connection's provider
  *
- * Inference entry point of the models stack. Re-checks on every call that the connection and model are enabled (models.assertModelEnabled; fails MODEL_DISABLED_BY_USER or CONNECTION_DISABLED without any network request), then calls the provider's stream operation with the connection bound to its saved transport. Fails UNSUPPORTED when the provider declares no stream. Before the provider runs (and before any network request) it validates SDK input with models.checkInput (cancellation, checkpoint identity, continuation-state binding to provider/connection/session/run) and, for providers declaring capabilities.reasoning, normalizes reasoningEffort with models.resolveReasoning from cached model metadata or the provider's documented profile. Returns text, reasoning summary, tool calls, token usage, finish reason and, when supported, run-scoped continuation state, quota observations and requested/applied reasoning. Agents still use llm.stream; use this for models connections.
+ * Inference entry point of the models stack. Re-checks on every call that the connection and model are enabled (models.assertModelEnabled; fails MODEL_DISABLED_BY_USER or CONNECTION_DISABLED without any network request), then calls the provider's stream operation with the connection bound to its saved transport. Fails UNSUPPORTED when the provider declares neither stream nor route; route providers stream through the shared protocol they select (models.inference.streamRoute). Before the provider runs (and before any network request) it validates SDK input with models.checkInput (cancellation, checkpoint identity, continuation-state binding to provider/connection/session/run) and, for providers declaring capabilities.reasoning, normalizes reasoningEffort with models.resolveReasoning from cached model metadata or the provider's documented profile (protocol-route providers skip it for models cached without reasoning metadata and without a profile). Returns text, reasoning summary, tool calls, token usage, finish reason and, when supported, run-scoped continuation state, quota observations and requested/applied reasoning. Agents still use llm.stream; use this for models connections.
  * @param opts.connectionId Model connection UUID.
  * @param opts.model Provider-native model id on the connection.
  * @param opts.instructions Effective system instructions.
@@ -62,15 +62,24 @@ export default async function (
 ): Promise<types.models.StreamResult> {
     const view = await ctx.fns.models.inference.assertModelEnabled({ id: opts.connectionId, model: opts.model });
         const def = Object.hasOwn(ctx.state.models?.providers ?? {}, view.provider) ? ctx.state.models!.providers![view.provider]!.definition : undefined;
-        if (!def?.stream) throw Object.assign(new Error("Provider " + view.provider + " does not support stream"), { code: "UNSUPPORTED", status: 400, retryable: false });
+        if (!def?.stream && !def?.route) throw Object.assign(new Error("Provider " + view.provider + " does not support stream"), { code: "UNSUPPORTED", status: 400, retryable: false });
         ctx.fns.models.inference.checkInput({ provider: view.provider, connectionId: view.id, model: opts.model, sessionId: opts.sessionId, capabilities: def.capabilities, messages: opts.messages, runId: opts.runId, state: opts.state, signal: opts.signal });
+        if (def.capabilities?.reasoning && opts.reasoningEffort !== undefined && !["auto", "off", "minimal", "low", "medium", "high", "xhigh"].includes(opts.reasoningEffort)) {
+            throw ctx.fns.models.inference.failure({ message: "Invalid reasoning effort", status: 400, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
+        }
         let reasoning: types.models.ReasoningResolution | undefined;
-        if (def.capabilities?.reasoning) {
+        let info: types.models.ModelInfo | undefined;
+        if (def.capabilities?.reasoning || def.route) {
             // Read the existing catalogue cache only; inference never triggers model discovery.
             const rows = await ctx.fns.procs.db.select({ sql: "SELECT models_cache FROM llm_connections WHERE id=?", params: [view.id] }) as { models_cache: unknown }[];
             const cache = typeof rows[0]?.models_cache === "string" ? JSON.parse(rows[0].models_cache) : rows[0]?.models_cache;
-            const info = Array.isArray(cache) ? (cache as types.models.ModelInfo[]).find(m => m?.id === opts.model) : undefined;
-            reasoning = ctx.fns.models.inference.resolveReasoning({ model: opts.model, preference: opts.reasoningEffort, metadata: info?.reasoning ?? null, profile: def.reasoningProfile?.(ctx, opts.model) ?? null });
+            info = Array.isArray(cache) ? (cache as types.models.ModelInfo[]).find(m => m?.id === opts.model) : undefined;
+        }
+        // Protocol-route providers are discovery-driven: a model reported without reasoning controls (and no profile)
+        // streams without a reasoning setting instead of failing CAPABILITY_UNAVAILABLE.
+        const profile = def.capabilities?.reasoning ? def.reasoningProfile?.(ctx, opts.model) ?? null : null;
+        if (def.capabilities?.reasoning && !(def.route && !info?.reasoning && !profile)) {
+            reasoning = ctx.fns.models.inference.resolveReasoning({ model: opts.model, preference: opts.reasoningEffort, metadata: info?.reasoning ?? null, profile });
         }
         opts.signal?.throwIfAborted();
         const { definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id, signal: opts.signal, timeoutMs: 600000 });
@@ -82,7 +91,9 @@ export default async function (
             ...(def.capabilities?.structuredOutput && responseFormat !== undefined ? { responseFormat } : {}),
         };
         const req: types.models.StreamRequest = reasoning ? { ...rest, ...gated, reasoning } : { ...rest, ...gated };
-        const result = await definition.stream!(ctx, conn, req);
+        const result = definition.stream
+            ? await definition.stream(ctx, conn, req)
+            : await ctx.fns.models.inference.streamRoute({ definition, conn, req, info: info ?? null });
         if (result.state && (!def.capabilities?.continuationState || result.state.provider !== view.provider || result.state.connectionId !== view.id || result.state.sessionId !== opts.sessionId || result.state.runId !== opts.runId)) delete result.state;
         return reasoning ? { ...result, reasoning } : result;
 }

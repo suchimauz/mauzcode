@@ -1,5 +1,21 @@
 # OpenCode Go and Console inference
 
+## Models provider (current architecture)
+
+The optional official `plugins/opencode-go` plugin registers provider `opencode-go` in Models. Enable the plugin and create a Models connection with its required secret `apiKey` field. Supported transports are direct, SOCKS and SSH tunnel. Agent model references use `opencode-go/<account>:<model-id>`. This provider is Go-only: it never switches to PAYG or another provider.
+
+Discovery reads `/inference/go/v1/models` and retains tool-capable chat models. Native protocol, context/output limits and reasoning capabilities are taken from discovery metadata. The plugin declares an SDK `ProviderDefinition.route`; core Models performs the normal input/capability checks and dispatches through shared Chat Completions, Responses, Anthropic Messages or Gemini adapters using the connection-bound transport. Plugins do not call the private protocol registry. An uncached model uses the Go Chat Completions translation endpoint.
+
+Reasoning wire values are metadata-driven (`none` → off; native `max` → xhigh when xhigh is not advertised). Auto without a reported default omits reasoning settings. Anthropic off uses the thinking toggle only when supported; Gemini thinking levels are restricted to low/medium/high. Existing providers with defaults retain their behavior.
+
+Inference requests carry a truthful `MauzCode/opencode-go` user agent and the stable session id as `x-opencode-session`. Authentication stays in the connection's secret store. Usage and connection health use the authenticated `/inference/go/v1/usage` endpoint; usage reports 5-hour, weekly and monthly windows, not PAYG budgets. Errors must not be displayed as zero consumption. Prices use the `opencode-go` models.dev vendor.
+
+The current integration has no automatic migration from legacy `llm.opencode*` settings. The historical live checks below are evidence for the legacy implementation, **not** a live verification of the new Models plugin. The new plugin was separately verified through the public Models facade using an owner-authorized direct connection: discovery returned 30 models; authenticated health and all three usage windows succeeded. Minimal streaming requests returned `OK` through all four native protocols: `glm-5.3-flash` (Chat Completions), `gpt-5.6-luna` (Responses), `qwen3.8-flash` (Anthropic) and `gemini-4-argon` (Gemini). No privacy or billing-mode settings were changed. These are smoke checks, not exhaustive per-model certification; catalogue and quota values can change.
+
+## Legacy implementation and historical checks
+
+The following describes the earlier `llm` implementation, retained as reference; these settings do not configure the Models plugin above.
+
 Configure `llm.opencodeApiKey` with an encrypted secret reference. `llm.opencodePlan` selects **go** (subscription, `/inference/go`) or **payg** (credit-funded, `/inference`). The current user's choice is **Go**. No automatic switch between billing modes or fallback to another provider. `llm.opencodeInstance` is empty/local for direct access or the name of a pinned SSH instance. Keys travel in encrypted bridge input and are not persisted remotely.
 
 ## Routing and sessions

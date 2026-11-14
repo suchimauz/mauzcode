@@ -1,7 +1,7 @@
 /**
  * Stream one OpenAI Chat Completions generation through a provider-supplied endpoint
  *
- * Shared openai-chat protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript (instructions become a leading system message), sends POST {base}/chat/completions with stream:true and include_usage, maps temperature, maxTokens (max_tokens) and responseFormat (response_format), reports text, reasoning_content and tool argument deltas, and returns a StreamResult with finish reason stop, length, tool_calls or the upstream value. HTTP errors become classified SDK failures; a cut-off or malformed stream fails STREAM_INTERRUPTED with acceptance uncertain.
+ * Shared openai-chat protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript (instructions become a leading system message), sends POST {base}/chat/completions with stream:true and include_usage, maps temperature, maxTokens (max_tokens) and responseFormat (response_format), reports text, reasoning_content and tool argument deltas, and returns a StreamResult with finish reason stop, length, tool_calls or the upstream value. HTTP errors become classified SDK failures; a cut-off or malformed stream fails STREAM_INTERRUPTED with acceptance uncertain. SDK-resolved reasoning (opted-in providers) is sent as reasoning_effort using its wire value; applied auto, and off without a wire value, send nothing.
  * @param opts.fetch Transport-bound fetch of the connection.
  * @param opts.endpoint Provider-built versioned base and headers.
  * @param opts.request Streaming request without checkpoint entries.
@@ -26,11 +26,16 @@ export default async function (
     const transcript = (req.messages as Record<string, unknown>[]).filter(m => m.role !== "system");
     const messages = [...(req.instructions ? [{ role: "system", content: req.instructions }] : []), ...ctx.fns.models.protocol.openaiChat.toOpenAIMessages({ messages: transcript })];
     const format = req.responseFormat;
+    // SDK-resolved reasoning only reaches opted-in providers; auto sends nothing.
+    // Off has no OpenAI-native name unless the capabilities declare one (e.g. "none"); otherwise it is omitted.
+    const r = req.reasoning && req.reasoning.applied !== "auto" ? req.reasoning : null;
+    const effort = r && (r.applied !== "off" || r.wire) ? r.wire ?? r.applied : null;
     const body: Record<string, unknown> = {
         model: req.model, messages, stream: true, stream_options: { include_usage: true },
         ...(req.tools?.length ? { tools: ctx.fns.models.protocol.openaiChat.toTools({ tools: req.tools }) } : {}),
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
         ...(req.maxTokens !== undefined ? { max_tokens: req.maxTokens } : {}),
+        ...(effort ? { reasoning_effort: effort } : {}),
         ...(format?.type === "json_object" ? { response_format: { type: "json_object" } } : {}),
         ...(format?.type === "json_schema" ? { response_format: { type: "json_schema", json_schema: { name: format.name, schema: format.schema, strict: format.strict ?? true } } } : {}),
     };

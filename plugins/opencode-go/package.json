@@ -1,0 +1,13 @@
+{
+  "name": "opencode-go",
+  "private": true,
+  "type": "module",
+  "procs": {
+    "src": "src",
+    "label": "OpenCode Go",
+    "icon": "ph-code",
+    "optional": true,
+    "description": "Connect an OpenCode Go subscription as a Models provider: per-model native API routing, reasoning effort, usage windows and pricing.",
+    "domains": ["opencode.ai"]
+  }
+}

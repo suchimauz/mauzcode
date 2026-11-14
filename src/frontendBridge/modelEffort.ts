@@ -1,7 +1,7 @@
 /**
  * Project a reasoning preference onto catalogue reasoning levels
  *
- * Use in UI projections to show the requested and applied reasoning effort of one model from its connection catalogue metadata, without provider calls. Auto applies the catalogue default; an unsupported level uses the nearest supported level below it, else the lowest above. Supported levels start with auto when any level exists. Without catalogue reasoning metadata the mode is none and no levels are offered.
+ * Use in UI projections to show the requested and applied reasoning effort of one model from its connection catalogue metadata, without provider calls. Auto applies the catalogue default, or stays auto when the catalogue declares none (the provider sends no setting); an unsupported level uses the nearest supported level below it, else the lowest above. Supported levels start with auto when any level exists. Without catalogue reasoning metadata the mode is none and no levels are offered.
  * @param opts.reasoning Reasoning levels and default from ModelInfo.reasoning, or null when unknown.
  * @param opts.requested Stored reasoning preference; unknown values normalize to auto. @default auto
  */
@@ -10,7 +10,7 @@ export default function (
     session: Session | null,
     opts: {
         /** Reasoning levels and default from ModelInfo.reasoning, or null when unknown. */
-        reasoning?: { supported: types.models.ReasoningLevel[]; default: types.models.ReasoningLevel } | null;
+        reasoning?: { supported: types.models.ReasoningLevel[]; default?: types.models.ReasoningLevel } | null;
         /** Stored reasoning preference; unknown values normalize to auto. @default auto */
         requested?: string;
     },
@@ -19,12 +19,14 @@ export default function (
         const allowed = ["auto", ...order];
         const requested = (allowed.includes(String(opts.requested)) ? opts.requested : "auto") as types.models.ReasoningLevel | "auto";
         const levels = (opts.reasoning?.supported ?? []).filter(level => order.includes(level));
-        const fallback = opts.reasoning && levels.includes(opts.reasoning.default) ? opts.reasoning.default : levels[0];
-        if (!levels.length || !fallback) return { requested, applied: requested, supported: [], defaultEffort: "auto", mode: "none", downgraded: false };
-        let applied: types.models.ReasoningLevel = fallback;
+        if (!levels.length) return { requested, applied: requested, supported: [], defaultEffort: "auto", mode: "none", downgraded: false };
+        // Without a catalogue default, auto stays auto: the provider sends no reasoning setting.
+        const declared = opts.reasoning?.default;
+        const defaultEffort: types.models.ReasoningLevel | "auto" = declared && levels.includes(declared) ? declared : opts.reasoning?.default === undefined ? "auto" : levels[0]!;
+        let applied: types.models.ReasoningLevel | "auto" = defaultEffort;
         if (requested !== "auto") {
             const at = order.indexOf(requested);
-            applied = levels.includes(requested) ? requested : order.slice(0, at).reverse().find(level => levels.includes(level)) ?? order.slice(at + 1).find(level => levels.includes(level)) ?? fallback;
+            applied = levels.includes(requested) ? requested : order.slice(0, at).reverse().find(level => levels.includes(level)) ?? order.slice(at + 1).find(level => levels.includes(level)) ?? levels[0]!;
         }
-        return { requested, applied, supported: ["auto" as const, ...order.filter(level => levels.includes(level))], defaultEffort: fallback, mode: "catalogue", downgraded: requested !== "auto" && applied !== requested };
+        return { requested, applied, supported: ["auto" as const, ...order.filter(level => levels.includes(level))], defaultEffort, mode: "catalogue", downgraded: requested !== "auto" && applied !== requested };
 }

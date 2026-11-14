@@ -1,7 +1,7 @@
 /**
  * Stream one OpenAI Responses generation through a provider-supplied endpoint
  *
- * Shared openai-responses protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript into Responses input items (user text/images, assistant output_text and function_call, tool function_call_output), sends POST {base}/responses with stream:true and store:false, instructions, optional tools, temperature, max_output_tokens (maxTokens) and text.format (responseFormat). Reports text, reasoning summary and function argument deltas and returns a StreamResult (incomplete for max_output_tokens → length, function calls → tool_calls). HTTP errors become classified SDK failures; a missing response.completed or malformed stream fails with acceptance uncertain.
+ * Shared openai-responses protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript into Responses input items (user text/images, assistant output_text and function_call, tool function_call_output), sends POST {base}/responses with stream:true and store:false, instructions, optional tools, temperature, max_output_tokens (maxTokens) and text.format (responseFormat). Reports text, reasoning summary and function argument deltas and returns a StreamResult (incomplete for max_output_tokens → length, function calls → tool_calls). HTTP errors become classified SDK failures; a missing response.completed or malformed stream fails with acceptance uncertain. SDK-resolved reasoning is sent as reasoning.effort using its wire value; applied auto, and off without a wire value, send nothing.
  * @param opts.fetch Transport-bound fetch of the connection.
  * @param opts.endpoint Provider-built versioned base and headers.
  * @param opts.request Streaming request without checkpoint entries.
@@ -45,12 +45,17 @@ export default async function (
         if (content.length) input.push({ type: "message", role: "user", content });
     }
     const format = req.responseFormat;
+    // SDK-resolved reasoning only reaches opted-in providers; auto sends nothing.
+    // Off has no OpenAI-native name unless the capabilities declare one (e.g. "none"); otherwise it is omitted.
+    const r = req.reasoning && req.reasoning.applied !== "auto" ? req.reasoning : null;
+    const effort = r && (r.applied !== "off" || r.wire) ? r.wire ?? r.applied : null;
     const body: Record<string, unknown> = {
         model: req.model, input, stream: true, store: false,
         ...(req.instructions ? { instructions: req.instructions } : {}),
         ...(req.tools?.length ? { tools: ctx.fns.models.protocol.openaiResponses.toTools({ tools: req.tools }) } : {}),
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
         ...(req.maxTokens !== undefined ? { max_output_tokens: req.maxTokens } : {}),
+        ...(effort ? { reasoning: { effort } } : {}),
         ...(format ? { text: { format: format.type === "json_schema" ? { type: "json_schema", name: format.name, schema: format.schema, strict: format.strict ?? true } : { type: "json_object" } } } : {}),
     };
     const res = await ctx.fns.models.protocol.common.streamFetch({ fetch: opts.fetch, url: opts.endpoint.base + "/responses", headers: opts.endpoint.headers, body, label, signal });
