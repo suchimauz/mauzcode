@@ -1,3 +1,7 @@
+## Purpose
+
+Issue short opaque readId references from read that name the exact file version and delivered line range, kept per session with a bounded sliding lifetime and refreshed on conflict and after success, so edits can be bound to what the agent actually saw.
+
 ## ADDED Requirements
 
 ### Requirement: Issue a readId for delivered text

@@ -1,3 +1,7 @@
+## Purpose
+
+Distinguish creating a new file from replacing a fully read one, publish every write atomically under a per-file lock outside the project tree, preserve line endings, final newline and BOM, and keep legacy calls working with a warning.
+
 ## ADDED Requirements
 
 ### Requirement: Distinguish create from replace

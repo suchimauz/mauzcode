@@ -1,3 +1,7 @@
+## Purpose
+
+Apply literal or anchor edits only against the file version and range named by a readId, in one explicit unmixed mode, refusing stale edits without writing and returning fresh content and a new readId so the agent can retry without a separate read.
+
 ## ADDED Requirements
 
 ### Requirement: Edit against a readId in one explicit mode
