@@ -9,8 +9,8 @@ export default async function (
         model?: string;
     },
 ): Promise<{ provider: "openai"; model: string; dimensions: number; vectors: number[][] }> {
-    const apiKey = await ctx.fns.secrets.resolveSetting({ module: "llm", scopeType: "global", key: "openaiApiKey" });
-    if (!apiKey) throw new Error("OpenAI embeddings require llm.openaiApiKey or OPENAI_API_KEY");
+    const apiKey = await ctx.fns.secrets.resolveSetting({ module: "embeddings", scopeType: "global", key: "openaiApiKey" });
+    if (!apiKey) throw new Error("OpenAI embeddings require embeddings.openaiApiKey or OPENAI_API_KEY");
     const model = opts.model || await ctx.fns.settings.getString({
         module: "embeddings", scopeType: "global", key: "model", fallback: "text-embedding-3-small",
     }) || "text-embedding-3-small";

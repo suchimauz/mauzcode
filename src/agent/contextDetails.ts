@@ -15,8 +15,8 @@ export default async function (ctx: Context, session: Session | null, opts: {
     let toolMs = 0, tools = 0, timedTools = 0;
     // API-equivalent list price of the agent's current model (USD per 1M tokens); an estimate, not a bill.
     const modelRow = (await ctx.fns.procs.db.select({ sql: 'SELECT model FROM agents WHERE id = ?', params: [opts.agentId] }) as Array<{ model: string | null }>)[0];
-    let price: { input: number; output: number; cacheRead: number | null; cacheWrite: number | null } | null = null;
-    if (modelRow?.model) { try { price = (await ctx.fns.llm.modelTokenPrice({ models: [modelRow.model] }))[modelRow.model] ?? null; } catch { price = null; } }
+    let price: types.models.TokenPrice | null = null;
+    if (modelRow?.model) { try { price = (await ctx.fns.models.tokenPrice({ routes: [modelRow.model] }))[modelRow.model] ?? null; } catch { price = null; } }
     let cost = 0, costRequests = 0;
     for (const row of rows) {
         let data: Record<string, any> = {};

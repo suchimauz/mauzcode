@@ -2,6 +2,7 @@
 export default {
     id: "custom",
     label: "Custom",
+    icon: "Plug",
     description: "Connect an OpenAI, Anthropic or Gemini compatible API endpoint.",
     fields: [
         { key: "baseUrl", label: "API base URL", type: "url", required: true },

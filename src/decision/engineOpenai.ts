@@ -25,7 +25,7 @@
  * @param opts.images Inline base64 images added to the evidence.
  * @param opts.model Model id override; defaults to the decision.openaiModel setting.
  * @param opts.endpoint Endpoint override; defaults to the decision.openaiEndpoint setting.
- * @param opts.apiKey Bearer token override; defaults to the llm.openaiApiKey secret.
+ * @param opts.apiKey Bearer token override; defaults to the decision.openaiApiKey secret.
  * @param opts.timeoutMs Abort each attempt after this many milliseconds.
  * @param opts.retries Retries on 429 and 5xx, honouring retry-after.
  */
@@ -40,7 +40,7 @@ export default async function (ctx: Context, _session: Session | null, opts: {
     model?: string;
     /** Decisions endpoint URL override. */
     endpoint?: string;
-    /** Bearer token override; resolved from llm.openaiApiKey when omitted. */
+    /** Bearer token override; resolved from decision.openaiApiKey when omitted. */
     apiKey?: string;
     /** Request timeout in milliseconds. @default 8000 @minimum 500 @maximum 60000 */
     timeoutMs?: number;
@@ -54,8 +54,8 @@ export default async function (ctx: Context, _session: Session | null, opts: {
         ?? (await ctx.fns.settings.getString({ module: "decision", scopeType: "global", key: "openaiModel" }))
         ?? "gpt-6-luna";
     const apiKey = opts.apiKey
-        ?? await ctx.fns.secrets.resolveSetting({ module: "llm", scopeType: "global", key: "openaiApiKey" });
-    if (!apiKey) throw new Error("decision.engineOpenai: no API key; set llm.openaiApiKey");
+        ?? await ctx.fns.secrets.resolveSetting({ module: "decision", scopeType: "global", key: "openaiApiKey" });
+    if (!apiKey) throw new Error("decision.engineOpenai: no API key; set decision.openaiApiKey");
 
     const asText = (value: unknown): string => typeof value === "string" ? value : JSON.stringify(value);
     const text = asText(opts.state);

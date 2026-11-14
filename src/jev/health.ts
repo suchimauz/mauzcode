@@ -27,7 +27,7 @@ export default async function (ctx: Context, _session: Session | null, opts: {
         ?? "https://openrouter.ai/api/v1/systemone";
     const model = (await ctx.fns.settings.getString({ module: "jev", scopeType: "global", key: "model" }))
         ?? "typesafe/jev-1.13";
-    const keyModule = endpoint.includes("openrouter.ai") ? "llm" : "jev";
+    const keyModule = "jev";
     const keyName = endpoint.includes("openrouter.ai") ? "openrouterApiKey" : "apiKey";
     const key = await ctx.fns.secrets.resolveSetting({ module: keyModule, scopeType: "global", key: keyName });
 

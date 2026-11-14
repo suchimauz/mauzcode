@@ -93,17 +93,24 @@ describe("settings integration", () => {
         expect(body.sendAt - t0).toBeGreaterThanOrEqual(1100);
     });
 
-    test("ui.createAgent uses settings default model when opts and env are absent", async () => {
+    test("ui.createAgent uses the resolvable last-used model and ignores llm.defaultModel and MODEL", async () => {
         const ctx = await mkTestCtx();
         ctx.fns.agent.systemPrompt = async (_c: any, _s: any, _o: any) => "sys";
-        await ctx.fns.settings.set({
-            module: "llm",
-            scopeType: "global",
-            key: "defaultModel",
-            value: "openai:gpt-4o-mini",
-        });
+        // Conflicting legacy sources that the 3.1 contract must ignore.
+        ctx.env.MODEL = "legacy-env:should-not-be-used";
+        await ctx.fns.settings.set({ module: "llm", scopeType: "global", key: "defaultModel", value: "openai:gpt-4o-mini" });
+        const last = "codex/work:gpt-6-astra";
+        await ctx.fns.procs.db.run({ sql: "DELETE FROM kv WHERE key = 'last-model'", params: [] });
+        await ctx.fns.procs.db.run({ sql: "INSERT INTO kv (key, value) VALUES ('last-model', ?)", params: [last] });
+        const resolved: string[] = [];
+        ctx.state.registry.models.resolveRoute = async (_c: any, _s: any, o: any) => {
+            resolved.push(o.route);
+            if (o.route !== last) throw Object.assign(new Error("not found"), { code: "CONNECTION_NOT_FOUND" });
+            return { route: o.route };
+        };
 
         const r = await ctx.fns.ui.createAgent({ open: false });
-        expect(r.model).toBe("openai:gpt-4o-mini");
+        expect(r.model).toBe(last);
+        expect(resolved).toEqual([last]);
     });
 });

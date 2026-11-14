@@ -3,7 +3,7 @@ import { SocksProxies } from './socks-proxies';
 import { Button, Panel, TextField, requestJson, ApiError, type ExtensionViewProps, type UiExtension } from '@mauzcode/ui';
 
 type Item = { module: string; key: string; type: string; title?: string; description?: string; source: string; path?: string; value?: string | number | boolean; defaultValue?: unknown; configured?: boolean; options?: string[]; min?: number; max?: number };
-type Snapshot = { status: { openai: { set: boolean }; anthropic: { set: boolean }; kimi: { set: boolean }; groq: { set: boolean }; openrouter: { set: boolean }; kimiCoding: { loggedIn: boolean }; codex: { loggedIn: boolean; email?: string | null } }; flows: Record<string, { status: string; url?: string; userCode?: string; error?: string }> };
+type Snapshot = { status: { openai: { set: boolean }; anthropic: { set: boolean }; kimi: { set: boolean }; groq: { set: boolean }; openrouter: { set: boolean }; } };
 const errorText = (e: unknown) => e instanceof ApiError && e.status === 401 ? 'Войдите в систему, чтобы открыть настройки.' : e instanceof ApiError && e.status === 403 ? 'Нет доступа владельца или истёк токен запроса. Обновите страницу.' : e instanceof Error ? e.message : 'Не удалось выполнить действие.';
 function ProviderKey({ name, label, configured, readOnly, refresh }: { name: string; label: string; configured: boolean; readOnly: boolean; refresh: () => Promise<void> }) {
   const [value, setValue] = useState(''); const [busy, setBusy] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState('');
@@ -14,22 +14,14 @@ function ProviderKey({ name, label, configured, readOnly, refresh }: { name: str
   </form>;
 }
 function Overview({ context }: ExtensionViewProps) {
-  const [data, setData] = useState<Snapshot | null>(null); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
+  const [data, setData] = useState<Snapshot | null>(null); const [error, setError] = useState('');
   const refresh = useCallback(async (signal?: AbortSignal) => { const next = await requestJson<Snapshot>('/settings?format=json', { signal }); setData(next); setError(''); }, []);
   useEffect(() => { const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>; const poll = async () => { try { await refresh(controller.signal); } catch (e) { if (!controller.signal.aborted) setError(errorText(e)); } if (!controller.signal.aborted) timer = setTimeout(() => { void poll(); }, 3000); }; void poll(); return () => { controller.abort(); clearTimeout(timer); }; }, [refresh]);
-  const action = async (name: string) => { if (busy || context.readOnly) return; setBusy(true); setError(''); setMessage(''); try { await requestJson('/settings/env', { method: 'POST', body: { action: name } }); setMessage('Действие выполнено.'); await refresh(); } catch (e) { setError(errorText(e)); } finally { setBusy(false); } };
   return <div><Panel title="Ключи провайдеров"><p>Доступно только владельцу. Ключи сохраняются в .env и применяются без перезапуска. Сохранённые значения не показываются.</p>
     {error && <p role="alert">{error}</p>}{!data && !error && <p role="status">Загрузка настроек…</p>}
     {data && ([['openai', 'OPENAI_API_KEY', 'OpenAI'], ['anthropic', 'ANTHROPIC_API_KEY', 'Anthropic'], ['kimi', 'KIMI_API_KEY', 'Kimi'], ['groq', 'GROQ_API_KEY', 'Groq'], ['openrouter', 'OPENROUTER_API_KEY', 'OpenRouter']] as const).map(([id, name, label]) => <ProviderKey key={id} name={name} label={label} configured={data.status[id].set} readOnly={context.readOnly} refresh={refresh} />)}
   </Panel>
-  {data && (['kimi', 'codex'] as const).map(provider => { const connected = provider === 'kimi' ? data.status.kimiCoding.loggedIn : data.status.codex.loggedIn; const flow = data.flows[provider]; return <Panel key={provider} title={provider === 'kimi' ? 'Kimi Coding — подписка' : 'Codex — подписка ChatGPT'}>
-    <p>{connected ? 'Подключено' : 'Не подключено'}</p>{provider === 'codex' && data.status.codex.email && <p>{data.status.codex.email}</p>}
-    <p>Используется файл авторизации CLI. Токены в интерфейс не передаются.</p>
-    <Button disabled={context.readOnly || busy || flow?.status === 'pending'} onClick={() => { void action(`${provider}-login`); }}>{connected ? 'Подключить заново' : 'Подключить'}</Button>
-    {connected && <Button disabled={context.readOnly || busy} onClick={() => { if (window.confirm('Удалить локальные данные авторизации этой подписки?')) void action(`${provider}-logout`); }}>Выйти</Button>}
-    {flow?.status === 'pending' && <div role="status"><p>Завершите авторизацию у провайдера. Статус обновляется автоматически.</p>{flow.url && <a href={flow.url} target="_blank" rel="noopener noreferrer">Открыть авторизацию</a>}{flow.userCode && <p>Код: <code>{flow.userCode}</code></p>}</div>}
-    {flow?.error && <p role="alert">{flow.error}</p>}
-  </Panel>; })}{message && <p role="status">{message}</p>}</div>;
+</div>;
 }
 function SettingRow({ item, readOnly, refresh }: { item: Item; readOnly: boolean; refresh: () => Promise<void> }) {
   const [value, setValue] = useState(item.type === 'secret' ? '' : String(item.value ?? '')); const [checked, setChecked] = useState(!!item.value); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [message, setMessage] = useState('');

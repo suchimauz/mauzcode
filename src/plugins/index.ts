@@ -46,7 +46,7 @@ async function runIndex(
     const previous = new Map(existing.map((row: any) => [row.name, row]));
     const provider = await ctx.fns.embeddings.provider({});
     const model = provider === "off" ? null : await ctx.fns.settings.getString({ module: "embeddings", scopeType: "global", key: "model", fallback: "text-embedding-3-large" });
-    const localizationModel = await ctx.fns.llm.localizationModel({});
+    const localizationModel = await ctx.fns.runtime.localizationModel({}).catch(() => ""); // NO_MODEL: canonical rows are indexed, localization stays pending.
     const locales = [...new Set(String(await ctx.fns.settings.getString({ module: "embeddings", scopeType: "global", key: "locales", fallback: "ru" }) || "ru").split(",").map(x => x.trim()).filter(Boolean))];
     const localesKey = locales.join(",");
     const localizationIdentity = (hash: string) => Bun.hash(`${hash}|${localizationModel}|${localesKey}`).toString(16);
@@ -55,9 +55,9 @@ async function runIndex(
     const generated = new Map<string, string>();
     const localizationFailed = new Set<string>();
     let failed: string | undefined;
-    if (opts.localize !== false && locales.length && batch.length) {
+    if (opts.localize !== false && localizationModel && locales.length && batch.length) {
         try {
-            const localized = await ctx.fns.llm.localize({ functions: batch.map(item => ({ name: item.plugin.name, text: item.text })), locales, model: localizationModel });
+            const localized = await ctx.fns.runtime.localize({ functions: batch.map(item => ({ name: item.plugin.name, text: item.text })), locales, model: localizationModel });
             for (const [name, text] of Object.entries(localized.localized)) generated.set(name, text);
             for (const name of localized.failed ?? []) localizationFailed.add(name);
         } catch (error: any) {

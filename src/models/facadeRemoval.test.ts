@@ -11,7 +11,7 @@ import load from "../procs/boot/load";
 
 const removedRoot = ["assertModelEnabled", "cached", "checkInput", "claudeAuth", "claudeLogin", "claudeRequest", "codexAuth", "codexFailure", "codexInput", "codexLogin", "codexQuota", "codexReasoningProfile", "codexVersion", "customProtocol", "failure", "fetch", "parseSSE", "resolveReasoning", "resolve", "safeMessage", "toView", "validateConfig", "validateTransport"];
 const removed = [...removedRoot.map(name => `models.${name}`), "models.provider.custom.customProtocol"];
-const facade = ["action", "api", "call", "compact", "create", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setModelEnabled", "stream", "test", "update", "usage"];
+const facade = ["action", "api", "call", "compact", "create", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"];
 
 async function boot(root: string) {
     const ctx = makeCtx();

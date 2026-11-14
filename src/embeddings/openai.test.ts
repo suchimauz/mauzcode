@@ -6,7 +6,7 @@ const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
 test("OpenAI embedding provider batches text and returns ordered vectors", async () => {
-    await ctx.fns.settings.set({ module: "llm", scopeType: "global", key: "openaiApiKey", value: "test-key", isSecret: true });
+    await ctx.fns.settings.set({ module: "embeddings", scopeType: "global", key: "openaiApiKey", value: "test-key", isSecret: true });
     await ctx.fns.settings.set({ module: "embeddings", scopeType: "global", key: "provider", value: "openai" });
     globalThis.fetch = (async (_url: any, init: any) => {
         expect(init.headers.authorization).toBe("Bearer test-key");

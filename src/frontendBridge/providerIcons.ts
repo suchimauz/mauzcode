@@ -1,8 +1,8 @@
 /**
- * Return inert provider marks for every quota provider, keyed by provider id
+ * Return inert provider marks for every registered model provider, keyed by provider id
  *
  * Use for React quota cards and other provider badges that need native MauzCode logos without injecting SVG markup.
- * Reads the unified quota list to discover providers and maps each one through frontendBridge.iconData; unknown providers map to null.
+ * Maps each registered provider's declared icon through frontendBridge.declaredIcon; a provider without a usable icon maps to null.
  * @param opts.req Incoming authenticated GET request.
  */
 export default async function (
@@ -15,12 +15,9 @@ export default async function (
 ): Promise<Response> {
     const headers = { 'Cache-Control': 'private, max-age=300', 'Vary': 'Cookie' };
     if (opts.req.method !== 'GET') return Response.json({ error: 'Method not allowed' }, { status: 405, headers: { ...headers, Allow: 'GET' } });
-    const base = ['codex', 'claude-code', 'anthropic-oauth', 'kimi-coding', 'xai', 'opencode', 'zai-coding', 'minimax-coding', 'oneapi'];
-    let discovered: string[] = [];
-    try { discovered = (await ctx.fns.llms.quotaData({})).accounts.map(a => a.provider); } catch { discovered = []; }
-    const providers = [...new Set([...base, ...discovered])];
-    const icons = Object.fromEntries(await Promise.all(providers.map(async p => {
-        try { return [p, await ctx.fns.frontendBridge.iconData({ model: `${p}:x` })] as const; } catch { return [p, null] as const; }
+    // Marks come only from registered model provider declarations; no hard-coded legacy provider list.
+    const icons = Object.fromEntries(await Promise.all(ctx.fns.models.providers({}).map(async p => {
+        try { return [p.id, await ctx.fns.frontendBridge.declaredIcon({ icon: p.icon ?? null })] as const; } catch { return [p.id, null] as const; }
     })));
     return Response.json({ icons }, { headers });
 }

@@ -6,16 +6,18 @@ describe('settings declared registry + resolution', () => {
         const ctx = await mkTestCtx();
         const items = await ctx.fns.settings.declared({});
         const keys = items.map((i: any) => `${i.module}.${i.key}`).sort();
-        expect(keys).toContain('llm.defaultModel');
+        expect(keys).not.toContain('models.defaultModel');
+        expect(keys).toContain('models.localizationModel');
+        expect(keys).toContain('models.usageWarnPercent');
         expect(keys).toContain('llm.lmstudioBaseUrl');
         expect(keys).toContain('agent.debounceMs');
     });
 
     test('source = default when nothing in DB or env', async () => {
         const ctx = await mkTestCtx();
-        const item = (await ctx.fns.settings.declared({})).find((i: any) => i.key === 'defaultModel');
+        const item = (await ctx.fns.settings.declared({})).find((i: any) => i.module === 'models' && i.key === 'usageWarnPercent');
         expect(item.source).toBe('default');
-        expect(item.currentValue).toBe('claude-code/default:claude-opus-5');
+        expect(item.currentValue).toBe(30);
     });
 
     test('source = env when env var set, no DB row', async () => {
@@ -39,25 +41,18 @@ describe('settings declared registry + resolution', () => {
 
     test('settings.get fallback chain: DB → env → declared default', async () => {
         const ctx = await mkTestCtx();
-
+        const get = () => ctx.fns.settings.get({ module: 'models', scopeType: 'global', key: 'usageCriticalPercent' });
         // 1. nothing → declared default
-        expect(await ctx.fns.settings.get({ module: 'llm', scopeType: 'global', key: 'defaultModel' }))
-            .toBe('claude-code/default:claude-opus-5');
-
-        // 2. with env → env value
-        ctx.env.MODEL = 'env-model';
-        expect(await ctx.fns.settings.get({ module: 'llm', scopeType: 'global', key: 'defaultModel' }))
-            .toBe('env-model');
-
+        expect(await get()).toBe(60);
+        // 2. with env → env value (typed by descriptor)
+        ctx.env.LLM_USAGE_CRITICAL_PERCENT = '55';
+        expect(await get()).toBe(55);
         // 3. with DB row → DB value (env still set)
-        await ctx.fns.settings.set({ module: 'llm', scopeType: 'global', key: 'defaultModel', value: 'db-model' });
-        expect(await ctx.fns.settings.get({ module: 'llm', scopeType: 'global', key: 'defaultModel' }))
-            .toBe('db-model');
-
+        await ctx.fns.settings.set({ module: 'models', scopeType: 'global', key: 'usageCriticalPercent', value: 65 });
+        expect(await get()).toBe(65);
         // 4. remove DB row → falls back to env again
-        await ctx.fns.settings.remove({ module: 'llm', scopeType: 'global', key: 'defaultModel' });
-        expect(await ctx.fns.settings.get({ module: 'llm', scopeType: 'global', key: 'defaultModel' }))
-            .toBe('env-model');
+        await ctx.fns.settings.remove({ module: 'models', scopeType: 'global', key: 'usageCriticalPercent' });
+        expect(await get()).toBe(55);
     });
 
     test('env parsing respects descriptor.type for number/boolean', async () => {

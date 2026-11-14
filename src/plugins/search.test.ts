@@ -13,7 +13,7 @@ describe("plugins.search", () => {
 
     test("finds workflow text from SKILL.md even without a function phrase", async () => {
         ctx.fns.embeddings.provider = async () => "off";
-        ctx.state.registry.llm.localize = async (_c: any, _s: any, opts: any) => ({ provider: "test", model: "test", localized: Object.fromEntries(opts.functions.map((fn: any) => [fn.name, fn.text.repeat(2)])) });
+        ctx.state.registry.runtime.localize = async (_c: any, _s: any, opts: any) => ({ provider: "test", model: "test", localized: Object.fromEntries(opts.functions.map((fn: any) => [fn.name, fn.text.repeat(2)])) });
         await ctx.fns.procs.migrate.up({});
         await ctx.fns.plugins.index({ force: true });
         const result = await ctx.fns.plugins.search({ query: "operator-run OpenSERP service", mode: "bm25" });

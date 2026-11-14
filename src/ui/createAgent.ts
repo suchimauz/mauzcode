@@ -17,11 +17,8 @@ export default async function (
         /** Emit best-effort compatibility navigation to the new conversation. @default true */ open?: boolean;
         /** Initial user text; a nonblank value starts a background turn. */ startText?: string } = {},
 ): Promise<{ id: string; model: string; opened: boolean; started: boolean; offset?: number }> {
-    // Priority: explicit opts.model > declared setting (DB → env → default).
-    const fromSettings = await ctx.fns?.settings?.getString?.({
-        module: 'llm', scopeType: 'global', key: 'defaultModel',
-    });
-    const model = (opts.model ?? fromSettings ?? 'claude-code:claude-opus-5').trim();
+    // Explicit opts.model, otherwise the selection rule (last used → first enabled model → NO_MODEL).
+    const model = String(opts.model ?? '').trim() || await ctx.fns.settings.modelDefault({});
     const agent = await ctx.fns.agent.start({
         model,
         systemPrompt: opts.systemPrompt ?? '',

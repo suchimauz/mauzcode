@@ -44,7 +44,7 @@ async function runIndex(
     const previous = new Map(existing.map((row: any) => [row.name, row]));
     const provider = await ctx.fns.embeddings.provider({});
     const model = provider === "off" ? null : await ctx.fns.settings.getString({ module: "embeddings", scopeType: "global", key: "model", fallback: "text-embedding-3-large" });
-    const localizationModel = await ctx.fns.llm.localizationModel({});
+    const localizationModel = await ctx.fns.runtime.localizationModel({}).catch(() => ""); // NO_MODEL: canonical rows are indexed, localization stays pending.
     const locales = parseLocales(await ctx.fns.settings.getString({ module: "embeddings", scopeType: "global", key: "locales", fallback: "ru" }));
     const localesKey = locales.join(",");
     const canonical: Array<{ doc: any; namespace: string; text: string; hash: string }> = docs.map((doc: any) => {
@@ -61,9 +61,9 @@ async function runIndex(
     let localized = 0;
     const generated = new Map<string, string>();
     const localizationFailed = new Set<string>();
-    if (opts.localize !== false && locales.length && localizationBatch.length) {
+    if (opts.localize !== false && localizationModel && locales.length && localizationBatch.length) {
         try {
-            const result = await ctx.fns.llm.localize({ functions: localizationBatch.map(item => ({ name: item.doc.name, text: item.text })), locales, model: localizationModel });
+            const result = await ctx.fns.runtime.localize({ functions: localizationBatch.map(item => ({ name: item.doc.name, text: item.text })), locales, model: localizationModel });
             for (const [name, text] of Object.entries(result.localized)) generated.set(name, text);
             for (const name of result.failed ?? []) localizationFailed.add(name);
             localized = generated.size;
@@ -86,7 +86,7 @@ async function runIndex(
         const retrievalHash = Bun.hash(searchText).toString(16);
         rows.push({ name: doc.name, namespace, summary: doc.summary ?? "", doc: doc.doc ?? "", signature: doc.signature ?? "", opts_type: doc.optsType ?? "",
             return_type: doc.returnType ?? "", params_schema: doc.paramsSchema ?? {}, rel: doc.rel ?? "", line: doc.line ?? null, search_text: searchText,
-            content_hash: retrievalHash, localized_text: localizedText, localization_provider: localizedText ? ctx.fns.llm.parseModelRoute({ model: localizationModel }).provider : null,
+            content_hash: retrievalHash, localized_text: localizedText, localization_provider: localizedText ? (localizationModel.slice(0, Math.max(0, localizationModel.indexOf("/"))) || null) : null,
             localization_model: localizedText ? localizationModel : null, localization_locales: localizedText ? localesKey : null,
             localization_hash: localizationHash, updated_at: now });
         if (opts.force || old?.content_hash !== retrievalHash || !old?.embedded || old?.embedding_provider !== provider || old?.embedding_model !== model) changed.push({ name: doc.name, text: searchText, hash: retrievalHash });

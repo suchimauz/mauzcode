@@ -12,8 +12,8 @@ test("root model procedures are exactly the minimal facade plus providers and ap
     const roots = [...new Bun.Glob("*.ts").scanSync(import.meta.dir)]
         .filter(file => !file.endsWith(".test.ts") && !file.startsWith("$") && /^[a-z]/.test(file))
         .map(file => file.slice(0, -3)).sort();
-    expect(roots).toEqual([...Object.keys(baseline.procedures), "resolveRoute"].sort());
-    expect(roots).toEqual(["action", "api", "call", "compact", "create", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setModelEnabled", "stream", "test", "update", "usage"]);
+    expect(roots).toEqual([...Object.keys(baseline.procedures), "resolveRoute", "tokenPrice"].sort());
+    expect(roots).toEqual(["action", "api", "call", "compact", "create", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
 });
 
 test("original public model signatures, async declarations, types and HTTP route contracts survive", async () => {
@@ -84,7 +84,10 @@ test("fresh discovery preserves callable providers, nested dynamic facades, miss
                 ? { systemPreamble: "You are Claude Code, Anthropic's official CLI for Claude.", priceVendor: "anthropic" }
                 : original.id === "codex" ? { priceVendor: "openai" } : undefined;
             expect(current.inference).toEqual(expectedInference);
-            expect(registrationShape({ ...current, ...(expectedInference ? { inference: undefined } : {}) }), file).toEqual(registrationShape({ ...original, ...(expectedInference ? { inference: undefined } : {}) }));
+            // custom gained a declared icon so every registered provider has a mark.
+            const iconPatch = original.id === "custom" ? { icon: undefined } : {};
+            if (original.id === "custom") expect(current.icon).toBe("Plug");
+            expect(registrationShape({ ...current, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch }), file).toEqual(registrationShape({ ...original, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch }));
         }
         // Inspect real public facades and declaration bodies as they migrate. Every
         // nested implementation dispatch must exist in the freshly booted registry.

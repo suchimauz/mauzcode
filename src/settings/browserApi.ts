@@ -27,10 +27,8 @@ export default async function (
      return reply({items:items.map(i=>({module:i.module,key:i.key,source:i.source,path:i.path,type:i.descriptor.type,title:i.descriptor.title,description:i.descriptor.description,options:i.descriptor.options,min:i.descriptor.min,max:i.descriptor.max,env:i.descriptor.env,...(i.descriptor.type==='secret'?{configured:!!i.currentValue}:{value:i.currentValue,defaultValue:i.descriptor.default})}))});
      }
      const snapshot=await ctx.fns.settings.status({});
-     const status={openai:snapshot.openai,anthropic:snapshot.anthropic,kimi:snapshot.kimi,groq:snapshot.groq,openrouter:snapshot.openrouter,kimiCoding:snapshot.kimiCoding,codex:snapshot.codex};
-     const flows:Record<string,object>={};
-     for(const provider of ['kimi','codex']){const f=(ctx.state as any).settings?.[provider];const url=f?.verificationUriComplete??f?.verificationUri;let safeUrl:string|undefined;try{if(url&&new URL(url).protocol==='https:')safeUrl=url;}catch{/* Invalid provider URL is omitted. */} flows[provider]={status:f?.status??'idle',...(f?.status==='pending'?{url:safeUrl,userCode:f.userCode}:{}),...(f?.status==='failed'?{error:'Authorization failed. Please try again.'}:{})};}
-     return reply({status,flows});
+     const status={openai:snapshot.openai,anthropic:snapshot.anthropic,kimi:snapshot.kimi,groq:snapshot.groq,openrouter:snapshot.openrouter};
+     return reply({status});
     }
     if(req.method!=='POST')return reply({error:'Method not allowed'},405);
     if(req.headers.get('sec-fetch-site')==='cross-site')return reply({error:'Same origin required'},403);
@@ -57,11 +55,7 @@ export default async function (
      if(data.action==='env'){
      if(!['OPENAI_API_KEY','ANTHROPIC_API_KEY','KIMI_API_KEY','GROQ_API_KEY','OPENROUTER_API_KEY'].includes(data.key)||typeof data.value!=='string'||!data.value.trim()||/[\r\n\0]/.test(data.value))return reply({error:'Provider key and nonempty value required'},400);
      await ctx.fns.settings.saveEnv({entries:{[data.key]:data.value}});
-     }else if(data.action==='kimi-login')await ctx.fns.settings.startKimiLogin({});
-     else if(data.action==='kimi-logout')await ctx.fns.settings.logoutKimi({});
-     else if(data.action==='codex-login')await ctx.fns.settings.startCodexLogin({});
-     else if(data.action==='codex-logout')await ctx.fns.settings.logoutCodex({});
-     else return reply({error:'Unknown action'},400);
+     }else return reply({error:'Unknown action'},400);
     }
     return reply({ok:true});
     }catch{return reply({error:'Settings operation failed. No credential details are returned.'},400);}

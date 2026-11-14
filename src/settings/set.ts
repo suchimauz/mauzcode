@@ -19,6 +19,9 @@ export default async function (ctx: Context, _session: Session | null, opts: Set
         const fixed = (await ctx.fns.settings.files({})).values[`${opts.module}.${opts.key}`];
         if (fixed) throw new Error(`${opts.module}.${opts.key} is fixed by ${fixed.path} — change it in that file (one place per value)`);
     }
+    // A declared descriptor may reject a value before it is stored (e.g. route syntax).
+    const descriptor = ((ctx.state as any).settings?.registry as Map<string, any> | undefined)?.get(`${opts.module}.${opts.key}`);
+    if (opts.scopeType === 'global' && typeof descriptor?.validate === 'function') descriptor.validate(ctx, opts.value);
     const now = Date.now();
     await ctx.fns.procs.db.run({
         sql: `INSERT INTO settings (module, scope_type, scope_id, key, value, is_secret, updated_at)
@@ -38,7 +41,7 @@ export default async function (ctx: Context, _session: Session | null, opts: Set
             now,
         ],
     });
-    if (opts.module === "embeddings" || (opts.module === "llm" && opts.key === "openaiApiKey")) {
+    if (opts.module === "embeddings") {
         queueMicrotask(() => (ctx.fns as any).runtime?.docs?.index?.({ force: opts.module === "embeddings" }).catch((error: any) =>
             ctx.fns.procs.log.warn({ event: "runtime.docs.index.failed", msg: String(error?.message ?? error) })));
     }
