@@ -4,7 +4,7 @@ export type ProviderDefinition = {
     id: string;
     label: string;
     description?: string;
-    /** Lucide icon name or data URL. */
+    /** Lucide icon name, brand:<id> from the shared model logo catalogue, or image data URL. */
     icon?: string;
     /** Optional provider identity and public pricing metadata; omission means no preamble or vendor. */
     inference?: {

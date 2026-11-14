@@ -3,7 +3,7 @@ export default {
     id: "opencode-go",
     label: "OpenCode Go",
     description: "OpenCode Go subscription: open and proprietary coding models through one Console API key, each on its native API.",
-    icon: "Code",
+    icon: "brand:opencode",
     inference: { priceVendor: "opencode-go" },
     fields: [
         { key: "apiKey", label: "API key", type: "secret", required: true, help: "Console API key (oc_sk_…) with Models › Request permission." },

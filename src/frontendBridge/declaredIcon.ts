@@ -1,19 +1,26 @@
 /**
  * Turn a model provider's declared icon into an inert image data URL
  *
- * Use for provider marks from ProviderDefinition.icon. A Lucide icon name (PascalCase or kebab-case) is rendered from the bundled lucide-react icon data as a monochrome stroke SVG; an image data URL is passed through. Unknown names, other URLs and missing icons return null.
- * @param opts.icon Declared Lucide icon name or image data URL.
+ * Use for provider marks from ProviderDefinition.icon. A Lucide icon name (PascalCase or kebab-case) is rendered from the bundled lucide-react icon data as a monochrome stroke SVG; a brand:<id> reference resolves a monochrome mask from the shared model logo catalogue; an image data URL is passed through. Unknown names, other URLs and missing icons return null.
+ * @param opts.icon Declared Lucide icon name, brand:<id> from the shared model logo catalogue, or image data URL.
  */
 export default async function (
     ctx: Context,
     session: Session | null,
     opts: {
-        /** Declared Lucide icon name or image data URL. */
+        /** Declared Lucide icon name, brand:<id> from the shared model logo catalogue, or image data URL. */
         icon?: string | null;
     },
 ): Promise<{ src: string; custom: boolean } | null> {
     const icon = String(opts.icon ?? "").trim();
     if (!icon) return null;
+    // Brand references use only the local, inert shared catalogue, never a remote URL.
+    if (/^brand:[a-z0-9-]+$/.test(icon)) {
+        const markup = ctx.fns.ui.modelLogo({ model: icon.slice(6) + ':x', bare: true });
+        const svg = markup.match(/<svg\b[\s\S]*?<\/svg>/)?.[0];
+        if (!svg) return null;
+        return { src: 'data:image/svg+xml,' + encodeURIComponent(svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')), custom: false };
+    }
     if (/^data:image\/(svg\+xml|png|webp|gif|jpeg)[;,]/i.test(icon)) return { src: icon, custom: true };
     const name = icon.replace(/([a-z0-9])([A-Z])/g, "$1-$2").replace(/([A-Za-z])([0-9])/g, "$1-$2").toLowerCase();
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) return null;
