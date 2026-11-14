@@ -58,5 +58,5 @@
 ## 9. Integration checks
 
 - [ ] 9.1 Run `code.quality({})` (ok, no calls to missing names) and one full `procs.dev.typecheck({})` with no new errors
-- [ ] 9.2 Live check: an agent on `codex/su4imauz` and one on `claude/2yfl55fsh` each complete a turn with a tool call and a compaction; reasoning and model switches work from the UI
-- [ ] 9.3 Live check: the new-session picker lists models of all three connections, a disabled model cannot be selected or called, usage and prices are visible, renaming a connection keeps its agents working, and a restored archived agent fails with `MODEL_NOT_SELECTED` without a provider request or automatic model fallback until the owner explicitly selects a model
+
+Live provider and UI checks formerly listed as tasks 9.2–9.3 are removed from this change's acceptance scope at the owner's explicit request. They were not executed and are not recorded as passing. Existing functional requirements and isolated regression coverage remain unchanged; no production credentials, provider requests or deployment are required for this change's acceptance. Task 9.1 remains open for the recorded quality findings.
