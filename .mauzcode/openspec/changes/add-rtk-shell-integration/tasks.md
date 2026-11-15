@@ -2,11 +2,12 @@
 
 Implementation is not authorized by creation of this change. All tasks below remain unchecked until a separate implementation request.
 
-## 1. SDK settings sections
+## 1. SDK settings tabs
 
-- [x] 1.1 Add public settings section types and matching server/frontend grants, including compilation, manifest and approval identity handling; verify with grant validation, changed-grant approval and backward-compatibility tests.
-- [x] 1.2 Add registry support and the shared Plugin Settings host page with lifecycle cleanup; verify granted, missing-grant, unloaded and unapproved-plugin scenarios in frontend tests.
-- [x] 1.3 Document the settingsSections contract, manifest example, trust boundary and lifecycle requirements in UI architecture/SDK documentation; verify examples use only the public SDK and cover owner/CSRF obligations.
+- [x] 1.1 Add public settings tab types and matching server/frontend grants, including compilation, manifest and approval identity handling; verify with grant validation, changed-grant approval and backward-compatibility tests.
+- [x] 1.2 Add registry support and per-plugin Settings tabs (plugin title and icon, after the built-in tabs, no shared Plugins tab) with lifecycle cleanup; verify granted, missing-grant, unloaded and unapproved-plugin scenarios in frontend tests.
+- [x] 1.3 Document the settingsTabs contract, manifest example, trust boundary and lifecycle requirements in UI architecture/SDK documentation; verify examples use only the public SDK and cover owner/CSRF obligations.
+- [x] 1.4 Replace the shared Plugins settings tab with per-plugin Settings tabs: rename the contribution and grant to `settingsTabs`, show the plugin's `procs.icon` (puzzle fallback), accept `?settings=plugin:<plugin>/<id>`, and give RTK a dedicated icon; verify ordering, icon/fallback, unavailable/unload and crash isolation in frontend tests and the renamed grant in server tests.
 
 ## 2. Official RTK plugin and state
 
@@ -26,7 +27,7 @@ Implementation is not authorized by creation of this change. All tasks below rem
 
 ## 4. RTK settings UI
 
-- [x] 4.1 Add plugins/rtk/ui/index.tsx and its explicit settings grant using React and @mauzcode/ui; verify the runtime-compiled section appears only while the plugin is eligible and does not require an RTK component in core.
+- [x] 4.1 Add plugins/rtk/ui/index.tsx and its explicit settings grant using React and @mauzcode/ui; verify the runtime-compiled tab appears only while the plugin is eligible and does not require an RTK component in core.
 - [x] 4.2 Implement availability/enabled states, check action, guarded toggle, path/version/check time and safe failure feedback; verify unavailable/unknown/checking disabled controls, success-without-auto-enable, server rejection, duplicate actions and authoritative refresh in UI tests.
 - [x] 4.3 Verify keyboard/focus, status/error accessibility, themes, readOnly, reduced motion and unmount cleanup; document the controls and permission requirements with tested behavior.
 
@@ -42,6 +43,7 @@ Implementation is not authorized by creation of this change. All tasks below rem
 - Installed RTK 1.2.0 (read-only smoke, not enabled): `rtk rewrite "git status"` → `rtk git status`, exit 3; `rtk rewrite "echo hi"` → exit 1 (original runs).
 - Backend: plugins/rtk + src/plugins/ui + src/tools tests 69/69 pass. Frontend: rtk-settings + plugin-settings 12/12; full vitest suite failures are pre-existing/unrelated (git/terminal plugin npm dependencies missing in the worktree, live-navigation).
 - Full typecheck: 463 diagnostics before the change and after it; no new ones in the changed files. Hot-reload and runtime docs validation are not possible from this worktree (the live server runs the main checkout); they apply after merge. Core frontend `vite build` succeeds; plugin UI bundles with the runtime externals (react, @mauzcode/ui).
+- Task 1.4 (per-plugin Settings tabs): backend plugins/rtk + src/plugins/ui 32/32 pass; frontend plugin-settings-tabs + rtk-settings + registry 25/25; full vitest 763/763 tests pass, the only failing files are the pre-existing git/terminal plugin suites (missing npm deps in the worktree); frontend tsc shows only the pre-existing git/terminal plugin errors; `vite build` succeeds; strict OpenSpec validation passes.
 
 ## Workflow follow-up
 

@@ -15,11 +15,11 @@ function mockApi(control: RtkControl, post: Handler) {
 const posts = (fetch: ReturnType<typeof mockApi>) => fetch.mock.calls.filter(([, o]) => o?.method === 'POST');
 afterEach(() => { vi.restoreAllMocks(); });
 
-describe('RTK settings section', () => {
-  it('declares only a granted settings section and needs no core component', () => {
+describe('RTK settings tab', () => {
+  it('declares only a granted settings tab and needs no core component', () => {
     expect(rtkExtension.id).toBe('rtk');
-    expect(createExtensionRegistry([rtkExtension], {}).settingsSections).toEqual([]);
-    expect(createExtensionRegistry([rtkExtension], { rtk: { settingsSections: ['shell'] } }).settingsSections.map(s => s.key)).toEqual(['rtk/shell']);
+    expect(createExtensionRegistry([rtkExtension], {}).settingsTabs).toEqual([]);
+    expect(createExtensionRegistry([rtkExtension], { rtk: { settingsTabs: ['shell'] } }).settingsTabs.map(s => s.key)).toEqual(['rtk/shell']);
   });
 
   it('keeps the toggle disabled while unknown; a successful check does not auto-enable', async () => {

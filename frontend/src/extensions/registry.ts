@@ -1,7 +1,7 @@
 import type { ExtensionGrant, ExtensionRegistry, UiExtension } from './types';
 
 /** Build a snapshot from an explicit host allowlist; ungranted entries never reach a slot.
- * `icons` maps extension id → its plugin icon, the default for launchers without their own. */
+ * `icons` maps extension id → its plugin icon: the default for launchers without their own and the icon of settings tabs. */
 export function createExtensionRegistry(extensions: readonly UiExtension[], grants: Readonly<Record<string, ExtensionGrant>>, icons: Readonly<Record<string, string | null | undefined>> = {}): ExtensionRegistry {
   const inputKinds: ExtensionRegistry['inputKinds'][number][] = [];
   const pages: ExtensionRegistry['pages'][number][] = [];
@@ -13,7 +13,7 @@ export function createExtensionRegistry(extensions: readonly UiExtension[], gran
   const canvasLaunchers: ExtensionRegistry['canvasLaunchers'][number][] = [];
   const modelProviders: ExtensionRegistry['modelProviders'][number][] = [];
   const chatCards: ExtensionRegistry['chatCards'][number][] = [];
-  const settingsSections: ExtensionRegistry['settingsSections'][number][] = [];
+  const settingsTabs: ExtensionRegistry['settingsTabs'][number][] = [];
   const iconClass = (icon: unknown) => typeof icon === 'string' && /^ph-[a-z0-9-]{1,64}$/.test(icon) ? icon : null;
   const ids = new Set<string>();
   const valid = (id: string) => /^[a-z][a-z0-9-]{0,63}$/.test(id);
@@ -73,12 +73,12 @@ export function createExtensionRegistry(extensions: readonly UiExtension[], gran
       if (chatCards.some(card => card.kind === entry.kind)) throw new Error(`Duplicate chat card: ${entry.kind}`);
       chatCards.push(Object.freeze({ ...entry, key: `${extension.id}/${entry.kind}` }));
     }
-    const seenSections = new Set<string>();
-    for (const entry of extension.settingsSections ?? []) {
-      if (typeof entry.id !== 'string' || !valid(entry.id) || seenSections.has(entry.id) || typeof entry.title !== 'string' || !entry.title.trim() || typeof entry.component !== 'function') throw new Error(`Invalid settings section: ${extension.id}/${String(entry.id)}`);
-      seenSections.add(entry.id);
-      if (!grant?.settingsSections?.includes(entry.id)) continue;
-      settingsSections.push(Object.freeze({ ...entry, key: `${extension.id}/${entry.id}`, extension: extension.id }));
+    const seenTabs = new Set<string>();
+    for (const entry of extension.settingsTabs ?? []) {
+      if (typeof entry.id !== 'string' || !valid(entry.id) || seenTabs.has(entry.id) || typeof entry.title !== 'string' || !entry.title.trim() || typeof entry.component !== 'function') throw new Error(`Invalid settings tab: ${extension.id}/${String(entry.id)}`);
+      seenTabs.add(entry.id);
+      if (!grant?.settingsTabs?.includes(entry.id)) continue;
+      settingsTabs.push(Object.freeze({ ...entry, key: `${extension.id}/${entry.id}`, extension: extension.id, icon: iconClass(Object.hasOwn(icons, extension.id) ? icons[extension.id] : null) }));
     }
     for (const placement of ['navigation', 'sidebarNavigation'] as const) {
     const seenNav = new Set<string>();
@@ -92,5 +92,5 @@ export function createExtensionRegistry(extensions: readonly UiExtension[], gran
     }
     }
   }
-  return Object.freeze({ inputKinds: Object.freeze(inputKinds), sidebarNavigation: Object.freeze(sidebarNavigation), canvasKinds: Object.freeze(canvasKinds), canvasLaunchers: Object.freeze(canvasLaunchers), modelProviders: Object.freeze(modelProviders), chatCards: Object.freeze(chatCards), settingsSections: Object.freeze(settingsSections), pages: Object.freeze(pages), navigation: Object.freeze(navigation), panels: Object.freeze(panels), actions: Object.freeze(actions) });
+  return Object.freeze({ inputKinds: Object.freeze(inputKinds), sidebarNavigation: Object.freeze(sidebarNavigation), canvasKinds: Object.freeze(canvasKinds), canvasLaunchers: Object.freeze(canvasLaunchers), modelProviders: Object.freeze(modelProviders), chatCards: Object.freeze(chatCards), settingsTabs: Object.freeze(settingsTabs), pages: Object.freeze(pages), navigation: Object.freeze(navigation), panels: Object.freeze(panels), actions: Object.freeze(actions) });
 }

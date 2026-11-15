@@ -1,22 +1,33 @@
 // Geometry follows the dsh settings modal (DeepSeek Harness, MIT); see THIRD_PARTY_NOTICES.md.
 import { Dialog } from '@base-ui/react/dialog';
-import { Bell, Boxes, Network, Puzzle, RefreshCw, Server, X } from 'lucide-react';
+import { Bell, Boxes, Network, RefreshCw, Server, X } from 'lucide-react';
 import { ModelsPanel } from './ModelsPanel';
 import { SshInstancesPanel } from './SshInstancesPanel';
 import { PushSettingsPanel } from './PushSettingsPanel';
 import { UpdatesPanel } from './UpdatesPanel';
-import { PluginSettingsPanel } from './PluginSettingsPanel';
+import { PluginSettingsTab } from './PluginSettingsTab';
+import { PhosphorIcon } from '../mauzcode/PhosphorIcon';
+import { usePluginUi } from '../../extensions/pluginRuntime';
 import { SocksProxies } from '../../core-ui/socks-proxies';
 import './settings.css';
 
-export const SETTINGS_TABS = [{ id: 'models', label: 'Models', icon: Boxes }, { id: 'ssh-instances', label: 'SSH Instances', icon: Server }, { id: 'push-notifications', label: 'Notifications', icon: Bell }, { id: 'updates', label: 'Updates', icon: RefreshCw }, { id: 'socks-proxies', label: 'SOCKS5', icon: Network }, { id: 'plugins', label: 'Plugins', icon: Puzzle }] as const;
-export type SettingsTab = typeof SETTINGS_TABS[number]['id'];
+export const SETTINGS_TABS = [{ id: 'models', label: 'Models', icon: Boxes }, { id: 'ssh-instances', label: 'SSH Instances', icon: Server }, { id: 'push-notifications', label: 'Notifications', icon: Bell }, { id: 'updates', label: 'Updates', icon: RefreshCw }, { id: 'socks-proxies', label: 'SOCKS5', icon: Network }] as const;
+/** A built-in tab id, or `plugin:<plugin>/<tab id>` for a granted plugin settings tab. */
+export type SettingsTab = typeof SETTINGS_TABS[number]['id'] | `plugin:${string}`;
+/** Settings tab id of a plugin settings tab registry key (`<plugin>/<id>`). */
+export const pluginSettingsTab = (key: string): SettingsTab => `plugin:${key}`;
 
 /**
  * Centered settings modal like dsh: mask + 800px panel, section list on the left,
  * close button in the content header. Escape, mask click and the close button close it.
+ * Granted plugin settings tabs follow the built-in ones, each with the plugin's own title and icon; a tab whose plugin
+ * is unloaded or no longer approved disappears and its content unmounts.
  */
 export function SettingsDialog({ open, tab, onTab, onOpenChange, theme = 'light' }: { open: boolean; tab: SettingsTab; onTab: (tab: SettingsTab) => void; onOpenChange: (open: boolean) => void; theme?: 'light' | 'dark' }) {
+  const { registry, loaded } = usePluginUi();
+  const pluginTabs = registry.settingsTabs;
+  const activePlugin = tab.startsWith('plugin:') ? pluginTabs.find(entry => pluginSettingsTab(entry.key) === tab) : undefined;
+  const context = { agentId: null, theme, readOnly: false } as const;
   return <Dialog.Root open={open} onOpenChange={onOpenChange}>
     <Dialog.Portal>
       <Dialog.Backdrop className="settings-mask" />
@@ -25,15 +36,18 @@ export function SettingsDialog({ open, tab, onTab, onOpenChange, theme = 'light'
           <Dialog.Title className="settings-nav-title">Settings</Dialog.Title>
           <div className="settings-nav-list">
             {SETTINGS_TABS.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={`settings-nav-cell ${tab === id ? 'is-active' : ''}`} aria-current={tab === id ? 'true' : undefined} onClick={() => onTab(id)}><Icon size={16} strokeWidth={1.5} aria-hidden="true" /><span>{label}</span></button>)}
+            {pluginTabs.map(entry => { const id = pluginSettingsTab(entry.key); return <button key={id} type="button" className={`settings-nav-cell ${tab === id ? 'is-active' : ''}`} aria-current={tab === id ? 'true' : undefined} onClick={() => onTab(id)}><PhosphorIcon icon={entry.icon} size={16} /><span>{entry.title}</span></button>; })}
           </div>
           <select className="settings-nav-select settings-select" aria-label="Раздел настроек" value={tab} onChange={(event) => onTab(event.target.value as SettingsTab)}>
             {SETTINGS_TABS.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+            {pluginTabs.map(entry => <option key={entry.key} value={pluginSettingsTab(entry.key)}>{entry.title}</option>)}
+            {tab.startsWith('plugin:') && !activePlugin && <option value={tab} disabled>—</option>}
           </select>
           <Dialog.Close className="settings-close settings-nav-close" aria-label="Закрыть настройки"><X size={16} strokeWidth={1.5} /></Dialog.Close>
         </nav>
         <div className="settings-content">
           <div className="settings-header" aria-hidden="true" />
-          <div className="settings-options">{tab === 'push-notifications' && <PushSettingsPanel />}{tab === 'models' && <ModelsPanel context={{ agentId: null, theme, readOnly: false }} />}{tab === 'ssh-instances' && <SshInstancesPanel onOpenConnections={() => onTab('models')} />}{tab === 'updates' && <UpdatesPanel />}{tab === 'socks-proxies' && <SocksProxies context={{ agentId: null, theme, readOnly: false }} />}{tab === 'plugins' && <PluginSettingsPanel context={{ agentId: null, theme, readOnly: false }} />}</div>
+          <div className="settings-options">{tab === 'push-notifications' && <PushSettingsPanel />}{tab === 'models' && <ModelsPanel context={{ agentId: null, theme, readOnly: false }} />}{tab === 'ssh-instances' && <SshInstancesPanel onOpenConnections={() => onTab('models')} />}{tab === 'updates' && <UpdatesPanel />}{tab === 'socks-proxies' && <SocksProxies context={{ agentId: null, theme, readOnly: false }} />}{activePlugin && <PluginSettingsTab key={activePlugin.key} tab={activePlugin} context={context} />}{tab.startsWith('plugin:') && !activePlugin && <p className="settings-note" role="status">{loaded ? 'Этот раздел недоступен: плагин не загружен или его интерфейс не одобрен.' : 'Загрузка настроек плагина…'}</p>}</div>
         </div>
       </Dialog.Popup>
     </Dialog.Portal>

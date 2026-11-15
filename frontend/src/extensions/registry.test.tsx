@@ -7,7 +7,7 @@ const view = () => <p>Plugin content</p>;
 const plugin: UiExtension = { id: 'example', apiVersion: 1, pages: [{ id: 'main', title: 'Main', component: view }], navigation: [{ page: 'main', title: 'Open main' }], panels: [{ id: 'panel', title: 'Panel', component: view }], actions: [{ id: 'act', title: 'Act', run: () => {} }] };
 const context = { agentId: 'test', theme: 'dark' as const, readOnly: false };
 describe('host extension registry', () => {
-  it('defaults to no granted surfaces', () => expect(createExtensionRegistry([plugin], {})).toEqual({pages:[],navigation:[],sidebarNavigation:[],panels:[],actions:[],canvasKinds:[],canvasLaunchers:[],modelProviders:[],chatCards:[],settingsSections:[],inputKinds:[]}));
+  it('defaults to no granted surfaces', () => expect(createExtensionRegistry([plugin], {})).toEqual({pages:[],navigation:[],sidebarNavigation:[],panels:[],actions:[],canvasKinds:[],canvasLaunchers:[],modelProviders:[],chatCards:[],settingsTabs:[],inputKinds:[]}));
   it('Canvas kinds require an explicit independent grant and cannot override builtins', () => {
     const extension = { ...plugin, canvasKinds: [{ kind: 'example.map', component: view }] };
     expect(createExtensionRegistry([extension], {}).canvasKinds).toHaveLength(0);

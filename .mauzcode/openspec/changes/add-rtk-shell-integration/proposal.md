@@ -7,7 +7,7 @@ Large shell outputs consume agent context even when only a compact summary is us
 ## What Changes
 
 - Ship an official `plugins/rtk` integration, disabled by default, for local `tools.bash` calls only.
-- Add reusable, explicitly granted `settingsSections` to the public UI SDK and a host-owned Plugin Settings page. RTK supplies its own section through this contract.
+- Add reusable, explicitly granted `settingsTabs` to the public UI SDK: each granted tab becomes a separate Settings tab with the plugin's title and its `procs.icon`. RTK supplies its own "RTK" tab through this contract and gets a dedicated icon.
 - Show availability separately from enabled state, with a dedicated availability check, executable path, version, last check time and safe failure reason. Enabling requires a fresh successful backend check.
 - Prepare eligible commands through `rtk rewrite`, using RTK's own supported-command logic. Preserve the original command when no rewrite applies.
 - Add per-call `rtk:false` to bypass automatic processing without changing the instance setting.
@@ -18,7 +18,7 @@ Large shell outputs consume agent context even when only a compact summary is us
 
 ### New Capabilities
 
-- `plugin-settings-sections`: Granted plugin-owned settings sections hosted through the public SDK, with lifecycle handling and unchanged backend authorization obligations.
+- `plugin-settings-tabs`: Granted plugin-owned Settings tabs with the plugin's icon, hosted through the public SDK, with lifecycle handling and unchanged backend authorization obligations.
 - `rtk-shell-integration`: Instance-level RTK availability, guarded enablement, local shell preparation, explicit bypass, failure semantics and execution observability.
 
 ### Modified Capabilities
