@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import { Check, ChevronDown, ChevronRight, Cpu } from 'lucide-react';
 import { NavigationChatIcon } from './NavigationChatIcon';
-import { effortLabel, modelAccount, modelGroup, modelGroupKey, modelSourceLabel, getDraftModelSettings, getModelSettings, setAgentEffort, setAgentModel, type ModelSettings } from '../../lib/models';
+import { connectionGroupLabel, effortLabel, modelGroup, modelGroupKey, modelSourceLabel, selectableModels, unavailableGroups, getDraftModelSettings, getModelSettings, setAgentEffort, setAgentModel, type ModelSettings } from '../../lib/models';
 import { rememberSessionSelection } from '../../lib/newSession';
 import './model-picker.css';
 
@@ -17,6 +17,10 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
   // Keep the controlled selection visible while read-only capability metadata refreshes.
   const data = settings && draft ? { ...settings, model: draftModel || settings.model, label: selected?.label ?? (draftModel || settings.label), icon: selected?.icon ?? settings.icon,
     effort: { ...settings.effort, requested: draftEffort } } : settings;
+  // Selection policy: disabled models and models of disabled connections are never offered, so they are removed
+  // before searching and grouping. Those entries stay visible in Models settings, where they can be re-enabled.
+  const choices = data ? selectableModels(data) : [];
+  const notices = data ? unavailableGroups(data) : [];
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<Page>('main');
   const [query, setQuery] = useState('');
@@ -53,7 +57,7 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
   const choose = async (kind: 'model' | 'effort', value: string) => {
     if (lock.current || busy || running || loading) return;
     if (kind === 'effort' && !data?.effort.supported.includes(value)) return;
-    if (kind === 'model' && !data?.models.some(option => option.model === value && !option.disabled)) return;
+    if (kind === 'model' && !choices.some(option => option.model === value)) return;
     if ((kind === 'model' ? data?.model : data?.effort.requested) === value) { setOpen(false); return; }
     if (draft) {
       draft.onChange(kind === 'model' ? value : (draft.model || data?.model || ''), kind === 'effort' ? value : draft.effort);
@@ -87,20 +91,23 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
     items[next].focus();
   };
   const groups = new Map<string, { label: string; options: ModelSettings['models'] }>();
-  for (const option of data?.models ?? []) {
+  for (const option of choices) {
     if (!`${option.label} ${option.provider} ${option.model} ${modelGroup(option)}`.toLowerCase().includes(query.trim().toLowerCase())) continue;
     const key = modelGroupKey(option); const group = groups.get(key) ?? { label: modelGroup(option), options: [] }; group.options.push(option); groups.set(key, group);
   }
   const effort = data?.effort;
   const hasEffort = !!effort && effort.mode !== 'none' && effort.supported.length > 0;
   const label = data?.label || data?.model || 'Model';
+  // Provider caption of the selected route: the route itself carries host, provider and account, so a disabled or
+  // uncatalogued current model still shows its provider without changing the stored route.
+  const source = data?.model ? modelSourceLabel(data.model) : '';
   return <Popover.Root open={open} onOpenChange={(value, details) => {
     if (!value && details.reason === 'escape-key' && page !== 'main') { details.cancel(); setPage('main'); setQuery(''); return; }
     changeOpen(value);
   }}>
-    <Popover.Trigger render={<button type="button" className="model-picker-trigger" title={data?.model || 'Выбрать модель'} aria-label={`Выбрать модель: ${label}`} disabled={saving || busy} />}>
+    <Popover.Trigger render={<button type="button" className="model-picker-trigger" title={data?.model || 'Выбрать модель'} aria-label={`Выбрать модель: ${label}${source ? `, ${source}` : ''}`} disabled={saving || busy} />}>
       {data?.icon ? <NavigationChatIcon icon={data.icon} /> : <Cpu size={14} strokeWidth={1} />}
-      <span className="model-picker-body"><span className="model-picker-row"><span className="model-picker-label">{label}</span>{hasEffort && <span className="model-picker-effort">{effortLabel(effort.requested === 'auto' ? 'auto' : effort.applied)}</span>}</span>{data?.model && <span className="model-picker-tech">{modelAccount(data.model)}</span>}</span><ChevronDown size={14} strokeWidth={1} className="model-picker-chevron" />
+      <span className="model-picker-body"><span className="model-picker-row"><span className="model-picker-label">{label}</span>{hasEffort && <span className="model-picker-effort">{effortLabel(effort.requested === 'auto' ? 'auto' : effort.applied)}</span>}</span>{source && <span className="model-picker-tech" aria-hidden="true">{source}</span>}</span><ChevronDown size={14} strokeWidth={1} className="model-picker-chevron" />
     </Popover.Trigger>
     <Popover.Portal><Popover.Positioner side="top" align="end" sideOffset={8} collisionPadding={12} className="floating-positioner">
       <Popover.Popup ref={popup} className="model-picker-menu" aria-label="Model and effort" aria-busy={saving || loading} onKeyDown={keyboard}>
@@ -109,12 +116,12 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
             <button type="button" role="menuitem" className="model-picker-cell" disabled={!data || saving} onClick={() => setPage('models')}><span>Model</span><span className="model-picker-cell-value">{label}</span><ChevronRight size={14} strokeWidth={1} /></button>
             {hasEffort && <button type="button" role="menuitem" className="model-picker-cell" disabled={saving} onClick={() => setPage('effort')}><span>Effort</span><span className="model-picker-cell-value">{effortLabel(effort.requested)}</span><ChevronRight size={14} strokeWidth={1} /></button>}
           </div>}
-          {page === 'models' && <>{(data?.models.length ?? 0) > 4 && <input className="model-picker-search" aria-label="Search models" placeholder="Search models" value={query} onChange={event => setQuery(event.target.value)} />}
+          {page === 'models' && <>{choices.length > 4 && <input className="model-picker-search" aria-label="Search models" placeholder="Search models" value={query} onChange={event => setQuery(event.target.value)} />}
             <div role="menu" aria-label="Model" className="model-picker-scroll">{[...groups].map(([key, { label: groupName, options }]) => <section role="group" aria-label={groupName} key={key}>
-              <div className="model-picker-group">{groupName}</div>{options.map(option => <button type="button" key={option.model} role="menuitemradio" aria-checked={option.model === data?.model} className="model-picker-option" aria-label={option.label} aria-description={modelSourceLabel(option.model) || undefined} title={option.disabled ? `${option.model} — недоступна по политике провайдера` : option.model} disabled={option.disabled || saving || running || busy} onClick={() => void choose('model', option.model)}>
+              <div className="model-picker-group">{groupName}</div>{options.map(option => <button type="button" key={option.model} role="menuitemradio" aria-checked={option.model === data?.model} className="model-picker-option" aria-label={option.label} aria-description={modelSourceLabel(option.model) || undefined} title={option.model} disabled={saving || running || busy} onClick={() => void choose('model', option.model)}>
                 <NavigationChatIcon icon={option.icon} /><span className="model-picker-option-text"><span>{option.label}</span>{modelSourceLabel(option.model) && <span className="model-picker-option-source" aria-hidden="true">{modelSourceLabel(option.model)}</span>}</span><span className="model-picker-check">{option.model === data?.model && <Check size={16} strokeWidth={1} />}</span>
               </button>)}
-            </section>)}{(data?.groups ?? []).filter(group => group.unavailable && !groups.has(group.connectionId)).map(group => <section role="group" aria-label={group.accountName} key={group.connectionId}><div className="model-picker-group">{group.accountName}</div><p className="model-picker-note" title={group.error}>Недоступно: список моделей не загрузился{group.error ? ` (${group.error})` : ''}</p></section>)}{!groups.size && !(data?.groups ?? []).some(group => group.unavailable) && <p className="model-picker-note">Модели не найдены</p>}</div></>}
+            </section>)}{notices.map(group => { const heading = connectionGroupLabel(group.provider, group.accountName); return <section role="group" aria-label={heading} key={group.connectionId}><div className="model-picker-group">{heading}</div><p className="model-picker-note" title={group.error}>Недоступно: список моделей не загрузился{group.error ? ` (${group.error})` : ''}</p></section>; })}{!groups.size && !notices.length && <p className="model-picker-note">Модели не найдены</p>}</div></>}
           {page === 'effort' && <div role="menu" aria-label="Effort">{[...new Set(['auto', ...(effort?.supported ?? [])])].map(value => <button type="button" role="menuitemradio" key={value} aria-checked={value === effort?.requested} className="model-picker-option" disabled={saving || running || busy} onClick={() => void choose('effort', value)}><span>{effortLabel(value)}</span><span className="model-picker-check">{value === effort?.requested && <Check size={16} strokeWidth={1} />}</span></button>)}</div>}
         </>}
         {running && <p className="model-picker-note">Смена доступна после завершения ответа.</p>}

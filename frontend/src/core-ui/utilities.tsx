@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Panel, Stack, requestJson, type ExtensionViewProps, type UiExtension } from '@mauzcode/ui';
+import { modelGroup, modelGroupKey, selectableModels, type ModelGroup } from '../lib/models';
 
-type CatalogueOption = { model: string; label: string; groupLabel?: string; connectionId?: string; disabled: boolean };
-type Catalogue = { defaultModel: string; models: CatalogueOption[] };
+type CatalogueOption = { provider: string; model: string; label: string; groupLabel?: string; connectionId?: string; disabled: boolean };
+type Catalogue = { defaultModel: string; models: CatalogueOption[]; groups?: ModelGroup[] };
 // Enabled models of the stored model connections; reading the catalogue never asks a model for text.
+// Disabled models and models of disabled connections are removed before grouping, exactly like the chat picker.
 function useEnabledModels() {
   const [state, setState] = useState<{ models: CatalogueOption[]; defaultModel: string; error: string; loading: boolean }>({ models: [], defaultModel: '', error: '', loading: true });
   useEffect(() => {
     const controller = new AbortController();
     requestJson<Catalogue>('/ui-lab-api/new-session', { signal: controller.signal })
-      .then(data => { const models = data.models.filter(option => !option.disabled); setState({ models, defaultModel: models.some(m => m.model === data.defaultModel) ? data.defaultModel : models[0]?.model ?? '', error: '', loading: false }); })
+      .then(data => { const models = selectableModels(data); setState({ models, defaultModel: models.some(m => m.model === data.defaultModel) ? data.defaultModel : models[0]?.model ?? '', error: '', loading: false }); })
       .catch(cause => { if (!controller.signal.aborted) setState({ models: [], defaultModel: '', error: cause instanceof Error ? cause.message : String(cause), loading: false }); });
     return () => controller.abort();
   }, []);
@@ -21,7 +23,7 @@ function Autotext({ context }: ExtensionViewProps) {
   const [preview, setPreview] = useState<{ text: string; start: number; end: number } | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const model = catalogue.models.some(option => option.model === chosen) ? chosen : catalogue.defaultModel;
   const groups = new Map<string, { label: string; options: CatalogueOption[] }>();
-  for (const option of catalogue.models) { const key = option.connectionId ?? option.groupLabel ?? ''; const group = groups.get(key) ?? { label: option.groupLabel ?? key, options: [] }; group.options.push(option); groups.set(key, group); }
+  for (const option of catalogue.models) { const key = modelGroupKey(option); const group = groups.get(key) ?? { label: modelGroup(option), options: [] }; group.options.push(option); groups.set(key, group); }
   const editor = useRef<HTMLTextAreaElement>(null), pending = useRef<AbortController | null>(null);
   function cancel() { pending.current?.abort(); pending.current = null; setBusy(false); setPreview(null); }
   async function suggest() {

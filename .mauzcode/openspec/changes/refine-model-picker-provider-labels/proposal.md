@@ -10,7 +10,6 @@ Disabled models clutter model selection even though they cannot be chosen. Accou
 - Label connection groups with both provider and connection/account name, preserving connection identity and SSH context.
 - Show the selected model's provider alongside its human-readable name in the chat model control.
 - Keep disabled entries visible and manageable in Models settings, and retain server-side availability enforcement.
-- Specification only for this change preparation; no implementation is requested now.
 
 ## Capabilities
 

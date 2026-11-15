@@ -8,7 +8,7 @@ See proposal.md for motivation. `frontend/src/lib/models.ts` already exposes pro
 
 **Goals:** Apply one consistent presentation policy to shared picker consumers while preserving route identity, current selection and server enforcement.
 
-**Non-Goals:** No new provider registry, database changes, routing changes, automatic replacement of existing chat models, or changes to settings management. This preparation produces documents only.
+**Non-Goals:** No new provider registry, database changes, routing changes, automatic replacement of existing chat models, or changes to settings management.
 
 ## Decisions
 
@@ -27,4 +27,4 @@ See proposal.md for motivation. `frontend/src/lib/models.ts` already exposes pro
 
 ## Migration Plan
 
-No data migration or API break is expected. In a later implementation, update shared helpers and consumers, add regression coverage and run relevant frontend checks. Rollback is a UI code revert; stored model routes and availability policy remain intact.
+No data migration or API break is expected. Shared helpers (`selectableModels`, `unavailableGroups`, `modelSourceParts`, `modelGroup`, `modelSourceLabel`, `connectionGroupLabel` in `frontend/src/lib/models.ts`) and their consumers (`ModelPicker`, the utilities extension, the draft catalogue) carry the policy, with regression coverage in `model-group.test.ts` and `model-picker.test.tsx`. Rollback is a UI code revert; stored model routes and availability policy remain intact.

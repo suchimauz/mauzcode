@@ -16,7 +16,7 @@ export async function getDraftModelSettings(model: string, effort: string, signa
   // Fetch the catalogue independently: a removed remembered model must not trap the draft in HTTP 400.
   type Config = Omit<ModelSettings, 'agentId'> & { defaultModel: string };
   const catalogue = await requestJson<Config>('/ui-lab-api/new-session', { signal });
-  const available = catalogue.models.filter(option => !option.disabled);
+  const available = selectableModels(catalogue);
   // Legacy aliases of a remembered or requested route still select the canonical catalogue entry.
   const same = (value: string) => (option: ModelOption) => !!value && (option.model === value || parseModelRoute(option.model).route === parseModelRoute(value).route);
   const selected = available.find(same(model))?.model
@@ -44,19 +44,36 @@ export const parseModelRoute = (value: string): ModelRoute => {
   const provider = m ? m[1] : 'lmstudio'; const account = m?.[2] ?? 'default'; const model = m ? m[3] : rest;
   return { host, provider, account, model, route: `${host ? `ssh/${host}:` : ''}${provider}/${account}:${model}` };
 };
-// Display label of a model's group: the connection account name (never the provider).
-export const modelGroup = (option: Pick<ModelOption, 'provider' | 'model' | 'groupLabel'>) => {
-  if (option.groupLabel) return option.groupLabel;
-  const route = parseModelRoute(option.model);
-  return route.host ? `${route.host} · ${route.account}` : route.account;
+// Provider-qualified parts of a route in display order: SSH host, provider, account. An explicit connection account
+// label wins over the account parsed from the route; an empty route has no parts at all.
+export const modelSourceParts = (value: string, accountLabel?: string): string[] => {
+  if (!value) return [];
+  const { host, provider } = parseModelRoute(value);
+  const ssh = /^ssh\/[^:]+:(.+)$/.exec(value);
+  const account = accountLabel?.trim() || /^[a-z][\w-]*\/([^/:]+):/.exec(ssh ? ssh[1] : value)?.[1];
+  return [host, provider, account].filter((part): part is string => !!part);
 };
+// Group heading of a model: route provider plus its connection account, keeping the SSH host when present.
+// An account alone is never the heading, so equal account names of different providers stay distinguishable.
+export const modelGroup = (option: Pick<ModelOption, 'provider' | 'model' | 'groupLabel'>) => modelSourceParts(option.model, option.groupLabel).join(' · ');
 // Stable group identity: the connection id; provider/account route prefix for options without one.
 export const modelGroupKey = (option: Pick<ModelOption, 'provider' | 'model' | 'connectionId'>) => {
   if (option.connectionId) return option.connectionId;
   const route = parseModelRoute(option.model);
   return `${route.host ?? ''}|${route.provider}/${route.account}`;
 };
-// Account name alone, for compact captions under the current model.
+// Account name alone, for compact captions in navigation rows.
 export const modelAccount = (model: string) => parseModelRoute(model).account;
-// Provider and account line under a model name; the SSH host is already shown by the group.
-export const modelSourceLabel = (model: string) => { const { provider, account } = parseModelRoute(model); return `${provider} · ${account}`; };
+// Provider-qualified caption of a route (host · provider · account); the provider comes from the route, never from the model name.
+export const modelSourceLabel = (model: string) => modelSourceParts(model).join(' · ');
+// Same heading shape for a connection reported without a route, such as an unavailable catalogue.
+export const connectionGroupLabel = (provider: string, accountName: string) =>
+  [provider, accountName].filter(Boolean).join(' · ');
+// Selectable models of a catalogue: disabled models and models of disabled connections are hidden, not merely marked.
+// Generic over the option shape so every projection (chat picker, draft catalogue, extensions) shares one policy.
+export const selectableModels = <T extends { disabled: boolean; connectionId?: string }>(settings: { models: T[]; groups?: ModelGroup[] }) => {
+  const off = new Set((settings.groups ?? []).filter(group => !group.enabled).map(group => group.connectionId));
+  return settings.models.filter(option => !option.disabled && !(option.connectionId && off.has(option.connectionId)));
+};
+// Enabled connections whose catalogue failed to load; a disabled connection is not a notice in a picker.
+export const unavailableGroups = (settings: { groups?: ModelGroup[] }) => (settings.groups ?? []).filter(group => group.enabled && group.unavailable);

@@ -18,7 +18,7 @@ test('opening the page reads only the connection catalogue and never requests a 
  await waitFor(()=>expect(select.value).toBe('codex/me:gpt-5'));
  expect(fetcher.mock.calls.map(([url])=>String(url))).toEqual(['/ui-lab-api/new-session']);
  expect(within(select).queryByText('Off model')).toBeNull();
- expect([...select.querySelectorAll('optgroup')].map(g=>g.label)).toEqual(['team','me']);
+ expect([...select.querySelectorAll('optgroup')].map(g=>g.label)).toEqual(['claude · team','codex · me']);
  expect(within(select).queryByText(/codex:gpt-6-luna|groq:|openrouter:/)).toBeNull();
 });
 test('suggestion sends the selected enabled connection route',async()=>{

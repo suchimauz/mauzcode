@@ -27,7 +27,7 @@
 .model-picker-search::placeholder { color:var(--text-tertiary); }
 .model-picker-search:focus-visible { border-bottom-color:var(--accent); }
 .model-picker-scroll { overflow-y:auto; min-height:0; overscroll-behavior:contain; scrollbar-width:thin; }
-.model-picker-group { position:sticky; top:0; z-index:1; border-radius:8px; background:var(--surface-raised); padding:4px 7px 2px; color:var(--text-tertiary); font-size:11px; line-height:16px; font-weight:500; }
+.model-picker-group { position:sticky; top:0; z-index:1; border-radius:8px; background:var(--surface-raised); padding:4px 7px 2px; color:var(--text-tertiary); font-size:11px; line-height:16px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .model-picker-scroll section + section { margin-top:3px; }
 .model-picker-note,.model-picker-error { margin:0; padding:7px 8px; color:var(--text-tertiary); font-size:12px; line-height:18px; }
 .model-picker-error { color:var(--danger,var(--text)); overflow-wrap:anywhere; }
