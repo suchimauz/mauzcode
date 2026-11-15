@@ -23,12 +23,17 @@ When an agent turn ends with tool calls and the stream returned non-empty reason
 ## ADDED Requirements
 
 ### Requirement: Exact context measurement
-When no fresh provider-reported prompt usage exists for the agent's next request and its connection offers exact token counting, context measurement for compaction thresholds and context indicators SHALL use the provider count instead of the local estimate. A failed or unavailable count SHALL fall back to the calibrated local estimate without failing the turn, and the count SHALL be cached for the unchanged transcript.
+When no fresh provider-reported prompt usage exists for the agent's next request and its connection offers exact token counting, context measurement for compaction thresholds and context indicators SHALL use the provider count instead of the local estimate. A failed or unavailable count SHALL fall back to the calibrated local estimate without failing the turn, and the count SHALL be cached only while the transcript, connection, model, instructions and tools are unchanged.
 
 #### Scenario: Measurement after compaction
 - **GIVEN** an agent whose connection offers exact counting and whose last provider usage predates the active compaction checkpoint
 - **WHEN** the context is measured
 - **THEN** the provider token count is used and reported as provider-sourced
+
+#### Scenario: Changed tools invalidate the cached count
+- **GIVEN** a cached provider count for the current transcript
+- **WHEN** the instructions or the tool set change without new messages
+- **THEN** the context is counted again instead of reusing the cached count
 
 #### Scenario: Counting unavailable
 - **WHEN** the count request fails

@@ -154,12 +154,7 @@ The connection test SHALL make one authenticated request to the quota endpoint t
 - **THEN** the test reports an authentication failure stating that an M Plan key is required
 
 ### Requirement: MiniMax failure classification
-Inference failures SHALL be classified from the MiniMax error code when the error body carries one: 2056 and 2067 as `QUOTA_EXHAUSTED`; 1002, 1039, 1041, 1045, 2045–2047 and 2062 as throttled and retryable; 2061 and 2068 as `UNSUPPORTED`; 1004 and 2057 as `AUTH`. Without a recognized code the status-based classification SHALL apply. A quota failure SHALL carry the reset time of the exhausted window when cached usage reports it.
-
-#### Scenario: Usage limit reached
-- **GIVEN** cached usage shows the five-hour window at 100% resetting at 15:00
-- **WHEN** a turn fails with MiniMax code 2056
-- **THEN** the failure is `QUOTA_EXHAUSTED` with reset time 15:00 and the agent is parked until then
+Inference failures SHALL be classified from the MiniMax error code when the error body carries one: 2056 and 2067 as `QUOTA_EXHAUSTED`; 1002, 1039, 1041, 1045, 2045–2047 and 2062 as throttled and retryable; 2061 and 2068 as `UNSUPPORTED`; 1004 and 2057 as `AUTH`. Without a recognized code the status-based classification SHALL apply.
 
 #### Scenario: Rate limit is not quota
 - **WHEN** a turn fails with HTTP 429 and MiniMax code 1002
@@ -168,6 +163,19 @@ Inference failures SHALL be classified from the MiniMax error code when the erro
 #### Scenario: Model outside the plan
 - **WHEN** a turn on `MiniMax-M3` fails with MiniMax code 2068
 - **THEN** the failure is `UNSUPPORTED` and is not retried
+
+### Requirement: MiniMax quota reset time
+A quota failure SHALL carry the reset time of the exhausted window when cached usage reports a window at 100% with a reset time in the future; otherwise it SHALL carry no reset time.
+
+#### Scenario: Usage limit reached
+- **GIVEN** cached usage shows the five-hour window at 100% resetting at 15:00
+- **WHEN** a turn fails with MiniMax code 2056
+- **THEN** the failure is `QUOTA_EXHAUSTED` with reset time 15:00 and the agent is parked until then
+
+#### Scenario: Stale cached usage
+- **GIVEN** cached usage shows no window at 100%, or only a reset time in the past
+- **WHEN** a turn fails with MiniMax code 2056
+- **THEN** the failure is `QUOTA_EXHAUSTED` without a reset time
 
 ### Requirement: MiniMax token counting
 The provider SHALL offer exact input token counting through `POST https://api.minimax.io/anthropic/v1/messages/count_tokens` with the same converted messages, instructions and tools as inference, returning the reported input tokens without generating output.

@@ -42,7 +42,7 @@ A model connection SHALL be uniquely identified by its provider and account name
 - **THEN** the agent's model and the stored last used model become `codex/main:gpt-6-astra`, and `models.localizationModel` is updated the same way
 
 ### Requirement: Route resolution
-Resolving a route SHALL return the matching connection id, provider, account name, model id, the provider's inference descriptors (system preamble, price vendor) and whether the provider supports native compaction, plus context window and output limit when the model catalogue, an owner override or a public model catalogue reports them, with the effective context limit and its source. Resolution MUST read current stored state and cached or bundled catalogue data, and MUST NOT send any provider request or wait for the network.
+Resolving a route SHALL return the connection id, provider, account name, model id, the provider's inference descriptors (system preamble, price vendor) and native compaction support, plus context window and output limit when the model catalogue, an owner override or a public catalogue reports them, with the effective context limit and its source. Resolution MUST use only stored state and cached or bundled catalogue data, never a provider request or the network.
 
 #### Scenario: Resolve an enabled model
 - **GIVEN** an enabled `codex` connection `su4imauz`

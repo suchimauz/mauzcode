@@ -29,6 +29,7 @@ Live check with an M Plan key (2026-11-16):
 - Messages: wrong key → HTTP 401 `authentication_error`; Flash with `thinking: disabled` → 400 code 2013; M3 without `thinking` does not think, with `adaptive` it does; `service_tier: "priority"` on M3 is echoed in `usage.service_tier`; `cache_control` is accepted and ignored; caching is automatic (`cache_read_input_tokens` > 0).
 - Stream: `thinking_delta` then one `signature_delta`, then text; a too small `max_tokens` (20) ends with `stop_reason: "max_tokens"` and only a thinking block.
 - `count_tokens` works (`{"input_tokens": N}`).
+- No `max_tokens` (2026-11-17): M3 and M3.1-Flash answer HTTP 200 with `stop_reason: "end_turn"`, both non-streaming and streaming (`message_stop` arrives), so `serverMaxTokens` is safe.
 - Replay: full signed blocks are counted as input; dropped, corrupted or unsigned blocks and blocks from another model are accepted silently (corrupted ones apparently discarded). The origin check stays as a safety rule, not as an upstream requirement.
 
 ## Goals / Non-Goals
@@ -53,7 +54,7 @@ Live check with an M Plan key (2026-11-16):
    - M3: `supported [off, high]`, `default off`, `adaptive: true`, `effort: false`. `high` is the "thinking on" level.
    - The SDK's nearest-level rule (lower-or-equal first, else the lowest higher) maps `off` on Flash to `low`, and `low`/`medium` on M3 to `off`, `xhigh` on M3 to `high`; documented in the model help.
 7. **SDK features used.** Adaptive/effort flags, anthropic body fields, `serverMaxTokens`, signed-block capture/storage/replay with origin check, `classifyFailure`, `countTokens` — all specified and implemented in `extend-models-sdk-for-anthropic-routes`. This change only declares and uses them.
-8. **Failure classification.** `provider/minimaxCoding/failure` (the SDK `classifyFailure`) reads `base_resp.status_code` or `error.type`/code; for 2056/2067 it takes `resetAt` from the cached usage of the connection (five-hour window if at 100%, else weekly), no extra request. Messages are fixed strings per code.
+8. **Failure classification.** `provider/minimaxCoding/failure` (the SDK `classifyFailure`) reads `base_resp.status_code` or `error.type`/code; for 2056/2067 it takes `resetAt` from the cached usage of the connection, no extra request: the window reported at 100% (five-hour first, then weekly) whose reset time is still in the future. If no cached window is at 100% or its reset time has passed, the cache is stale and `resetAt` is omitted; the failure stays `QUOTA_EXHAUSTED` and the core's default backoff applies. Messages are fixed strings per code.
 9. **Token counting.** `provider/minimaxCoding/countTokens` (the SDK `countTokens`) builds the same body as inference (via the anthropic conversion helpers) and POSTing `/v1/messages/count_tokens` with a 10 s timeout.
 10. **Images and cache.** `toAnthropicMessages` already emits image blocks and adds `cache_control` only when `cacheableMessageCount` is passed; `anthropic/stream` does not pass it, so nothing changes — covered by tests. Pricing uses `cache_read_tokens` from usage with the `minimax` catalogue.
 11. **Usage tier.** The remains response has no tier field (checked with a live key and in the official `mmx-cli` 1.0.29, which also shows no tier), so `plan` is always `M Plan`. From `mmx-cli`: an entry with both statuses 3 and zero totals means "not in plan".
@@ -61,7 +62,7 @@ Live check with an M Plan key (2026-11-16):
 ## Risks / Trade-offs
 
 - [Quota endpoint undocumented] → strict parsing; unrecognized → unavailable, never zero; fixtures.
-- [Stored signed blocks grow transcripts] → only tool-call turns; size bounded like `reasoning_content` (100 000 chars total), oversize blocks are not stored (replay then simply omits them).
+- [Stored signed blocks grow transcripts] → only tool-call turns; size cap owned by `extend-models-sdk-for-anthropic-routes` (200 000 serialized characters), oversize blocks are not stored (replay then simply omits them).
 - [Signature replay to a different model fails upstream] → origin check per connection and model.
 - [Classifier reads failed bodies] → bounded read, JSON only, never copied into messages.
 - [count_tokens adds a request] → only when usage is stale, cached, 10 s timeout, never blocks the turn.

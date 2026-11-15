@@ -13,8 +13,8 @@
 - [ ] 1.5 `provider/minimaxCoding/listModels`: all valid ids, `display_name`, catalogue order, reasoning per family, safe errors
 - [ ] 1.6 `provider/minimaxCoding/usage`: `general` entry, two windows, plan `M Plan`, unavailable on unrecognized
 - [ ] 1.7 `provider/minimaxCoding/test`: quota endpoint, auth for 401/403/1004/2057
-- [ ] 1.8 `provider/minimaxCoding/failure`: code table, `resetAt` from cached usage
-- [ ] 1.9 `provider/minimaxCoding/countTokens`: `/v1/messages/count_tokens`, 10 s timeout
+- [ ] 1.8 `provider/minimaxCoding/failure`: code table, `resetAt` only from a cached window at 100% with a future reset
+- [ ] 1.9 (optional for the first release; the local estimate works without it) `provider/minimaxCoding/countTokens`: `/v1/messages/count_tokens`, 10 s timeout
 - [ ] 1.10 Safe-message redaction everywhere; check logo, model mark, display names, tokenizer and SSH policy for `minimax-coding`
 
 ## 2. Tests
@@ -22,7 +22,7 @@
 - [ ] 2.1 Provider fixtures (port legacy models/usage tests): headers, missing key, discovery (duplicates, invalid ids, unknown family, HTTP error), usage (`general`, windows, `M Plan`, unrecognized, out-of-range), test (200, 401, 200+1004, 2057), redaction
 - [ ] 2.2 Wire: Flash auto/xhigh/off→low, M3 on/off without effort, M2/unknown without controls, tier except Flash, no `max_tokens`/`temperature`, `ignored` in `models.call`, images, no `cache_control`, cache-read usage, final `message_delta`
 - [ ] 2.3 Replay end to end on MiniMax: Flash tool loop sends the signed block back; switch to M3 sends none
-- [ ] 2.4 Failures: 2056 → quota with resetAt, 1002/429 → throttled, 2068 → unsupported, unknown body → status rules, no body text in messages
+- [ ] 2.4 Failures: 2056 → quota with resetAt, 2056 with stale usage → quota without resetAt, 1002/429 → throttled, 2068 → unsupported, unknown body → status rules, no body text in messages
 - [ ] 2.5 Counting: MiniMax count request body matches inference, timeout returns null
 - [ ] 2.6 Run `architecture`, `selfContained`, `providers`, `protocolRoute`, `protocolStream`, `zaiCoding`, `claudeProtocol` and agent run tests
 

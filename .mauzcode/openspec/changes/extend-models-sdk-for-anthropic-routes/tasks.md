@@ -1,5 +1,7 @@
 # Tasks
 
+Deliver sections 1, 2 and 3 as separate steps, each with its part of section 4 (see design, decision 9).
+
 ## 1. Reasoning flags and Anthropic request
 
 - [ ] 1.1 Add optional `adaptive` and `effort` to `types.models.ReasoningCapabilities`, `ModelInfo.reasoning` and `ReasoningResolution`; validate and propagate them in `models/inference/resolveReasoning`
@@ -17,11 +19,11 @@
 
 - [ ] 3.1 `ProviderDefinition.classifyFailure`; bounded failed-body parse in `protocol/common/streamFetch` with status fallback, wired through `streamRoute`
 - [ ] 3.2 `ProviderDefinition.countTokens` and public `models.countTokens` returning `number | null`
-- [ ] 3.3 `agent/contextTokens`: use `models.countTokens` when provider usage is stale, cache, fall back to the estimate
+- [ ] 3.3 `agent/contextTokens`: use `models.countTokens` when provider usage is stale, cache keyed by transcript index, connection, model and an instructions+tools hash, fall back to the estimate
 
 ## 4. Tests
 
-- [ ] 4.1 Fixture route provider covering every spec scenario: flags, body merge and reserved keys, `serverMaxTokens`, capture/store/replay/origin mismatch, other protocols ignoring blocks, classifier hit/miss/throw, counting hit/null/no provider
+- [ ] 4.1 Fixture route provider covering every spec scenario: count cache invalidation on changed tools, flags, body merge and reserved keys, `serverMaxTokens`, capture/store/replay/origin mismatch, other protocols ignoring blocks, classifier hit/miss/throw, counting hit/null/no provider
 - [ ] 4.2 Regression: `zaiCoding`, `providers`, `protocolRoute`, `protocolStream`, `claudeProtocol`, agent run, `architecture`, `selfContained`; update `public-contract` baseline
 
 ## 5. Validation

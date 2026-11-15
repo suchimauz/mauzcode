@@ -228,7 +228,7 @@ The models stream and one-shot call SHALL accept tools in one provider-neutral f
 - **THEN** OpenAI-shaped wire tools are sent with `strict: false`
 
 ### Requirement: Protocol-route providers
-A provider definition MAY declare a protocol route instead of a streaming operation, returning a shared protocol id, base URL and headers for a connection, model, cached model metadata and session id. The route MAY also return provider body fields and a reasoning-replay flag. Registration MUST reject a definition declaring both. The core SHALL run all existing inference checks first, then stream through that shared protocol on the connection's transport, merging headers as: JSON accept, protocol headers, provider headers.
+A provider definition MAY declare a protocol route instead of a streaming operation. For a connection, model, cached model metadata and session id it returns a shared protocol id, base URL and headers, and optionally body fields and a reasoning-replay flag. Declaring both MUST fail registration. After all inference checks the core SHALL stream through that protocol on the connection's transport, merging headers: JSON accept, protocol headers, provider headers.
 
 #### Scenario: Provider streams through a route
 - **WHEN** a stream request targets an enabled model of a provider declaring a protocol route that returns `anthropic`
