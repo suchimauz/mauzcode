@@ -58,11 +58,14 @@ The system SHALL NOT provide prompt presets for session creation. The new-sessio
 - **THEN** the server answers HTTP 400 and creates no session
 
 ### Requirement: New-session bridge accepts only UI fields
-The new-session submit endpoint SHALL accept only `requestKey`, `projectId`, `model`, `effort`, `mascot`, `presetId`, `text`, `title` and attached files. A request containing `workspaceDir`, `createWorkspaceDir` or `systemPrompt` MUST be rejected with HTTP 400 and MUST NOT create a session. A request whose `presetId` names no existing agent preset MUST be rejected with HTTP 400 and MUST NOT create a session. A request without `presetId` SHALL use the default preset. The public agent API keeps these fields.
+The new-session submit endpoint SHALL accept only `requestKey`, `projectId`, `model`, `effort`, `mascot`, `presetId`, `text`, `title` and attached files. A request containing `workspaceDir`, `createWorkspaceDir` or `systemPrompt` MUST be rejected with HTTP 400 and MUST NOT create a session. The public agent API keeps these fields.
 
 #### Scenario: Submit with a custom directory
 - **WHEN** a client posts a new-session request that includes `workspaceDir`
 - **THEN** the server answers HTTP 400 and creates no session
+
+### Requirement: New-session agent preset selection
+A new-session request whose `presetId` names no existing agent preset MUST be rejected with HTTP 400 and MUST NOT create a session. A request without `presetId` SHALL use the default preset.
 
 #### Scenario: Submit with an unknown preset
 - **WHEN** a client posts a new-session request with `presetId: "nope"`
