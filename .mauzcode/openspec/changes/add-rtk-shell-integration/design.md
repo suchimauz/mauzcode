@@ -90,6 +90,14 @@ Render a settings section with the local-bash toggle, Check RTK button, availabi
 
 If live updates are used, declare the topic, supply resync/onError and clean up subscriptions. Polling or fetching must also abort on unmount. Do not add dependency installation, savings charts or configuration editors.
 
+## Implementation Notes (block 3)
+
+- Seam: `tools.bash` calls the optional `rtk.prepare` (absent/unloaded plugin or `rtk:false` → unchanged behavior; an exception inside it → original once with a notice). Remote branch is untouched.
+- `rtk` is resolved on the call's effective PATH; a different or missing executable skips RTK for that call (notice) instead of switching binaries or disabling.
+- Revalidation after restart uses the remaining caller budget; a probe timeout caused only by a shortened budget returns `expired` and does not disable RTK.
+- Disable or plugin reload during the rewrite yields outcome `stale`: the original runs once, the replacement is not used. A user stop observed before launch starts nothing.
+- Safe details (`outcome`, `original`, `executed`, `code`, `notice`, `diagnostic`, secrets masked) travel as `details.rtk` through `tools.call` into the tool-call event and are shown in the bash tool details; no raw RTK output is stored.
+
 ## Risks / Trade-offs
 
 - Per-call preflight adds latency → short bounded subprocesses; no full test/build or user-command execution in probes.

@@ -87,6 +87,14 @@ describe('tools.call handler invocation accounting', () => {
         s.ctx.fns.sample.handler = () => ({ output: 'a\u0000b', content, terminal });
         expect(await s.invoke()).toEqual({ output: 'a\uFFFDb', content, terminal, isError: false, handlerExecuted: true });
     });
+    test('tool-owned details pass through once, without changing the model output', async () => {
+        const s = setup();
+        const details = { rtk: { outcome: 'rewritten', original: 'git log', executed: 'rtk git log' } };
+        s.ctx.fns.sample.handler = () => ({ output: 'log', isError: false, details });
+        expect(await s.invoke()).toEqual({ output: 'log', details, isError: false, handlerExecuted: true });
+        s.ctx.fns.sample.handler = () => ({ output: 'x', details: ['not', 'an', 'object'] });
+        expect(await s.invoke()).toEqual({ output: 'x', isError: false, handlerExecuted: true });
+    });
     test('error envelope still counts as executed', async () => {
         const s = setup();
         s.ctx.fns.sample.handler = () => ({ output: 'rejected by handler', isError: true });

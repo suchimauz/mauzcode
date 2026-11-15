@@ -23,6 +23,22 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
             args: args.text, argsTruncated: args.truncated,
             result: result.text, resultTruncated: result.truncated,
             isError: event.isError === true,
+            ...(rtkDetails(event.details) ? { rtk: rtkDetails(event.details) } : {}),
         },
     });
+}
+
+/** Bash RTK preparation record (already secret-masked at the source), bounded for the details sheet. */
+function rtkDetails(details: any): { outcome: string; original: string; executed: string | null; code: number | null; notice: string | null; diagnostic: string | null } | null {
+    const r = details?.rtk;
+    if (!r || typeof r !== "object") return null;
+    const str = (v: unknown, max: number) => typeof v === "string" ? v.slice(0, max) : null;
+    return {
+        outcome: str(r.outcome, 40) ?? "unknown",
+        original: str(r.original, 40_000) ?? "",
+        executed: str(r.executed, 40_000),
+        code: Number.isInteger(r.code) ? r.code : null,
+        notice: str(r.notice, 1000),
+        diagnostic: str(r.diagnostic, 1000),
+    };
 }

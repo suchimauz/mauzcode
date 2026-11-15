@@ -17,12 +17,12 @@ Implementation is not authorized by creation of this change. All tasks below rem
 
 ## 3. Local bash integration
 
-- [ ] 3.1 Inspect tools.bash callers and add the optional preparation seam plus rtk:false schema/docs; verify disabled/absent/unloaded, bypass, explicit host:local and remote workspace/SSH paths without unintended RTK calls.
-- [ ] 3.2 Implement effective cwd/env/PATH preparation and one-argument rewrite invocation with bounded output and a shared timeout deadline; verify quotes, chains, redirects, substitutions, custom PATH, secrets and timeout-before-launch cases.
-- [ ] 3.3 Implement explicit 0/1/2/3 and invalid-response transitions, technical auto-disable/fallback and host-owned authorization semantics; verify each outcome with fake executables and invocation counters proving one execution or zero on denial/deadline.
-- [ ] 3.4 Connect prepared execution to the existing runner without post-start retries; verify nonzero command results, runtime RTK crashes, timeouts, stdout/stderr formatting, caps and streaming remain correct.
-- [ ] 3.5 Add safe original/executed command and preparation outcome details to existing tool-run observability; verify secret redaction for diagnostics, metadata and new streaming paths, without additional raw-output retention or duplicate tool calls.
-- [ ] 3.6 Document code-3 host authority, code-2 denial, technical fallback, prospective bypass and no automatic replay in tool/plugin docs; verify examples do not claim Claude ask rules provide a separate MauzCode barrier.
+- [x] 3.1 Inspect tools.bash callers and add the optional preparation seam plus rtk:false schema/docs; verify disabled/absent/unloaded, bypass, explicit host:local and remote workspace/SSH paths without unintended RTK calls.
+- [x] 3.2 Implement effective cwd/env/PATH preparation and one-argument rewrite invocation with bounded output and a shared timeout deadline; verify quotes, chains, redirects, substitutions, custom PATH, secrets and timeout-before-launch cases.
+- [x] 3.3 Implement explicit 0/1/2/3 and invalid-response transitions, technical auto-disable/fallback and host-owned authorization semantics; verify each outcome with fake executables and invocation counters proving one execution or zero on denial/deadline.
+- [x] 3.4 Connect prepared execution to the existing runner without post-start retries; verify nonzero command results, runtime RTK crashes, timeouts, stdout/stderr formatting, caps and streaming remain correct.
+- [x] 3.5 Add safe original/executed command and preparation outcome details to existing tool-run observability; verify secret redaction for diagnostics, metadata and new streaming paths, without additional raw-output retention or duplicate tool calls.
+- [x] 3.6 Document code-3 host authority, code-2 denial, technical fallback, prospective bypass and no automatic replay in tool/plugin docs; verify examples do not claim Claude ask rules provide a separate MauzCode barrier.
 
 ## 4. RTK settings UI
 

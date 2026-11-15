@@ -36,6 +36,9 @@ parameters:
     timeout:
       type: integer
       description: "Seconds before the command is killed. No timeout by default."
+    rtk:
+      type: boolean
+      description: "Pass false to run this local command without automatic RTK output compression (only matters when the owner enabled RTK). Omit otherwise; true does not enable RTK."
   required: [command]
   additionalProperties: false
 ---
@@ -59,3 +62,15 @@ The model-visible command contains only `$TOKEN` and the secret reference. The r
 
 This prevents accidental transcript leakage, not malicious exfiltration: the invoked program can still read the environment and send it over the network. Do not use `set -x`, place secret values in command arguments, or print the environment.
 - The marker form takes no options — use the `bash` tool call for cwd / env / secrets / timeout.
+
+### Optional RTK compression (local calls only)
+
+When the official `rtk` plugin is loaded and the owner enabled it in Settings → Plugins, a local bash call (no `host`, or `host: "local"`, in a local workspace) is first passed to `rtk rewrite` as one argument — RTK never runs your command during this step. SSH hosts and remote workspaces are never touched.
+
+- Exit 0 or 3 with a replacement: the `rtk …` equivalent runs once, with compressed output. Exit 3 does not ask for an extra confirmation: the host's (MauzCode's) own approvals are the authority, and Claude Code `ask` rules in RTK/Claude settings are not a separate MauzCode barrier. Exit 0 is not an authorization grant either.
+- Exit 1: the original runs once.
+- Exit 2: denied by RTK rules — nothing runs and the result says so.
+- Technical failure before start (crash, signal, timeout, overflow, unknown or malformed response): RTK is disabled instance-wide with a reason, the original runs once and the result starts with a short `[rtk: disabled automatically …]` notice. Only the owner can re-enable it after a fresh check.
+- Preparation counts toward `timeout`; if the deadline passes first nothing runs.
+- Once a command started it is never retried or re-run, whatever happens to it. Tool details show the original and the executed command (secrets masked).
+- `rtk: false` skips RTK for that call only (prospective): use it when you need full, unfiltered output. A previous compressed result is never replayed automatically; re-running is your own decision. A command that itself calls `rtk` still runs as written.

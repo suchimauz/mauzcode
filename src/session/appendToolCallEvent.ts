@@ -12,7 +12,7 @@ export default async function (
         id: string;
 
         /** Payload used by the operation. */
-        payload: { name: string; args: any; result: string; isError: boolean; /** Measured tool execution wall time in milliseconds, excluding result rendering/storage. */ durationMs?: number; messageIdx?: number; result_ref?: types.agent.ResultRef | null };
+        payload: { name: string; args: any; result: string; isError: boolean; /** Safe tool-owned run metadata, e.g. bash's RTK original/executed command (secrets masked). */ details?: Record<string, unknown>; /** Measured tool execution wall time in milliseconds, excluding result rendering/storage. */ durationMs?: number; messageIdx?: number; result_ref?: types.agent.ResultRef | null };
 
         /** Ts used by the operation. */
         ts?: number;

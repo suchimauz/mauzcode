@@ -1,6 +1,6 @@
 # RTK
 
-Official plugin that owns the instance-wide state of the optional [RTK](https://github.com/rtk-ai/rtk) integration: owner intent (enabled/disabled), the latest availability check and a monotonic revision. RTK is **off by default**. Applying RTK to local bash tool calls is not implemented yet (planned by the `add-rtk-shell-integration` change); today this plugin only checks, enables and disables.
+Official plugin that owns the instance-wide state of the optional [RTK](https://github.com/rtk-ai/rtk) integration: owner intent (enabled/disabled), the latest availability check and a monotonic revision. RTK is **off by default**. When enabled, local bash tool calls are prepared with `rtk rewrite` (see below); SSH targets, remote workspaces, the Terminal plugin, other tools and internal subprocesses are never affected.
 
 ## State
 
@@ -24,6 +24,26 @@ Unavailable reasons (`code`): `missing` (not on PATH), `permission` (not executa
 - `rtk.enable({})` — fresh probe in the same operation; commits only if neither the revision nor the plugin lifecycle changed meanwhile.
 - `rtk.disable({ reason? })` — immediate and unconditional; invalidates in-flight checks/enables. A later healthy binary never re-enables RTK by itself.
 - HTTP: `GET /rtk/api` (owner only: state + CSRF token, never probes), `POST /rtk/api` `{ action: "check" | "enable" | "disable" }` (owner, same origin, `x-csrf-token`, JSON ≤ 1 KiB; enable returns 409 when unavailable).
+
+## Local bash preparation
+
+`tools.bash` calls `rtk.prepare` once per local call (no `host`, or `host: "local"`, in a local workspace) unless the call passes `rtk: false` or the plugin is absent/unloaded — then bash behaves exactly as without RTK.
+
+1. RTK disabled → nothing is consulted. Enabled but not yet verified in this process (restart, reload, change) → one `rtk.revalidate` probe; failure disables RTK.
+2. `rtk` is resolved on the call's **effective PATH** (`env`/secrets included) in its cwd. If that is not the checked executable, RTK is skipped for this call (original runs, notice in the result) — it never switches binaries silently.
+3. `rtk rewrite <command>` runs with the whole command as one argv argument, no shell, in the effective cwd/environment, within 5 s and 64 KiB and the remaining caller `timeout`. `RTK_REWRITE_HOST` is not set; no permission files are touched. RTK decides support for chains, quotes, redirects and substitutions itself.
+
+| `rtk rewrite` result | What runs | RTK state |
+| --- | --- | --- |
+| exit 0 or 3, nonempty single command | the replacement, once | unchanged |
+| exit 1, no output | the original, once | unchanged |
+| exit 2 (with or without message) | **nothing** — denial result | unchanged |
+| spawn error, signal, 5 s timeout, overflow, unknown code, empty/contradictory/malformed output | the original, once, with a `[rtk: disabled automatically …]` notice | **disabled**, reason recorded |
+| caller deadline exhausted | nothing — timeout result | unchanged |
+
+**Host-owned authority.** Exit 3 means RTK's Claude Code rules ask for approval or do not cover the command; MauzCode does not add a confirmation for it, and Claude Code `ask` rules are *not* an independent MauzCode barrier — MauzCode's own action-specific approvals still apply. Exit 0 is not an authorization grant either.
+
+After a command starts it is never retried, replayed or re-run (also not when it fails, times out or RTK crashes at runtime); a nonzero exit of the user command never disables RTK. The tool-call details record the outcome, original and executed command with resolved secrets masked; no extra raw output is stored. To get full output later, an agent makes a new, separately justified call with `rtk: false` — nothing is replayed automatically.
 
 ## Not done by this plugin
 

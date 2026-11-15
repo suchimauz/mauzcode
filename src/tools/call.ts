@@ -27,7 +27,7 @@ export default async function (
         /** Owning agent whose workspace and cancellation scope apply to this call. */
         agent?: types.agent.Agent;
     },
-): Promise<{ output: string; content?: types.tools.Content[]; isError: boolean; handlerExecuted: boolean; terminal?: { type: 'html'; html: string; text: string } }> {
+): Promise<{ output: string; content?: types.tools.Content[]; isError: boolean; handlerExecuted: boolean; terminal?: { type: 'html'; html: string; text: string }; details?: Record<string, unknown> }> {
     const name = String(opts.name ?? "").trim();
     const all = ctx.fns.tools.list({});
     const tool = all.find((t: any) => t.wireName === name || t.name === name || t.key === name);
@@ -100,6 +100,8 @@ export default async function (
     let output = "";
     let content: types.tools.Content[] | undefined;
     let terminal: { type: 'html'; html: string; text: string } | undefined;
+    // Safe, tool-owned run metadata (e.g. bash's RTK original/executed command) for the tool-call event only.
+    let details: Record<string, unknown> | undefined;
     let isError = false;
     let handlerExecuted = false;
     const attrs: Record<string, any> = { "tool.name": tool.wireName, "agent.id": opts.agent?.id };
@@ -131,6 +133,7 @@ export default async function (
             output = String(r.output ?? "");
             if (Array.isArray(r?.content)) content = r.content;
             isError = r?.isError === true;
+            if (r?.details && typeof r.details === 'object' && !Array.isArray(r.details)) details = r.details;
             if (r?.terminal?.type === 'html') terminal = {
                 type: 'html',
                 html: String(r.terminal.html ?? ''),
@@ -170,5 +173,5 @@ export default async function (
     // agent cm). Replace with U+FFFD.
     output = output.replaceAll("\u0000", "\uFFFD");
 
-    return { output, ...(content?.length ? { content } : {}), ...(terminal ? { terminal } : {}), isError, handlerExecuted };
+    return { output, ...(content?.length ? { content } : {}), ...(terminal ? { terminal } : {}), ...(details ? { details } : {}), isError, handlerExecuted };
 }

@@ -2,6 +2,16 @@ import { ToolPreview as Preview } from './ToolPreview';
 import { HighlightedCode } from './HighlightedCode';
 import type { ToolDetails } from '../../lib/mauzcode';
 
+const RTK_OUTCOMES: Record<string, string> = { rewritten: 'команда переписана RTK', unchanged: 'RTK не переписал команду', denied: 'запрещено правилами RTK, команда не выполнялась', fallback: 'сбой RTK — RTK отключён, выполнена исходная команда', stale: 'RTK отключён во время подготовки, выполнена исходная команда', deadline: 'время истекло во время подготовки RTK, команда не выполнялась', inactive: 'RTK не применён' };
+/** Original vs actually executed command when the RTK plugin prepared a bash call. */
+function RtkNote({ rtk }: { rtk: NonNullable<ToolDetails['rtk']> }) {
+  const changed = rtk.executed !== null && rtk.executed !== rtk.original;
+  return <div className="tool-body-note" data-rtk-outcome={rtk.outcome}>
+    <p>RTK: {RTK_OUTCOMES[rtk.outcome] ?? rtk.outcome}{rtk.code !== null ? ` (код ${rtk.code})` : ''}</p>
+    {changed && <div className="tool-terminal-command" aria-label="Выполненная команда"><span aria-hidden="true">→ $ </span><HighlightedCode text={rtk.executed!} language="bash" /></div>}
+    {rtk.diagnostic && <p>{rtk.diagnostic}</p>}
+  </div>;
+}
 function pretty(text: string) { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } }
 /** Adapt dsh read/search/diff/terminal presentations to the bounded MauzCode payload. */
 export function ToolBody({ details, kind, args }: { details: ToolDetails; kind: string; args: Record<string, unknown> }) {
@@ -16,7 +26,7 @@ export function ToolBody({ details, kind, args }: { details: ToolDetails; kind: 
   const known = evaluation || ['read', 'grep', 'find', 'glob', 'write', 'edit', 'bash'].includes(kind);
   return <div className="tool-specialized-body" data-tool-kind={kind}>
     {path && <div className="tool-body-label">{path}</div>}
-    {kind === 'bash' && <>{command && <div className="tool-terminal-command"><span aria-hidden="true">$ </span><HighlightedCode text={command} language="bash" /></div>}{result && <Preview text={result} limit={Number.POSITIVE_INFINITY} />}</>}
+    {kind === 'bash' && <>{command && <div className="tool-terminal-command"><span aria-hidden="true">$ </span><HighlightedCode text={command} language="bash" /></div>}{details.rtk && <RtkNote rtk={details.rtk} />}{result && <Preview text={result} limit={Number.POSITIVE_INFINITY} />}</>}
     {evaluation && <div className="tool-io">
       <section className="tool-io-section" aria-label="Ввод"><h4>Ввод</h4><div><Preview text={code || pretty(details.args || '{}')} limit={Number.POSITIVE_INFINITY} language={code ? evalLanguage : 'json'} /></div></section>
       <section className="tool-io-section" aria-label="Вывод" data-error={details.isError || undefined}><h4>Вывод</h4><div>{result ? <Preview text={result} limit={Number.POSITIVE_INFINITY} /> : <p>Вывод отсутствует.</p>}</div></section>
