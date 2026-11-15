@@ -88,7 +88,8 @@ describe("Claude protocol", () => {
         conn.fetch = async () => frames([{ type: "message_start" }]);
         await expect(claude.stream(ctx, conn, req)).rejects.toMatchObject({ code: "PROXY_CONNECTION_LOST", retryable: true });
         conn.fetch = async () => new Response("data: {bad\n\n");
-        await expect(claude.stream(ctx, conn, req)).rejects.toMatchObject({ code: "PROXY_PROTOCOL", retryable: false });
+        // An unparsable line is a chunk cut mid-flight, so it retries like a closed socket.
+        await expect(claude.stream(ctx, conn, req)).rejects.toMatchObject({ code: "PROXY_PROTOCOL", retryable: true });
     });
     test("quota vs throttle, unauthorized and SSE errors", async () => {
         const { ctx, conn, marked } = await setup();

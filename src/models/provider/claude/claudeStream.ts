@@ -77,7 +77,11 @@ export default async function (
             } catch (error) {
                 if (req.signal?.aborted || error && typeof error === "object" && "failure" in error) throw error;
                 const code = error instanceof SyntaxError ? "PROXY_PROTOCOL" : "PROXY_CONNECTION_LOST";
-                throw Object.assign(new Error(`${code}: invalid or interrupted Claude stream`, { cause: error }), { code, retryable: code === "PROXY_CONNECTION_LOST", noFallback: true });
+                // A stream line that will not parse is, in practice, a connection cut in the
+                // middle of a chunk — the same loss as a closed socket, and equally worth a
+                // retry. SOCKS negotiation errors that share this code stay non-retryable at
+                // their own source (socksProxy.connect).
+                throw Object.assign(new Error(`${code}: invalid or interrupted Claude stream`, { cause: error }), { code, retryable: true, noFallback: true });
             }
             const toolCalls = [...slots.entries()].sort((a, b) => a[0] - b[0]).map(([, s]) => {
                 let args: unknown = {};

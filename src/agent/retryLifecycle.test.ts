@@ -1,25 +1,34 @@
 import { describe, expect, test } from "bun:test";
 import schedule from "./retrySchedule";
 import wait from "./retryWait";
+import retryDecision from "./retryDecision";
+import retryCodes from "./retryCodes";
+
+// The real decision function over a stubbed settings chain: the policy here is the
+// default one, so these tests exercise the shipped numbers rather than a fake.
+function retryPolicyContext(parts: { procs: any; session: any }) {
+    const ctx: any = { fns: { ...parts, settings: { get: async () => undefined }, procs: { ...parts.procs, log: { warn: () => {} } }, agent: {} } };
+    ctx.fns.agent.retryCodes = (o: any) => retryCodes(ctx, null, o);
+    ctx.fns.agent.retryDecision = (o: any) => retryDecision(ctx, null, o);
+    return ctx;
+}
 
 // In-memory DB boundary: preserve transaction rollback and enforce row-lock ordering.
 // No live agents or database records are touched by these lifecycle tests.
-function fixture(attempt = 0) {
-    const row = { llm_retry_attempt: attempt, llm_retry_pending: null as any, stopped_at: null as string | null, run_token: "lease" };
+function fixture(attempt = 0, error: any = { code: "SERVER", retryable: true }) {
+    const row = { llm_retry_attempt: attempt, llm_retry_pending: null as any, stopped_at: null as string | null, run_token: "lease", model: null as string | null };
     const events: any[] = [];
-    const decisions: number[] = [];
     let locked = false;
     let failEvent = false;
     let beforeLock: (() => void) | undefined;
-    const policy = { retry: true, mode: "default", maxRetries: 5, delayMs: 0, provider: "test" };
-    const ctx = { fns: {
+    const ctx: any = retryPolicyContext({
         procs: { db: {
             transaction: async ({ fn }: any) => {
                 const snapshot = structuredClone(row);
                 const length = events.length;
                 locked = true;
                 try { return await fn(); }
-                catch (error) { Object.assign(row, snapshot); events.splice(length); throw error; }
+                catch (thrown) { Object.assign(row, snapshot); events.splice(length); throw thrown; }
                 finally { locked = false; }
             },
             select: async ({ sql, params }: any) => {
@@ -42,19 +51,17 @@ function fixture(attempt = 0) {
                 } else throw new Error(`Unexpected write: ${sql}`);
             },
         } },
-        llm: { retryDecision: async ({ retry }: any) => { decisions.push(retry); return policy; } },
         session: { appendEvent: async ({ id, event }: any) => {
             expect(locked).toBe(true);
             expect(id).toBe("retry-test");
             if (failEvent) throw new Error("event persistence failed");
             events.push(structuredClone(event));
         } },
-    } } as any;
+    });
     const controller = new AbortController();
     const opts = { agentId: "retry-test", runToken: "lease", signal: controller.signal };
-    const failure = { code: "SERVER", message: "upstream unavailable", status: 503, provider: "test", account: "default", kind: "transient", retryable: true } as any;
-    return { row, events, decisions, policy, controller,
-        schedule: () => schedule(ctx, null, { ...opts, failure }),
+    return { row, events, controller,
+        schedule: () => schedule(ctx, null, { ...opts, error }),
         wait: () => wait(ctx, null, opts),
         failEvents: () => { failEvent = true; },
         beforeLock: (fn: () => void) => { beforeLock = fn; },
@@ -68,32 +75,29 @@ function pending(until = Date.now() - 1) {
 describe("agent retry lifecycle", () => {
     test("schedules from the durable attempt and persists the complete matching event", async () => {
         const f = fixture(3);
-        f.policy.delayMs = 1200;
-        const before = Date.now();
-        expect(await f.schedule()).toBe(true);
-        expect(f.decisions).toEqual([3]);
+        expect(await f.schedule()).toEqual({ scheduled: true });
         expect(f.row.llm_retry_attempt).toBe(4);
         expect(f.row.llm_retry_pending).toEqual(f.events[0]);
-        expect(f.events[0]).toMatchObject({ type: "llm_retry", retry: 4, maxRetries: 5, mode: "default", delayMs: 1200, provider: "test", failure: { code: "SERVER", message: "upstream unavailable", status: 503 } });
+        expect(f.events[0]).toMatchObject({ type: "llm_retry", retry: 4, maxRetries: 5, mode: "normal", failure: { code: "SERVER" } });
         expect(f.events[0].retryId).toMatch(/^[0-9a-f-]{36}$/);
-        expect(f.events[0].until).toBeGreaterThanOrEqual(before + 1200);
-        expect(f.events[0].until).toBeLessThanOrEqual(Date.now() + 1200);
+        expect(f.events[0].delayMs).toBeGreaterThan(0);
+        expect(f.events[0].until).toBeGreaterThan(Date.now() - 1);
         await f.schedule();
-        expect(f.decisions).toEqual([3, 4]);
         expect(f.row.llm_retry_attempt).toBe(5);
         expect(f.events[1].retryId).not.toBe(f.events[0].retryId);
     });
 
-    test("always mode exposes no finite maximum; refusal leaves durable state unchanged", async () => {
-        const f = fixture(42);
-        f.policy.mode = "always";
-        await f.schedule();
-        expect(f.events[0].maxRetries).toBeNull();
-        const snapshot = structuredClone(f.row);
-        f.policy.retry = false;
-        expect(await f.schedule()).toBe(false);
-        expect(f.row).toEqual(snapshot);
-        expect(f.events).toHaveLength(1);
+    test("a non-retryable code refuses without touching durable state", async () => {
+        const f = fixture(0, { code: "AUTH", retryable: false });
+        expect(await f.schedule()).toEqual({ scheduled: false });
+        expect(f.row.llm_retry_attempt).toBe(0);
+        expect(f.events).toHaveLength(0);
+    });
+
+    test("a code no policy may retry is refused even when it looks transient", async () => {
+        const f = fixture(0, { code: "OVERFLOW", retryable: true });
+        expect(await f.schedule()).toEqual({ scheduled: false });
+        expect(f.events).toHaveLength(0);
     });
 
     for (const reason of ["stop", "revoked lease", "abort"] as const) {
@@ -108,7 +112,6 @@ describe("agent retry lifecycle", () => {
                 await expect(f[operation]()).rejects.toMatchObject({ name: "AbortError" });
                 expect(f.row).toEqual(snapshot);
                 expect(f.events).toEqual([]);
-                expect(f.decisions).toEqual([]);
             });
         }
     }

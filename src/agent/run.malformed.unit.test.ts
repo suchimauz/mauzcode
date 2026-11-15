@@ -23,7 +23,7 @@ function harness(turns: any[]) {
             updateMessageContent: async ({ idx, content }: any) => { rows[idx].content = content; },
         },
         procs: { events: { emit: noop }, db: { run: async () => ({ changes: 0 }), select: async ({ sql }: any) => sql.includes('MAX(idx)') ? [{ i: 0 }] : [{ stopped_at: null }] } },
-        agent: { requireModel:({model}:any)=>model, cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], retrySchedule: async () => false, retryWait: async () => {}, recordRunLifecycle: async () => {}, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
+        agent: { requireModel:({model}:any)=>model, cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], retrySchedule: async () => ({ scheduled: false }), retryWait: async () => {}, recordRunLifecycle: async () => {}, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
             stop: async () => { stops++; }, stashResult: async ({ output }: any) => ({ content: output }) },
         events: { emitAgentsChanged: noop, refreshAgentMeta: noop },
         markdown: { render: async ({ source }: any) => source },

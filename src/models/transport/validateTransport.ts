@@ -1,7 +1,7 @@
 /**
  * Validate a provider transport and its saved reference
  *
- * Use before saving a model connection. Reject unsupported kinds, missing saved proxies and SSH instances without a pinned host key; never open a network connection or decrypt credentials.
+ * Use before saving a model connection. Reject unsupported kinds, missing saved proxies and SSH instances without a pinned host key; never open a network connection or decrypt credentials. Every rejection is part of a saved configuration, not a network condition, so each `TRANSPORT` error carries `retryable: false`: repeating the same request through the same broken configuration would fail identically, and the turn must stop with the error instead of retrying.
  * @param opts.transport Transport selection with its saved proxy or SSH reference.
  * @param opts.allowed Allowed transports declared by the selected provider.
  */
@@ -16,17 +16,17 @@ export default async function (
     },
 ): Promise<void> {
     const t = opts.transport;
-        const fail = (message: string): never => { throw Object.assign(new Error(message), {code: 'TRANSPORT'}); };
+        const fail = (message: string): never => { throw Object.assign(new Error(message), {code: 'TRANSPORT', retryable: false}); };
         if (!t || !['direct', 'socks', 'ssh-tunnel'].includes(t.kind) || !opts.allowed.includes(t.kind)) fail('Transport not allowed by provider');
         if (t.kind === 'socks') {
          if (typeof t.proxyId !== 'string' || !t.proxyId.trim()) fail('Missing proxy reference');
-         await ctx.fns.socksProxy.validateIdentity({id: t.proxyId});
+         await ctx.fns.socksProxy.validateIdentity({id: t.proxyId}).catch((error: any) => fail(String(error?.message ?? 'Invalid proxy reference')));
          const rows = await ctx.fns.procs.db.select({sql: 'SELECT id FROM socks_proxies WHERE id=?', params: [t.proxyId]});
          if (!rows.length) fail('Proxy not found');
         }
         if (t.kind === 'ssh-tunnel') {
          if (typeof t.instance !== 'string' || !t.instance.trim()) fail('Missing SSH instance');
-         const instance = await ctx.fns.sshInstance.get({name: t.instance});
+         const instance = await ctx.fns.sshInstance.get({name: t.instance}).catch((error: any) => fail(String(error?.message ?? 'Unknown SSH instance')));
          if (!instance.pinnedHostKey) fail('SSH instance has no pinned host key');
         }
 }

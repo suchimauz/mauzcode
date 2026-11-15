@@ -3,7 +3,7 @@ import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { ChatMarkdown } from './ChatMarkdown';
 import type { ChatEvent, EventPage } from '../../lib/mauzcode';
-import { CurrentAction } from './CurrentAction';
+import { CompactionRetrying, CurrentAction } from './CurrentAction';
 import { ThinkingRow } from './ThinkingRow';
 import { ActiveToolRow } from './ActiveToolRow';
 import { TranscriptMessage as Message } from './TranscriptMessage';
@@ -92,6 +92,7 @@ export function Transcript({ agentId, events, page, hasOlder, loadingOlder, load
     {page?.thinking && <ThinkingRow summary={page.thinking.publicSummary} />}
     {page?.activeTools?.map((run, index, runs) => <ActiveToolRow key={run.id} run={run} autoOpen={index === runs.length - 1} />)}
     {page?.partial && <article className="message message--assistant streaming-message"><div className="markdown"><ChatMarkdown>{page.partial.text}</ChatMarkdown></div></article>}
+    {page?.compactionRetry && <CompactionRetrying status={page.compactionRetry} />}
     {page?.isRunning && <CurrentAction page={page} />}
     {!events.length && !page?.partial && !page?.isRunning && <p className="transcript-notice">Начните разговор с агентом.</p>}
     </div>

@@ -273,6 +273,10 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
     let errorText: string | null = null;
     let failure: types.models.FailureInfo | null = null;
     let transportFailure: { kind: 'ssh_transport'; phase: 'before_dispatch' | 'ambiguous' | 'permanent'; retryable: boolean } | null = null;
+    // A Retry-After beyond the policy maximum is a wait, not a breakage: the error
+    // carries `parkUntil` and this one agent is parked instead of failed.
+    let parkUntil: number | null = null;
+    let parkCode: string | null = null;
     let aborted = false;
     let delegationBlocked = false;
 
@@ -318,18 +322,26 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
             // the verdict on the error. A spent subscription is a wait, not a
             // breakage: it gets parked below instead of an error badge.
             transportFailure = e?.transportFailure?.kind === 'ssh_transport' ? e.transportFailure : null;
+            if (!transportFailure && typeof e?.parkUntil === 'number' && Number.isFinite(e.parkUntil)) {
+                parkUntil = e.parkUntil;
+                parkCode = typeof e?.failure?.code === 'string' ? e.failure.code : typeof e?.code === 'string' ? e.code : null;
+            }
             // Transport dispatch knowledge is authoritative, even if an upstream
             // wrapper also attached an HTTP classification or a transient message.
             failure = transportFailure ? null : (e?.failure as types.models.FailureInfo | undefined) ?? null;
             errorText = e?.message ?? String(e);
-            if (failure?.code !== 'QUOTA_EXHAUSTED') {
+            // A parked run resumes by itself, so it records no error: the retry counter
+            // and the transcript stay clean until the wake fires.
+            if (parkUntil == null && failure?.code !== 'QUOTA_EXHAUSTED') {
                 try { await ctx.fns.session.appendErrorEvent({ id: agentId, error: errorText ?? 'unknown error', ts: Date.now() }); } catch {}
             }
         }
     } finally {
         clearInterval(heartbeatTimer);
         const ts = Date.now();
-        const advanceCursor = !aborted && !errorText;
+        // A parked run is neither a success nor a failure: the cursor stays where it was,
+        // the pending run is cleared, and the durable wake brings the work back.
+        const advanceCursor = !aborted && !errorText && parkUntil == null;
         // Model retries belong to run's per-request durable policy.
         const retry = false;
         const retryAt: number | null = null;
@@ -461,6 +473,18 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
             }
             try { await ctx.fns.session.syncAgentState({ agent }); } catch {}
             return;
+        }
+
+        // A provider that asked to wait gets a wait: this agent parks until that moment
+        // and continues the same work by itself. Its messages stay unread (the cursor did
+        // not advance) and no error is recorded, because nothing is broken.
+        if (parkUntil != null && !aborted) {
+            try {
+                await ctx.fns.agent.parkOnRetryAfter({ id: agentId, parkUntil, code: parkCode });
+            } catch (error: any) {
+                console.error(`parking after Retry-After failed for ${agentId}:`, error?.message ?? error);
+                try { await ctx.fns.session.appendErrorEvent({ id: agentId, error: String(error?.message ?? error), ts: Date.now() }); } catch {}
+            }
         }
 
         // Model retries are exhausted here. Subscription exhaustion instead parks

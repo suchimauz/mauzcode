@@ -31,16 +31,21 @@ export default async function (ctx: Context, _session: Session | null, opts: Par
     opts.signal?.throwIfAborted();
     const route = await ctx.fns.models.resolveRoute({ route: opts.model });
     if (route.nativeCompaction) {
-        const result = await ctx.fns.models.compact({
-            connectionId: route.connectionId, model: route.model,
-            sessionId: opts.sessionId, instructions: opts.instructions,
-            messages: opts.messages.map(message => {
-                if (message.message_type !== "codex_compaction") return message;
-                let checkpoint: types.models.Checkpoint;
-                try { checkpoint = JSON.parse(String(message.content)); } catch { throw new Error("Malformed persisted native checkpoint"); }
-                if (checkpoint?.kind !== "native-checkpoint" || checkpoint.version !== 1) throw new Error("Persisted native checkpoint lacks its compatibility identity");
-                return { type: "checkpoint", checkpoint };
-            }), focus: opts.focus, signal: opts.signal,
+        // A compaction blip is the same transport blip an agent turn retries, under the
+        // same policy, with the retry budget counted per native compaction call.
+        const result: types.models.CompactResult = await ctx.fns.compaction.modelCallWithRetry({
+            sessionId: opts.sessionId, provider: route.provider, signal: opts.signal,
+            call: () => ctx.fns.models.compact({
+                connectionId: route.connectionId, model: route.model,
+                sessionId: opts.sessionId, instructions: opts.instructions,
+                messages: opts.messages.map(message => {
+                    if (message.message_type !== "codex_compaction") return message;
+                    let checkpoint: types.models.Checkpoint;
+                    try { checkpoint = JSON.parse(String(message.content)); } catch { throw new Error("Malformed persisted native checkpoint"); }
+                    if (checkpoint?.kind !== "native-checkpoint" || checkpoint.version !== 1) throw new Error("Persisted native checkpoint lacks its compatibility identity");
+                    return { type: "checkpoint", checkpoint };
+                }), focus: opts.focus, signal: opts.signal,
+            }),
         });
         opts.signal?.throwIfAborted();
         const item = result.item;
@@ -60,7 +65,10 @@ export default async function (ctx: Context, _session: Session | null, opts: Par
     for (;;) {
         opts.signal?.throwIfAborted();
         try {
-            const call = await ctx.fns.models.call({ connectionId: route.connectionId, model: route.model, sessionId: opts.sessionId, signal: opts.signal, system, user: JSON.stringify(history) });
+            const call = await ctx.fns.compaction.modelCallWithRetry({
+                sessionId: opts.sessionId, provider: route.provider, signal: opts.signal,
+                call: () => ctx.fns.models.call({ connectionId: route.connectionId, model: route.model, sessionId: opts.sessionId, signal: opts.signal, system, user: JSON.stringify(history) }),
+            });
             opts.signal?.throwIfAborted();
             const summary = String(call.text ?? "").trim();
             if (!summary) throw new Error("compaction summary was empty");

@@ -299,6 +299,16 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
     const partial = isRunning && typeof stream?.text === "string" && stream.text.length > 0
         ? { text: stream.text, revision: Number(stream.revision ?? 0), startedAt: Number(stream.startedAt ?? Date.now()) }
         : null;
+    // A compaction retry lives only in memory: nothing durable is written for it, so an
+    // absent mark means there is nothing to show.
+    const compactionRetry = liveAgent?.scratchpad?.compactionRetry;
+    const retryStatus = compactionRetry && typeof compactionRetry.delayMs === "number"
+        ? {
+            attempt: Number(compactionRetry.attempt ?? 1), maxRetries: Number(compactionRetry.maxRetries ?? 1),
+            delayMs: Math.max(0, Number(compactionRetry.delayMs)), startedAt: Number(compactionRetry.startedAt ?? Date.now()),
+            code: typeof compactionRetry.code === 'string' ? compactionRetry.code : null,
+        }
+        : null;
 
     // Durable ranges let a partial page retain its real run boundary. Older
     // history without lifecycle records intentionally has no invented identity.
@@ -334,6 +344,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
         runState: status?.run_state || "idle",
         lastError: status?.last_error || null,
         partial,
+        compactionRetry: retryStatus,
         streamHandoff,
         // Do not infer a turn start from the latest tool, thinking phase or queued wake.
         turnStartedAt: (status?.run_state === 'running' || status?.run_state === 'claimed')

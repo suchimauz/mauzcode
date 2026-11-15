@@ -2,6 +2,8 @@ import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import * as timers from 'node:timers/promises';
 import run from './run';
 import retrySchedule from './retrySchedule';
+import retryDecision from './retryDecision';
+import retryCodes from './retryCodes';
 import retryWait from './retryWait';
 
 // Offline owned-run harness: no network, DB, live agents or real retry delays.
@@ -22,6 +24,7 @@ function harness(turns: any[]) {
     let stopped: number | null = null;
     let token = 'owned';
     let duringWait: () => void | Promise<void> = () => {};
+    let policyOverrides: Record<string, any> = {};
     spyOn(timers, 'setTimeout').mockImplementation((async (ms: number, _value: unknown, opts: { signal: AbortSignal }) => {
         delays.push(ms);
         await duringWait();
@@ -32,7 +35,7 @@ function harness(turns: any[]) {
     const noop = async () => {};
     const ctx: any = { state: { agent: { [agent.id]: agent } }, fns: {
         input: { isWaiting: async () => false },
-        settings: { get: async () => ({ jitterRatio: 0 }) },
+        settings: { get: async ({ key }: any) => key === 'retryPolicy' ? { jitterRatio: 0, ...policyOverrides } : undefined },
         planning: { read: async ({agentId}: any) => ({version:1,agentId,mode:'execute',revision:0,scope:'session',advisory:true,runningPolicy:'reject',pending:null,proposal:null}) },
         goal: { delegationScope: async ({ fn }: any) => fn(), runBindingCapture: async () => ({ kind: 'disabled', allowContinuation: false }) },
         session: {
@@ -54,8 +57,11 @@ function harness(turns: any[]) {
             ? [{ i: Math.max(...rows.filter(r => r.role === 'user' && !r.excluded_from_cursor).map(r => r.idx)) }]
             : [{ stopped_at: stopped, run_state: 'running', run_token: token, llm_retry_attempt: attempt, llm_retry_pending: pending }] } },
         agent: {
+            requireModel:({model}:any)=>model,
             buildLlmRequest:async()=>({instructions:'',messages:[]}),wireTools:()=>[],cacheRoot:async()=>agent.id,
             promoteQueuedTurn: noop,
+            retryCodes: (opts: any) => retryCodes(ctx, null, opts),
+            retryDecision: (opts: any) => retryDecision(ctx, null, opts),
             retrySchedule: (opts: any) => retrySchedule(ctx, null, opts),
             retryWait: (opts: any) => retryWait(ctx, null, opts),
             recordRunLifecycle: async () => {}, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
@@ -75,8 +81,9 @@ function harness(turns: any[]) {
     } };
     return { ctx, agent, rows, errors, snapshots, delays, events,
         get attempt() { return attempt; }, get pending() { return pending; },
-        get sampled() { return sampled; }, get calls() { return calls; },
+        get sampled() { return sampled; }, get calls() { return calls; }, now: () => now,
         wait: (fn: typeof duringWait) => { duringWait = fn; },
+        policy: (overrides: Record<string, any>) => { policyOverrides = overrides; },
         stop: (abort: boolean) => { stopped = 1; if (abort) agent.abortController.abort(); },
         replace: () => { token = 'replacement'; },
         execute: () => run(ctx, null, { agent, userText: '', userMessageAlreadyAppended: true }),
@@ -85,7 +92,27 @@ function harness(turns: any[]) {
 afterEach(() => mock.restore());
 
 describe('bounded models inference retry at the agent sampling boundary', () => {
-    for (const type of ['text_delta','tool_args_delta']) test(`partial ${type} prevents automatic replay even if upstream claims safe`,async()=>{const error=interrupted(); const h=harness([(opts:any)=>{opts.onEvent({type,delta:'partial'});throw error;},done]); await expect(h.execute()).rejects.toBe(error);expect(h.sampled).toBe(1);expect(h.delays).toEqual([]);expect(h.rows.filter(r=>r.role==='assistant')).toEqual([]);});
+    // A generation that broke after streaming some output is still worth repeating: the
+    // partial text is discarded, tools have not run, and only tokens were spent.
+    for (const type of ['text_delta','tool_args_delta']) test(`partial ${type} is retried and its partial output discarded`,async()=>{const error=interrupted(); const h=harness([(opts:any)=>{opts.onEvent({type,delta:'partial'});throw error;},done]); expect((await h.execute() as any).text).toBe('done');expect(h.sampled).toBe(2);expect(h.delays).toEqual([1000]);expect(h.rows.filter(r=>r.role==='assistant'&&r.content==='partial')).toEqual([]);});
+    test('a Retry-After beyond the policy maximum becomes a parking request, capped at 30 minutes', async () => {
+        const twoDays = 2 * 24 * 60 * 60_000;
+        const error = Object.assign(new Error('slow down'), { failure: { code: 'RATE_LIMITED', classification: 'throttled', retryable: true, replaySafe: true, acceptance: 'rejected', retryAfterMs: twoDays } });
+        const h = harness([error, done]);
+        const parkUntil = await h.execute().then(() => { throw new Error('expected a parking request'); }, (thrown: any) => thrown.parkUntil);
+        expect(h.sampled).toBe(1);
+        expect(h.delays).toEqual([]);
+        // Capped at 30 minutes from the failure, never the two days the provider asked for.
+        expect(parkUntil - h.now()).toBeLessThanOrEqual(30 * 60_000);
+        expect(parkUntil - h.now()).toBeGreaterThanOrEqual(30 * 60_000 - 1000);
+    });
+    test('a provider override caps retries for its provider only', async () => {
+        const h = harness([interrupted(), interrupted(), interrupted(), done]);
+        h.policy({ providers: { custom: { maxRetries: 2 } } });
+        await expect(h.execute()).rejects.toThrow('Retryable rejected transport request');
+        expect(h.sampled).toBe(3);
+        expect(h.delays).toEqual([1000, 2000]);
+    });
     test('normal policy exhausts exactly five retries', async () => {
         const last = interrupted();
         const h = harness([...Array.from({ length: 5 }, interrupted), last, done]);
@@ -117,6 +144,8 @@ describe('bounded models inference retry at the agent sampling boundary', () => 
         ['permanent access', Object.assign(new Error('denied'), { transportFailure: { kind: 'ssh_transport', phase: 'permanent', retryable: false } })],
         ['quota', Object.assign(new Error('quota'), { failure: { code: 'QUOTA_EXHAUSTED', classification:'quota', retryable:false, replaySafe:true, acceptance:'rejected' } })],
         ['auth', Object.assign(new Error('auth'), { failure: { kind: 'auth', code: 'AUTH', retryable: false } })],
+        ['an allowed code the source marked non-retryable', Object.assign(new Error('in-stream'), { failure: { code: 'PROVIDER_ERROR', classification:'provider', retryable:false, replaySafe:true, acceptance:'uncertain' } })],
+        ['a transport configuration error', Object.assign(new Error('Proxy not found'), { code: 'TRANSPORT', retryable: false })],
     ] as const) test(`does not treat ${label} as retryable inference loss`, async () => {
         const h = harness([error, done]);
         await expect(h.execute()).rejects.toBe(error);

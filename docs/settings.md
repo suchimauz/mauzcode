@@ -87,6 +87,35 @@ configure the React sidebar. Hiding an item never blocks access to its route.
 **A plugin's own setting** — declare `~/.mauzcode/user/lisboalive/src/lisboalive/$setting_home.ts`, then fix it
 for the instance in `~/.mauzcode/settings/$settings_lisboalive.json` as `{ "home": "Cascais" }`.
 
+### Model retries — `agent.retryPolicy`
+
+`agent.retryPolicy` (`src/agent/$setting_retryPolicy.ts`) decides how often a failed model request is
+repeated before the turn gives up. Generation has no side effects — tools run only after a complete reply,
+and a partial reply is discarded — so repeating an interrupted generation costs tokens while stopping it
+costs the user's work.
+
+```json
+{
+  "maxRetries": 5,
+  "initialDelayMs": 1000,
+  "maxDelayMs": 60000,
+  "jitterRatio": 0.2,
+  "retryableCodes": ["TRANSPORT", "STREAM_INTERRUPTED", "PROVIDER_ERROR"],
+  "providers": { "codex": { "maxRetries": 2 } }
+}
+```
+
+- `maxRetries` counts retries of one model request, not of a turn. `providers` overrides apply by the
+  connection's provider id (`claude`, `codex`, `custom`, …); its fields merge over the global ones.
+- `retryableCodes` can only **narrow** the built-in allowed set. A code waiting cannot fix — `AUTH`,
+  `INVALID_INPUT`, `QUOTA_EXHAUSTED`, `OVERFLOW`, `CANCELLED`, a disabled model, proxy
+  configuration/TLS/auth, permanent SSH — is never retried, and `settings.set` rejects it.
+- A code being allowed is necessary but not sufficient: the failure itself must not be marked
+  non-retryable by the code that raised it (`SERVER` 503 retries, `SERVER` 501 does not).
+- A Retry-After longer than `maxDelayMs` parks the agent until that moment (at most 30 minutes) instead
+  of failing the turn; it resumes the same work by itself.
+- Edit a value fixed by a file in that file (`ctx.fns.settings.files({})` shows which), not through the UI.
+
 ## Layout settings: instance files and surviving consumers
 
 `nav.layout` and `dock.layout` already use the same file → database → env → default resolution as other

@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test';
 import build from './buildLlmRequest';
 import retry from './retrySchedule';
 import retryWait from './retryWait';
+import retryDecision from './retryDecision';
+import retryCodes from './retryCodes';
 import setReasoning from './setReasoningEffort';
 import setModel from './setModel';
 import claudeList from '../models/provider/claude/claudeListModels';
@@ -18,6 +20,11 @@ function failureCtx() {
  return ctx;
 }
 async function thrown(p:Promise<unknown>) {try {await p;throw Error('expected failure');}catch(e:any){return e;}}
+// Minimal context around the real decision function: it reads the settings chain and
+// the code vocabulary, nothing else.
+function decisionCtx(ctx: any) { ctx.fns.agent = { retryCodes: (o: any) => retryCodes(ctx, null, o), retryDecision: (o: any) => retryDecision(ctx, null, o) }; return ctx; }
+function codesCtx(ctx: any) { ctx.fns.agent = { retryCodes: (o: any) => retryCodes(ctx, null, o) }; return ctx; }
+
 for (const preamble of [undefined, 'descriptor identity']) test(`request descriptor preamble once: ${preamble}`,async()=>{
  const agent:any={id:'a',model:'custom/Asoft LLM Gate:vendor/id:v1',messages:[{role:'user',content:'hello',idx:0}],scratchpad:{}};
  const ctx:any={fns:{attachments:{resolveContent:async({messages}:any)=>messages},auth:{attributeMessages:async({messages}:any)=>({messages,applied:false})},planning:{prompt:async()=>''},compaction:{project:async({messages}:any)=>({messages,mode:'full',fallback:null,revision:null})},agent:{requireModel:({model}:any)=>model,fullSystemPrompt:async()=>preamble?`${preamble}\n${preamble}\nbody`:'body',normalizeSleepContext:()=>null,selectJevContext:async({messages}:any)=>messages},session:{repairToolPairs:({messages}:any)=>({messages,repaired:[]}),getFullMessages:async()=>agent.messages},models:{resolveRoute:async()=>({systemPreamble:preamble})}}};
@@ -39,18 +46,45 @@ test('disabled model selection fails before any state read or write',async()=>{
  await expect(setModel(ctx,null,{id:'a',model:'custom/Asoft LLM Gate:model'})).rejects.toMatchObject({code:'MODEL_DISABLED_BY_USER'});expect(touches).toBe(0);
 });
 
-for(const acceptance of ['none','rejected','accepted','uncertain'] as const) test(`bounded retry honors acceptance ${acceptance}`,async()=>{
- let writes=0;const events:any[]=[];const ctx:any={fns:{procs:{db:{transaction:({fn}:any)=>fn(),select:async()=>[{llm_retry_attempt:0,stopped_at:null,run_token:'r'}],run:async()=>{writes++;}}},session:{appendEvent:async(o:any)=>events.push(o.event)}}};
- const f:any={code:'RATE_LIMITED',classification:'throttled',retryable:true,replaySafe:true,acceptance,retryAfterMs:17};
- expect(await retry(ctx,null,{agentId:'a',runToken:'r',failure:f,signal:new AbortController().signal})).toBe(['none','rejected'].includes(acceptance));
- expect(writes).toBe(['none','rejected'].includes(acceptance)?1:0);if(events.length)expect(events[0]).toMatchObject({delayMs:17,maxRetries:5,mode:'normal'});
+// Retry eligibility follows machine codes, not SDK acceptance/replaySafe: a generation that
+// was interrupted after its upstream accepted the request is still worth repeating, because
+// the partial output is discarded and only tokens are spent.
+for (const acceptance of ['none', 'rejected', 'accepted', 'uncertain'] as const) test(`code-based retry ignores SDK acceptance ${acceptance}`, async () => {
+    let writes = 0; const events: any[] = [];
+    const ctx: any = { fns: {
+        agent: {},
+        settings: { get: async () => undefined },
+        procs: { log: { warn: () => {} }, db: { transaction: ({ fn }: any) => fn(), select: async () => [{ llm_retry_attempt: 0, stopped_at: null, run_token: 'r', model: null }], run: async () => { writes++; } } },
+        session: { appendEvent: async (o: any) => events.push(o.event) },
+    } };
+    decisionCtx(ctx);
+    const f: any = { code: 'RATE_LIMITED', classification: 'throttled', retryable: true, replaySafe: false, acceptance, retryAfterMs: 17 };
+    expect(await retry(ctx, null, { agentId: 'a', runToken: 'r', error: { failure: f }, signal: new AbortController().signal })).toMatchObject({ scheduled: true });
+    // Retry-After is a lower bound, never a shortening: the backoff may still be longer.
+    expect(writes).toBe(1); expect(events[0]).toMatchObject({ maxRetries: 5, mode: 'normal', failure: { code: 'RATE_LIMITED' } });
+    expect(events[0].delayMs).toBeGreaterThanOrEqual(17);
 });
-test('retry never shortens Retry-After, retries unsafe or exceeds five attempts; lease fencing remains',async()=>{
- let attempt=0,token='r',writes=0;const ctx:any={fns:{procs:{db:{transaction:({fn}:any)=>fn(),select:async()=>[{llm_retry_attempt:attempt,run_token:token}],run:async()=>{writes++;}}},session:{appendEvent:async()=>{}}}};
- const f:any={code:'PROVIDER_ERROR',classification:'provider',retryable:true,replaySafe:true,acceptance:'rejected'};
- for(const over of [{retryAfterMs:60001},{replaySafe:false},{retryable:false}])expect(await retry(ctx,null,{agentId:'a',runToken:'r',failure:{...f,...over},signal:new AbortController().signal})).toBe(false);
- attempt=5;expect(await retry(ctx,null,{agentId:'a',runToken:'r',failure:f,signal:new AbortController().signal})).toBe(false);expect(writes).toBe(0);
- token='replacement';await expect(retry(ctx,null,{agentId:'a',runToken:'r',failure:f,signal:new AbortController().signal})).rejects.toMatchObject({name:'AbortError'});
+test('retry never shortens Retry-After, refuses non-retryable codes and stops at the limit; lease fencing remains', async () => {
+    let attempt = 0, token = 'r', writes = 0;
+    const ctx: any = { fns: {
+        agent: {}, settings: { get: async () => undefined }, procs: { log: { warn: () => {} }, db: {
+            transaction: ({ fn }: any) => fn(), select: async () => [{ llm_retry_attempt: attempt, run_token: token, model: null }], run: async () => { writes++; },
+        } }, session: { appendEvent: async () => {} },
+    } };
+    ctx.fns.agent.retryCodes = (o: any) => retryCodes(ctx, null, o);
+    ctx.fns.agent.retryDecision = (o: any) => retryDecision(ctx, null, o);
+    const f: any = { code: 'PROVIDER_ERROR', classification: 'provider', retryable: true, replaySafe: true, acceptance: 'rejected' };
+    // Beyond maxDelayMs this is a parking request, not a retry: the counter is reset and
+    // the caller parks the agent until that moment.
+    expect(await retry(ctx, null, { agentId: 'a', runToken: 'r', error: { failure: { ...f, retryAfterMs: 60001 } }, signal: new AbortController().signal })).toMatchObject({ scheduled: false, parkUntil: expect.any(Number) });
+    expect(writes).toBe(1);
+    // A source that says the failure is not transient wins over an allowed code.
+    expect(await retry(ctx, null, { agentId: 'a', runToken: 'r', error: { failure: { ...f, retryable: false } }, signal: new AbortController().signal })).toEqual({ scheduled: false });
+    attempt = 5;
+    expect(await retry(ctx, null, { agentId: 'a', runToken: 'r', error: { failure: f }, signal: new AbortController().signal })).toEqual({ scheduled: false });
+    expect(writes).toBe(1);
+    attempt = 0; token = 'replacement';
+    await expect(retry(ctx, null, { agentId: 'a', runToken: 'r', error: { failure: f }, signal: new AbortController().signal })).rejects.toMatchObject({ name: 'AbortError' });
 });
 test('cancellation during durable backoff prevents retry marker and writes',async()=>{
  const ac=new AbortController();let writes=0;const ctx:any={fns:{procs:{db:{select:async()=>[{llm_retry_pending:{until:Date.now()+10000,retryId:'x'},stopped_at:null,run_token:'r'}],transaction:()=>{writes++;}}}}};

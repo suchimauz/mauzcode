@@ -25,14 +25,17 @@ export default async function (
     },
 ): Promise<Response> {
     const error = (message: string, cause?: unknown) => Object.assign(new Error(message, {cause}), {code: 'TRANSPORT'});
+    // A request that cannot even be built is a configuration problem: the same call will
+    // fail the same way, so it is marked non-retryable and the turn stops at once.
+    const configError = (message: string, cause?: unknown) => Object.assign(error(message, cause), {retryable: false});
         const timeout = opts.timeoutMs ?? 120000;
-        if (!Number.isInteger(timeout) || timeout < 1 || timeout > 3600000) throw error('Invalid transport timeout');
+        if (!Number.isInteger(timeout) || timeout < 1 || timeout > 3600000) throw configError('Invalid transport timeout');
         let url: URL;
-        try { url = new URL(opts.url); } catch (cause) { throw error('Absolute HTTP(S) URL required', cause); }
-        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw error('Credential-free HTTP(S) URL required');
+        try { url = new URL(opts.url); } catch (cause) { throw configError('Absolute HTTP(S) URL required', cause); }
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw configError('Credential-free HTTP(S) URL required');
         const t = opts.transport;
-        if (!t || !['direct', 'socks', 'ssh-tunnel'].includes(t.kind)) throw error('Unknown transport');
-        if (t.kind !== 'direct' && url.protocol !== 'https:') throw error('Proxied requests require HTTPS');
+        if (!t || !['direct', 'socks', 'ssh-tunnel'].includes(t.kind)) throw configError('Unknown transport');
+        if (t.kind !== 'direct' && url.protocol !== 'https:') throw configError('Proxied requests require HTTPS');
         const controller = new AbortController(), signal = controller.signal;
         const sources = [opts.signal, opts.init?.signal].filter((s): s is AbortSignal => !!s);
         const abort = () => controller.abort(error('Transport cancelled'));
@@ -69,9 +72,9 @@ export default async function (
          if (t.kind === 'direct') response = await bounded(globalThis.fetch(url.href, {...opts.init, signal, redirect:'error'}));
          else {
           const request = new Request(url.href, {...opts.init, signal, redirect: 'error'});
-          if (!['GET', 'POST'].includes(request.method)) throw error('Proxy supports only GET and POST');
+          if (!['GET', 'POST'].includes(request.method)) throw configError('Proxy supports only GET and POST');
           const body = request.body ? new Uint8Array(await bounded(request.arrayBuffer())) : undefined;
-          if (body && body.byteLength > 8 * 1024 * 1024) throw error('Proxy body exceeds eight MiB');
+          if (body && body.byteLength > 8 * 1024 * 1024) throw configError('Proxy body exceeds eight MiB');
           let proxy: {host:string;port:number;username?:string;password?:string};
           if (t.kind === 'socks') proxy = await bounded(ctx.fns.socksProxy.readSaved({id:t.proxyId}));
           else {
