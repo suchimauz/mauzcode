@@ -65,7 +65,7 @@ This prevents accidental transcript leakage, not malicious exfiltration: the inv
 
 ### Optional RTK compression (local calls only)
 
-When the official `rtk` plugin is loaded and the owner enabled it in Settings → Plugins, a local bash call (no `host`, or `host: "local"`, in a local workspace) is first passed to `rtk rewrite` as one argument — RTK never runs your command during this step. SSH hosts and remote workspaces are never touched.
+When the official `rtk` plugin is loaded and the owner enabled it in Settings → RTK, a local bash call (no `host`, or `host: "local"`, in a local workspace) is first passed to `rtk rewrite` as one argument — RTK never runs your command during this step. SSH hosts and remote workspaces are never touched.
 
 - Exit 0 or 3 with a replacement: the `rtk …` equivalent runs once, with compressed output. Exit 3 does not ask for an extra confirmation: the host's (MauzCode's) own approvals are the authority, and Claude Code `ask` rules in RTK/Claude settings are not a separate MauzCode barrier. Exit 0 is not an authorization grant either.
 - Exit 1: the original runs once.

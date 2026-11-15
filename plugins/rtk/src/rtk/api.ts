@@ -1,5 +1,5 @@
 /**
- * Owner-only HTTP API behind the RTK settings section (GET/POST /rtk/api).
+ * Owner-only HTTP API behind the RTK settings tab (GET/POST /rtk/api).
  *
  * GET returns the RTK control state and a cookie-bound CSRF token; it never probes or changes anything. POST takes
  * `{ action: "check" | "enable" | "disable" }` as JSON (at most 1 KiB) and requires the owner, same origin and a valid

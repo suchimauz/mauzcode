@@ -77,7 +77,7 @@ At that second-wave checkpoint, presence, web-push preferences, `tool_busy` and 
 **Plugin UI contract (`procs.ui`).**
 
 - Code lives in `<plugin>/ui/index.tsx` (or `procs.ui.entry`) and does `export default` a `UiExtension` whose `id` equals the plugin name. It may import only `react`, `react/jsx-runtime`, `react-dom`, `@mauzcode/ui`, relative files inside its `ui/` folder and packages from its own `package.json` `dependencies`; anything else fails the build.
-- `package.json` → `procs.ui: { entry?, pages?, panels?, actions?, canvasKinds?, canvasLaunchers?, chatCards?, modelProviders?, settingsSections?, applications? }` lists the requested grants. Canvas kinds must start with one of the plugin's own namespaces. `canvasLaunchers` are Canvas Start-page buttons that open a local browser tab with the launcher component (unmounted when the tab closes); their icon defaults to the plugin's `procs.icon`. Plugin UIs may import packages from the plugin's own `package.json` `dependencies` (resolved from its `node_modules` and bundled into the approved hash); the official `plugins/terminal` (xterm) is the reference. `applications` maps a legacy document path (e.g. `/whisper`) to a requested page so Applications opens the native page. `chatCards` grants plugin-owned kinds (`<plugin>.<kind>`) for expanded details of host chat cards such as the Git review card.
+- `package.json` → `procs.ui: { entry?, pages?, panels?, actions?, canvasKinds?, canvasLaunchers?, chatCards?, modelProviders?, settingsTabs?, applications? }` lists the requested grants. Canvas kinds must start with one of the plugin's own namespaces. `canvasLaunchers` are Canvas Start-page buttons that open a local browser tab with the launcher component (unmounted when the tab closes); their icon defaults to the plugin's `procs.icon`. Plugin UIs may import packages from the plugin's own `package.json` `dependencies` (resolved from its `node_modules` and bundled into the approved hash); the official `plugins/terminal` (xterm) is the reference. `applications` maps a legacy document path (e.g. `/whisper`) to a requested page so Applications opens the native page. `chatCards` grants plugin-owned kinds (`<plugin>.<kind>`) for expanded details of host chat cards such as the Git review card.
 - The backend (`plugins.uiCompile`, `plugins.uiBuildAll`) bundles it with `Bun.build` into one minified ESM file on boot and on every `plugins.load/add/remove/reload`, then emits the live event `plugins.changed`. Host modules become imports of shims at `/plugins/ui/runtime/{react,react-jsx-runtime,react-dom,mauzcode-ui}.js`, which re-export the host's single instances from `globalThis.__MAUZCODE_UI_RUNTIME__` (`extensions/hostRuntime.ts`).
 - `GET /plugins/ui/manifest` lists loadable bundles (`/plugins/ui/<name>/<hash>.js`, immutable cache) with their grants. Official plugins are pre-approved; any other plugin's UI needs a human approval in the Plugins page (`POST /plugins/ui/approve`, owner + same origin + CSRF) bound to the exact bundle hash and grants (`plugin_ui_approvals`). A code or grant change returns it to review. Build errors are shown there too.
 - `extensions/pluginRuntime.ts` imports each bundle dynamically, validates it alone (id = plugin name, no override of core ids, only granted surfaces), records per-plugin errors without breaking the rest, and re-reads the manifest on `plugins.changed` and reconnect. `usePluginUi()` gives the live registry to the shell and Canvas.
@@ -110,21 +110,21 @@ Necessary server documents still use the minimal `ui.layout`, `#main`, `ui.live`
 
 Generic browser popup RPC is retired. `POST /rpc` is an unconditional 410 tombstone: it neither reads the payload nor resolves a runtime function. Generic popup/inplace helpers, host and browser scripts are removed. Native React capability endpoints replace ordinary controls; transient secureInput uses its owner/CSRF-protected Request-only routes. `input.compatView` and Redmine independent confirmation transports remain unchanged.
 
-## Plugin settings sections
+## Plugin settings tabs
 
-Settings → Plugins is a host-owned page that renders `settingsSections` contributed by eligible plugin UIs. A plugin declares the grant in `package.json` and the section in its own `ui/index.tsx`, importing only `react` and `@mauzcode/ui`:
+A plugin can add its own tabs to the Settings dialog through `settingsTabs`. Each granted tab is a separate navigation entry after the built-in tabs, titled by the plugin and drawn with the plugin's `procs.icon` (Phosphor class; invalid or missing → puzzle). There is no shared "Plugins" settings tab. A tab can be linked as `?settings=plugin:<plugin>/<id>`. A plugin declares the grant in `package.json` and the tab in its own `ui/index.tsx`, importing only `react` and `@mauzcode/ui`:
 
 ```json
-"procs": { "ui": { "entry": "ui/index.tsx", "settingsSections": ["shell"] } }
+"procs": { "icon": "ph-arrows-in", "ui": { "entry": "ui/index.tsx", "settingsTabs": ["shell"] } }
 ```
 
 ```tsx
-import type { UiExtension, ExtensionSettingsSectionProps } from '@mauzcode/ui';
-function Shell({ context }: ExtensionSettingsSectionProps) { /* fetch GET, mutate with requestJson + csrfToken */ return null; }
-export default { id: 'rtk', apiVersion: 1, settingsSections: [{ id: 'shell', title: 'RTK', component: Shell }] } satisfies UiExtension;
+import type { UiExtension, ExtensionSettingsTabProps } from '@mauzcode/ui';
+function Shell({ context }: ExtensionSettingsTabProps) { /* fetch GET, mutate with requestJson + csrfToken */ return null; }
+export default { id: 'rtk', apiVersion: 1, settingsTabs: [{ id: 'shell', title: 'RTK', description: 'Optional subtitle', component: Shell }] } satisfies UiExtension;
 ```
 
-- A section renders only when its id is in the plugin's approved `settingsSections` grant. The grant is part of the same compilation, manifest and approval identity as other grants: a third-party bundle needs a human approval, and a changed grant set invalidates the previous approval. Older extensions without sections are unaffected.
-- The host renders the heading, isolates errors with an extension boundary and keys each section by its registry entry; a lifecycle update that removes the plugin (unload, disable, lapsed approval, rebuilt bundle) unmounts it, so effects must abort fetches and dispose subscriptions on cleanup.
-- Sections receive `{ context }` (`agentId: null`, theme, readOnly). Respect readOnly, semantic tokens, keyboard focus, `role="status"`/`role="alert"` text for results and reduced motion.
+- A tab appears only when its id is in the plugin's approved `settingsTabs` grant. The grant is part of the same compilation, manifest and approval identity as other grants: a third-party bundle needs a human approval, and a changed grant set invalidates the previous approval. Older extensions without settings tabs are unaffected.
+- The host owns the navigation entry, icon, heading and description, isolates errors with an extension boundary and keys each tab by its registry entry; a lifecycle update that removes the plugin (unload, disable, lapsed approval, rebuilt bundle) removes the entry and unmounts the content (an open tab then shows an unavailable notice), so effects must abort fetches and dispose subscriptions on cleanup.
+- Tabs receive `{ context }` (`agentId: null`, theme, readOnly). Respect readOnly, semantic tokens, keyboard focus, `role="status"`/`role="alert"` text for results and reduced motion.
 - Trust boundary: UI visibility and readOnly are not authorization. Backend endpoints must authenticate the owner and verify the cookie-bound CSRF token on every write.

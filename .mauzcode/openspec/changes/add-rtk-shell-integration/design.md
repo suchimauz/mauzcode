@@ -4,7 +4,7 @@
 
 See proposal.md for motivation and scope. Current `src/tools/bash.ts` resolves secret references, selects local or remote workspace execution, calls `agent.executeBash` locally or `remote.exec` remotely, and redacts final output. `agent.executeBash` owns local process streaming and execution behavior. The integration belongs at local bash preparation, not at every subprocess or tool invocation.
 
-The public SDK currently exposes pages, panels, canvas/input contributions, model provider forms and chat cards, but no general settings sections. Server-side `UiGrants`, `uiCompile` and `uiManifest` participate in bundle eligibility; a frontend-only type addition would be incomplete.
+The public SDK currently exposes pages, panels, canvas/input contributions, model provider forms and chat cards, but no general settings contribution; the Settings tab list is a fixed core array. Server-side `UiGrants`, `uiCompile` and `uiManifest` participate in bundle eligibility; a frontend-only type addition would be incomplete.
 
 RTK 1.2.0 is installed from source without the optional engine. Its `rewrite --help` and source distinguish exits 0, 1, 2 and 3. Exit 3 includes both explicit ask rules and the absence of covering allow rules: it is not a generic error. A downloaded binary previously failed with Illegal instruction, so filesystem presence is demonstrably insufficient as a health check.
 
@@ -26,13 +26,13 @@ The preparation outcome has three explicit variants: execute (original or rewrit
 
 Alternatives rejected: replacing the core tool from the plugin creates lifecycle/signature ambiguity; intercepting `agent.executeBash` catches internal commands outside the agreed scope; a general hook chain adds unnecessary ordering and security contracts.
 
-### 2. Generic SDK settings sections with explicit grants
+### 2. Generic SDK settings tabs with explicit grants
 
-Add `settingsSections` contributions shaped like named titled views, a matching `procs.ui.settingsSections` allowlist and public exported types. Extend frontend types/registry/installed Settings pages/plugin runtime and server `UiGrants`, `uiCompile`, `uiManifest`, grant equality/approval identity and fixtures. A shared Plugin Settings page hosts eligible registered sections using existing context and UI boundaries.
+Add `settingsTabs` contributions shaped like named titled views, a matching `procs.ui.settingsTabs` allowlist and public exported types. Extend frontend types/registry/installed Settings pages/plugin runtime and server `UiGrants`, `uiCompile`, `uiManifest`, grant equality/approval identity and fixtures. Each eligible registered tab becomes its own entry in the Settings navigation after the built-in tabs, titled by the plugin and drawn with the plugin's `procs.icon` (validated Phosphor class, puzzle fallback, no plugin markup or URLs); the host renders the heading/description and isolates errors with the existing extension boundary.
 
-RTK's UI remains in `plugins/rtk/ui/index.tsx`; it imports React and the public SDK, not core-private components. Non-official plugin approval remains mandatory. Missing grants hide/reject ungranted contributions consistently with existing registry behavior. On lifecycle updates remove stale sections and clean up their resources.
+RTK's UI remains in `plugins/rtk/ui/index.tsx`; it imports React and the public SDK, not core-private components. Non-official plugin approval remains mandatory. Missing grants hide/reject ungranted contributions consistently with existing registry behavior. On lifecycle updates remove stale tabs and clean up their resources; an open tab that disappears shows an unavailable state.
 
-Alternatives rejected: a hardcoded RTK settings component in core would not satisfy plugin declaration; reusing model-provider forms would conflate unrelated contracts; a standalone plugin page would not meet the requested settings integration.
+Alternatives rejected: a hardcoded RTK settings component in core would not satisfy plugin declaration; reusing model-provider forms would conflate unrelated contracts; a standalone plugin page would not meet the requested settings integration; a shared catch-all "Plugins" tab (first implementation) hid plugin settings behind a generic entry and was replaced by per-plugin tabs at the user's request.
 
 ### 3. Owner-controlled instance state, not a freely writable boolean
 
@@ -59,7 +59,7 @@ RTK 1.2.0 provides the initial compatibility fixture. Verify actual protocol beh
 - Probe budget: one 5-second deadline shared by `--version` and `rewrite`; each step's output is capped at 4 KiB. On timeout or overflow the process is killed and pipe reads are cancelled, so descendants holding the pipe cannot stall the check.
 - Lifecycle: in-process `generation` (bumped by plugin start/stop) and `verifiedRevision` (cleared on start/stop/disable) live in `ctx.state.rtk`; check/enable/revalidate are serialized in-process, disable is not queued so it can invalidate an in-flight enable.
 - HTTP: `GET /rtk/api` returns state and the cookie-bound CSRF token without probing; `POST /rtk/api` accepts only `{ action: "check" | "enable" | "disable" }` (owner, same origin, `x-csrf-token`, JSON ≤ 1 KiB); failed enable returns 409 with the current state.
-- Settings host: the shared page is the Settings dialog tab "Plugins"; sections are keyed `<plugin>/<id>`, use the surface-id grammar for ids and receive `{ context }` with `agentId: null`.
+- Settings host: tabs are keyed `<plugin>/<id>`, selected as Settings tab `plugin:<plugin>/<id>` (also accepted in `?settings=`), use the surface-id grammar for ids and receive `{ context }` with `agentId: null`. There is no shared "Plugins" settings tab.
 
 ### 5. Single-command rewrite protocol
 
@@ -86,7 +86,7 @@ Bypass is prospective. There is no guarantee of recovering the complete output o
 
 ### 7. UI states and accessibility
 
-Render a settings section with the local-bash toggle, Check RTK button, availability status, independent enabled state, path/version/check time and failure text. Disable enabling while availability is unknown, checking or unavailable; backend always checks again. Disallow duplicate submissions and refresh authoritative state after actions. Respect readOnly, owner access, semantic themes, focus, accessible status/error announcements and reduced motion using existing SDK components.
+Render a settings tab with the local-bash toggle, Check RTK button, availability status, independent enabled state, path/version/check time and failure text. Disable enabling while availability is unknown, checking or unavailable; backend always checks again. Disallow duplicate submissions and refresh authoritative state after actions. Respect readOnly, owner access, semantic themes, focus, accessible status/error announcements and reduced motion using existing SDK components.
 
 If live updates are used, declare the topic, supply resync/onError and clean up subscriptions. Polling or fetching must also abort on unmount. Do not add dependency installation, savings charts or configuration editors.
 

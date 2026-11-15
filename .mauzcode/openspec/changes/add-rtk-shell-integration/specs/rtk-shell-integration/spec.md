@@ -25,7 +25,7 @@ The official RTK plugin SHALL provide an instance-wide integration disabled by d
 - **THEN** plugin absence does not prevent normal execution.
 
 ### Requirement: Availability is verified independently of enablement
-The settings section SHALL distinguish availability from enablement and offer a toggle and separate Check RTK action. Checks SHALL verify executable health and rewrite compatibility, not file presence alone, with bounded time and output. Successful checking SHALL NOT automatically enable RTK.
+The RTK settings tab SHALL distinguish availability from enablement and offer a toggle and separate Check RTK action. Checks SHALL verify executable health and rewrite compatibility, not file presence alone, with bounded time and output. Successful checking SHALL NOT automatically enable RTK.
 
 #### Scenario: Availability controls and facts
 - **WHEN** the owner views RTK settings

@@ -47,7 +47,7 @@ After a command starts it is never retried, replayed or re-run (also not when it
 
 ## Settings UI
 
-Settings → Plugins → **RTK** (`ui/index.tsx`, grant `procs.ui.settingsSections: ["shell"]`, runtime-compiled; no core component). It shows enabled state, availability (not checked / available / unavailable / checking…), executable path, version, last check time and the failure reason.
+Settings → **RTK**, an own Settings tab with the plugin icon `ph-arrows-in` (`ui/index.tsx`, grant `procs.ui.settingsTabs: ["shell"]`, runtime-compiled; no core component). It shows enabled state, availability (not checked / available / unavailable / checking…), executable path, version, last check time and the failure reason.
 
 - **Проверить** runs `check`; success shows the result but never turns RTK on.
 - The switch is disabled until the latest check is `available` (turning off is always allowed); enable is re-checked by the server and a 409 shows its reason and the returned state.

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, Button, Stack, requestJson, type ExtensionSettingsSectionProps, type UiExtension } from '@mauzcode/ui';
+import { ApiError, Button, Stack, requestJson, type ExtensionSettingsTabProps, type UiExtension } from '@mauzcode/ui';
 
 /** Safe instance-wide RTK state served by the owner-only GET/POST /rtk/api. */
 export type RtkControl = {
@@ -23,11 +23,11 @@ const message = (error: unknown) => error instanceof ApiError
   : 'Не удалось связаться с сервером.';
 
 /**
- * Settings → Plugins section for RTK. Reads the authoritative state from GET /rtk/api and changes it only through
+ * Own Settings tab for RTK. Reads the authoritative state from GET /rtk/api and changes it only through
  * POST /rtk/api with the cookie-bound CSRF token. A successful check never turns RTK on; enable is offered only after a
  * successful check and the server re-checks it. One action at a time; every request is aborted on unmount.
  */
-export function RtkSettings({ context }: ExtensionSettingsSectionProps) {
+export function RtkSettings({ context }: ExtensionSettingsTabProps) {
   const [data, setData] = useState<Loaded | null>(null);
   const [busy, setBusy] = useState<Action | 'load' | null>('load');
   const [error, setError] = useState<string | null>(null);
@@ -107,4 +107,4 @@ export function RtkSettings({ context }: ExtensionSettingsSectionProps) {
   </Stack>;
 }
 
-export default { id: 'rtk', apiVersion: 1, settingsSections: [{ id: 'shell', title: 'RTK', description: 'Сжатие вывода локальных вызовов bash через установленный RTK. По умолчанию выключено.', component: RtkSettings }] } satisfies UiExtension;
+export default { id: 'rtk', apiVersion: 1, settingsTabs: [{ id: 'shell', title: 'RTK', description: 'Сжатие вывода локальных вызовов bash через установленный RTK. По умолчанию выключено.', component: RtkSettings }] } satisfies UiExtension;

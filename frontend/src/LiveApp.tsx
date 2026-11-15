@@ -147,7 +147,7 @@ export function LiveApp() {
   const requestedSettings = new URLSearchParams(location.search).get('settings');
   // Legacy model settings links (LLM Connections, LLMs, policy) open the single Models tab.
   const legacyModelSettings = ['llm-connections', 'llms', 'llm-policy', 'model-policy'];
-  const linkedSettings = legacyModelSettings.includes(requestedSettings ?? '') ? 'models' as const : (['ssh-instances', 'models', 'push-notifications', 'updates'] as const).find(id => id === requestedSettings);
+  const linkedSettings = legacyModelSettings.includes(requestedSettings ?? '') ? 'models' as const : (['ssh-instances', 'models', 'push-notifications', 'updates'] as const).find(id => id === requestedSettings) ?? (/^plugin:[a-z][a-z0-9-]*\/[a-z][a-z0-9-]{0,63}$/.test(requestedSettings ?? '') ? requestedSettings as `plugin:${string}` : undefined);
   const [settingsOpen, setSettingsOpen] = useState(!!linkedSettings);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>(linkedSettings ?? 'ssh-instances');
   const changeSettingsOpen = (open: boolean) => {
