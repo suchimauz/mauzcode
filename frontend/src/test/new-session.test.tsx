@@ -67,3 +67,47 @@ it('catalog failure keeps a slash draft editable and never creates a session', a
   expect(submitNewSession).not.toHaveBeenCalled(); expect(created).not.toHaveBeenCalled();
   expect(sessionStorage.getItem('mauzcode-ui-new-session-pending')).toBeNull();
 });
+
+it('options chip edits the title in a popover; Enter closes it without sending and returns focus', async () => {
+  const { submitNewSession } = await import('../lib/newSession');
+  render(<Draft />);
+  const chip = screen.getByRole('button', { name: 'Параметры сессии' });
+  expect(chip).toHaveTextContent('Параметры');
+  expect(screen.queryByText('Advanced options')).toBeNull();
+  fireEvent.click(chip);
+  const input = await screen.findByPlaceholderText('Без названия');
+  expect(input).toHaveAttribute('maxlength', '120');
+  await waitFor(() => expect(input).toHaveFocus());
+  for (const removed of [/Project workspace/i, /Prompt presets/i, /system instructions/i, /Create this directory/i]) expect(screen.queryByText(removed)).toBeNull();
+  fireEvent.change(input, { target: { value: 'Мой чат' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(screen.queryByPlaceholderText('Без названия')).toBeNull());
+  expect(chip).toHaveFocus();
+  expect(chip).toHaveTextContent('Мой чат');
+  expect(submitNewSession).not.toHaveBeenCalled(); expect(created).not.toHaveBeenCalled();
+});
+it('Escape closes the options popover and returns focus to the chip', async () => {
+  render(<Draft />);
+  const chip = screen.getByRole('button', { name: 'Параметры сессии' });
+  fireEvent.click(chip);
+  const input = await screen.findByPlaceholderText('Без названия');
+  fireEvent.keyDown(input, { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByPlaceholderText('Без названия')).toBeNull());
+  await waitFor(() => expect(chip).toHaveFocus());
+});
+it('options chip is disabled while a first message is pending', () => {
+  sessionStorage.setItem('mauzcode-ui-new-session-pending', JSON.stringify({ ...initial, text: 'Waiting', requestKey: 'pending-key-000001' }));
+  render(<Draft />);
+  expect(screen.getByRole('button', { name: 'Параметры сессии' })).toBeDisabled();
+});
+it('a legacy pending submit with removed fields is not replayed; its text and title return to the draft', async () => {
+  const { submitNewSession } = await import('../lib/newSession');
+  sessionStorage.setItem('mauzcode-ui-new-session-pending', JSON.stringify({ ...initial, text: 'Old text', title: 'Old title', workspaceDir: '/tmp/custom', requestKey: 'pending-key-000002' }));
+  render(<Draft />);
+  await waitFor(() => expect(screen.getByRole('textbox')).toHaveTextContent('Old text'));
+  expect(sessionStorage.getItem('mauzcode-ui-new-session-pending')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Параметры сессии' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Параметры сессии' })).toHaveTextContent('Old title');
+  expect(screen.queryByText('Повторить отправку')).toBeNull();
+  expect(submitNewSession).not.toHaveBeenCalled();
+});

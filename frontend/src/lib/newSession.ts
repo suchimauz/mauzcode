@@ -1,8 +1,15 @@
 import { requestJson } from './mauzcode';
 import { normalizeMascotChoice, type MascotChoice } from './mascots';
-export type NewSessionDraft = { title?: string; workspaceDir?: string; createWorkspaceDir?: string; promptPreset?: string[]; systemPrompt?: string; mascot?: MascotChoice; projectId: string; model: string; effort: string; text: string; requestKey: string };
-export type NewSessionDefaults = { version: number; defaultModel: string; csrfToken: string; promptPresets?: Record<string, { label: string; text: string }> };
+export type NewSessionDraft = { title?: string; mascot?: MascotChoice; projectId: string; model: string; effort: string; text: string; requestKey: string };
+export type NewSessionDefaults = { version: number; defaultModel: string; csrfToken: string };
 const storageKey = 'mauzcode-ui-new-session';
+/** Fields the old composer could store; they are no longer sent anywhere. */
+const removedFields = ['workspaceDir', 'createWorkspaceDir', 'promptPreset', 'systemPrompt'] as const;
+/** True when a stored record carries a non-empty value for a field the old composer used to send. */
+export function hasRemovedSessionFields(value: object): boolean {
+  const record = value as Record<string, unknown>;
+  return removedFields.some(key => { const field = record[key]; return Array.isArray(field) ? field.length > 0 : typeof field === 'string' ? field.length > 0 : field != null && field !== false; });
+}
 const selectionKey = 'mauzcode-ui-last-session-selection';
 export type SessionSelection = { projectId?: string; model?: string };
 /** Local preferences only; always validate these IDs against the current authorized catalogue. */
@@ -24,9 +31,9 @@ export function readNewSessionDraft(): NewSessionDraft {
   const query = new URLSearchParams(window.location.search);
   if (query.get('newSession') === '1') {
     const last = readSessionSelection();
-    return { title: query.get('title') || '', workspaceDir: query.get('workspaceDir') || '', promptPreset: query.getAll('promptPreset'), systemPrompt: query.get('systemPrompt') || '', mascot: 'random', projectId: query.get('projectId') || last.projectId || '', model: query.get('model') || last.model || '', effort: query.get('effort') || '', text: query.get('text') || '', requestKey: crypto.randomUUID() };
+    return { title: query.get('title') || '', mascot: 'random', projectId: query.get('projectId') || last.projectId || '', model: query.get('model') || last.model || '', effort: query.get('effort') || '', text: query.get('text') || '', requestKey: crypto.randomUUID() };
   }
-  try { const d = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); if (d && ['projectId','model','effort','text','requestKey'].every(k => typeof d[k] === 'string')) return { ...d, mascot: normalizeMascotChoice(d.mascot) }; } catch { /* Browser storage is optional. */ }
+  try { const d = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); if (d && ['projectId','model','effort','text','requestKey'].every(k => typeof d[k] === 'string')) return { ...(typeof d.title === 'string' ? { title: d.title } : {}), mascot: normalizeMascotChoice(d.mascot), projectId: d.projectId, model: d.model, effort: d.effort, text: d.text, requestKey: d.requestKey }; } catch { /* Browser storage is optional. */ }
   const last = readSessionSelection();
   return { mascot: 'random', projectId: last.projectId || '', model: last.model || '', effort: '', text: '', requestKey: crypto.randomUUID() };
 }
@@ -34,16 +41,16 @@ export function persistNewSessionDraft(draft: NewSessionDraft) { try { sessionSt
 export function clearNewSessionDraft() { try { sessionStorage.removeItem(storageKey); } catch { /* Optional browser storage. */ } }
 export function getNewSessionDefaults(signal?: AbortSignal) { return requestJson<NewSessionDefaults>('/ui-lab-api/new-session', { signal }); }
 export function submitNewSession(draft: NewSessionDraft, csrfToken: string, files: readonly File[] = []) {
-  const advanced = { title: draft.title || '', workspaceDir: draft.workspaceDir || '', createWorkspaceDir: draft.createWorkspaceDir || '', promptPreset: draft.promptPreset || [], systemPrompt: draft.systemPrompt || '' };
+  const title = (draft.title || '').trim();
   if (files.length) {
     const body = new FormData();
-    body.set('requestKey', draft.requestKey); body.set('projectId', draft.workspaceDir ? '' : draft.projectId); body.set('text', draft.text.trim());
+    body.set('requestKey', draft.requestKey); body.set('projectId', draft.projectId); body.set('text', draft.text.trim());
     if (draft.model) body.set('model', draft.model);
     if (draft.effort) body.set('effort', draft.effort);
     body.set('mascot', normalizeMascotChoice(draft.mascot));
-    for (const [key, value] of Object.entries(advanced)) body.set(key, Array.isArray(value) ? JSON.stringify(value) : value);
+    body.set('title', title);
     files.forEach(file => body.append('files', file, file.name));
     return requestJson<{ agentId: string; projectId: string; status: 'sent' }>('/ui-lab-api/new-session', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body });
   }
-  return requestJson<{ agentId: string; projectId: string; status: 'sent' }>('/ui-lab-api/new-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ ...advanced, mascot: normalizeMascotChoice(draft.mascot), requestKey: draft.requestKey, projectId: draft.workspaceDir ? '' : draft.projectId, ...(draft.model ? { model: draft.model } : {}), ...(draft.effort ? { effort: draft.effort } : {}), text: draft.text.trim() }) });
+  return requestJson<{ agentId: string; projectId: string; status: 'sent' }>('/ui-lab-api/new-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ title, mascot: normalizeMascotChoice(draft.mascot), requestKey: draft.requestKey, projectId: draft.projectId, ...(draft.model ? { model: draft.model } : {}), ...(draft.effort ? { effort: draft.effort } : {}), text: draft.text.trim() }) });
 }

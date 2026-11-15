@@ -23,10 +23,13 @@ button.new-session-chip:hover { background: var(--hover); }
 .workspace-draft-row.is-selected { background: var(--selected); }
 @media (max-width: 480px) { .new-session-chips { gap: 8px; } .new-session-model { gap: 8px; } }
 
-.new-session-advanced { margin-block: 8px; font-size: 13px; }
-.new-session-advanced summary { cursor: pointer; padding: 8px 0; }
-.new-session-advanced-fields { display: grid; gap: 12px; border: 0; padding: 8px 0; margin: 0; max-height: 40vh; overflow: auto; }
-.new-session-advanced-fields > label { display: grid; gap: 6px; }
-.new-session-advanced-fields input:not([type="checkbox"]), .new-session-advanced-fields textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: inherit; font: inherit; }
-.new-session-advanced-fields pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-.new-session-advanced-fields p { margin: 0; }
+.new-session-options { box-sizing: border-box; width: 280px; max-width: calc(100vw - 24px); padding: 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); box-shadow: 0 3px 12px #0000000d; outline: none; transform-origin: var(--transform-origin); transition: opacity 150ms ease, transform 150ms ease; }
+.new-session-options[data-starting-style], .new-session-options[data-ending-style] { opacity: 0; transform: scale(.98); }
+.new-session-options-field { display: grid; gap: 6px; font: 500 13px/18px var(--font-sans); color: var(--text-secondary); }
+.new-session-options-field input { box-sizing: border-box; width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); font: 400 13px/20px var(--font-sans); }
+.new-session-options-field input::placeholder { color: var(--text-tertiary); }
+.new-session-options-field input:focus-visible { outline: 2px solid var(--accent, var(--text)); outline-offset: 1px; }
+.new-session-chip:focus-visible { outline: 2px solid var(--accent, var(--text)); outline-offset: 2px; }
+button.new-session-chip:disabled { opacity: .5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .new-session-options { transition: opacity 120ms ease; } .new-session-options[data-starting-style], .new-session-options[data-ending-style] { transform: none; } }
+@media (prefers-contrast: more) { .new-session-options { border-color: var(--text); } }
