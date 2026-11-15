@@ -15,10 +15,10 @@
 export default function (
     ctx: Context,
     _session: Session | null,
-    opts: { /** Value for protocol. */ protocol?: "markers" | "json"; /** Value for only. */ only?: string[] } = {},
+    opts: { /** Tool wire protocol; defaults to markers. */ protocol?: "markers" | "json"; /** Optional legacy tool-name narrowing. */ only?: string[]; /** Access predicate for each declaration's implementation function. */ allows?: (name: string) => boolean } = {},
 ): string {
     const protocol = opts.protocol ?? "markers";
-    let tools = ctx.fns.tools.list({});
+    let tools = ctx.fns.tools.list({}).filter(t => !opts.allows || opts.allows(t.fn));
     if (opts.only?.length) tools = tools.filter((t: any) => opts.only!.includes(t.wireName) || opts.only!.includes(t.name));
 
     const advertised = tools.filter((t: any) => t.promptSnippet);
@@ -35,6 +35,7 @@ export default function (
 
     const seen = new Set<string>();
     const guidelines = tools.flatMap((t: any) => t.promptGuidelines ?? [])
+        .filter((g: string) => !opts.allows || [...g.matchAll(/ctx\.fns\.([\w]+(?:\.[\w]+)+)/g)].every(match => opts.allows!(match[1]!)))
         .filter((g: string) => (seen.has(g) ? false : (seen.add(g), true)));
     if (guidelines.length) out.push("", "## Tool discipline", "", guidelines.map((g: string) => `- ${g}`).join("\n"));
 

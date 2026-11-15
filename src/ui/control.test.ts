@@ -17,7 +17,7 @@ const mkCtx = async () => {
     opts.agent.events.push({ type: 'assistant', text: 'ok:' + opts.userText });
   };
   reg.session.save = () => {};
-  reg.settings.getString = (_c: any, _s: any, _o: any) => undefined;
+  reg.settings.getString = (_c: any, _s: any, o: any) => o.fallback;
   reg.files.resolveSafe = (_c: any, _s: any, opts: { path: string }) => opts.path;
   reg.files.open = (c: any, _s: any, opts: { path: string }) => { ((c.state as any).openedFiles ??= []).push(opts.path); };
   const emitted: any[] = [];

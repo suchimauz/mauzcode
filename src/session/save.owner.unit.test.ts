@@ -12,6 +12,7 @@ function fixture() {
             select: async ({ params }: any) => { queries.push(params[0]); return [{ created_by: params[0] === 'parent' ? 'parent-owner' : 'durable-owner' }]; },
             run: async (o: any) => { writes.push(o); },
         } },
+        agentPreset: { resolve: async () => ({ presetId: 'standard', name: 'Standard', layers: [] }) },
         auth: { actorId: async () => null },
         agent: { nextId: async () => 'new-agent' },
         session: {}, events: { emitAgentsChanged: () => {} },

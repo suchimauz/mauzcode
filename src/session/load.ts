@@ -7,7 +7,16 @@ id: string }): Promise<types.agent.Agent | null> {
     const row = rows[0];
     if (!row) return null;
 
+    let preset: types.agentPreset.Snapshot;
+    if (row.preset_snapshot == null) {
+        const creator = ctx.fns.agentPreset.defaults({}).find(p => p.id === 'creator')!;
+        preset = { presetId: creator.id, name: creator.name, layers: [{ id: creator.id, allow: creator.allow, deny: creator.deny, plugins: creator.plugins, excludeSections: creator.exclude_sections, prompt: creator.prompt }] };
+        ctx.fns.procs.log.warn({ event: 'session.preset.missing', msg: 'Missing preset snapshot; using shipped Creator rules', agentId: id });
+    } else {
+        preset = typeof row.preset_snapshot === 'string' ? JSON.parse(row.preset_snapshot) : structuredClone(row.preset_snapshot);
+    }
     const agent: types.agent.Agent = {
+        preset,
         id: row.id,
         model: row.model,
         title: row.title ?? "",

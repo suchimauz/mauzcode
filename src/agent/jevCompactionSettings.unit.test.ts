@@ -21,6 +21,8 @@ function fixture() {
         },
     } }, agent: {} } };
     ctx.fns.agent.setAutomation = (opts: any) => setAutomation(ctx, null, opts);
+    ctx.fns.agentPreset = { defaults: () => [{ id: 'creator', name: 'Creator', allow: ['*'], deny: [], plugins: ['*'], exclude_sections: [], prompt: '' }] };
+    ctx.fns.procs.log = { warn: () => {} };
     return { ctx, row, live };
 }
 

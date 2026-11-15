@@ -83,6 +83,7 @@
       "procs/telemetry": {},
       "procs/db": {},
       "procs/migrate": {},
+      "agentPreset": { "required": true },
       "auth": {},
       "controlPlane": {},
       "procs/repl": {},

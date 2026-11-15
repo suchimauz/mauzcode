@@ -14,7 +14,7 @@
  * mounted, which keeps the prompt free of an empty heading.
  * @returns The Markdown block to splice into the system prompt, or an empty string.
  */
-export default async function (ctx: Context, _session: Session | null, _opts?: {}): Promise<string> {
+export default async function (ctx: Context, _session: Session | null, _opts?: { /** Supplied for generator consistency; output fences remain available independently of function access. */ allows?: (name: string) => boolean }): Promise<string> {
     const fences = (ctx.state as any)?.markdown?.fences as types.markdown.State["fences"];
     if (!fences) return "";
 

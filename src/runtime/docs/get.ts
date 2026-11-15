@@ -13,8 +13,11 @@ export default function (
     opts: {
         /** Dotted function name, for example `agent.compact`. */
         name: string;
+        /** Internal discovery filter supplied by the preset evaluation boundary. */
+        allows?: (name: string) => boolean;
     },
 ): Record<string, any> {
+    if (opts.allows && !opts.allows(opts.name)) throw new Error(`no such available function: ${opts.name}`);
     const fn = getPath(ctx.state.registry, String(opts.name ?? "").split("."));
     if (typeof fn !== "function") throw new Error(`no such function: ${opts.name}`);
     const meta = (fn as any).meta;

@@ -11,17 +11,20 @@ export default async function (
         namespace?: string;
         /** Retrieval strategy. `hybrid` uses BM25 fast path then adaptive fusion. */
         mode?: "hybrid" | "bm25" | "vector" | "lexical";
+        /** Internal discovery filter supplied by the preset evaluation boundary. */
+        allows?: (name: string) => boolean;
     },
 ): Promise<Array<{ name: string; summary: string; signature: string; rel: string; score: number; bm25?: number | null; similarity?: number | null; evidence?: string }>> {
     const query = String(opts.query ?? "").trim();
     const limit = Math.max(1, Math.min(50, Math.floor(opts.limit ?? 10)));
     const namespace = String(opts.namespace ?? "").replace(/\.$/, "");
     const mode = opts.mode ?? "hybrid";
-    if (!query || mode === "lexical") return lexical(ctx, query, limit, namespace);
+    if (!query || mode === "lexical") return lexical(ctx, query, limit, namespace, opts.allows);
     try {
         const indexed = Number((await ctx.fns.procs.db.select({ sql: "SELECT count(*)::int n FROM functions", params: [] }) as any[])[0]?.n ?? 0);
         if (!indexed) await ctx.fns.runtime.docs.index({});
-        const keyword = await bm25(ctx, query, Math.max(limit, 60), namespace);
+        const visible = (row: { name: string }) => !opts.allows || opts.allows(row.name);
+        const keyword = (await bm25(ctx, query, Math.max(limit, 60), namespace)).filter(visible);
         if (mode === "bm25") return keyword.slice(0, limit);
         // Exact/prefix function names are authoritative and avoid an unnecessary
         // network round trip. Generic prose never takes this fast path.
@@ -31,12 +34,12 @@ export default async function (
         const result = await ctx.fns.embeddings.embed({ input: query });
         const vector = result.vectors[0];
         if (!vector) return keyword.slice(0, limit);
-        const semantic = await vectorOnly(ctx, vector, 60, namespace);
+        const semantic = (await vectorOnly(ctx, vector, 60, namespace)).filter(visible);
         if (mode === "vector") return semantic.slice(0, limit);
-        const keywords = await kwBm25(ctx, query, 60, namespace);
+        const keywords = (await kwBm25(ctx, query, 60, namespace)).filter(visible);
         return adaptiveFuse(keyword, semantic, keywords, limit);
     } catch {
-        return lexical(ctx, query, limit, namespace);
+        return lexical(ctx, query, limit, namespace, opts.allows);
     }
 }
 
@@ -128,9 +131,9 @@ function exactNameMatch(value: string, query: string): boolean {
     return name === q || name.endsWith("." + q) || q === name.replaceAll(".", " ");
 }
 
-function lexical(ctx: Context, query: string, limit: number, namespace: string): any[] {
+function lexical(ctx: Context, query: string, limit: number, namespace: string, allows?: (name: string) => boolean): any[] {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-    const all = ctx.fns.runtime.docs.list({ namespace }).map((item: any) => ctx.fns.runtime.docs.get({ name: item.name }));
+    const all = ctx.fns.runtime.docs.list({ namespace }).filter((item: { name: string }) => !allows || allows(item.name)).map((item: any) => ctx.fns.runtime.docs.get({ name: item.name }));
     return all.map((meta: any) => {
         const name = String(meta.name).toLowerCase();
         const prose = `${meta.summary ?? ""} ${meta.doc ?? ""} ${JSON.stringify(meta.paramsSchema ?? {})}`.toLowerCase();

@@ -12,6 +12,8 @@ export default async function (
     opts: {
         /** Parent agent delegating the work. */
         agent: types.agent.Agent;
+        /** Optional preset to narrow the inherited parent snapshot. */
+        presetId?: string;
         /** Short title shown for the child and its plan. */
         title: string;
         /** Ordered tasks in the native session.plan format; IDs must be stable and unique. */
@@ -25,13 +27,13 @@ export default async function (
     if (authority) {
         const taskText = opts.tasks.map((task, index) => `${index + 1}. [${task.id}] ${task.title}${task.instructions ? ': ' + task.instructions : ''}`).join('\n');
         const prompt = ['You are a delegated subagent working for a parent agent.', 'Execute the visible task plan in order. After each completed task call session.done({ agent, id }).', 'When complete call agent.finishTask({ agent, summary, result }) with a concrete JSON-compatible result.', 'This Goal delegation supports one worker claim only; later turns are not authorized automatically.', '', 'Plan:', taskText].join('\n');
-        const child = await ctx.fns.agent.publishGoalDelegation({ parent: opts.agent, title, tasks: opts.tasks, prompt, scratchpad: { delegation: { parentId: opts.agent.id, status: 'working', title, createdAt: Date.now() } } });
+        const child = await ctx.fns.agent.publishGoalDelegation({ parent: opts.agent, presetId: opts.presetId, title, tasks: opts.tasks, prompt, scratchpad: { delegation: { parentId: opts.agent.id, status: 'working', title, createdAt: Date.now() } } });
         return { id: child.id, status: 'working' };
     }
     // A delegated child is a fork in lineage/workspace, not a full transcript copy.
     // The task packet below is its bounded projection; offset 0 keeps the noisy
     // parent history out of the child context.
-    const child = await ctx.fns.session.fork({ id: opts.agent.id, title, offset: 0, visibility: "team" });
+    const child = await ctx.fns.session.fork({ id: opts.agent.id, presetId: opts.presetId, title, offset: 0, visibility: "team" });
     child.scratchpad = {
         delegation: { parentId: opts.agent.id, status: "working", title, createdAt: Date.now() },
     };

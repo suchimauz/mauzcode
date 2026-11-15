@@ -9,6 +9,7 @@ const mkCtx = () => {
         state: {},
         env: process.env,
         fns: {
+            agentPreset: { resolve: async () => ({ presetId: 'standard', name: 'Standard', layers: [] }) },
             agent: { nextId },
             session: { save },
             events: { emitAgentsChanged },

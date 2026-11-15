@@ -17,8 +17,14 @@ export default async function (
     opts: { code: string; agent?: any },
 ): Promise<string | { output: string; content: types.tools.Content[] }> {
     try {
+        const evalCtx: Context = Object.create(ctx);
+        if (opts.agent?.preset) {
+            const fns = ctx.fns.agentPreset.guardFns({ snapshot: opts.agent.preset });
+            Object.defineProperty(evalCtx, "fns", { get: () => fns });
+        }
         const r = await ctx.fns.procs.repl.eval({
             code: opts.code,
+            evalCtx,
             bindings: opts.agent ? { agent: opts.agent } : {},
         });
         if (isContent(r.return)) {

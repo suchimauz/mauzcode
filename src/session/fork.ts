@@ -2,6 +2,8 @@
 export default async function (ctx: Context, _session: Session | null, opts: {
         /** Agent identifier. */
 id: string;
+        /** Optional preset to intersect with the parent's creation snapshot; omitted inherits unchanged. */
+presetId?: string;
         /** Human-readable title. */
 title?: string;
         /** Number of parent messages inherited by the child. */
@@ -46,6 +48,7 @@ deferPublication?: boolean }): Promise<types.agent.Agent> {
         model: parent.model,
         systemPrompt: parent.systemPrompt,
         tools: parent.tools,
+        preset: await ctx.fns.agentPreset.resolve({ id: opts.presetId, parent: parent.preset }),
         title: opts.title ?? (parent.title ? `${parent.title} (fork)` : ""),
         workspaceDir: parent.workspaceDir,
         workspaceHost: parent.workspaceHost,

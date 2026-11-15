@@ -12,13 +12,15 @@ export default async function (
         maxChars?: number;
         /** Include generated function documentation. @default true */
         includeFunctions?: boolean;
+        /** Internal discovery filter supplied by the preset evaluation boundary. */
+        allows?: (name: string) => boolean;
     },
 ): Promise<Record<string, any>> {
     const name = String(opts.name ?? "").trim();
     const plugin = (ctx.fns.procs.modules.list({}) as any[]).find((module: any) =>
         module.plugin && (module.name === name || module.namespaces?.includes(name)),
     );
-    if (!plugin) throw new Error(`plugins.read: mounted plugin "${name}" not found`);
+    if (!plugin || (opts.allows && !plugin.fns.some((name: string) => opts.allows!(name)))) throw new Error(`plugins.read: mounted plugin "${name}" not found`);
     let overview: { path: string; markdown: string; truncated: boolean } | null = null;
     if (plugin.skill) {
         const full = await Bun.file(plugin.skill).text().catch(() => null);
@@ -26,7 +28,7 @@ export default async function (
         const maxChars = Math.max(1, Math.min(Number(opts.maxChars ?? 20_000), 100_000));
         overview = { path: plugin.skill, markdown: full.slice(0, maxChars), truncated: full.length > maxChars };
     }
-    const generated = opts.includeFunctions === false ? null : ctx.fns.plugins.docs({ name: plugin.name });
+    const generated = opts.includeFunctions === false ? null : ctx.fns.plugins.docs({ name: plugin.name, allows: opts.allows });
     return {
         name: plugin.name,
         label: plugin.label,

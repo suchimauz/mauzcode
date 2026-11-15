@@ -102,3 +102,16 @@ it('draft title opens with the keyboard and is locked while the first message is
   await user.click(button);
   expect(screen.queryByRole('textbox', { name: 'Название новой сессии' })).toBeNull();
 });
+it('shows the agent preset name read-only next to the title', async () => {
+  vi.mocked(getChatHeader).mockResolvedValue({ agentId: 'root', title: 'Работа', presetName: 'Standard', children: [], csrfToken: 'csrf' });
+  render(<ChatHeader {...props()} />);
+  const label = await screen.findByText('Standard');
+  expect(label).toHaveClass('chat-header-preset');
+  expect(label.tagName).toBe('SPAN');
+  expect(screen.queryByRole('button', { name: /Standard/ })).toBeNull();
+});
+it('omits the preset label when the payload has none', async () => {
+  render(<ChatHeader {...props()} />);
+  await screen.findByRole('button', { name: /Работа/ });
+  expect(document.querySelector('.chat-header-preset')).toBeNull();
+});

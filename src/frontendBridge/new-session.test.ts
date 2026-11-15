@@ -2,9 +2,14 @@ import {describe,test,expect} from 'bun:test';
 import handler from './newSession';
 import modelEffort from './modelEffort';
 import middleware from '../$middleware_ui-lab-api';
+const PRESETS=[
+ {id:'standard',name:'Standard',description:'Focused work',sort_order:10,builtin:true,allow:['tools.*'],deny:[],plugins:['git'],exclude_sections:[],prompt:'secret prompt',updated_at:0},
+ {id:'creator',name:'Creator',description:'Changes the system',sort_order:20,builtin:true,allow:['*'],deny:[],plugins:['*'],exclude_sections:[],prompt:'',updated_at:0},
+ {id:'minimal',name:'Minimal',description:'Files and shell',sort_order:30,builtin:true,allow:['tools.bash'],deny:[],plugins:[],exclude_sections:[],prompt:'',updated_at:0},
+];
 function fixture(){
  const store=new Map<string,string>(); let creates=0,sends=0,fail=false,csrf=true,project=true;
- const ctx:any={fns:{projects:{principal:async()=> 'user:owner',get:async()=>project?{id:'p',dir:'/checked'}:null},auth:{verifyCsrf:async()=>csrf,csrfToken:async()=> 'token'},settings:{modelDefault:async()=> 'test/acc:one'},frontendBridge:{modelCatalogue:async()=>({groups:[{connectionId:'c',provider:'test',accountName:'acc',enabled:true,unavailable:false}],models:[{provider:'test',model:'test/acc:one',label:'one',groupLabel:'acc',connectionId:'c',disabled:false,reasoning:{supported:['low','high'],default:'high'}},{provider:'test',model:'test/acc:disabled',label:'disabled',groupLabel:'acc',connectionId:'c',disabled:true}]}),modelEffort:(o:any)=>modelEffort({} as any,null,o),iconData:async()=>null},procs:{db:{select:async({sql,params}:any)=>{if(sql.startsWith('SELECT'))return store.has(params[0])?[{value:store.get(params[0])}]:[];if(store.has(params[0]))return [];store.set(params[0],params[1]);return [{key:params[0]}];},run:async({params}:any)=>{store.set(params[1],params[0]);}}},agent:{createFromValues:async(opts:any)=>{expect(opts.projectId).toBe('p');creates++;return {agent:{id:'new'}};},setReasoningEffort:async()=>{},acceptMessage:async({req,params}:any)=>{sends++;expect(params.id).toBe('new');expect(await req.text()).toBe('hello');expect(req.headers.get('idempotency-key')).toBe('request-key-00001');if(fail)throw Error('mock failure');return new Response('ok');}}}};
+ const ctx:any={fns:{projects:{principal:async()=> 'user:owner',get:async()=>project?{id:'p',dir:'/checked'}:null},auth:{verifyCsrf:async()=>csrf,csrfToken:async()=> 'token'},settings:{modelDefault:async()=> 'test/acc:one',getString:async()=> 'standard'},agentPreset:{list:async()=>PRESETS,get:async({id}:any)=>PRESETS.find(p=>p.id===id)??null},frontendBridge:{modelCatalogue:async()=>({groups:[{connectionId:'c',provider:'test',accountName:'acc',enabled:true,unavailable:false}],models:[{provider:'test',model:'test/acc:one',label:'one',groupLabel:'acc',connectionId:'c',disabled:false,reasoning:{supported:['low','high'],default:'high'}},{provider:'test',model:'test/acc:disabled',label:'disabled',groupLabel:'acc',connectionId:'c',disabled:true}]}),modelEffort:(o:any)=>modelEffort({} as any,null,o),iconData:async()=>null},procs:{db:{select:async({sql,params}:any)=>{if(sql.startsWith('SELECT'))return store.has(params[0])?[{value:store.get(params[0])}]:[];if(store.has(params[0]))return [];store.set(params[0],params[1]);return [{key:params[0]}];},run:async({params}:any)=>{store.set(params[1],params[0]);}}},agent:{createFromValues:async(opts:any)=>{expect(opts.projectId).toBe('p');creates++;return {agent:{id:'new'}};},setReasoningEffort:async()=>{},acceptMessage:async({req,params}:any)=>{sends++;expect(params.id).toBe('new');expect(await req.text()).toBe('hello');expect(req.headers.get('idempotency-key')).toBe('request-key-00001');if(fail)throw Error('mock failure');return new Response('ok');}}}};
  const session:any={user:{id:'owner'}};
  const post=(patch:any={},user:any=session)=>handler(ctx,user,{req:new Request('http://localhost/ui-lab-api/new-session',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':'token'},body:JSON.stringify({requestKey:'request-key-00001',projectId:'p',text:'hello',...patch})})});
  return {ctx,session,post,counts:()=>({creates,sends}),setFail:(value=true)=>{fail=value;},setCsrf:()=>{csrf=false;},setProject:()=>{project=false;}};
@@ -65,4 +70,36 @@ test('new-chat selector groups by connection account and reports unavailable con
  expect(body).not.toHaveProperty('promptPresets');
  expect(body.groups.map((g:any)=>[g.accountName,g.unavailable])).toEqual([['acc',false],['down',true]]);
  expect(f.counts()).toEqual({creates:0,sends:0});
+});
+
+describe('agent presets',()=>{
+ test('Defaults response lists presets without access rules',async()=>{
+  const f=fixture();const r=await handler(f.ctx,f.session,{req:new Request('http://localhost/ui-lab-api/new-session')});
+  expect(r.status).toBe(200);const b:any=await r.json();
+  expect(b.defaultPresetId).toBe('standard');
+  expect(b.presets).toEqual([{id:'standard',name:'Standard',description:'Focused work',sortOrder:10},{id:'creator',name:'Creator',description:'Changes the system',sortOrder:20},{id:'minimal',name:'Minimal',description:'Files and shell',sortOrder:30}]);
+  const raw=JSON.stringify(b.presets);for(const leaked of ['allow','deny','plugins','prompt','exclude_sections'])expect(raw).not.toContain(leaked);
+  expect(f.counts()).toEqual({creates:0,sends:0});
+ });
+ test('Submit with an unknown preset is rejected before creation',async()=>{
+  const f=fixture();for(const presetId of ['nope','',42])expect((await f.post({presetId})).status).toBe(400);
+  expect(f.counts()).toEqual({creates:0,sends:0});
+ });
+ test('Submit without a preset leaves the default to creation',async()=>{
+  const f=fixture();let received:any;f.ctx.fns.agent.createFromValues=async(opts:any)=>{received=opts;return {agent:{id:'new'}};};
+  expect((await f.post()).status).toBe(201);expect(received).not.toHaveProperty('presetId');
+ });
+ test('explicit preset reaches creation and binds retries',async()=>{
+  const f=fixture();let received:any;f.ctx.fns.agent.createFromValues=async(opts:any)=>{received=opts;return {agent:{id:'new'}};};
+  expect((await f.post({presetId:'creator'})).status).toBe(201);expect(received.presetId).toBe('creator');
+  expect((await f.post({presetId:'creator'})).status).toBe(200);expect((await f.post({presetId:'minimal'})).status).toBe(409);
+ });
+ test('presetId is accepted in multipart while promptPreset stays rejected',async()=>{
+  const f=fixture();let received:any;f.ctx.fns.agent.createFromValues=async(opts:any)=>{received=opts;return {agent:{id:'new'}};};
+  const body=new FormData();body.set('requestKey','request-key-00003');body.set('projectId','p');body.set('text','hello');body.set('presetId','minimal');
+  f.ctx.fns.agent.acceptMessage=async()=>new Response('ok');
+  const r=await handler(f.ctx,f.session,{req:new Request('http://localhost/ui-lab-api/new-session',{method:'POST',headers:{'x-csrf-token':'token'},body})});
+  expect(r.status).toBe(201);expect(received.presetId).toBe('minimal');
+  expect((await f.post({promptPreset:'standard'})).status).toBe(400);
+ });
 });

@@ -1,14 +1,14 @@
 /**
  * Read new-chat model defaults or create and submit one project chat exactly once
  *
- * Use for UI Lab drafts without an agent. Authenticated JSON or multipart POST binds a durable owner-scoped request key before native creation and message acceptance; interrupted creation fails closed; a durably bound and configured agent can retry native message acceptance with the same idempotency key, never creation. GET returns model choices and a cookie-bound CSRF token without creating an agent.
- * @param opts.req Authenticated GET defaults request or CSRF-protected POST with requestKey, projectId, optional title (at most 120 characters are kept), model, mascot (omitted or random keeps SQL DEFAULT; otherwise crab/deepy/whalegirl/desksprite/bitty/tmuxai/planet/rainbow-terminal-cat), text, and up to 10 files (40 MiB each, 80 MiB total).
+ * Use for UI Lab drafts without an agent. Authenticated JSON or multipart POST binds a durable owner-scoped request key before native creation and message acceptance; interrupted creation fails closed; a durably bound and configured agent can retry native message acceptance with the same idempotency key, never creation. GET returns model choices, agent presets (id, name, description, sortOrder only), the default preset id and a cookie-bound CSRF token without creating an agent.
+ * @param opts.req Authenticated GET defaults request or CSRF-protected POST with requestKey, projectId, optional presetId (an existing agent preset; omitted uses the default, unknown is rejected before creation), optional title (at most 120 characters are kept), model, mascot (omitted or random keeps SQL DEFAULT; otherwise crab/deepy/whalegirl/desksprite/bitty/tmuxai/planet/rainbow-terminal-cat), text, and up to 10 files (40 MiB each, 80 MiB total).
  */
 export default async function (
     ctx: Context,
     session: Session | null,
     opts: {
-        /** Authenticated GET defaults request or CSRF-protected POST with requestKey, projectId, optional title (at most 120 characters are kept), model, mascot (omitted or random keeps SQL DEFAULT; otherwise crab/deepy/whalegirl/desksprite/bitty/tmuxai/planet/rainbow-terminal-cat), text, and up to 10 files (40 MiB each, 80 MiB total). */
+        /** Authenticated GET defaults request or CSRF-protected POST with requestKey, projectId, optional presetId (an existing agent preset; omitted uses the default, unknown is rejected before creation), optional title (at most 120 characters are kept), model, mascot (omitted or random keeps SQL DEFAULT; otherwise crab/deepy/whalegirl/desksprite/bitty/tmuxai/planet/rainbow-terminal-cat), text, and up to 10 files (40 MiB each, 80 MiB total). */
         req: Request;
     },
 ): Promise<Response> {
@@ -28,11 +28,14 @@ export default async function (
     if(req.method==='GET'){
         const url=new URL(req.url),model=url.searchParams.get('model')||enabledDefault,requested=url.searchParams.get('effort')||'auto';
         if(!models.some(m=>m.model===model&&!m.disabled)||!efforts.includes(requested))return reply({error:'Invalid model or effort'},400);
-        return reply({version:1,model,label:models.find(m=>m.model===model)?.label??(model?(await ctx.fns.models.displayNames({routes:[model]}))[model]??model:''),icon:await ctx.fns.frontendBridge.iconData({model}),defaultModel:enabledDefault,models,groups:catalogue.groups,effort:ctx.fns.frontendBridge.modelEffort({reasoning:reasoningOf(model),requested}),csrfToken:await ctx.fns.auth.csrfToken({req})});
+        // Menu fields only: access patterns, plugin grants and prompt additions stay server-side.
+        const presets=(await ctx.fns.agentPreset.list({})).map(p=>({id:p.id,name:p.name,description:p.description,sortOrder:p.sort_order}));
+        const defaultPresetId=await ctx.fns.settings.getString({module:'agentPreset',scopeType:'global',key:'default',fallback:'standard'});
+        return reply({version:1,presets,defaultPresetId,model,label:models.find(m=>m.model===model)?.label??(model?(await ctx.fns.models.displayNames({routes:[model]}))[model]??model:''),icon:await ctx.fns.frontendBridge.iconData({model}),defaultModel:enabledDefault,models,groups:catalogue.groups,effort:ctx.fns.frontendBridge.modelEffort({reasoning:reasoningOf(model),requested}),csrfToken:await ctx.fns.auth.csrfToken({req})});
     }
     const contentType=req.headers.get('content-type')?.split(';')[0]?.trim();
-    const allowed=['requestKey','projectId','model','effort','mascot','text','title'];
-    let data:{requestKey?:string;projectId?:string;model?:string;effort?:string;mascot?:string;text?:string;title?:string};
+    const allowed=['requestKey','projectId','model','effort','mascot','presetId','text','title'];
+    let data:{requestKey?:string;projectId?:string;model?:string;effort?:string;mascot?:string;presetId?:string;text?:string;title?:string};
     let files:File[]=[];
     if(contentType==='multipart/form-data'){
         // Reject oversized declared bodies before parsing; actual file sizes are checked below.
@@ -60,9 +63,11 @@ export default async function (
     const mascots=['crab','deepy','whalegirl','desksprite','bitty','tmuxai','planet','rainbow-terminal-cat'];
     if(data.mascot!==undefined&&(typeof data.mascot!=='string'||(data.mascot!=='random'&&!mascots.includes(data.mascot))))return reply({error:'Invalid mascot'},400);
     const mascot=data.mascot==='random'?undefined:data.mascot;
+    if(data.presetId!==undefined&&(typeof data.presetId!=='string'||!data.presetId||!await ctx.fns.agentPreset.get({id:data.presetId})))return reply({error:'Unknown agent preset'},400);
+    const presetId=data.presetId;
     const digests=await Promise.all(files.map(async file=>({name:file.name,type:file.type,hash:new Bun.CryptoHasher('sha256').update(await file.arrayBuffer()).digest('hex')})));
-    // Preserve existing default/random fingerprints; explicit mascot and file bytes bind retries.
-    const fingerprint=new Bun.CryptoHasher('sha256').update(JSON.stringify([data.projectId,data.model??null,data.effort??'auto',data.text,...(files.length?[digests]:[]),...(mascot?[{mascot}]:[]),...(hasAdvanced?[advanced]:[])])).digest('hex');
+    // Preserve existing default/random fingerprints; explicit mascot, preset and file bytes bind retries.
+    const fingerprint=new Bun.CryptoHasher('sha256').update(JSON.stringify([data.projectId,data.model??null,data.effort??'auto',data.text,...(files.length?[digests]:[]),...(mascot?[{mascot}]:[]),...(hasAdvanced?[advanced]:[]),...(presetId?[{presetId}]:[])])).digest('hex');
     const messageRequest=()=>{
         if(!files.length)return new Request(req.url,{method:'POST',headers:{'content-type':'text/plain','idempotency-key':data.requestKey!},body:data.text});
         const body=new FormData();body.set('text',data.text!);
@@ -98,7 +103,7 @@ export default async function (
     if(!inserted.length){const existing=await read();return existing?replay(existing):reply({error:'Request state unavailable'},409);}
     const save=()=>ctx.fns.procs.db.run({sql:'UPDATE kv SET value=? WHERE key=?',params:[JSON.stringify(claim),key]});
     try{
-     const created=await ctx.fns.agent.createFromValues({...advanced,projectId:data.projectId,model});
+     const created=await ctx.fns.agent.createFromValues({...advanced,projectId:data.projectId,model,...(presetId?{presetId}:{})});
      if(!created.agent)throw new Error(created.error||'Agent creation failed');
      claim.agentId=created.agent.id;await save();
      // Creation persists SQL DEFAULT; override only a newly created agent before its first message.

@@ -18,6 +18,8 @@ export default async function (
 
         /** Parent agent delegating the task. */
         parent: types.agent.Agent;
+        /** Optional preset to narrow the parent's snapshot, including fresh-context children. */
+        presetId?: string;
 
         /** Task instructions. */
         task: string;
@@ -52,15 +54,16 @@ export default async function (
         // Temporary parity gap: never substitute async behavior for an awaited task.
         if (mode !== 'async') throw new Error('Goal delegateTask await mode is not supported; no child was created');
         const prompt = ctx.fns.agent.buildDelegatedTaskPrompt({ task, instructions, responseFormat });
-        const child = await ctx.fns.agent.publishGoalDelegation({ parent: parentAgent, forkContext, prompt, scratchpad: { delegateTask: { parentId: parentAgent.id, mode, forkContext, task, instructions, responseFormat, autoArchive, status: 'running' } } });
+        const child = await ctx.fns.agent.publishGoalDelegation({ parent: parentAgent, presetId: opts.presetId, forkContext, prompt, scratchpad: { delegateTask: { parentId: parentAgent.id, mode, forkContext, task, instructions, responseFormat, autoArchive, status: 'running' } } });
         return { childId: child.id, started: true };
     }
 
     const child = forkContext
-        ? await ctx.fns.session.fork({ id: parentAgent.id, visibility: "team" })
+        ? await ctx.fns.session.fork({ id: parentAgent.id, presetId: opts.presetId, visibility: "team" })
         : await ctx.fns.agent.start({
             model: ctx.fns.agent.requireModel({ model: parentAgent.model, agentId: parentAgent.id }),
             systemPrompt: parentAgent.systemPrompt,
+            preset: await ctx.fns.agentPreset.resolve({ id: opts.presetId, parent: parentAgent.preset }),
             // A delegated child works where its parent works.
             workspaceDir: parentAgent.workspaceDir,
             workspaceHost: parentAgent.workspaceHost,

@@ -20,6 +20,18 @@ export default async function (
     for (const segment of segments.slice(0, -1)) { if (!node[segment] || typeof node[segment] !== 'object') return { removed: false, name: opts.name }; node = node[segment]; }
     const key = segments[segments.length - 1]!;
     const removed = Object.hasOwn(node, key) && typeof node[key] === 'function';
-    if (removed) delete node[key];
+    if (removed) {
+        delete node[key];
+        const boot = (((ctx.state as any).procs ??= {}).boot ??= {});
+        const sources: Record<string, { core: boolean; project: boolean }> = {};
+        for (const entry of entries) {
+            if (entry.kind !== 'fn') continue;
+            const namespace = entry.moduleDir.split('/')[0]!;
+            const source = (sources[namespace] ??= { core: false, project: false });
+            source[/(?:^|\/)\.mauzcode(?:\/|$)/.test(entry.rootDir ?? entry.abs) ? 'project' : 'core'] = true;
+        }
+        boot.namespaceSources = sources;
+        boot.registryGeneration = (boot.registryGeneration ?? 0) + 1;
+    }
     return { removed, name: opts.name };
 }

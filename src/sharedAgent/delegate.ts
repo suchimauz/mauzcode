@@ -12,6 +12,8 @@ export default async function (
     opts: {
         /** Published source agent identifier returned by sharedAgent.list. */
         agentId: string;
+        /** Optional preset to narrow the published source agent's snapshot. */
+        presetId?: string;
         /** Concrete task to execute using the published session context. */
         task: string;
         /** Optional requesting agent identifier recorded for audit. */
@@ -28,7 +30,7 @@ export default async function (
     const source = (ctx.state as any).agent?.[sourceAgentId] ?? await ctx.fns.session.load({ id: sourceAgentId });
     if (!source) throw new Error("sharedAgent.delegate: source agent not found");
     const title = String(card.name || source.title || sourceAgentId).slice(0, 80) + ": " + task.slice(0, 80);
-    const child = await ctx.fns.session.fork({ id: sourceAgentId, title, visibility: "team" });
+    const child = await ctx.fns.session.fork({ id: sourceAgentId, presetId: opts.presetId, title, visibility: "team" });
     child.scratchpad = { ...(child.scratchpad ?? {}), sharedAgentTask: { sourceAgentId, requesterId: String(opts.requesterId ?? "").trim() || null, task, createdAt: Date.now() }, delegation: { parentId: sourceAgentId, status: "working", title, createdAt: Date.now() } };
     await ctx.fns.session.updateScratchpad({ id: child.id, scratchpad: child.scratchpad });
     await ctx.fns.session.plan({ agent: child, title, tasks: [{ id: "task", title: task, instructions: "Use the inherited source-session context. Return only information needed by the requester." }] });

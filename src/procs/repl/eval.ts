@@ -17,15 +17,16 @@ function formatArg(a: any): string {
 }
 
 /**
- * Perform eval for the repl subsystem.
- * @param opts.code The code to process.
- * @param opts.bindings The bindings value used by the operation.
- * @param opts.typecheck The typecheck value used by the operation.
+ * Evaluate TypeScript in process, capturing console output and the final expression.
+ * @param opts.code TypeScript or JavaScript source executed as an async function body.
+ * @param opts.bindings Named variables added to evaluation scope, such as the current agent.
+ * @param opts.typecheck Check source against runtime types before execution; defaults to repl.typecheckEval.
+ * @param opts.evalCtx Optional evaluation-only context, used for agent preset guards.
  */
 export default async function (
     ctx: Context,
     session: Session | null,
-    opts: { code: string; bindings?: Record<string, any>; typecheck?: boolean },
+    opts: { code: string; bindings?: Record<string, any>; typecheck?: boolean; evalCtx?: Context },
 ): Promise<EvalResult> {
     const code = opts.code;
     const bindings: Record<string, any> = opts.bindings ?? {};
@@ -51,7 +52,7 @@ export default async function (
     };
 
     // Eval ctx: inherits the caller's ctx; the session flows through.
-    const rctx: Context = Object.create(ctx);
+    const rctx: Context = Object.create(opts.evalCtx ?? ctx);
     (rctx as any).session = session ?? ctx.session ?? { kind: 'repl' };
 
     // Bun.Transpiler accepts JS as a subset of TS, so always transpile.
