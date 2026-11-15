@@ -16,6 +16,10 @@ export type ModelUsageReport = {
 };
 export type ModelTestResult = { status: ModelUsageReport['status']; reason: string; message: string; checkedAt: number };
 export type ModelInfo = { id: string; label?: string; description?: string; contextWindow?: number; maxOutputTokens?: number; disabled?: boolean };
+/** Effective local context budget of a model: owner override, else provider metadata, else 200,000 tokens. */
+export type ModelContextLimit = { provider: number | null; override: number | null; effective: number; source: 'override' | 'provider' | 'fallback' };
+/** Reply of the `models` action: catalogue plus stored owner overrides (including absent models) and effective limits per listed model. */
+export type ConnectionModels = { models: ModelInfo[]; source: 'provider' | 'manual'; cachedAt?: number | null; error?: string; contextOverrides?: Record<string, number>; contextLimits?: Record<string, ModelContextLimit> };
 export type SavedProxy = { id: string; name: string; host: string; port: number };
 /** Secret-free overview from GET /models/api; trusted SSH instances only. */
 export type ModelsState = { providers: ModelProviderView[]; connections: ModelConnectionView[]; /** Brand mark by provider id; null or missing means generic icon. */ providerLogos?: Record<string, NavigationIcon | null>; proxies: SavedProxy[]; instances: string[]; csrfToken: string };
@@ -49,7 +53,10 @@ export const setModelEnabled = (csrf: string, id: string, model: string, enabled
 /** Runs a provider-declared action (for example Codex login/loginStatus/cancelLogin/logout). */
 export const connectionAction = <T = unknown>(csrf: string, id: string, name: string, input: unknown = null, signal?: AbortSignal) =>
   post<{ result: T }>(csrf, { action: 'action', id, name, input }, signal).then(r => r.result);
-export const connectionModels = (csrf: string, id: string, refresh = false) => post<{ models: ModelInfo[]; source: 'provider' | 'manual'; cachedAt?: number | null; error?: string }>(csrf, { action: 'models', id, refresh });
+export const connectionModels = (csrf: string, id: string, refresh = false) => post<ConnectionModels>(csrf, { action: 'models', id, refresh });
+/** Atomic patch of owner context-window overrides: tokens set an override, null removes it. Other models are untouched. */
+export const setContextLimits = (csrf: string, id: string, limits: Record<string, number | null>) =>
+  post<{ overrides: Record<string, number>; limits: Record<string, ModelContextLimit> }>(csrf, { action: 'setContextLimits', id, limits });
 
 export function transportLabel(transport: ModelTransportSpec, proxies: readonly SavedProxy[]): string {
   if (transport.kind === 'socks') return `SOCKS5 · ${proxies.find(p => p.id === transport.proxyId)?.name ?? 'missing proxy'}`;

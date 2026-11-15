@@ -170,7 +170,7 @@
 .models-transport { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: var(--space-3); }
 .models-transport-kinds { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 .models-transport-kinds input { accent-color: var(--accent); }
-.models-list { margin: 0; padding-left: 0; list-style: none; font-size: var(--font-sm); line-height: 1.7; max-height: 260px; overflow: auto; }
+.models-list { margin: 0; padding-left: 0; list-style: none; font-size: var(--font-sm); line-height: 1.7; max-height: 420px; overflow: auto; }
 .models-list { display: flex; flex-direction: column; gap: 4px; }
 .models-list li { display: block; }
 .models-model-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border-radius: 8px; cursor: pointer; user-select: none; }
@@ -179,6 +179,18 @@
 .models-model-label { color: var(--text-secondary, inherit); }
 .models-list li.is-disabled code, .models-list li.is-disabled .models-model-label { opacity: 0.55; }
 .models-save { margin-top: 8px; }
+.models-context { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 8px 6px 36px; font-size: var(--font-xs); }
+.models-context-field { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary, inherit); }
+.models-context-field input { width: 10ch; padding: 3px 6px; border: 1px solid var(--border, rgba(127, 127, 127, 0.3)); border-radius: 6px; background: var(--surface, transparent); color: inherit; font: inherit; font-variant-numeric: tabular-nums; }
+.models-context-field input:focus-visible { outline: 2px solid var(--focus-ring, var(--accent, #0a84ff)); outline-offset: 1px; }
+.models-context-field input[aria-invalid="true"] { border-color: var(--danger, #ff3b30); }
+.models-context-value { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.models-context-draft { color: var(--text-secondary, inherit); }
+.models-context-actions { display: inline-flex; gap: 4px; }
+.models-context-error { flex-basis: 100%; color: var(--danger, #ff3b30); }
+.models-context-pending { margin-top: 8px; }
+.models-context-pending .models-context { padding-left: 8px; }
+.models-context-help { margin: 8px 0 0; }
 .models-cache-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .models-cache-row .settings-field-hint { margin: 0; }
 .models-login-code code { font-size: var(--font-md, 15px); letter-spacing: 0.08em; }

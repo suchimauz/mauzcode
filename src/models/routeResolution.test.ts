@@ -45,13 +45,14 @@ test("resolution is cache-only even on enabled cold caches and returns descripto
     const a = await create("claude", "2yfl55fsh");
     const custom = await create("custom", "Asoft LLM Gate");
     const route = "codex/su4imauz:gpt-6-astra";
-    expect(await ctx.fns.models.resolveRoute({ route })).toEqual({ route, connectionId: c.id, provider: "codex", accountName: "su4imauz", model: "gpt-6-astra", modelId: "gpt-6-astra", nativeCompaction: true, priceVendor: "openai" });
+    expect(await ctx.fns.models.resolveRoute({ route })).toEqual({ route, connectionId: c.id, provider: "codex", accountName: "su4imauz", model: "gpt-6-astra", modelId: "gpt-6-astra", nativeCompaction: true, priceVendor: "openai", contextLimit: { provider: null, override: null, effective: 200000, source: "fallback" } });
     await ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET models_cache=?::jsonb,models_cached_at=? WHERE id=?", params: [JSON.stringify([{ id: "gpt-6-astra", contextWindow: 100000, maxOutputTokens: 4096 }]), 123, c.id] });
     expect(await ctx.fns.models.resolveRoute({ route })).toMatchObject({ contextWindow: 100000, maxOutputTokens: 4096 });
     expect(await ctx.fns.models.resolveRoute({ route: "claude/2yfl55fsh:claude-opus-5-5" })).toMatchObject({ connectionId: a.id, systemPreamble: "You are Claude Code, Anthropic's official CLI for Claude.", priceVendor: "anthropic" });
     const resolved = await ctx.fns.models.resolveRoute({ route: "custom/Asoft LLM Gate:org/model:v2" });
     expect(resolved).toMatchObject({ connectionId: custom.id, nativeCompaction: false });
     for (const key of ["systemPreamble", "priceVendor", "contextWindow", "maxOutputTokens"]) expect(Object.hasOwn(resolved, key)).toBe(false);
+    expect(resolved.contextLimit).toEqual({ provider: null, override: null, effective: 200000, source: "fallback" });
     await ctx.fns.models.update({ id: custom.id, config: { models: ["manual"] } });
     expect(await ctx.fns.models.resolveRoute({ route: "custom/Asoft LLM Gate:manual" })).toMatchObject({ model: "manual" });
     expect(requests()).toBe(0);

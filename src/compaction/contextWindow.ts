@@ -1,8 +1,10 @@
 /**
- * Return the cached input context window for an enabled stored model route.
+ * Return the effective input context window for an enabled stored model route.
  *
- * Use to derive auto-compaction thresholds. Defaults to 200,000 tokens only when
- * catalogue metadata is absent; resolution failures are not treated as missing limits.
+ * Use to derive auto-compaction thresholds and context displays. Uses the owner override
+ * for the model on its connection, then cached provider metadata, then 200,000 tokens
+ * (models.resolveRoute owns the precedence); resolution failures are not treated as
+ * missing limits.
  * @param opts.model Stored provider/account:model route.
  */
 export default async function (
@@ -14,5 +16,5 @@ export default async function (
     },
 ): Promise<number> {
     const route = await ctx.fns.models.resolveRoute({ route: opts.model });
-    return route.contextWindow ?? 200_000;
+    return route.contextLimit?.effective ?? route.contextWindow ?? 200_000;
 }
