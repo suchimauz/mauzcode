@@ -42,7 +42,7 @@ A model connection SHALL be uniquely identified by its provider and account name
 - **THEN** the agent's model and the stored last used model become `codex/main:gpt-6-astra`, and `models.localizationModel` is updated the same way
 
 ### Requirement: Route resolution
-Resolving a route SHALL return the matching connection id, provider, account name, model id, the provider's inference descriptors (system preamble, price vendor) and whether the provider supports native compaction, plus context window and output limit when the model catalogue reports them. Resolution MUST read current stored state and MUST NOT send any provider request.
+Resolving a route SHALL return the matching connection id, provider, account name, model id, the provider's inference descriptors (system preamble, price vendor) and whether the provider supports native compaction, plus context window and output limit when the model catalogue, an owner override or a public model catalogue reports them, with the effective context limit and its source. Resolution MUST read current stored state and cached or bundled catalogue data, and MUST NOT send any provider request or wait for the network.
 
 #### Scenario: Resolve an enabled model
 - **GIVEN** an enabled `codex` connection `su4imauz`
@@ -56,6 +56,10 @@ Resolving a route SHALL return the matching connection id, provider, account nam
 #### Scenario: Disabled connection or model
 - **WHEN** a route names a disabled connection or a model disabled on its connection
 - **THEN** resolution fails with code `CONNECTION_DISABLED` or `MODEL_DISABLED_BY_USER` respectively, not retryable, and no provider request is sent
+
+#### Scenario: Catalogue-derived limit
+- **WHEN** a model without provider size is described by a public catalogue section of its provider
+- **THEN** the result carries that context window and output limit with source `catalog`
 
 ### Requirement: Legacy routes are rejected
 A route in a legacy format SHALL fail resolution with code `LEGACY_ROUTE`, not retryable, and with a message that names the route and asks the owner to choose a model. Legacy formats include an `ssh/<host>:` prefix, a bare `<provider>:<model>` without an account, and providers that are not registered model providers. No provider request MUST be sent.

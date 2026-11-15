@@ -197,7 +197,7 @@ The SDK SHALL expose credential-safe failures independently of legacy worker typ
 - **THEN** public failure data and diagnostics do not expose those values
 
 ### Requirement: Provider inference descriptors
-A provider definition MAY declare inference descriptors: an optional system preamble that callers place first in the system instructions, and the vendor whose public price catalogue applies to its models. Callers MUST obtain these values through route resolution and MUST NOT branch on provider ids.
+A provider definition MAY declare inference descriptors: an optional system preamble that callers place first in the system instructions, the vendor whose public price catalogue applies to its models, and optional ordered models.dev and pi-ai catalogue sections describing its models' context and output limits. Callers MUST obtain these values through route resolution and MUST NOT branch on provider ids.
 
 #### Scenario: Claude preamble
 - **WHEN** a route on a `claude` connection is resolved
@@ -206,6 +206,10 @@ A provider definition MAY declare inference descriptors: an optional system prea
 #### Scenario: Provider without descriptors
 - **WHEN** a provider declares no inference descriptors
 - **THEN** resolution reports no preamble and no price vendor
+
+#### Scenario: Catalogue sections default to price vendor
+- **WHEN** a provider declares a price vendor but no catalogue sections
+- **THEN** context limits are looked up in that vendor's catalogue sections
 
 ### Requirement: Provider-neutral tool definitions
 The models stream and one-shot call SHALL accept tools in one provider-neutral format: name, description and JSON Schema parameters. Each provider MUST convert them to its own wire format, choosing it from connection configuration when the protocol is configurable. Callers MUST NOT pass provider-shaped tool schemas.
