@@ -36,7 +36,8 @@ test("original public model signatures, async declarations, types and HTTP route
         if (name === "ReasoningResolution.ts") actual = actual.replace('applied:types.models.ReasoningLevel|"auto";', 'applied:types.models.ReasoningLevel;').replace("wire?:string;", "").replace("disable?:boolean;", "");
         // usageRefreshMs is an intentional optional SDK addition (provider-paced usage cache).
         if (name === "ProviderDefinition.ts") actual = actual.replace("usageRefreshMs?:number;", "");
-        if (name === "ProviderDefinition.ts") actual = actual.replace("route?:(ctx:Context,conn:types.models.ResolvedConnection,req:{model:string;info:types.models.ModelInfo|null;sessionId:string})=>Promise<types.models.ProtocolRoute>;", "");
+        // add-zai-coding-provider: the route request also carries the SDK-resolved reasoning.
+        if (name === "ProviderDefinition.ts") actual = actual.replace("route?:(ctx:Context,conn:types.models.ResolvedConnection,req:{model:string;info:types.models.ModelInfo|null;sessionId:string;reasoning?:types.models.ReasoningResolution})=>Promise<types.models.ProtocolRoute>;", "");
         let expected = normalize(source);
         if (name === "StreamRequest.ts") expected = expected.replace("tools?:Record<string,unknown>[]", "tools?:types.models.ToolSpec[]");
         const additive: Record<string, string> = {
@@ -74,7 +75,7 @@ test("fresh discovery preserves callable providers, nested dynamic facades, miss
             compatMissing: (opts: Record<string, unknown>) => unknown;
         };
         expect(typeof fns.providers).toBe("function");
-        expect(fns.providers({}).map(p => p.id).sort()).toEqual(["claude", "codex", "compat-fixture", "custom"]);
+        expect(fns.providers({}).map(p => p.id).sort()).toEqual(["claude", "codex", "compat-fixture", "custom", "zai-coding"]);
         // Baseline declarations are immutable object literals. Importing creates
         // callbacks but never invokes login, network, validation or usage operations.
         const registrationShape = (value: unknown): unknown => {

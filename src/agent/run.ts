@@ -416,6 +416,8 @@ export default async function (
         const goalFormat = 'common-stream' as const;
         const thinkingSpans: { startedAt: number; endedAt: number; summary: string }[] = [];
         let thinkingStart: number | null = null;
+        // Provider reasoning text of this request, kept only to replay it on a tool-call turn.
+        let reasoningText = '';
         const closeThinking = () => {
             if (thinkingStart === null) return;
             thinkingSpans.push({ startedAt: thinkingStart, endedAt: Date.now(), summary: mobileStream.thinkingSummary });
@@ -430,6 +432,7 @@ export default async function (
                 if (ac.signal.aborted || agent.abortController !== ac || sampling.signal.aborted || !['text_delta', 'thinking_delta'].includes(event?.type) || typeof event.delta !== 'string') return;
                 // Expose only provider activity, never its private reasoning text.
                 if (event.type === 'thinking_delta') {
+                    reasoningText = (reasoningText + event.delta).slice(0, 100000);
                     mobileStream.thinking = true;
                     thinkingStart ??= Date.now();
                     mobileStream.thinkingStartedAt = thinkingStart;
@@ -647,10 +650,15 @@ export default async function (
             throw new Error('Model returned an empty response without text or tool calls. No final answer was delivered; the provider did not report an output token limit. Retry explicitly from the saved checkpoint.');
         }
 
+        // A provider that replays reasoning needs it on the turn that made the calls:
+        // store it once, on the first call only. Other protocols ignore the field.
+        const calls: types.session.Message['tool_calls'] = toolCalls.length
+            ? (toolCalls as NonNullable<types.session.Message["tool_calls"]>).map((call, i) => i === 0 && reasoningText ? { ...call, reasoning_content: reasoningText } : call)
+            : undefined;
         const append = await ctx.fns.session.appendMessage({ id: agent.id, message: {
             role: 'assistant',
             content: prose,
-            tool_calls: toolCalls.length ? toolCalls : undefined,
+            tool_calls: calls,
         } });
         await assertRunActive();
         await ctx.fns.session.syncAgentState({ agent });
