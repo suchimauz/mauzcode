@@ -1,3 +1,8 @@
+/** Request body fields the shared protocols own; a provider route may never set them. */
+const PROTOCOL_OWNED_BODY_KEYS = new Set([
+    "model", "messages", "stream", "stream_options", "tools", "max_tokens",
+    "temperature", "response_format", "reasoning_effort",
+]);
 /**
  * Stream one inference turn for a protocol-route provider through the shared protocol it selects.
  *
@@ -7,11 +12,6 @@
  * @param opts.req Gated stream request, including SDK-resolved reasoning when the provider opted in.
  * @param opts.info Cached model metadata for req.model, or null when the model is not cached.
  */
-/** Request body fields the shared protocols own; a provider route may never set them. */
-const PROTOCOL_OWNED_BODY_KEYS = new Set([
-    "model", "messages", "stream", "stream_options", "tools", "max_tokens",
-    "temperature", "response_format", "reasoning_effort",
-]);
 export default async function (
     ctx: Context,
     session: Session | null,

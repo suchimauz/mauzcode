@@ -34,5 +34,5 @@
 
 ## 5. Validation and docs
 
-- [ ] 5.1 Hot-reload changed namespaces, run `runtime.docs.validate` on each changed function and one `procs.dev.typecheck`
+- [x] 5.1 Hot-reload changed namespaces, run `runtime.docs.validate` on each changed function and one `procs.dev.typecheck`
 - [x] 5.2 Manually verify with a real Coding Plan key: create connection, test, refresh models, usage windows, one GLM-5.3 tool-call turn on `openai-chat` and one turn on `anthropic`
