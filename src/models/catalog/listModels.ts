@@ -57,6 +57,8 @@ export default async function (
                     ...(r!.default !== undefined ? { default: r!.default } : {}),
                     ...(wire && Object.keys(wire).length ? { wire } : {}),
                     ...(r!.disable === true ? { disable: true } : {}),
+                    ...(r!.adaptive === true ? { adaptive: true } : {}),
+                    ...(r!.effort === false ? { effort: false } : {}),
                 } : undefined;
                 const protocols: string[] = ["openai-chat", "openai-responses", "anthropic", "gemini"];
                 const protocol = typeof m.protocol === "string" && protocols.includes(m.protocol) ? m.protocol : undefined;

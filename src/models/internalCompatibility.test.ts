@@ -81,7 +81,7 @@ test("fresh discovery preserves callable providers, nested dynamic facades, miss
             compatMissing: (opts: Record<string, unknown>) => unknown;
         };
         expect(typeof fns.providers).toBe("function");
-        expect(fns.providers({}).map(p => p.id).sort()).toEqual(["claude", "codex", "compat-fixture", "custom", "zai-coding"]);
+        expect(fns.providers({}).map(p => p.id).sort()).toEqual(["claude", "codex", "compat-fixture", "custom", "minimax-coding", "zai-coding"]);
         // Baseline declarations are immutable object literals. Importing creates
         // callbacks but never invokes login, network, validation or usage operations.
         const registrationShape = (value: unknown): unknown => {
