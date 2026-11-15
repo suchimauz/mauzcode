@@ -12,7 +12,7 @@ When the custom connection field `sessionAffinity` is enabled or absent, every s
 - **THEN** those requests carry no `x-session-affinity` header
 
 ### Requirement: Opaque session affinity value
-The `x-session-affinity` value SHALL be 32 lowercase hexadecimal characters, computed as a keyed digest of the connection id and the identity with a secret salt that is generated once per installation, stored in the local encrypted secret store (Postgres `local_secrets`, encryption key held outside the database) and reused across restarts. The value SHALL NOT contain or reveal the raw identity. The same connection and identity SHALL give the same value; different connections or identities SHALL give different values.
+The `x-session-affinity` value SHALL be 32 lowercase hexadecimal characters, computed as a keyed digest of the connection id and the identity, keyed with a secret salt that is generated once per installation, stored in the local encrypted secret store and reused across restarts. The value SHALL NOT contain or reveal the raw identity. The same connection and identity SHALL give the same value; different connections or identities SHALL give different values.
 
 #### Scenario: Stable across requests and restarts
 - **WHEN** two stream requests, separated by a server restart, use the same connection and the same prompt cache identity
