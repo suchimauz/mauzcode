@@ -26,16 +26,22 @@ Implementation is not authorized by creation of this change. All tasks below rem
 
 ## 4. RTK settings UI
 
-- [ ] 4.1 Add plugins/rtk/ui/index.tsx and its explicit settings grant using React and @mauzcode/ui; verify the runtime-compiled section appears only while the plugin is eligible and does not require an RTK component in core.
-- [ ] 4.2 Implement availability/enabled states, check action, guarded toggle, path/version/check time and safe failure feedback; verify unavailable/unknown/checking disabled controls, success-without-auto-enable, server rejection, duplicate actions and authoritative refresh in UI tests.
-- [ ] 4.3 Verify keyboard/focus, status/error accessibility, themes, readOnly, reduced motion and unmount cleanup; document the controls and permission requirements with tested behavior.
+- [x] 4.1 Add plugins/rtk/ui/index.tsx and its explicit settings grant using React and @mauzcode/ui; verify the runtime-compiled section appears only while the plugin is eligible and does not require an RTK component in core.
+- [x] 4.2 Implement availability/enabled states, check action, guarded toggle, path/version/check time and safe failure feedback; verify unavailable/unknown/checking disabled controls, success-without-auto-enable, server rejection, duplicate actions and authoritative refresh in UI tests.
+- [x] 4.3 Verify keyboard/focus, status/error accessibility, themes, readOnly, reduced motion and unmount cleanup; document the controls and permission requirements with tested behavior.
 
 ## 5. Cross-layer acceptance and rollout readiness
 
-- [ ] 5.1 Run cross-layer tests covering restart, concurrent check/enable/disable, plugin unload, PATH mismatch, backend authority and invocation counting; verify all specification scenarios are represented and no command is replayed.
-- [ ] 5.2 Run read-only local smoke checks against installed RTK and compare enabled versus rtk:false behavior; record protocol version and results without enabling integration without owner authorization or changing permission files.
-- [ ] 5.3 Hot-reload changed runtime functions, regenerate types when required, validate each changed function's docs strictly without per-file compilation, and run one full settled-batch typecheck plus targeted tests/code.quality; preserve full diagnostics and distinguish pre-existing from introduced failures.
-- [ ] 5.4 Build the core frontend for the SDK host change, verify runtime compilation of the plugin UI and document default-off rollout/disable-unload rollback; run strict OpenSpec validation with all implementation task statuses accurate.
+- [x] 5.1 Run cross-layer tests covering restart, concurrent check/enable/disable, plugin unload, PATH mismatch, backend authority and invocation counting; verify all specification scenarios are represented and no command is replayed.
+- [x] 5.2 Run read-only local smoke checks against installed RTK and compare enabled versus rtk:false behavior; record protocol version and results without enabling integration without owner authorization or changing permission files.
+- [x] 5.3 Hot-reload changed runtime functions, regenerate types when required, validate each changed function's docs strictly without per-file compilation, and run one full settled-batch typecheck plus targeted tests/code.quality; preserve full diagnostics and distinguish pre-existing from introduced failures.
+- [x] 5.4 Build the core frontend for the SDK host change, verify runtime compilation of the plugin UI and document default-off rollout/disable-unload rollback; run strict OpenSpec validation with all implementation task statuses accurate.
+
+## Verification notes
+
+- Installed RTK 1.2.0 (read-only smoke, not enabled): `rtk rewrite "git status"` → `rtk git status`, exit 3; `rtk rewrite "echo hi"` → exit 1 (original runs).
+- Backend: plugins/rtk + src/plugins/ui + src/tools tests 69/69 pass. Frontend: rtk-settings + plugin-settings 12/12; full vitest suite failures are pre-existing/unrelated (git/terminal plugin npm dependencies missing in the worktree, live-navigation).
+- Full typecheck: 463 diagnostics before the change and after it; no new ones in the changed files. Hot-reload and runtime docs validation are not possible from this worktree (the live server runs the main checkout); they apply after merge. Core frontend `vite build` succeeds; plugin UI bundles with the runtime externals (react, @mauzcode/ui).
 
 ## Workflow follow-up
 

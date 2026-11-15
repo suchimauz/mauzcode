@@ -6,6 +6,12 @@
     "src": "src",
     "label": "RTK",
     "icon": "ph-funnel-simple",
-    "description": "Check the locally installed RTK executable and control the default-off, owner-enabled RTK compression of local bash tool output."
+    "description": "Check the locally installed RTK executable and control the default-off, owner-enabled RTK compression of local bash tool output.",
+    "ui": {
+      "entry": "ui/index.tsx",
+      "settingsSections": [
+        "shell"
+      ]
+    }
   }
 }

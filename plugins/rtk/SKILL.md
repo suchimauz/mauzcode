@@ -45,6 +45,17 @@ Unavailable reasons (`code`): `missing` (not on PATH), `permission` (not executa
 
 After a command starts it is never retried, replayed or re-run (also not when it fails, times out or RTK crashes at runtime); a nonzero exit of the user command never disables RTK. The tool-call details record the outcome, original and executed command with resolved secrets masked; no extra raw output is stored. To get full output later, an agent makes a new, separately justified call with `rtk: false` — nothing is replayed automatically.
 
+## Settings UI
+
+Settings → Plugins → **RTK** (`ui/index.tsx`, grant `procs.ui.settingsSections: ["shell"]`, runtime-compiled; no core component). It shows enabled state, availability (not checked / available / unavailable / checking…), executable path, version, last check time and the failure reason.
+
+- **Проверить** runs `check`; success shows the result but never turns RTK on.
+- The switch is disabled until the latest check is `available` (turning off is always allowed); enable is re-checked by the server and a 409 shows its reason and the returned state.
+- One action at a time; controls are disabled while it runs, results use `role="status"`, errors `role="alert"`; failures without state reload GET. All requests abort on unmount (plugin unload, rebuilt bundle, lapsed approval).
+- `readOnly` disables every control. Visibility is not authority: only the owner can call `/rtk/api`, and every write carries the CSRF token from GET.
+
+Rollout: off by default; enable only by the owner after a successful check. Rollback: turn the switch off (immediate) or unload/remove the plugin — `tools.bash` then behaves exactly as without RTK.
+
 ## Not done by this plugin
 
 It never installs or updates RTK, has no editor for a binary path (install RTK on the server PATH and run a check), and never edits RTK configuration, Claude/agent hooks or permission files.
