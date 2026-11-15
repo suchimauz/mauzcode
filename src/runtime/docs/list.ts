@@ -5,6 +5,8 @@ export default function (
     opts: {
         /** Dotted namespace prefix, for example `agent` or `procs.db`. */
         namespace?: string;
+        /** Internal capability predicate supplied by the guarded agent boundary. */
+        allows?: (name: string) => boolean;
     } = {},
 ): Array<{ name: string; summary: string; signature: string }> {
     const prefix = String(opts.namespace ?? "").replace(/\.$/, "");
@@ -13,7 +15,7 @@ export default function (
         for (const value of Object.values(node ?? {})) {
             if (typeof value === "function" && (value as any).meta) {
                 const meta = (value as any).meta;
-                if (!prefix || meta.name === prefix || meta.name.startsWith(prefix + ".")) {
+                if ((!opts.allows || opts.allows(meta.name)) && (!prefix || meta.name === prefix || meta.name.startsWith(prefix + "."))) {
                     out.push({ name: meta.name, summary: meta.summary, signature: meta.signature });
                 }
             } else if (value && typeof value === "object") walk(value);

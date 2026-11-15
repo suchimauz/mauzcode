@@ -22,6 +22,7 @@ const batch: types.input.BatchCodec = {
 };
 
 export default {
+    requires: ["input.request"],
     batch,
     icon: "seal-question",
     cancel: false,

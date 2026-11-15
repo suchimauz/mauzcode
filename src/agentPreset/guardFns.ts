@@ -11,7 +11,7 @@ export default function (
     },
 ): Context["fns"] {
     const allows = (name: string) => ctx.fns.agentPreset.allows({ snapshot: opts.snapshot, name });
-    const discovery = new Set(["plugins.search", "plugins.read", "plugins.functions", "runtime.docs.search", "runtime.docs.get"]);
+    const discovery = new Set(["plugins.search", "plugins.read", "plugins.functions", "plugins.docs", "runtime.docs.search", "runtime.docs.get", "runtime.docs.list", "canvas.kinds", "canvas.search", "canvas.promptSection", "input.kinds", "input.promptSection", "tools.list", "tools.schemas"]);
     // Resolve from the current root on every operation, never from a captured namespace.
     // Raw descriptors are used only for shape, never returned to the evaluator.
     const resolve = (path: string[]): unknown => {

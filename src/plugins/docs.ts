@@ -35,12 +35,13 @@ export default function (
             rel: meta.rel ?? "",
         };
     });
+    if (opts.allows && !functions.length) throw new Error(`plugins.docs: mounted plugin "${name}" not found`);
     return {
         plugin: {
             name: plugin.name,
             label: plugin.label,
             description: plugin.description,
-            namespaces: plugin.namespaces ?? [],
+            namespaces: (plugin.namespaces ?? []).filter((ns: string) => !opts.allows || functions.some(fn => fn.name.startsWith(ns + "."))),
         },
         functions,
     };

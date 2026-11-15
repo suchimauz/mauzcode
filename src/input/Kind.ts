@@ -6,6 +6,8 @@
 // like, how a submission becomes a result, and how the answer looks afterwards.
 
 export type Kind = {
+    /** Exact live capabilities required for scoped discovery, including input.request. Missing metadata hides this kind only from scoped discovery, never authorizes or denies actions. */
+    requires?: string[];
     /** Opt-in pure synchronous codec for atomic collection; protected completion kinds cannot opt in. */
     batch?: types.input.BatchCodec;
     /** Server-only dispatch capability for dedicated authenticated completion; generic submit/cancel is denied. Resolve current registered identity after hot reload. Not an authorization sandbox. */

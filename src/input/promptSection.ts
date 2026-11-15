@@ -5,11 +5,11 @@
  * Builds the system-prompt block that tells agents how to ask the person through chat inputs and lists the loaded kinds.
  */
 export default function (ctx: Context, _session: Session | null, opts: {
-    /** Restrict advertised kinds to modules with reachable functions. */
+    /** Restrict advertised kinds and request guidance to live permitted dependencies. */
     allows?: (name: string) => boolean;
 }): string {
-    const kinds = ctx.fns.input.kinds({}).filter(k => k.hint && (!opts.allows || k.module === "input" ||
-        Object.keys(k.module.split(".").reduce((node, key) => node?.[key], ctx.state.registry) ?? {}).some(fn => opts.allows!(`${k.module}.${fn}`))));
+    const kinds = ctx.fns.input.kinds({ allows: opts.allows }).filter(k => k.hint);
+    if (opts.allows && !ctx.fns.agentPreset.discoveryVisible({ requires: ["input.request"], allows: opts.allows })) return "";
     if (!kinds.length) return "";
     return [
         "## Chat inputs",

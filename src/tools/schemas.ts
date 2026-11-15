@@ -13,9 +13,13 @@
 export default function (
     ctx: Context,
     _session: Session | null,
-    opts: { /** Value for api. */ api: string; /** Value for only. */ only?: string[] },
+    opts: {
+        /** Provider wire dialect: openai, responses or anthropic. */ api: string;
+        /** Optional selected tool names or wire names. */ only?: string[];
+        /** Internal capability predicate supplied by the guarded agent boundary. */ allows?: (name: string) => boolean;
+    },
 ): any[] {
-    let tools = ctx.fns.tools.list({});
+    let tools = ctx.fns.tools.list({ allows: opts.allows });
     if (opts?.only?.length) tools = tools.filter((t: any) => opts.only!.includes(t.wireName) || opts.only!.includes(t.name));
     const api = String(opts?.api ?? "openai");
 

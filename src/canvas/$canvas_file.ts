@@ -3,6 +3,7 @@
 export const hint = "a file or directory from the workspace (or an SSH host) in the full Files viewer — args `{ path, host?, mode?: \"auto\"|\"preview\"|\"source\" }`";
 
 export default {
+    requires: ["canvas.show"],
     icon: "file-text",
     live: true,
     async prepare(ctx: Context, opts: { agentId: string; args: Record<string, any> }) {

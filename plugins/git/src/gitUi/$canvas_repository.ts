@@ -1,5 +1,6 @@
 export const hint = 'Read-only project Git changes and HEAD history; args { dir, host: "local" | SSH alias } pin the repository to this tab.';
 export default {
+    requires: ["canvas.show","gitUi.snapshot"],
     icon: 'git-branch',
     async prepare(ctx: Context, opts: {agentId:string;args:Record<string, unknown>}) {
         const rows = await ctx.fns.procs.db.select({sql:'SELECT workspace_dir, workspace_host FROM agents WHERE id = ?',params:[opts.agentId]});

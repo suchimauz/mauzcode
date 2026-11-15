@@ -1,5 +1,6 @@
 export const hint = 'Read-only OpenSpec view of a local workspace (changes with task progress, specs, archive, strict validation); args { dir } pin the absolute local workspace directory to this tab.';
 export default {
+    requires: ["canvas.show","openspec.snapshot"],
     icon: 'list-checks',
     async prepare(ctx: Context, opts: { agentId: string; args: Record<string, unknown> }) {
         const rows = await ctx.fns.procs.db.select({ sql: 'SELECT workspace_dir, workspace_host FROM agents WHERE id = ?', params: [opts.agentId] });

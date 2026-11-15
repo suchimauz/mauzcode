@@ -35,7 +35,7 @@ export default async function (
         description: plugin.description,
         path: plugin.dir,
         domains: plugin.domains ?? [],
-        namespaces: plugin.namespaces,
+        namespaces: (plugin.namespaces ?? []).filter((ns: string) => !opts.allows || plugin.fns.some((fn: string) => fn.startsWith(ns + ".") && opts.allows!(fn))),
         routes: plugin.routes.length,
         source: plugin.source,
         overview,
