@@ -90,3 +90,19 @@ it('direct archived URL is read-only even before sidebar data has arrived', asyn
   expect(document.querySelector('.chat-readonly-boundary')).toHaveAttribute('inert');
 });
 
+it('forgets the draft title after leaving the draft but keeps the typed text', () => {
+  setup();
+  sessionStorage.setItem('mauzcode-ui-new-session', JSON.stringify({ title: 'Ревью API', mascot: 'random', projectId: 'ui', model: 'm', effort: '', text: 'keep', requestKey: 'k1' }));
+  render(<LiveApp />);
+  fireEvent.click(screen.getByRole('button', { name: 'New Session' }));
+  expect(JSON.parse(sessionStorage.getItem('mauzcode-ui-new-session')!)).toMatchObject({ title: '', text: 'keep' });
+});
+it('New Session on the draft keeps the title and shows it in the header', () => {
+  setup();
+  const state = useMauzCode(); vi.mocked(useMauzCode).mockReturnValue({ ...state, selected: '' });
+  sessionStorage.setItem('mauzcode-ui-new-session', JSON.stringify({ title: 'Ревью API', mascot: 'random', projectId: 'ui', model: 'm', effort: '', text: '', requestKey: 'k1' }));
+  render(<LiveApp />);
+  expect(screen.getByRole('button', { name: 'Переименовать новую сессию: Ревью API' })).toBeVisible();
+  fireEvent.click(screen.getAllByRole('button', { name: 'New Session' })[0]);
+  expect(JSON.parse(sessionStorage.getItem('mauzcode-ui-new-session')!)).toMatchObject({ title: 'Ревью API' });
+});

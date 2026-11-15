@@ -28,7 +28,7 @@ export type WorkspaceSidebarProps = {
   onOpenAutomation?: () => void; automationActive?: boolean;
   /** Opens the Plugins page (mounted MauzCode plugins and catalogue). */
   onOpenPlugins?: () => void; pluginsActive?: boolean;
-  pendingProjects?: Record<string, boolean>; onProjectAction?: (id: string, action: ProjectAction) => void; draftProjectId?: string;
+  pendingProjects?: Record<string, boolean>; onProjectAction?: (id: string, action: ProjectAction) => void; draftProjectId?: string; /** Local new-session draft title shown in the draft row; empty falls back to "New Session". */ draftTitle?: string;
   pendingChats?: Record<string, boolean>; actionError?: string; onAction?: (id: string, action: ChatAction) => void;
   projects: NavigationProject[]; user: NavigationUser | null; selected: string;
   compact?: boolean; mobile?: boolean; loading?: boolean; error?: string; profileError?: string;
@@ -62,7 +62,7 @@ function WorkspaceSection({ project, selected, query, onSelect, archivedView, pe
   </section>;
 }
 
-export function WorkspaceSidebar({ onOpenPeople, peopleActive, extensionNavigation = [], onOpenPages, pagesActive, onOpenAutomation, automationActive, onOpenPlugins, pluginsActive, onOpenSettings, pendingProjects, onProjectAction, onNewSession, draftProjectId, pendingChats, actionError, onAction, projects, user, selected, compact = false, mobile = false, loading, error, profileError, theme, themeMode, onTheme, onToggle, onSelect, searchInputRef, onRetry, quotas, onOpenQuotas }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ onOpenPeople, peopleActive, extensionNavigation = [], onOpenPages, pagesActive, onOpenAutomation, automationActive, onOpenPlugins, pluginsActive, onOpenSettings, pendingProjects, onProjectAction, onNewSession, draftProjectId, draftTitle, pendingChats, actionError, onAction, projects, user, selected, compact = false, mobile = false, loading, error, profileError, theme, themeMode, onTheme, onToggle, onSelect, searchInputRef, onRetry, quotas, onOpenQuotas }: WorkspaceSidebarProps) {
   const [query, setQuery] = useState('');
   const [view, setView] = useState(readWorkspaceView);
   const [adding, setAdding] = useState(false);
@@ -70,8 +70,9 @@ export function WorkspaceSidebar({ onOpenPeople, peopleActive, extensionNavigati
   const changeView = (next: WorkspaceView) => { setView(next); saveWorkspaceView(next); };
   const archived = view.filter === 'archived';
   // Compute before filtering: a hidden or collapsed unread chat still marks its project.
+  const draftLabel = draftTitle?.trim() || 'New Session';
   const filtered = workspaceViewProjects(projects.map(project => ({ ...project, unreadCount: project.chats.filter(chat => chat.hasUnread).length })), query, draftProjectId ? { ...view, filter: 'active' } : view);
-  const renderProject = (project: NavigationProject): React.ReactNode => <div key={project.id} className="workspace-tree-node"><WorkspaceSection onNewSession={onNewSession} onProjectAction={user?.role === 'owner' ? onProjectAction : undefined} pendingProject={pendingProjects?.[project.id]} draftRow={draftProjectId === project.id && onNewSession ? <button className="workspace-draft-row is-selected" aria-current="page" onClick={() => onNewSession?.(project.id)}><Plus size={14} strokeWidth={1} />New Session</button> : undefined} project={project} selected={selected} query={query} onSelect={onSelect} archivedView={archived} pendingChats={pendingChats} onAction={onAction} initiallyOpen={!!projects.find(p => p.id === project.id)?.chats.some(c => c.id === selected)} />{view.group === 'tree' && <div className="workspace-tree-children">{filtered.filter(p => workspaceParent(p, filtered) === project.id).map(renderProject)}</div>}</div>;
+  const renderProject = (project: NavigationProject): React.ReactNode => <div key={project.id} className="workspace-tree-node"><WorkspaceSection onNewSession={onNewSession} onProjectAction={user?.role === 'owner' ? onProjectAction : undefined} pendingProject={pendingProjects?.[project.id]} draftRow={draftProjectId === project.id && onNewSession ? <button className="workspace-draft-row is-selected" aria-current="page" onClick={() => onNewSession?.(project.id)}><Plus size={14} strokeWidth={1} /><span className="workspace-draft-title">{draftLabel}</span></button> : undefined} project={project} selected={selected} query={query} onSelect={onSelect} archivedView={archived} pendingChats={pendingChats} onAction={onAction} initiallyOpen={!!projects.find(p => p.id === project.id)?.chats.some(c => c.id === selected)} />{view.group === 'tree' && <div className="workspace-tree-children">{filtered.filter(p => workspaceParent(p, filtered) === project.id).map(renderProject)}</div>}</div>;
   const flatChats = filtered.flatMap(p => p.chats.map(chat => ({ chat, archived: !!chat.archived })));
   if (view.order === 'updated') flatChats.sort((a,b) => compareChatsByActivity(a.chat, b.chat));
   const initials = user?.name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase();
@@ -99,7 +100,7 @@ export function WorkspaceSidebar({ onOpenPeople, peopleActive, extensionNavigati
         {loading && <p className="workspace-empty" role="status">Загрузка…</p>}
         {error && <div className="workspace-error" role="alert">{error}<button onClick={onRetry}>Повторить</button></div>}
         {actionError && <p className="workspace-error" role="alert">{actionError}</p>}
-        {view.group === 'flat' && draftProjectId && <button className="workspace-draft-row is-selected" aria-current="page" onClick={() => onNewSession?.(draftProjectId)}><Plus size={14} strokeWidth={1} />New Session</button>}
+        {view.group === 'flat' && draftProjectId && <button className="workspace-draft-row is-selected" aria-current="page" onClick={() => onNewSession?.(draftProjectId)}><Plus size={14} strokeWidth={1} /><span className="workspace-draft-title">{draftLabel}</span></button>}
         {view.group === 'flat' ? flatChats.map(({ chat, archived: chatArchived }) => <WorkspaceChatRow key={chat.id} chat={chat} selected={selected === chat.id} archivedView={chatArchived} pending={pendingChats?.[chat.id]} onSelect={onSelect} onAction={onAction} />) : filtered.filter(p => view.group !== 'tree' || !workspaceParent(p, filtered)).map(renderProject)}
         {!loading && !error && !filtered.length && <p className="workspace-empty">{query ? 'Ничего не найдено' : 'Нет рабочих пространств'}</p>}
       </div></>}
