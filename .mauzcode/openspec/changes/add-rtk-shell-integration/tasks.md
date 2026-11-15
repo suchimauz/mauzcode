@@ -4,16 +4,16 @@ Implementation is not authorized by creation of this change. All tasks below rem
 
 ## 1. SDK settings sections
 
-- [ ] 1.1 Add public settings section types and matching server/frontend grants, including compilation, manifest and approval identity handling; verify with grant validation, changed-grant approval and backward-compatibility tests.
-- [ ] 1.2 Add registry support and the shared Plugin Settings host page with lifecycle cleanup; verify granted, missing-grant, unloaded and unapproved-plugin scenarios in frontend tests.
-- [ ] 1.3 Document the settingsSections contract, manifest example, trust boundary and lifecycle requirements in UI architecture/SDK documentation; verify examples use only the public SDK and cover owner/CSRF obligations.
+- [x] 1.1 Add public settings section types and matching server/frontend grants, including compilation, manifest and approval identity handling; verify with grant validation, changed-grant approval and backward-compatibility tests.
+- [x] 1.2 Add registry support and the shared Plugin Settings host page with lifecycle cleanup; verify granted, missing-grant, unloaded and unapproved-plugin scenarios in frontend tests.
+- [x] 1.3 Document the settingsSections contract, manifest example, trust boundary and lifecycle requirements in UI architecture/SDK documentation; verify examples use only the public SDK and cover owner/CSRF obligations.
 
 ## 2. Official RTK plugin and state
 
-- [ ] 2.1 Add the official plugin skeleton and default-off instance control state with revision-safe persistence and lifecycle invalidation; verify absence/unload, default state, restart and concurrent disable/enable tests. Use a standard migration only where needed.
-- [ ] 2.2 Implement bounded direct-subprocess PATH discovery, --version and fixed-command rewrite probing without executing the probe; verify fake executables for missing, permission-denied, SIGILL, timeout, overflow, incompatible and healthy cases.
-- [ ] 2.3 Implement owner-authorized status/check/enable/disable APIs with write CSRF enforcement, fresh enable checks and no generic-settings bypass; verify unauthorized requests, stale checks, restart revalidation and recovery without automatic enablement.
-- [ ] 2.4 Document instance-wide state, probe behavior, required PATH and unavailable reasons in the plugin workflow; verify that no install/update, binary-path editor or permission-file modification is offered.
+- [x] 2.1 Add the official plugin skeleton and default-off instance control state with revision-safe persistence and lifecycle invalidation; verify absence/unload, default state, restart and concurrent disable/enable tests. Use a standard migration only where needed.
+- [x] 2.2 Implement bounded direct-subprocess PATH discovery, --version and fixed-command rewrite probing without executing the probe; verify fake executables for missing, permission-denied, SIGILL, timeout, overflow, incompatible and healthy cases.
+- [x] 2.3 Implement owner-authorized status/check/enable/disable APIs with write CSRF enforcement, fresh enable checks and no generic-settings bypass; verify unauthorized requests, stale checks, restart revalidation and recovery without automatic enablement.
+- [x] 2.4 Document instance-wide state, probe behavior, required PATH and unavailable reasons in the plugin workflow; verify that no install/update, binary-path editor or permission-file modification is offered.
 
 ## 3. Local bash integration
 

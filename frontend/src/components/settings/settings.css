@@ -187,3 +187,6 @@
 .models-provider-logo { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: 0 0 18px; color: var(--text); }
 .models-provider-logo .navigation-chat-icon { width: 16px; height: 16px; flex-basis: 16px; }
 .models-add-provider { display: flex; align-items: center; gap: 8px; margin: 0; }
+.plugin-settings-section { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-raised); }
+.plugin-settings-section-header { display: flex; flex-direction: column; gap: 4px; }
+.plugin-settings-section-title { margin: 0; font-size: 15px; font-weight: 600; }

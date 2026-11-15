@@ -52,6 +52,15 @@ Use a small fixed internal preparation limit (initial target: five seconds total
 
 RTK 1.2.0 provides the initial compatibility fixture. Verify actual protocol behavior instead of accepting a version string alone. A policy refusal from a health probe is not proof the binary crashed; report a safe failed check when rewrite capability cannot be demonstrated without altering policy. For actual commands, code 2 is always a denial, never a technical fallback.
 
+#### Implementation decisions (blocks 1–2)
+
+- Persistence: a dedicated single-row table `rtk_control` (id = 1) created by the plugin migration, with `enabled`, `revision`, `availability` (`unknown` | `available` | `unavailable`), `path`, `version`, `reason`, `checked_at`, `updated_at`. A missing row reads as disabled/unknown.
+- Probe failure codes: `missing`, `permission`, `signal` (SIGILL named explicitly), `timeout`, `overflow` (output cap exceeded, never trusted), `spawn`, `incompatible` (unrecognized `--version` or rewrite response) and `policy` (rewrite of the read-only probe exits 1/2: capability not demonstrated under current RTK policy, reported as a failed check rather than a crash). Healthy rewrite: exit 0 or 3 with one nonempty line containing `rtk`.
+- Probe budget: one 5-second deadline shared by `--version` and `rewrite`; each step's output is capped at 4 KiB. On timeout or overflow the process is killed and pipe reads are cancelled, so descendants holding the pipe cannot stall the check.
+- Lifecycle: in-process `generation` (bumped by plugin start/stop) and `verifiedRevision` (cleared on start/stop/disable) live in `ctx.state.rtk`; check/enable/revalidate are serialized in-process, disable is not queued so it can invalidate an in-flight enable.
+- HTTP: `GET /rtk/api` returns state and the cookie-bound CSRF token without probing; `POST /rtk/api` accepts only `{ action: "check" | "enable" | "disable" }` (owner, same origin, `x-csrf-token`, JSON ≤ 1 KiB); failed enable returns 409 with the current state.
+- Settings host: the shared page is the Settings dialog tab "Plugins"; sections are keyed `<plugin>/<id>`, use the surface-id grammar for ids and receive `{ context }` with `agentId: null`.
+
 ### 5. Single-command rewrite protocol
 
 Invoke `[resolvedRtk, 'rewrite', originalCommand]`, with the complete original command as one argument. Do not parse shell syntax ourselves, wrap arbitrary scripts blindly, or expand substitutions before rewrite. Validate that a proposed command is nonempty and contains no invalid transport/NUL data; do not claim to semantically validate arbitrary shell code.
