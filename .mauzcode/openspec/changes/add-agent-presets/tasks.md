@@ -57,10 +57,10 @@
 
 ## 9. Integration checks
 
-- [ ] 9.1 Run `procs.dev.typecheck` once for the settled batch and `code.quality` with `ok: true`; record pre-existing diagnostics separately.
-- [ ] 9.2 Run the agent, tools, session, repl, agentPreset and frontend test suites; verify they all pass.
-- [ ] 9.3 Smoke test on the live server: create Standard, Creator and Minimal sessions from the composer; check each one's declared tools and prompt sections through `agent.buildLlmRequest`, and confirm that an existing pre-migration agent behaves as before.
-- [ ] 9.4 Run `openspec validate add-agent-presets --strict` and fix every warning.
+- [x] 9.1 Run `procs.dev.typecheck` once for the settled batch and `code.quality` with `ok: true`; record pre-existing diagnostics separately.
+- [x] 9.2 Run the agent, tools, session, repl, agentPreset and frontend test suites; verify they all pass.
+- [x] 9.3 Smoke test on the live server: create Standard, Creator and Minimal sessions from the composer; check each one's declared tools and prompt sections through `agent.buildLlmRequest`, and confirm that an existing pre-migration agent behaves as before.
+- [x] 9.4 Run `openspec validate add-agent-presets --strict` and fix every warning.
 
 ## Workflow follow-up
 
