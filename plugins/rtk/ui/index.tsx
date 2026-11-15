@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiError, Button, Stack, requestJson, type ExtensionSettingsTabProps, type UiExtension } from '@mauzcode/ui';
 
 /** Safe instance-wide RTK state served by the owner-only GET/POST /rtk/api. */
@@ -15,7 +15,7 @@ type Loaded = { control: RtkControl; csrfToken: string };
 type Action = 'check' | 'enable' | 'disable';
 
 const API = '/rtk/api';
-const AVAILABILITY: Record<RtkControl['availability'], string> = { unknown: 'не проверено', available: 'доступен', unavailable: 'недоступен' };
+const AVAILABILITY: Record<RtkControl['availability'], string> = { unknown: 'Не проверено', available: 'Доступен', unavailable: 'Недоступен' };
 const controlOf = (data: unknown): RtkControl | null =>
   data && typeof data === 'object' && 'control' in data && data.control && typeof data.control === 'object' ? data.control as RtkControl : null;
 const message = (error: unknown) => error instanceof ApiError
@@ -73,37 +73,40 @@ export function RtkSettings({ context }: ExtensionSettingsTabProps) {
     }
   };
 
-  if (!data) return <Stack gap={2}>
-    {busy === 'load' && <p className="settings-note" role="status">Загрузка состояния RTK…</p>}
-    {error && <p role="alert">{error}</p>}
-    {error && <div><Button onClick={() => { setBusy('load'); setError(null); load().catch(e => setError(message(e))).finally(() => setBusy(null)); }}>Повторить</Button></div>}
+  // Host Settings classes keep the tab in the dialog's visual language (key/value card, feedback banners, check rows).
+  if (!data) return <Stack gap={3}>
+    {busy === 'load' && <p className="settings-loading" role="status">Загрузка состояния RTK…</p>}
+    {error && <p role="alert" className="settings-feedback is-error">{error}</p>}
+    {error && <div className="settings-actions"><Button onClick={() => { setBusy('load'); setError(null); load().catch(e => setError(message(e))).finally(() => setBusy(null)); }}>Повторить</Button></div>}
   </Stack>;
 
   const c = data.control;
   const locked = busy !== null || context.readOnly;
   const canEnable = c.availability === 'available';
   const toggleDisabled = locked || (!c.enabled && !canEnable);
-  return <Stack gap={3} aria-busy={busy !== null}>
-    <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: 'var(--space-1) var(--space-3)', margin: 0 }}>
-      <dt>Состояние</dt><dd data-testid="rtk-enabled">{c.enabled ? 'включён' : 'выключен'}</dd>
-      <dt>Доступность</dt><dd data-testid="rtk-availability">{busy === 'check' ? 'проверка…' : AVAILABILITY[c.availability]}</dd>
-      <dt>Путь</dt><dd style={{ overflowWrap: 'anywhere' }}><code>{c.path ?? '—'}</code></dd>
-      <dt>Версия</dt><dd>{c.version ?? '—'}</dd>
-      <dt>Проверено</dt><dd>{c.checkedAt ? new Date(c.checkedAt).toLocaleString() : 'никогда'}</dd>
-      {c.reason && <><dt>Причина</dt><dd>{c.reason}</dd></>}
+  const row = (label: string, value: ReactNode, testId?: string) => <div className="settings-kv-row"><dt>{label}</dt><dd data-testid={testId}>{value}</dd></div>;
+  return <Stack gap={4} aria-busy={busy !== null}>
+    {notice && <p role="status" className={`settings-feedback ${notice.startsWith('Проверка не прошла') ? 'is-error' : 'is-success'}`}>{notice}</p>}
+    {error && <p role="alert" className="settings-feedback is-error">{error}</p>}
+    <dl className="settings-kv">
+      {row('Состояние', c.enabled ? 'Включён' : 'Выключен', 'rtk-enabled')}
+      {row('Доступность', busy === 'check' ? 'Проверка…' : AVAILABILITY[c.availability], 'rtk-availability')}
+      {row('Путь', <code>{c.path ?? '—'}</code>)}
+      {row('Версия', c.version ?? '—')}
+      {row('Проверено', c.checkedAt ? new Date(c.checkedAt).toLocaleString() : 'Никогда')}
+      {c.reason && row('Причина', <span className="settings-kv-flag">{c.reason}</span>)}
     </dl>
-    <Stack direction="horizontal" gap={2} wrap>
-      <Button onClick={() => run('check')} disabled={locked}>{busy === 'check' ? 'Проверка…' : 'Проверить'}</Button>
-      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-        <input type="checkbox" role="switch" checked={c.enabled} disabled={toggleDisabled} aria-describedby="rtk-toggle-help" onChange={() => run(c.enabled ? 'disable' : 'enable')} />
-        Сжимать вывод локального bash через RTK
-      </label>
-    </Stack>
-    <p id="rtk-toggle-help" className="settings-note">
-      {context.readOnly ? 'Только чтение: менять настройку может владелец.' : !c.enabled && !canEnable ? 'Сначала выполните успешную проверку — включить можно только доступный RTK.' : 'Настройка общая для всего экземпляра; SSH и Terminal не затрагиваются. Разовый обход — параметр rtk:false у вызова bash.'}
-    </p>
-    {notice && <p role="status">{notice}</p>}
-    {error && <p role="alert">{error}</p>}
+    <label className="settings-check">
+      <input type="checkbox" role="switch" checked={c.enabled} disabled={toggleDisabled} aria-describedby="rtk-toggle-help" onChange={() => run(c.enabled ? 'disable' : 'enable')} />
+      <span>Сжимать вывод локального bash через RTK
+        <span id="rtk-toggle-help" className="settings-field-hint" style={{ display: 'block' }}>
+          {context.readOnly ? 'Только чтение: менять настройку может владелец.' : !c.enabled && !canEnable ? 'Сначала выполните успешную проверку — включить можно только доступный RTK.' : 'Настройка общая для всего экземпляра; SSH и Terminal не затрагиваются. Разовый обход — параметр rtk:false у вызова bash.'}
+        </span>
+      </span>
+    </label>
+    <div className="settings-actions">
+      <Button onClick={() => run('check')} disabled={locked}>{busy === 'check' ? 'Проверка…' : 'Проверить RTK'}</Button>
+    </div>
   </Stack>;
 }
 

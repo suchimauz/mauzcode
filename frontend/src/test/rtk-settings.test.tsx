@@ -27,10 +27,10 @@ describe('RTK settings tab', () => {
     render(<RtkSettings context={ctx()} />);
     const toggle = await screen.findByRole('switch');
     expect((toggle as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByTestId('rtk-availability').textContent).toBe('не проверено');
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить' }));
+    expect(screen.getByTestId('rtk-availability').textContent).toBe('Не проверено');
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить RTK' }));
     await screen.findByText(/Включите его отдельно/);
-    expect(screen.getByTestId('rtk-enabled').textContent).toBe('выключен');
+    expect(screen.getByTestId('rtk-enabled').textContent).toBe('Выключен');
     expect((screen.getByRole('switch') as HTMLInputElement).disabled).toBe(false);
     expect(screen.getByText('/usr/local/bin/rtk')).toBeTruthy();
     const [[, options]] = posts(fetch);
@@ -44,7 +44,7 @@ describe('RTK settings tab', () => {
     render(<RtkSettings context={ctx()} />);
     fireEvent.click(await screen.findByRole('switch'));
     expect((await screen.findByRole('alert')).textContent).toContain('rtk not found on PATH');
-    expect(screen.getByTestId('rtk-availability').textContent).toBe('недоступен');
+    expect(screen.getByTestId('rtk-availability').textContent).toBe('Недоступен');
     expect((screen.getByRole('switch') as HTMLInputElement).checked).toBe(false);
   });
 
@@ -67,7 +67,7 @@ describe('RTK settings tab', () => {
     render(<RtkSettings context={ctx(true)} />);
     await screen.findByText(/Только чтение/);
     expect((screen.getByRole('switch') as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'Проверить' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Проверить RTK' }) as HTMLButtonElement).disabled).toBe(true);
     expect(posts(fetch)).toHaveLength(0);
   });
 
