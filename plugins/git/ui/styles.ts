@@ -97,7 +97,8 @@ export const styles = `:root{--diff-background-color:initial;--diff-text-color:i
 .git-row-text strong{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .git-row-text small{color:var(--git-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .git-glyph{flex:none;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:5px;font:600 10px/1 var(--diff-font-family);background:var(--git-soft)}
-.git-glyph[data-status=A]{color:var(--git-ok)}.git-glyph[data-status=D]{color:var(--git-bad)}.git-glyph[data-status=M]{color:var(--link,#3b82f6)}.git-glyph[data-status=U]{color:var(--git-bad)}
+.git-glyph[data-status=A]{color:var(--git-ok);background:color-mix(in srgb,var(--git-ok) 14%,transparent)}.git-glyph[data-status=D]{color:#fff;background:var(--git-bad)}.git-glyph[data-status=M]{color:var(--tool-stopped,#dd8629);background:color-mix(in srgb,var(--tool-stopped,#dd8629) 16%,transparent)}.git-glyph[data-status=U]{color:var(--git-bad)}
+.git-row:has(.git-glyph[data-status=D]) .git-row-text strong{text-decoration:line-through;color:var(--git-muted)}
 .git-count{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--git-accent)}
 .git-more{margin:8px 10px}
 .git-commit-files{margin-top:10px;padding-top:6px;border-top:1px solid var(--git-line)}
