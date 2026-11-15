@@ -54,3 +54,5 @@ body:has(.embedded-chat-marker) .app-shell { grid-template-columns: minmax(0, 1f
 .chat-header-menu { display: none; place-items: center; flex-shrink: 0; width: 44px; height: 44px; margin: -7px 0 -7px -8px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--text); }
 @media (max-width: 1000px) { .chat-header-menu { display: inline-grid; } }
 @media (hover: hover) { .chat-header-menu:hover { background: var(--hover); } }
+/* Read-only agent preset label: secondary text, not an interactive control. */
+.chat-header-preset { flex: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-tertiary); font: 12px/18px var(--font-sans); }

@@ -1,7 +1,15 @@
 import { requestJson } from './mauzcode';
 import { normalizeMascotChoice, type MascotChoice } from './mascots';
-export type NewSessionDraft = { title?: string; mascot?: MascotChoice; projectId: string; model: string; effort: string; text: string; requestKey: string };
-export type NewSessionDefaults = { version: number; defaultModel: string; csrfToken: string };
+/** presetId names an agent preset; omitted lets the server use its configured default. */
+export type NewSessionDraft = { title?: string; mascot?: MascotChoice; presetId?: string; projectId: string; model: string; effort: string; text: string; requestKey: string };
+/** Menu fields of an agent preset; access rules never reach the browser. */
+export type AgentPresetOption = { id: string; name: string; description: string; sortOrder: number };
+export type NewSessionDefaults = { version: number; defaultModel: string; csrfToken: string; presets?: AgentPresetOption[]; defaultPresetId?: string };
+/** Keep a stored preset only while it still exists; otherwise use the default (or the first listed) preset. */
+export function resolveNewSessionPreset(presets: readonly AgentPresetOption[], defaultPresetId: string | undefined, stored?: string): string | undefined {
+  if (stored && presets.some(preset => preset.id === stored)) return stored;
+  return presets.find(preset => preset.id === defaultPresetId)?.id ?? presets[0]?.id;
+}
 const storageKey = 'mauzcode-ui-new-session';
 /** Fields the old composer could store; they are no longer sent anywhere. */
 const removedFields = ['workspaceDir', 'createWorkspaceDir', 'promptPreset', 'systemPrompt'] as const;
@@ -33,7 +41,7 @@ export function readNewSessionDraft(): NewSessionDraft {
     const last = readSessionSelection();
     return { title: query.get('title') || '', mascot: 'random', projectId: query.get('projectId') || last.projectId || '', model: query.get('model') || last.model || '', effort: query.get('effort') || '', text: query.get('text') || '', requestKey: crypto.randomUUID() };
   }
-  try { const d = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); if (d && ['projectId','model','effort','text','requestKey'].every(k => typeof d[k] === 'string')) return { ...(typeof d.title === 'string' ? { title: d.title } : {}), mascot: normalizeMascotChoice(d.mascot), projectId: d.projectId, model: d.model, effort: d.effort, text: d.text, requestKey: d.requestKey }; } catch { /* Browser storage is optional. */ }
+  try { const d = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); if (d && ['projectId','model','effort','text','requestKey'].every(k => typeof d[k] === 'string')) return { ...(typeof d.title === 'string' ? { title: d.title } : {}), ...(typeof d.presetId === 'string' && d.presetId ? { presetId: d.presetId } : {}), mascot: normalizeMascotChoice(d.mascot), projectId: d.projectId, model: d.model, effort: d.effort, text: d.text, requestKey: d.requestKey }; } catch { /* Browser storage is optional. */ }
   const last = readSessionSelection();
   return { mascot: 'random', projectId: last.projectId || '', model: last.model || '', effort: '', text: '', requestKey: crypto.randomUUID() };
 }
@@ -49,8 +57,9 @@ export function submitNewSession(draft: NewSessionDraft, csrfToken: string, file
     if (draft.effort) body.set('effort', draft.effort);
     body.set('mascot', normalizeMascotChoice(draft.mascot));
     body.set('title', title);
+    if (draft.presetId) body.set('presetId', draft.presetId);
     files.forEach(file => body.append('files', file, file.name));
     return requestJson<{ agentId: string; projectId: string; status: 'sent' }>('/ui-lab-api/new-session', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body });
   }
-  return requestJson<{ agentId: string; projectId: string; status: 'sent' }>('/ui-lab-api/new-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ title, mascot: normalizeMascotChoice(draft.mascot), requestKey: draft.requestKey, projectId: draft.projectId, ...(draft.model ? { model: draft.model } : {}), ...(draft.effort ? { effort: draft.effort } : {}), text: draft.text.trim() }) });
+  return requestJson<{ agentId: string; projectId: string; status: 'sent' }>('/ui-lab-api/new-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ title, mascot: normalizeMascotChoice(draft.mascot), requestKey: draft.requestKey, projectId: draft.projectId, ...(draft.model ? { model: draft.model } : {}), ...(draft.effort ? { effort: draft.effort } : {}), ...(draft.presetId ? { presetId: draft.presetId } : {}), text: draft.text.trim() }) });
 }

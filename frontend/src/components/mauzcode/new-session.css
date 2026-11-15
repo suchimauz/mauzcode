@@ -26,3 +26,12 @@ button.new-session-chip:hover { background: var(--hover); }
 
 .new-session-chip:focus-visible { outline: 2px solid var(--accent, var(--text)); outline-offset: 2px; }
 button.new-session-chip:disabled { opacity: .5; cursor: default; }
+/* Agent preset menu: two-line rows; the name stays primary and the description is secondary text. */
+.agent-preset-menu { width: 300px; }
+.workspace-menu-item.agent-preset-item { align-items: flex-start; padding-block: 6px; }
+.workspace-menu-item.agent-preset-item > svg { margin-top: 3px; }
+.workspace-menu-item.agent-preset-item > span.agent-preset-text { display: flex; flex-direction: column; min-width: 0; white-space: normal; font-size: 13px; }
+.agent-preset-name { color: var(--text); font-weight: 500; }
+.agent-preset-description { color: var(--text-secondary); font-size: 12px; line-height: 16px; }
+.workspace-menu-item.agent-preset-item > span:last-child:not(.agent-preset-text) { margin-left: auto; margin-top: 3px; }
+@media (prefers-reduced-motion: reduce) { .agent-preset-menu { transition: none; animation: none; } }

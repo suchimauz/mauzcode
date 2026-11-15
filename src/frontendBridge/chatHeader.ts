@@ -3,6 +3,7 @@
  *
  * Serve the authenticated UI Lab chat header. GET returns an unarchived nav or team agent and only its direct unarchived team children, with native icon and hue projections and a session-bound CSRF token. Owner-only JSON POST requires native CSRF verification and renames through session.setTitle; it never loads transcripts or creates sessions.
  * GET also returns parent {id,title} or null for a visible unarchived parent of a team session, and siblings with the same child projection (including the current session); unavailable parents yield an empty siblings list.
+ * GET also returns presetName: the agent preset name frozen in its creation snapshot (null without a snapshot), shown read-only; preset access rules are never returned.
  * Child tokens sum native context_usage input and output (cache is already included); absent measurements stay null. durationMs sums recorded closed agent_runs boundaries plus elapsed open boundaries belonging to the currently running worker claim (started_at >= run_started_at); excludes stale open runs and idle gaps. Historical coverage can be partial. lastReplyAt is the latest native assistant event timestamp in epoch milliseconds, or null. modelLabel follows the native selector's model-route suffix.
  * @param opts.req GET with one agentId query parameter, or POST application/json {agentId,title} and X-CSRF-Token; title is trimmed and limited to 120 characters by native persistence.
  */
@@ -39,7 +40,7 @@ export default async function (
      agentId=ids[0]!;
     }
     if(!/^[A-Za-z0-9_-]{1,128}$/.test(agentId))return reply({error:'Invalid agentId'},400);
-    const rows=await ctx.fns.procs.db.select({sql:"SELECT id,title,parent_id,visibility FROM agents WHERE id = ? AND visibility IN ('nav','team') AND archived_at IS NULL",params:[agentId]});
+    const rows=await ctx.fns.procs.db.select({sql:"SELECT id,title,parent_id,visibility,preset_snapshot->>'name' AS preset_name FROM agents WHERE id = ? AND visibility IN ('nav','team') AND archived_at IS NULL",params:[agentId]});
     if(!rows.length)return reply({error:'Agent not found'},404);
     if(req.method==='POST'){
      try{return reply({agentId,title:await ctx.fns.session.setTitle({id:agentId,title})});}
@@ -67,5 +68,6 @@ export default async function (
     }));
     };
     const [children,siblings]=await Promise.all([loadChildren(agentId),parent?loadChildren(parent.id):Promise.resolve([])]);
-    return reply({agentId,title:String(rows[0].title??''),parent,children,siblings,csrfToken:await ctx.fns.auth.csrfToken({req})});
+    // Name frozen in the creation snapshot; null for rows without one. Access rules are never exposed.
+    return reply({agentId,title:String(rows[0].title??''),presetName:typeof rows[0].preset_name==='string'&&rows[0].preset_name?rows[0].preset_name:null,parent,children,siblings,csrfToken:await ctx.fns.auth.csrfToken({req})});
 }

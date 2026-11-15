@@ -50,10 +50,10 @@
 
 ## 8. New-session API and UI
 
-- [ ] 8.1 `GET /ui-lab-api/new-session` returns `presets [{ id, name, description, sortOrder }]` and `defaultPresetId`, without patterns, plugins or prompt; `POST` accepts optional `presetId`, returns 400 for an unknown id before creating anything, and passes it to `ui.createAgent`. Verify with route tests for the "Defaults response", "Submit with an unknown preset" and "Submit without a preset" scenarios, and that `promptPreset` is still rejected.
-- [ ] 8.2 `frontend/src/lib/newSession.ts`: `presetId` in the draft and request; a restored draft with an unknown preset falls back to the default. Verify with a frontend unit test for "Draft with a deleted preset".
-- [ ] 8.3 `NewSessionComposer.tsx`: replace the static "Standard mode" span with a preset `Menu` modelled on the Workspace chip (radio items with descriptions, accessible name, disabled while busy or pending, theme tokens, reduced motion). Verify with frontend tests for "Default selection", "Pick a preset", "Busy composer" and "Keyboard flow".
-- [ ] 8.4 Show the agent's preset name read-only in the chat header via the agent meta payload. Verify with a frontend test that a Standard agent shows "Standard".
+- [x] 8.1 `GET /ui-lab-api/new-session` returns `presets [{ id, name, description, sortOrder }]` and `defaultPresetId`, without patterns, plugins or prompt; `POST` accepts optional `presetId`, returns 400 for an unknown id before creating anything, and passes it to `ui.createAgent`. Verify with route tests for the "Defaults response", "Submit with an unknown preset" and "Submit without a preset" scenarios, and that `promptPreset` is still rejected.
+- [x] 8.2 `frontend/src/lib/newSession.ts`: `presetId` in the draft and request; a restored draft with an unknown preset falls back to the default. Verify with a frontend unit test for "Draft with a deleted preset".
+- [x] 8.3 `NewSessionComposer.tsx`: replace the static "Standard mode" span with a preset `Menu` modelled on the Workspace chip (radio items with descriptions, accessible name, disabled while busy or pending, theme tokens, reduced motion). Verify with frontend tests for "Default selection", "Pick a preset", "Busy composer" and "Keyboard flow".
+- [x] 8.4 Show the agent's preset name read-only in the chat header via the agent meta payload. Verify with a frontend test that a Standard agent shows "Standard".
 
 ## 9. Integration checks
 

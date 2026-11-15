@@ -3,7 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 import { NewSessionComposer } from '../components/mauzcode/NewSessionComposer';
 import { WorkspaceSidebar } from '../components/mauzcode/WorkspaceSidebar';
-import { readNewSessionDraft, type NewSessionDraft } from '../lib/newSession';
+import { readNewSessionDraft, resolveNewSessionPreset, type NewSessionDraft } from '../lib/newSession';
+import userEvent from '@testing-library/user-event';
 import { ApiError } from '../lib/mauzcode';
 import { useMauzCode } from '../hooks/useMauzCode';
 vi.mock('../components/mauzcode/ModelPicker', () => ({ ModelPicker: ({ draft, onReadyChange }: { draft: { onChange: (m:string,e:string)=>void }; onReadyChange?: (ready: boolean) => void }) => { useEffect(() => { onReadyChange?.(true); }, [onReadyChange]); return <button onClick={() => draft.onChange('test:chosen','high')}>Choose model</button>; } }));
@@ -109,4 +110,68 @@ it('a legacy pending submit with removed fields is not replayed; its text and ti
 it('a ?newSession=1&title= link pre-fills the draft title', () => {
   history.replaceState(null, '', '/?newSession=1&title=%D0%A0%D0%B5%D0%B2%D1%8C%D1%8E');
   expect(readNewSessionDraft().title).toBe('Ревью');
+});
+
+const presetList = [{id:'standard',name:'Standard',description:'Code and task work.',sortOrder:10},{id:'creator',name:'Creator',description:'All runtime functions.',sortOrder:20},{id:'minimal',name:'Minimal',description:'Shell and file tools.',sortOrder:30}];
+async function withPresets() {
+  const { getNewSessionDefaults } = await import('../lib/newSession');
+  vi.mocked(getNewSessionDefaults).mockResolvedValue({ version:1, defaultModel:'test:default', csrfToken:'token', presets:[presetList[2],presetList[0],presetList[1]], defaultPresetId:'standard' });
+}
+it('Draft with a deleted preset falls back to the default preset', () => {
+  sessionStorage.setItem('mauzcode-ui-new-session', JSON.stringify({ projectId:'p1', model:'m', effort:'', text:'', requestKey:'k', presetId:'deleted' }));
+  const draft = readNewSessionDraft();
+  expect(draft.presetId).toBe('deleted');
+  expect(resolveNewSessionPreset(presetList, 'standard', draft.presetId)).toBe('standard');
+  expect(resolveNewSessionPreset(presetList, 'standard', 'creator')).toBe('creator');
+  expect(resolveNewSessionPreset(presetList, 'gone', undefined)).toBe('standard');
+  expect(resolveNewSessionPreset([], 'standard', 'creator')).toBeUndefined();
+});
+it('Default selection: the preset chip shows the default preset', async () => {
+  await withPresets(); render(<Draft />);
+  expect(await screen.findByRole('button', { name: 'Режим агента: Standard' })).toHaveTextContent('Standard');
+  expect(screen.queryByText('Standard mode')).toBeNull();
+});
+it('Pick a preset: the chip shows Creator and the first submit carries it', async () => {
+  await withPresets();
+  const { submitNewSession } = await import('../lib/newSession');
+  vi.mocked(submitNewSession).mockResolvedValue({agentId:'zz',projectId:'p1',status:'sent'});
+  render(<Draft />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Режим агента: Standard' }));
+  const items = await screen.findAllByRole('menuitemradio');
+  expect(items.map(item => item.getAttribute('aria-label'))).toEqual(['Standard','Creator','Minimal']);
+  expect(screen.getByRole('menuitemradio', { name: 'Creator' })).toHaveAccessibleDescription('All runtime functions.');
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Creator' }));
+  expect(await screen.findByRole('button', { name: 'Режим агента: Creator' })).toBeInTheDocument();
+  fireEvent.input(screen.getByRole('textbox'),{target:{textContent:'Hello'}});
+  fireEvent.submit(screen.getByRole('form',{name:'Ввод сообщения'}));
+  await waitFor(() => expect(created).toHaveBeenCalledWith('zz'));
+  expect(vi.mocked(submitNewSession).mock.calls[0][0]).toMatchObject({ presetId:'creator', text:'Hello' });
+});
+it('Busy composer: the preset chip is disabled while the first submit is pending', async () => {
+  await withPresets();
+  const { submitNewSession } = await import('../lib/newSession');
+  vi.mocked(submitNewSession).mockRejectedValue(new Error('Network'));
+  render(<Draft />);
+  const chip = await screen.findByRole('button', { name: 'Режим агента: Standard' });
+  expect(chip).toBeEnabled();
+  fireEvent.input(screen.getByRole('textbox'),{target:{textContent:'Hello'}});
+  fireEvent.submit(screen.getByRole('form',{name:'Ввод сообщения'}));
+  await screen.findByText('Повторить отправку');
+  expect(screen.getByRole('button', { name: 'Режим агента: Standard' })).toBeDisabled();
+  expect(vi.mocked(submitNewSession).mock.calls[0][0]).toMatchObject({ presetId:'standard' });
+});
+it('Keyboard flow: Enter opens, arrows move, Enter picks Minimal and focus returns to the chip', async () => {
+  // jsdom has no PointerEvent; Base UI dispatches one when Enter activates a menu item.
+  if (!('PointerEvent' in window)) vi.stubGlobal('PointerEvent', class extends MouseEvent { constructor(type: string, init?: PointerEventInit) { super(type, init); } });
+  await withPresets(); render(<Draft />);
+  const chip = await screen.findByRole('button', { name: 'Режим агента: Standard' });
+  chip.focus(); expect(chip).toHaveFocus();
+  await userEvent.keyboard('{Enter}');
+  await screen.findAllByRole('menuitemradio');
+  for (let i = 0; i < 3 && document.activeElement?.getAttribute('aria-label') !== 'Minimal'; i++) await userEvent.keyboard('{ArrowDown}');
+  expect(screen.getByRole('menuitemradio', { name: 'Minimal' })).toHaveFocus();
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(screen.queryByRole('menuitemradio')).toBeNull());
+  const updated = screen.getByRole('button', { name: 'Режим агента: Minimal' });
+  await waitFor(() => expect(updated).toHaveFocus());
 });
