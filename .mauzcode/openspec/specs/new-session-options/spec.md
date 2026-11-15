@@ -1,4 +1,9 @@
-## ADDED Requirements
+# new-session-options Specification
+
+## Purpose
+Define the options surface of the new-session composer: a Russian "Параметры" chip with a title popover, the fields removed from the new-session screen, and the removal of prompt presets from session creation.
+
+## Requirements
 
 ### Requirement: Options chip and popover
 The new-session composer SHALL show a "Параметры" chip in its chip row, next to the Workspace chip, instead of an expandable "Advanced options" section. Activating the chip SHALL open a popover anchored to the chip that contains exactly one field, "Название".
