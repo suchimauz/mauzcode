@@ -75,12 +75,30 @@ describe('model transports', () => {
   for(const t of [socks,ssh]) await expect(call(f,t,{url:'http://example.com'})).rejects.toMatchObject({code:'TRANSPORT'});
   for(const timeoutMs of [0,NaN,1.5,3600001]) await expect(call(f,ssh,{timeoutMs})).rejects.toMatchObject({code:'TRANSPORT'}); expect(f.request).not.toHaveBeenCalled(); expect(f.fns.sshProvider.tunnel).not.toHaveBeenCalled();
  });
+ test('a request that cannot be built is non-retryable; a network failure is not',async () => {
+  const f=fixture();
+  // Configuration: repeating the same call would fail identically.
+  for(const url of ['/relative','file:///tmp/a']) await expect(call(f,direct,{url})).rejects.toMatchObject({code:'TRANSPORT',retryable:false});
+  await expect(call(f,ssh,{timeoutMs:0})).rejects.toMatchObject({code:'TRANSPORT',retryable:false});
+  await expect(call(f,{kind:'unknown'} as any)).rejects.toMatchObject({code:'TRANSPORT',retryable:false});
+  // Network: the request was dispatched and may well succeed on a repeat.
+  f.request.mockImplementation(async () => {throw Object.assign(new Error('connection reset'),{code:'PROXY_CONNECTION_LOST'});});
+  const network = await call(f,socks).catch((error:any) => error);
+  expect(network.code).toBe('TRANSPORT');
+  expect(network.retryable).toBeUndefined();
+ });
  test('unsupported proxy method rejected',async () => {const f=fixture(); await expect(call(f,socks,{init:{method:'PUT'}})).rejects.toMatchObject({code:'TRANSPORT'});expect(f.request).not.toHaveBeenCalled();});
 });
 describe('model transport validation', () => {
  const check=(f:ReturnType<typeof fixture>,transport:types.models.TransportSpec,allowed:types.models.TransportSpec['kind'][]=['direct','socks','ssh-tunnel'])=>validate(f.ctx,null,{transport,allowed});
  test('accepts allowed saved transports without secrets or network',async () => {const f=fixture(); for(const t of [direct,socks,ssh]) await check(f,t);expect(f.fns.socksProxy.readSaved).not.toHaveBeenCalled();expect(f.request).not.toHaveBeenCalled();});
  test('rejects provider-disallowed and unknown kinds',async () => {const f=fixture(); await expect(check(f,ssh,['direct'])).rejects.toThrow();await expect(check(f,{kind:'unknown'} as any)).rejects.toThrow();});
+ test('every validation rejection is non-retryable: it is configuration, not a network condition',async () => {
+  const f=fixture();
+  for(const t of [{kind:'unknown'} as any,{kind:'socks',proxyId:''} as any,{kind:'ssh-tunnel',instance:''} as any]) await expect(check(f,t)).rejects.toMatchObject({code:'TRANSPORT',retryable:false});
+  f.fns.sshInstance.get.mockImplementation(async () => ({pinnedHostKey:''}));
+  await expect(check(f,ssh)).rejects.toMatchObject({code:'TRANSPORT',retryable:false});
+ });
  test('rejects empty proxy, malformed proxy and missing proxy',async () => {const f=fixture(); await expect(check(f,{kind:'socks',proxyId:''})).rejects.toThrow();f.fns.procs.db.select.mockImplementation(async () => []); await expect(check(f,socks)).rejects.toThrow();f.fns.socksProxy.validateIdentity.mockImplementation(async () => {throw Error('bad UUID');});await expect(check(f,socks)).rejects.toThrow();});
  test('rejects missing, unknown and unpinned SSH instance',async () => {const f=fixture();await expect(check(f,{kind:'ssh-tunnel',instance:''})).rejects.toThrow();f.fns.sshInstance.get.mockImplementation(async () => ({pinnedHostKey:''}));await expect(check(f,ssh)).rejects.toThrow();f.fns.sshInstance.get.mockImplementation(async () => {throw Error('missing');});await expect(check(f,ssh)).rejects.toThrow();});
 });

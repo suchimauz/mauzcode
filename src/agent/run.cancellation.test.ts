@@ -18,7 +18,7 @@ function harness() {
             syncAgentState: async () => { agent.messages = rows.slice(); },
             appendToolCallEvent: noop, appendAssistantEvent: async () => ({idx: 0}), recordContextUsage: noop,
             updateMessageContent: async ({ idx, content }: any) => { rows[idx].content = content; } },
-        agent: { cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => false, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
+        agent: { cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => ({ scheduled: false }), statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
             stashResult: async ({ output }: any) => ({ content: output }) },
         models: { resolveRoute: async () => ({ provider: 'fixture' }), classifyError: () => ({ kind: 'fatal', retryable: false }), stream: async () => ({ toolCalls: [{ id: 'a', name: 'one' }, { id: 'b', name: 'two' }] }) },
         tools: { call: async () => { calls++; return { output: 'ok' }; } },

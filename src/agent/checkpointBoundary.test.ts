@@ -6,6 +6,9 @@ import anthropic from '../models/protocol/anthropic/toAnthropicMessages';
 import checkInput from '../models/inference/checkInput';
 import failure from '../models/inference/failure';
 import stream from '../models/inference/stream';
+import modelCallWithRetry from '../compaction/modelCallWithRetry';
+import retryDecision from './retryDecision';
+import retryCodes from './retryCodes';
 
 const item = { type: 'compaction', id: 'opaque-id', encrypted_content: 'encrypted/signed+payload==' };
 const checkpoint = { kind: 'native-checkpoint', version: 1, provider: 'codex', connectionId: 'c', model: 'm', payload: item };
@@ -16,9 +19,11 @@ function fixture(content: unknown = JSON.stringify(checkpoint), type = 'codex_co
     const route = { provider: 'codex', connectionId: 'c', model: 'm', nativeCompaction: true };
     const definition: any = { capabilities: { checkpoints: true, continuationState: true }, stream: (_ctx: any, _conn: any, req: any) => { wire = input(ctx, null, { messages: req.messages }); return { text: 'ok' }; } };
     const ctx: any = { state: { models: { providers: { codex: { definition } } } }, fns: {
-        agent: { requireModel: ({model}: any) => model, fullSystemPrompt: async () => '', normalizeSleepContext: () => null, selectJevContext: async ({messages}: any) => messages },
+        agent: { requireModel: ({model}: any) => model, retryCodes: (o: any) => retryCodes(ctx, null, o), retryDecision: (o: any) => retryDecision(ctx, null, o), fullSystemPrompt: async () => '', normalizeSleepContext: () => null, selectJevContext: async ({messages}: any) => messages },
         session: { repairToolPairs: ({messages}: any) => ({messages,repaired:[]}) },
-        compaction: { project: async () => ({ messages, mode:'compact', fallback:null, revision:1 }) },
+        compaction: { project: async () => ({ messages, mode:'compact', fallback:null, revision:1 }), modelCallWithRetry: (o: any) => modelCallWithRetry(ctx, null, o) },
+        settings: { get: async ({ key }: any) => key === 'retryPolicy' ? { initialDelayMs: 1, maxDelayMs: 5, jitterRatio: 0 } : undefined },
+        procs: { log: { warn: () => {} }, events: { emit: () => {} }, db: { select: async () => [] } },
         auth: { attributeMessages: async ({messages}: any) => ({messages,applied:false}) },
         attachments: { resolveContent: async ({messages}: any) => messages }, planning: { prompt: async () => '' },
         models: { resolveRoute: async () => route, inference: { failure: (o: any) => failure(ctx,null,o), checkInput: (o: any) => checkInput(ctx,null,o), assertModelEnabled: async () => ({id:'c',provider:'codex'}) }, connections: { safeMessage: ({message}:any)=>message, resolve: async () => ({definition,conn:{}}) }, compact: async (o: any) => { wire=input(ctx,null,{messages:o.messages}); return { item, checkpoint, responseId:'r' }; } },

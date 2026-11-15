@@ -5,6 +5,9 @@ import identity from "./modelIdentity";
 import contextWindow from "./contextWindow";
 import portable from "./portable";
 import anthropicMessages from "../models/protocol/anthropic/toAnthropicMessages";
+import modelCallWithRetry from "./modelCallWithRetry";
+import retryDecision from "../agent/retryDecision";
+import retryCodes from "../agent/retryCodes";
 
 const model = "custom/work:native/model:v2";
 function fixture(nativeCompaction = false, window?: number) {
@@ -16,8 +19,13 @@ function fixture(nativeCompaction = false, window?: number) {
             resolveRoute: async (opts: { route: string }) => { expect(opts).toEqual({ route: model }); return route; },
             call: async (opts: types.models.CallRequest) => { calls.push(opts); return { text: "summary" }; },
             compact: async (opts: object) => { native.push(opts); const item = { type: "compaction", encrypted_content: "opaque", id: "checkpoint" }; return { item, checkpoint: { kind: "native-checkpoint", version: 1, provider: route.provider, connectionId: route.connectionId, model: route.model, payload: item }, responseId: "response" }; },
-        }, procs: { log: { warn: () => {} } },
+        }, procs: { log: { warn: () => {} }, events: { emit: () => {} }, db: { select: async () => [] } },
     } };
+    // Real retry wrapper and decision over a default policy: these tests then cover the
+    // shipped compaction behavior rather than a stub that would hide a regression.
+    ctx.fns.compaction = { modelCallWithRetry: (o: any) => modelCallWithRetry(ctx, null, o) };
+    ctx.fns.settings = { get: async ({ key }: any) => key === 'retryPolicy' ? { initialDelayMs: 1, maxDelayMs: 5, jitterRatio: 0 } : undefined };
+    ctx.fns.agent = { retryCodes: (o: any) => retryCodes(ctx, null, o), retryDecision: (o: any) => retryDecision(ctx, null, o) };
     const opts = { model, sessionId: "child", instructions: "system", focus: "retain identifiers", messages: [{ role: "user", content: "hello" }], signal: new AbortController().signal };
     return { ctx, calls, native, opts, route };
 }

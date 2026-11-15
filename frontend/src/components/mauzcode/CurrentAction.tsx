@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { EventPage } from '../../lib/mauzcode';
+import type { CompactionRetryStatus, EventPage } from '../../lib/mauzcode';
 import { ToolShimmer } from './ToolShimmer';
 import { WaitLoader } from './WaitLoader';
 
@@ -10,6 +10,34 @@ export function turnClock(start: number | null | undefined, now: number): string
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor(seconds / 60) % 60;
   return `${hours > 0 ? `${hours}h` : ''}${seconds >= 60 ? `${minutes}m` : ''}${seconds % 60}s`;
+}
+
+/** Compaction waiting out a retry: the remaining seconds of the current backoff. */
+export function compactionRetryLabel(status: CompactionRetryStatus, now: number): string {
+  const left = Math.max(1, Math.ceil((status.startedAt + status.delayMs - now) / 1000));
+  const wait = status.startedAt + status.delayMs > now ? `${left} s` : 'now';
+  return `Compaction: retry ${status.attempt}/${status.maxRetries} in ${wait}`;
+}
+
+/**
+ * Show a compaction retry wait without writing anything to the transcript.
+ *
+ * Counts down from the server's wait start, so the row ends when the next attempt begins
+ * rather than when the browser happened to poll.
+ */
+export function CompactionRetrying({ status }: { status: CompactionRetryStatus }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [status.startedAt, status.delayMs, status.attempt]);
+  const label = compactionRetryLabel(status, now);
+  return <div className="tool-row current-action compaction-retry" data-state="waiting">
+    <WaitLoader />
+    <ToolShimmer className="current-action-label" text={label} />
+    <span className="sr-only" role="status">{label}</span>
+  </div>;
 }
 
 /** A known turn start survives action changes and remounts; never invent one. */

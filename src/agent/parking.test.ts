@@ -201,3 +201,61 @@ describe("usage-limit parking", () => {
         expect(events.some((e: any) => e.type === "error")).toBe(false);
     });
 });
+
+describe("Retry-After parking", () => {
+    test("parks only the agent that was throttled, with no error and the retry counter cleared", async () => {
+        const ctx: any = await mkTestCtx();
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
+        const b = await ctx.fns.agent.start({ model: "mock/default:test" });
+        await ctx.fns.session.save({ agent: a });
+        await ctx.fns.session.save({ agent: b });
+        await ctx.fns.procs.db.run({ sql: "UPDATE agents SET llm_retry_attempt = 3 WHERE id = ?", params: [a.id] });
+
+        const now = Date.now();
+        const parkUntil = now + 7 * 60_000;
+        const result = await ctx.fns.agent.parkOnRetryAfter({ id: a.id, parkUntil, code: "RATE_LIMITED", provider: "mock", now });
+        expect(result.parked).toBe(true);
+
+        const row = (await ctx.fns.procs.db.select({
+            sql: "SELECT wake_at, wake_reason, next_run_at, last_error, llm_retry_attempt, llm_retry_pending FROM agents WHERE id = ?",
+            params: [a.id],
+        }))[0];
+        expect(Number(row.wake_at)).toBeGreaterThan(parkUntil - 1);
+        expect(String(row.wake_reason)).toContain("wait");
+        expect(row.next_run_at).toBeNull();
+        expect(row.last_error).toBeNull();
+        expect(Number(row.llm_retry_attempt)).toBe(0);
+        expect(row.llm_retry_pending).toBeNull();
+
+        // The other agent on the same credential keeps running: a Retry-After can be
+        // per request, so parking the whole group would stop work that is not throttled.
+        const other = (await ctx.fns.procs.db.select({
+            sql: "SELECT wake_at, next_run_at FROM agents WHERE id = ?", params: [b.id],
+        }))[0];
+        expect(other.wake_at).toBeNull();
+
+        expect((await ctx.fns.session.load({ id: a.id })).scratchpad.parked)
+            .toMatchObject({ reason: "retry_after", provider: "mock" });
+        const events = await ctx.fns.session.getEvents({ id: a.id });
+        expect(events.some((e: any) => e.type === "parked" && e.reason === "retry_after")).toBe(true);
+        expect(events.some((e: any) => e.type === "error")).toBe(false);
+    });
+
+    test("a wild parking hint is capped at 30 minutes", async () => {
+        const ctx: any = await mkTestCtx();
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
+        await ctx.fns.session.save({ agent: a });
+        const now = Date.now();
+        const result = await ctx.fns.agent.parkOnRetryAfter({ id: a.id, parkUntil: now + 2 * 24 * 3_600_000, now });
+        expect(result.wakeAt).toBeLessThanOrEqual(now + 30 * 60_000 + 3_000);
+    });
+
+    test("a stopped agent is not parked", async () => {
+        const ctx: any = await mkTestCtx();
+        const a = await ctx.fns.agent.start({ model: "mock/default:test" });
+        await ctx.fns.session.save({ agent: a });
+        await ctx.fns.agent.stop({ agent: a, clearQueue: true });
+        const result = await ctx.fns.agent.parkOnRetryAfter({ id: a.id, parkUntil: Date.now() + 60_000 });
+        expect(result.parked).toBe(false);
+    });
+});

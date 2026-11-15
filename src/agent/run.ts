@@ -408,6 +408,9 @@ export default async function (
         ac.signal.addEventListener("abort", onRunAbort, { once: true });
         let streamed: any;
         let requestCoverage: { model: string; coveredIdx: number; estimatedPromptTokens?: number; estimateSource?: 'tokenizer' | 'heuristic' } | undefined;
+        // Provider id of the route the failed request used; the catch below needs it for
+        // the policy's per-provider overrides, so it cannot live inside the try block.
+        let requestProvider = '';
         const goalRequestId = crypto.randomUUID();
         let goalProvider = 'unsupported';
         const goalFormat = 'common-stream' as const;
@@ -419,12 +422,10 @@ export default async function (
             mobileStream.thinkingSummary = '';
             thinkingStart = null;
         };
-        let receivedDelta = false;
         let requestStartedAt = 0;
         let firstEventMs: number | null = null;
         try {
             const onEvent = (event: types.models.StreamEvent) => {
-                if (event.delta) receivedDelta = true;
                 if (event.type === 'text_delta' || event.type === 'thinking_delta') firstEventMs ??= Math.max(0, performance.now() - requestStartedAt);
                 if (ac.signal.aborted || agent.abortController !== ac || sampling.signal.aborted || !['text_delta', 'thinking_delta'].includes(event?.type) || typeof event.delta !== 'string') return;
                 // Expose only provider activity, never its private reasoning text.
@@ -447,6 +448,8 @@ export default async function (
             const requestModel = ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id });
             const route = await ctx.fns.models.resolveRoute({ route: requestModel });
             goalProvider = route.provider;
+            // Read again in the catch block below; the route binding is block-scoped.
+            requestProvider = route.provider;
             if (goalRun?.sealed) throw new DOMException('Run accounting sealed for Stop', 'AbortError');
             goalRun?.pendingRequests.add(goalRequestId);
             // Capture is immutable, but setup/admission failures are not execution failures.
@@ -518,15 +521,23 @@ export default async function (
             }
             if (!sampling.signal.aborted && error?.name !== 'AbortError') {
                 await assertRunActive();
-                const failure: types.models.FailureInfo | undefined = error?.failure;
-                // Partial output proves acceptance; never replay an accepted/uncertain request.
-                const replay = failure && !receivedDelta && failure.replaySafe && ['none', 'rejected'].includes(failure.acceptance);
-                if (failure && replay && await ctx.fns.agent.retrySchedule({ agentId: agent.id, runToken: runToken ?? null, failure, signal: ac.signal })) {
-                    // A failed sample is not a completed tool cycle: always mode
-                    // must not silently inherit the tool-loop retry count limit.
+                // Generation has no side effects and the partial output above was already
+                // discarded, so a retryable failure is replayed even after deltas arrived.
+                // SDK replaySafe/acceptance describe provider-side duplication, not whether
+                // this turn can survive; continuationState still points at the last
+                // successful response, so the replay reuses the provider's cache.
+                const decision = await ctx.fns.agent.retrySchedule({ agentId: agent.id, runToken: runToken ?? null, error, provider: requestProvider, signal: ac.signal });
+                if (decision.scheduled) {
+                    // A failed sample is not a completed tool cycle: a retry must not
+                    // silently consume the tool-loop turn budget.
                     turns--;
                     // Replay model sampling only; completed tools/results remain durable.
                     continue;
+                }
+                if (decision.parkUntil != null) {
+                    // A Retry-After beyond the policy maximum is a wait, not a failure:
+                    // the worker parks this agent and it resumes the same work by itself.
+                    throw Object.assign(error, { parkUntil: decision.parkUntil });
                 }
             }
             throw error;
