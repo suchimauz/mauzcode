@@ -28,5 +28,5 @@
 
 ## 3. Validation
 
-- [ ] 3.1 Hot-reload, `runtime.docs.validate` per changed function, one `procs.dev.typecheck`
-- [ ] 3.2 Manual check with a real M Plan key: connection, test, models, usage windows, Flash tool loop with replay, M3 on/off, count_tokens, a usage-limit or rate-limit error if reproducible
+- [x] 3.1 Hot-reload, `runtime.docs.validate` per changed function, one `procs.dev.typecheck`
+- [x] 3.2 Manual check with a real M Plan key: connection, test, models, usage windows, Flash tool loop with replay, M3 on/off, count_tokens, a usage-limit or rate-limit error if reproducible
