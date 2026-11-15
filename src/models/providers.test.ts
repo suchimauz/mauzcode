@@ -52,6 +52,18 @@ describe("model provider SDK and registry", () => {
         await expect(register(ctx, entry("alpha", "acme", definition("other")))).rejects.toThrow("match its filename");
         expect(ctx.state.models.providers?.acme).toBe(before);
     });
+    test("usageRefreshMs accepts integers 10 s – 1 h and rejects anything else atomically", async () => {
+        const ctx = fixture(); await register(ctx, entry()); const before = ctx.state.models.providers?.acme;
+        expect(before?.definition.usageRefreshMs).toBeUndefined();
+        for (const bad of [1000, 9999, 3600001, 180000.5, Number.NaN, "180000"]) {
+            await expect(register(ctx, entry("alpha", "acme", { ...definition(), usageRefreshMs: bad } as unknown as types.models.ProviderDefinition))).rejects.toThrow("usageRefreshMs");
+            expect(ctx.state.models.providers?.acme).toBe(before);
+        }
+        for (const ok of [10000, 180000, 3600000]) {
+            await register(ctx, entry("alpha", "acme", { ...definition(), usageRefreshMs: ok }));
+            expect(ctx.state.models.providers?.acme?.definition.usageRefreshMs).toBe(ok);
+        }
+    });
     test("foreign ownership cannot replace even in the same module path", async () => {
         const ctx = fixture(); await register(ctx, entry()); const before = ctx.state.models.providers?.acme;
         await expect(register(ctx, entry("beta"))).rejects.toThrow("already belongs to alpha");

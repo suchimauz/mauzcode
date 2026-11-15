@@ -194,6 +194,7 @@ and `test(ctx, conn)`. `description` and `icon` (Lucide name or data URL) are op
 | `test(ctx, conn)` | `Promise<TestResult>`; required connection check |
 | `listModels(ctx, conn)` | Optional `Promise<ModelInfo[]>` |
 | `usage(ctx, conn)` | Optional `Promise<UsageReport>` |
+| `usageRefreshMs` | Optional integer 10000–3600000 ms (default 60000): minimum interval between usage requests per connection; available and unavailable reports are cached this long, `refresh` bypasses |
 | `validate(ctx, config)` | Optional synchronous/async validation; throw to reject |
 | `stream(ctx, conn, req)` | Optional `Promise<StreamResult>`; streaming inference, reached only through `models.stream` |
 | `compact(ctx, conn, req)` | Optional `Promise<CompactResult>`; native compaction, reached only through `models.compact` |

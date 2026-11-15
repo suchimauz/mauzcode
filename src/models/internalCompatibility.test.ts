@@ -34,6 +34,8 @@ test("original public model signatures, async declarations, types and HTTP route
         if (["ModelInfo.ts", "ReasoningCapabilities.ts"].includes(name)) actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace('protocol?:types.models.ProtocolRoute["protocol"];', "");
         if (name === "ModelInfo.ts") actual = actual.replace("default:types.models.ReasoningLevel;}", "default:types.models.ReasoningLevel}");
         if (name === "ReasoningResolution.ts") actual = actual.replace('applied:types.models.ReasoningLevel|"auto";', 'applied:types.models.ReasoningLevel;').replace("wire?:string;", "").replace("disable?:boolean;", "");
+        // usageRefreshMs is an intentional optional SDK addition (provider-paced usage cache).
+        if (name === "ProviderDefinition.ts") actual = actual.replace("usageRefreshMs?:number;", "");
         if (name === "ProviderDefinition.ts") actual = actual.replace("route?:(ctx:Context,conn:types.models.ResolvedConnection,req:{model:string;info:types.models.ModelInfo|null;sessionId:string})=>Promise<types.models.ProtocolRoute>;", "");
         let expected = normalize(source);
         if (name === "StreamRequest.ts") expected = expected.replace("tools?:Record<string,unknown>[]", "tools?:types.models.ToolSpec[]");
@@ -95,7 +97,10 @@ test("fresh discovery preserves callable providers, nested dynamic facades, miss
             // custom gained a declared icon so every registered provider has a mark.
             const iconPatch = original.id === "custom" ? { icon: undefined } : {};
             if (original.id === "custom") expect(current.icon).toBe("Plug");
-            expect(registrationShape({ ...current, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch }), file).toEqual(registrationShape({ ...original, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch }));
+            // Claude intentionally paces its usage endpoint (usageRefreshMs); other baseline providers keep the default.
+            expect(current.usageRefreshMs).toBe(original.id === "claude" ? 180000 : undefined);
+            const pacePatch = { usageRefreshMs: undefined };
+            expect(registrationShape({ ...current, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch, ...pacePatch }), file).toEqual(registrationShape({ ...original, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch }));
         }
         // Inspect real public facades and declaration bodies as they migrate. Every
         // nested implementation dispatch must exist in the freshly booted registry.

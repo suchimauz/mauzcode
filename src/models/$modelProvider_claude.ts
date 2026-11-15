@@ -8,6 +8,8 @@ export default {
     async test(ctx, conn) { return ctx.fns.models.provider.claude.claudeTest({ conn }); },
     async listModels(ctx) { return ctx.fns.models.provider.claude.claudeListModels({  }); },
     async usage(ctx, conn) { return ctx.fns.models.provider.claude.claudeUsage({ conn }); },
+    // The OAuth usage endpoint rate-limits at one request per minute; 5h/7d still update from inference headers.
+    usageRefreshMs: 180000,
     capabilities: { sampling: true },
     async stream(ctx, conn, req) { return ctx.fns.models.provider.claude.claudeStream({ conn, req }); },
     async compact(ctx, conn, req) { return ctx.fns.models.provider.claude.claudeCompact({ conn, req }); },

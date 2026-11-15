@@ -2,13 +2,13 @@
  * Aggregate usage of every enabled model connection with threshold levels
  *
  * Use for quota and usage displays. Lists enabled connections in creation order, queries models.usage for each in parallel and classifies every window as normal, warning, critical or alert using models.usageWarnPercent, models.usageCriticalPercent and models.usageAlertPercent (defaults 30, 60, 75; a value at or above a threshold reaches its level). Status-only and balance-only connections are reported without windows. A connection whose usage request fails is reported unavailable without hiding the others.
- * @param opts.refresh Bypass the 60 s per-connection usage cache. @default false
+ * @param opts.refresh Bypass the per-connection usage cache (provider `usageRefreshMs`, 60 s by default). @default false
  */
 export default async function (
     ctx: Context,
     session: Session | null,
     opts: {
-        /** Bypass the 60 s per-connection usage cache. @default false */
+        /** Bypass the per-connection usage cache (provider `usageRefreshMs`, 60 s by default). @default false */
         refresh?: boolean;
     },
 ): Promise<types.frontendBridge.ModelUsageView> {

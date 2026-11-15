@@ -91,6 +91,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { e
         for (const key of ["listModels", "usage", "validate", "stream", "route", "compact", "reasoningProfile"] as const) {
             if (definition[key] !== undefined && typeof definition[key] !== "function") fail(`modelProvider ${key} must be a function`);
         }
+        if (definition.usageRefreshMs !== undefined && (!Number.isInteger(definition.usageRefreshMs) || definition.usageRefreshMs < 10000 || definition.usageRefreshMs > 3600000)) fail("modelProvider usageRefreshMs must be an integer from 10000 to 3600000");
         if (definition.stream && definition.route) fail("modelProvider declares either stream or route, not both");
         if (definition.capabilities !== undefined) {
             const caps = definition.capabilities as Record<string, unknown>;

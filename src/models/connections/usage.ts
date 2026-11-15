@@ -1,7 +1,7 @@
 /**
  * Report a connection's usage in the standard shape, falling back to cached status
  *
- * Use for quota/balance displays. Disabled connections return status `disabled` without network. When the provider implements `usage`, returns its windows and balance normalized to the standard shape (percent clamped to 0–100; window metadata `id`, `period`, `scope`, `durationSeconds`, `model`, `observedAt` validated and passed through, an invalid or duplicate field dropped without dropping the window; at most 40 windows, account-wide standard windows kept before additional ones); otherwise returns only status, reason and check time from the cached connection test. Results are cached for 60 s per connection revision; pass `refresh` to bypass. Provider failures become `unavailable` without secret values.
+ * Use for quota/balance displays. Disabled connections return status `disabled` without network. When the provider implements `usage`, returns its windows and balance normalized to the standard shape (percent clamped to 0–100; window metadata `id`, `period`, `scope`, `durationSeconds`, `model`, `observedAt` validated and passed through, an invalid or duplicate field dropped without dropping the window; at most 40 windows, account-wide standard windows kept before additional ones); otherwise returns only status, reason and check time from the cached connection test. Results (available or unavailable) are cached per connection revision for the provider's `usageRefreshMs` (60 s when omitted); pass `refresh` to bypass. Provider failures become `unavailable` without secret values.
  * @param opts.id Connection UUID.
  * @param opts.refresh Ignore a cached result and query again. @default false
  */
@@ -22,7 +22,7 @@ export default async function (
         const t = await ctx.fns.models.connections.test({ id: view.id, cached: opts.refresh !== true });
         return { status: t.status, reason: t.reason, checkedAt: t.checkedAt };
     }
-    return await ctx.fns.models.connections.cached({ connection: view, kind: "usage", reuse: opts.refresh !== true, run: async (): Promise<types.models.UsageReport> => {
+    return await ctx.fns.models.connections.cached({ connection: view, kind: "usage", reuse: opts.refresh !== true, ttlMs: def.usageRefreshMs ?? 60000, run: async (): Promise<types.models.UsageReport> => {
         try {
             const { definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id });
             const r = await definition.usage!(ctx, conn);

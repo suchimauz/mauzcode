@@ -19,6 +19,8 @@ export type ProviderDefinition = {
     test: (ctx: Context, conn: types.models.ResolvedConnection) => Promise<types.models.TestResult>;
     listModels?: (ctx: Context, conn: types.models.ResolvedConnection) => Promise<types.models.ModelInfo[]>;
     usage?: (ctx: Context, conn: types.models.ResolvedConnection) => Promise<types.models.UsageReport>;
+    /** Minimum interval between usage requests for one connection; available and unavailable reports are reused this long unless refresh is requested. Integer milliseconds. @default 60000 @minimum 10000 @maximum 3600000 */
+    usageRefreshMs?: number;
     /** Additional provider-specific validation after core field validation. Throw to reject. */
     validate?: (ctx: Context, config: types.models.ResolvedConnection["config"]) => void | Promise<void>;
     /** Optional streaming inference; called only through models.stream after the enabled checks. Send traffic only through conn.fetch. */

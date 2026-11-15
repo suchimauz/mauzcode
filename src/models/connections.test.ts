@@ -161,6 +161,23 @@ describe("models test/listModels/usage/action", () => {
         expect(n).toBe(2);
     });
 
+    test("usage cache follows the provider usageRefreshMs for available and failed reports", async () => {
+        let n = 0, fail = false;
+        const { ctx, create } = await setup({ usageRefreshMs: 180000, usage: async () => { n++; if (fail) throw new Error("429"); return { status: "available", checkedAt: 0, windows: [{ label: "5h", usedPercent: 1 }] }; } });
+        const c = await create();
+        const realNow = Date.now;
+        let now = realNow();
+        Date.now = () => now;
+        try {
+            await ctx.fns.models.usage({ id: c.id });
+            now += 120000; await ctx.fns.models.usage({ id: c.id }); expect(n).toBe(1);
+            now += 61000; fail = true;
+            expect(await ctx.fns.models.usage({ id: c.id })).toMatchObject({ status: "unavailable", reason: "usage-failed" }); expect(n).toBe(2);
+            now += 170000; expect(await ctx.fns.models.usage({ id: c.id })).toMatchObject({ status: "unavailable" }); expect(n).toBe(2);
+            await ctx.fns.models.usage({ id: c.id, refresh: true }); expect(n).toBe(3);
+        } finally { Date.now = realNow; }
+    });
+
     test("usage window metadata survives normalization and cache; invalid fields drop alone; general windows win the bound", async () => {
         const extras = Array.from({ length: 45 }, (_, i) => ({ id: `m:${i}`, label: `Model ${i}`, scope: "model", usedPercent: i }));
         const general = { id: "g:week", label: "Weekly", period: "weekly", scope: "account", durationSeconds: 604800, model: "  ", observedAt: 7, usedPercent: 20 };
