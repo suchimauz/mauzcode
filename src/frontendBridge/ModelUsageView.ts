@@ -19,7 +19,7 @@ export type ModelUsageView = {
         plan?: string;
         /** Unix epoch milliseconds. */
         checkedAt: number;
-        /** Quota windows with their level; empty for status-only and balance-only connections. */
+        /** Quota windows (with their classification metadata) and level; additional windows are included and count toward `level`. Empty for status-only and balance-only connections. */
         windows: (NonNullable<types.models.UsageReport["windows"]>[number] & { level: types.frontendBridge.UsageLevel })[];
         balance?: { amount: number; currency: string };
         /** Worst window level; `normal` when no window reports a percentage. */

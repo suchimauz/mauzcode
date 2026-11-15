@@ -1,27 +1,40 @@
 /**
- * Normalize an observed provider quota window without inventing missing usage.
+ * Normalize one Codex quota window, classifying its period only from reported duration.
  *
- * Use from codex provider adapters or protocol procedures; preserves existing wire behavior.
+ * Use from Codex usage adapters. Accepts a positive finite `limit_window_seconds` and/or `window_minutes`; when both
+ * are present they must agree. Exactly 18000 s is `fiveHour` and 604800 s is `weekly`; missing, invalid, conflicting
+ * or other durations leave `period` unset. The slot (primary/secondary) and reset countdown never decide the period.
+ * Returns null when `used_percent` is not a finite number, so null or missing usage never becomes 0%.
  */
 export default function (
     ctx: Context,
     session: Session | null,
     opts: {
-        /** w input used by the codex windowOf protocol helper. */
+        /** Raw Codex window object (`primary_window`, `secondary_window`, …), or undefined when absent. */
         w: Record<string, unknown> | undefined;
-        /** label input used by the codex windowOf protocol helper. */
+        /** Stable identity for this window within the report, e.g. `codex:primary`. */
+        id: string;
+        /** Display name used when no standard period is established, e.g. `Primary`. */
         label: string;
-        /** now input used by the codex windowOf protocol helper. */
+        /** `account` for the general Codex limit, `model`/`unknown` for additional limit entries. */
+        scope: "account" | "model" | "unknown";
+        /** Model name the limit applies to, when the provider names it. */
+        model?: string;
+        /** Observation time in Unix epoch milliseconds; also the base for `reset_after_seconds`. */
         now: number;
     },
 ): NonNullable<types.models.UsageReport["windows"]>[number] | null {
-    const { w, label, now } = opts;
-    
-        const used = Number(w?.used_percent);
-        if (!w || !Number.isFinite(used)) return null;
-        const direct = Number(w.resets_at ?? w.reset_at), after = Number(w.reset_after_seconds);
-        const resetAt = Number.isFinite(direct) && direct > 0 ? direct * 1000 : Number.isFinite(after) ? now + after * 1000 : undefined;
-        const minutes = Number.isFinite(Number(w.window_minutes)) ? Number(w.window_minutes) : Number.isFinite(Number(w.limit_window_seconds)) ? Number(w.limit_window_seconds) / 60 : NaN;
-        const span = Number.isFinite(minutes) && minutes > 0 ? (minutes % 1440 === 0 ? `${minutes / 1440}d` : minutes % 60 === 0 ? `${minutes / 60}h` : `${Math.round(minutes)}m`) : "";
-        return { label: span ? `${label} (${span})` : label, usedPercent: Math.max(0, Math.min(100, used)), ...(resetAt ? { resetAt } : {}) };
+    const { w, now } = opts;
+    if (!w || typeof w !== "object" || typeof w.used_percent !== "number" || !Number.isFinite(w.used_percent)) return null;
+    const used = w.used_percent;
+    const positive = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
+    const direct = positive(w.resets_at ?? w.reset_at), after = typeof w.reset_after_seconds === "number" && Number.isFinite(w.reset_after_seconds) && w.reset_after_seconds >= 0 ? w.reset_after_seconds : undefined;
+    const resetAt = direct !== undefined ? direct * 1000 : after !== undefined ? now + after * 1000 : undefined;
+    const seconds = positive(w.limit_window_seconds), minutes = positive(w.window_minutes);
+    const duration = seconds !== undefined && minutes !== undefined ? (seconds === minutes * 60 ? seconds : undefined) : seconds ?? (minutes !== undefined ? minutes * 60 : undefined);
+    const period = duration === 18000 ? "fiveHour" as const : duration === 604800 ? "weekly" as const : undefined;
+    const span = duration === undefined ? "" : duration % 86400 === 0 ? `${duration / 86400}d` : duration % 3600 === 0 ? `${duration / 3600}h` : `${Math.round(duration / 60)}m`;
+    const label = opts.scope === "account" && period ? (period === "fiveHour" ? "Session (5h)" : "Weekly (7d)") : span ? `${opts.label} (${span})` : opts.label;
+    return { id: opts.id, label, ...(period ? { period } : {}), scope: opts.scope, ...(duration !== undefined ? { durationSeconds: duration } : {}), ...(opts.model ? { model: opts.model } : {}),
+        observedAt: now, usedPercent: Math.max(0, Math.min(100, used)), ...(resetAt !== undefined ? { resetAt } : {}) };
 }

@@ -44,7 +44,14 @@ test("routing stays on Go, selects native endpoints and passes session/auth", as
 });
 test("usage validates all windows and test statuses never expose credentials or upstream bodies", async () => {
     const {ctx, conn} = fixture(payload);
-    expect(await usage(ctx, null, {conn})).toMatchObject({status: "available", windows: [{label: "5h", usedPercent: 12}, {label: "Weekly", usedPercent: 100}, {label: "Monthly", usedPercent: 12}]});
+    expect(await usage(ctx, null, {conn})).toMatchObject({status: "available", windows: [
+        {id: "opencode-go:rolling", label: "5h", period: "fiveHour", scope: "account", usedPercent: 12},
+        {id: "opencode-go:weekly", label: "Weekly", period: "weekly", scope: "account", usedPercent: 100},
+        {id: "opencode-go:monthly", label: "Monthly", period: "monthly", scope: "account", usedPercent: 12}]});
+    const extra = fixture({usage: {...payload.usage, model_x_weekly: {percent: 40, status: "ok"}, broken: {percent: null, status: "ok"}, note: "text"}});
+    const extras = (await usage(extra.ctx, null, {conn: extra.conn})).windows!;
+    expect(extras).toHaveLength(4);
+    expect(extras[3]).toEqual({id: "opencode-go:model_x_weekly", label: "model x weekly", scope: "unknown", usedPercent: 40});
     expect(await check(ctx, null, {conn})).toMatchObject({status: "available", reason: "usage-ok"});
     for (const status of [401, 403, 500]) {
         const f = fixture({error: "secret-fixture"}, status);

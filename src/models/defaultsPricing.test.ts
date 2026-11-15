@@ -82,15 +82,16 @@ describe("token price lookup", () => {
 });
 
 describe("aggregated usage, quotas and icons", () => {
-    async function usageCtx() {
+    async function usageCtx(reports: Record<string, unknown> = {}) {
         const ctx = await mkTestCtx();
         const reg = ctx.state.registry;
         let llmCalls = 0;
         for (const ns of ["llm", "llms"]) if (reg[ns]) for (const k of Object.keys(reg[ns])) if (typeof reg[ns][k] === "function") reg[ns][k] = async () => { llmCalls++; throw new Error("legacy"); };
         reg.models.list = async () => [conn("a", "codex", "me"), conn("b", "claude", "work"), conn("c", "custom", "api"), conn("d", "codex", "off", { enabled: false })];
         reg.models.usage = async (_c: any, _s: any, o: any) => {
+            if (Object.hasOwn(reports, o.id)) return reports[o.id];
             if (o.id === "b") throw new Error("boom");
-            if (o.id === "a") return { status: "available", plan: "pro", checkedAt: 5, windows: [{ label: "Session (5h)", usedPercent: 80 }, { label: "Weekly", usedPercent: 30 }, { label: "Other", usedPercent: 10 }] };
+            if (o.id === "a") return { status: "available", plan: "pro", checkedAt: 5, windows: [{ id: "codex:primary", label: "Session (5h)", period: "fiveHour", scope: "account", usedPercent: 80 }, { id: "codex:secondary", label: "Weekly", period: "weekly", scope: "account", usedPercent: 30 }, { label: "Other", usedPercent: 10 }] };
             return { status: "configured", checkedAt: 6 };
         };
         return { ctx, llmCalls: () => llmCalls };
@@ -113,13 +114,35 @@ describe("aggregated usage, quotas and icons", () => {
         const route = (await import("../api/$route_v1_quotas_GET")).default;
         const body: any = await (await route(ctx, null, { req: new Request("http://x/api/v1/quotas"), params: {} })).json();
         expect(Object.keys(body).sort()).toEqual(["accounts", "updatedAt"]);
-        expect(body.accounts[0]).toMatchObject({ provider: "codex", account: "me", kind: "quota", tone: "error", planType: "pro", windows: { fiveHour: { usedPercent: 80, tone: "error" }, weekly: { usedPercent: 30, tone: "warning" } } });
+        expect(body.accounts[0]).toMatchObject({ provider: "codex", account: "me", kind: "quota", tone: "error", planType: "pro", windows: { fiveHour: { usedPercent: 80, tone: "error" }, weekly: { usedPercent: 30, tone: "warning" } },
+            additionalWindows: [{ id: "window-3", label: "Other", scope: "unknown", period: null, usedPercent: 10, remaining: null, resetsAt: null, tone: "neutral" }] });
         expect(body.accounts[1]).toMatchObject({ provider: "claude", kind: "status", status: "unavailable", tone: "error" });
         expect(body.accounts[2]).toMatchObject({ provider: "custom", kind: "status", status: "unknown" });
         // Quota cards carry the shared provider mark: brands for codex/claude, the plug for custom.
         for (const a of body.accounts) expect(a.icon).toEqual(await ctx.fns.frontendBridge.modelMark({ provider: a.provider }));
         expect(body.accounts[0].icon.src).not.toEqual(body.accounts[1].icon.src);
         expect(llmCalls()).toBe(0);
+    });
+    test("/api/v1/quotas maps only explicit unique account periods; everything else is additional", async () => {
+        const acct = (id: string, period: string, usedPercent: number, extra: Record<string, unknown> = {}) => ({ id, label: id, period, scope: "account", usedPercent, ...extra });
+        const { ctx } = await usageCtx({
+            // Codex weekly primary: weekly column, no invented five-hour value.
+            a: { status: "available", checkedAt: 5, windows: [acct("codex:primary", "weekly", 40, { label: "Session (7d)" })] },
+            // Same-period model restriction plus a label-only window that looks like a session.
+            b: { status: "available", checkedAt: 5, windows: [acct("claude:seven_day", "weekly", 20), { id: "claude:seven_day_opus", label: "Opus", period: "weekly", scope: "model", model: "opus", usedPercent: 90 }, { label: "Session (5h)", usedPercent: 50 }] },
+            // Conflicting account windows and an additional-only report with a remaining amount and no percent.
+            c: { status: "available", checkedAt: 5, windows: [acct("x:1", "monthly", 10), acct("x:2", "monthly", 70), { id: "x:credits", label: "Credits", remaining: 12, observedAt: 4 }] },
+        });
+        const route = (await import("../api/$route_v1_quotas_GET")).default;
+        const body: any = await (await route(ctx, null, { req: new Request("http://x/api/v1/quotas"), params: {} })).json();
+        const [a, b, c] = body.accounts;
+        expect(a.windows).toEqual({ weekly: { usedPercent: 40, resetsAt: null, tone: "warning" } });
+        expect(a.additionalWindows).toEqual([]);
+        expect(b.windows).toEqual({ weekly: { usedPercent: 20, resetsAt: null, tone: "neutral" } });
+        expect(b.additionalWindows.map((w: any) => [w.id, w.scope, w.period, w.model, w.usedPercent, w.tone])).toEqual([["claude:seven_day_opus", "model", "weekly", "opus", 90, "error"], ["window-3", "unknown", null, null, 50, "warning"]]);
+        expect(b.tone).toBe("error");
+        expect(c).toMatchObject({ kind: "quota", windows: {} });
+        expect(c.additionalWindows.map((w: any) => [w.id, w.usedPercent, w.remaining, w.observedAt])).toEqual([["x:1", 10, null, null], ["x:2", 70, null, null], ["x:credits", null, 12, 4]]);
     });
     test("provider icons come from registered declarations only", async () => {
         const ctx = await mkTestCtx();

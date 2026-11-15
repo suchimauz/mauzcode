@@ -6,8 +6,26 @@ export type UsageReport = {
     plan?: string;
     /** Unix epoch milliseconds. */
     checkedAt: number;
+    /**
+     * Quota windows. Only windows with explicit `scope: "account"` and a known `period` are account-wide standard
+     * limits shown in the main five-hour/weekly/monthly columns. Every other window (including label-only windows from
+     * adapters that supply no metadata) is an additional limit; consumers never infer a period from `label`.
+     */
     windows?: {
+        /** Readable display name; never parsed for classification. */
         label: string;
+        /** Stable provider-derived identity, unique within the report (e.g. `codex:primary`, `claude:seven_day_opus`). */
+        id?: string;
+        /** Standard period established from provider evidence; absent when unknown. */
+        period?: "fiveHour" | "weekly" | "monthly";
+        /** Whether the limit applies to the whole account, one model, or is unknown. Absent means unknown. */
+        scope?: "account" | "model" | "unknown";
+        /** Provider-reported window length in seconds, when reported. */
+        durationSeconds?: number;
+        /** Model name the limit applies to, when the provider names it. */
+        model?: string;
+        /** Unix epoch milliseconds when this window was observed; may predate `checkedAt` after partial updates. */
+        observedAt?: number;
         /** Percentage from 0 to 100. */
         usedPercent?: number;
         remaining?: number;

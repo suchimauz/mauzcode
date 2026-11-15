@@ -138,7 +138,49 @@ describe("Claude protocol", () => {
         await claude.stream(ctx, conn, req); expect(snapshots).toHaveLength(0);
         conn.fetch = async () => new Response('data: {"type":"message_stop"}\n\n', { headers: { "anthropic-ratelimit-unified-5h-utilization": "0.42", "anthropic-ratelimit-unified-5h-reset": "2000000000" } });
         await claude.stream(ctx, conn, req);
-        expect(snapshots).toEqual([expect.objectContaining({ windows: [{ label: "Session", usedPercent: 42, resetAt: 2000000000000 }] })]);
+        expect(snapshots).toEqual([expect.objectContaining({ windows: [{ id: "claude:five_hour", label: "Session", period: "fiveHour", scope: "account", observedAt: expect.any(Number), usedPercent: 42, resetAt: 2000000000000 }] })]);
+    });
+    test("usage keeps general and additional model windows; invalid or billing records are skipped", async () => {
+        const reset = "2030-01-01T00:00:00Z";
+        const { ctx, conn } = await setup(c => Response.json(c.url.endsWith("profile") ? {} : {
+            five_hour: { utilization: 10, resets_at: reset }, seven_day: { utilization: 20, resets_at: reset },
+            seven_day_opus: { utilization: 81, resets_at: reset }, seven_day_newmodel5: { utilization: 5, display_name: "NewModel 5 weekly", model: "newmodel-5" },
+            seven_day_sonnet: null, seven_day_oauth_apps: { utilization: null }, iguana_necktie: { utilization: 3, is_enabled: false }, nan: { utilization: "x" },
+            extra_usage: { is_enabled: true, monthly_limit: 100, used_credits: 4, utilization: 4 }, nested: { inner: { utilization: 50 } }, flag: true,
+        }));
+        const r = await claude.usage(ctx, conn);
+        expect(r.windows!.map(w => [w.id, w.label, w.period ?? null, w.scope, w.model ?? null, w.usedPercent, w.resetAt ?? null])).toEqual([
+            ["claude:five_hour", "Session", "fiveHour", "account", null, 10, Date.parse(reset)],
+            ["claude:seven_day", "Weekly", "weekly", "account", null, 20, Date.parse(reset)],
+            ["claude:seven_day_opus", "7d opus", null, "unknown", null, 81, Date.parse(reset)],
+            ["claude:seven_day_newmodel5", "NewModel 5 weekly", null, "model", "newmodel-5", 5, null],
+        ]);
+        conn.fetch = async url => Response.json(url.endsWith("profile") ? {} : { seven_day_opus: { utilization: 70 } });
+        expect((await claude.usage(ctx, conn)).windows).toEqual([expect.objectContaining({ id: "claude:seven_day_opus", usedPercent: 70 })]);
+    });
+    test("header updates merge into general windows, keep extras and their freshness, never extend expiry", async () => {
+        const { ctx, conn } = await setup();
+        ctx.state.models ??= {}; ctx.state.models.health = {};
+        const view = { id: conn.id, updatedAt: 1 };
+        ctx.state.registry.models.connections.get = async () => view;
+        const old = 1000;
+        const snapshot = { status: "available" as const, reason: "usage-ok", checkedAt: old, plan: "Max", windows: [
+            { id: "claude:five_hour", label: "Session", period: "fiveHour" as const, scope: "account" as const, observedAt: old, usedPercent: 5 },
+            { id: "claude:seven_day", label: "Weekly", period: "weekly" as const, scope: "account" as const, observedAt: old, usedPercent: 6 },
+            { id: "claude:seven_day_opus", label: "7d opus", scope: "unknown" as const, observedAt: old, usedPercent: 70 },
+        ] };
+        await ctx.fns.models.connections.cached({ connection: view, kind: "usage", ttlMs: 30000, run: async () => snapshot });
+        const key = Object.keys(ctx.state.models.health).find(k => k.endsWith(":usage"))!;
+        const expiry = ctx.state.models.health[key]!.expiresAt;
+        conn.fetch = async () => new Response('data: {"type":"message_stop"}\n\n', { headers: { "anthropic-ratelimit-unified-5h-utilization": "0.5" } });
+        await claude.stream(ctx, conn, req);
+        const merged = ctx.state.models.health[key]!.result as types.models.UsageReport;
+        expect(ctx.state.models.health[key]!.expiresAt).toBe(expiry);
+        expect(merged).toMatchObject({ reason: "usage-headers", plan: "Max" });
+        expect(merged.windows!.map(w => [w.id, w.usedPercent, w.observedAt === old])).toEqual([["claude:five_hour", 50, false], ["claude:seven_day", 6, true], ["claude:seven_day_opus", 70, true]]);
+        // A complete endpoint snapshot replaces the cache and drops omitted extras.
+        await ctx.fns.models.connections.cached({ connection: view, kind: "usage", reuse: false, run: async () => ({ ...snapshot, windows: snapshot.windows.slice(0, 2) }) });
+        expect((ctx.state.models.health[key]!.result as types.models.UsageReport).windows!.map(w => w.id)).toEqual(["claude:five_hour", "claude:seven_day"]);
     });
 
 });

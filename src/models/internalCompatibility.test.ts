@@ -41,6 +41,8 @@ test("original public model signatures, async declarations, types and HTTP route
             "ProviderDefinition.ts": "inference?:{systemPreamble?:string;priceVendor?:string;};",
             "CallRequest.ts": "tools?:types.models.ToolSpec[];",
             "FailureInfo.ts": "resetAt?:number;",
+            // fix-usage-window-classification: optional window identity/classification metadata.
+            "UsageReport.ts": 'id?:string;period?:"fiveHour"|"weekly"|"monthly";scope?:"account"|"model"|"unknown";durationSeconds?:number;model?:string;observedAt?:number;',
         };
         expect(additive[name] ? actual.replace(additive[name], "") : actual, name).toBe(expected);
     }

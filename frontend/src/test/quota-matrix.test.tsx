@@ -93,3 +93,59 @@ it('desktop always shows the full matrix without a Usage toggle', () => {
   expect(screen.queryByRole('button', { name: 'Usage' })).toBeNull();
   expect(document.querySelectorAll('.quota-card')).toHaveLength(2);
 });
+
+const extra = (over: Partial<NonNullable<QuotaAccount['additionalWindows']>[number]> = {}) => ({ id: 'claude:seven_day_opus', label: 'Opus weekly', scope: 'model' as const, period: null, model: 'opus', usedPercent: 81, remaining: null, resetsAt: 1794383304000, observedAt: 1794000000000, tone: 'error' as const, ...over });
+const claude: QuotaAccount = { id: 'claude:me', provider: 'claude', account: 'me', label: 'Claude · me', model: 'claude/me', connection: 'mauzcode', kind: 'quota', windows: { fiveHour: { usedPercent: 10, resetsAt: null, tone: 'neutral' }, weekly: { usedPercent: 20, resetsAt: null, tone: 'neutral' } },
+  additionalWindows: [extra(), extra({ id: 'claude:x', label: '<b>Long model specific limit name that wraps</b>', scope: 'unknown', model: null, usedPercent: null, remaining: 5, resetsAt: null, observedAt: null, tone: 'neutral' })], quotaStatus: 'fresh', tone: 'error', parkedAgents: 0 };
+const onlyExtra: QuotaAccount = { ...claude, id: 'claude:extra', account: 'extra', windows: {}, additionalWindows: [extra()] };
+
+it('no extras: no indicator and no additional section', async () => {
+  render(<QuotaMatrix accounts={[kimi]} />);
+  expect(document.querySelector('.quota-card-extra')).toBeNull();
+  await userEvent.hover(screen.getByRole('button', { name: /^kimi/ }));
+  expect((await screen.findByRole('tooltip')).querySelector('.quota-tooltip-extra')).toBeNull();
+  expect(quotaTooltip(kimi)).not.toContain('Дополнительные');
+});
+
+it('mixed limits keep three main columns and list extras with unknowns as text', async () => {
+  render(<QuotaMatrix accounts={[claude]} />);
+  const card = cells('Claude');
+  expect([...card.querySelectorAll('[data-period]')].map(e => e.textContent)).toEqual(['10', '20', '—']);
+  expect(card.querySelector('.quota-card-extra')).toHaveTextContent('+2');
+  expect(card.querySelector('.quota-card-extra')).toHaveAttribute('data-tone', 'error');
+  expect(card.getAttribute('aria-label')).toContain('Дополнительные лимиты: 2');
+  expect(card.getAttribute('aria-label')).toContain('Opus weekly: 81%');
+  await userEvent.hover(card);
+  const tip = await screen.findByRole('tooltip');
+  const section = tip.querySelector('.quota-tooltip-extra')!;
+  expect(section.textContent).toContain('Дополнительные лимиты · 2');
+  expect(section.textContent).toContain('Opus weekly'); expect(section.textContent).toContain('81%');
+  expect(section.textContent).toContain('осталось 5'); expect(section.textContent).toContain('сброс неизвестен');
+  expect(section.querySelector('b')).toBeNull();
+  expect(section.textContent).toContain('<b>Long model specific limit name that wraps</b>');
+  expect(section.textContent).toContain('данные ');
+  await userEvent.keyboard('{Escape}');
+  await vi.waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+});
+
+it('additional-only account is measured, not "Quota not measured"', async () => {
+  expect(quotaTooltip(onlyExtra)).not.toContain('Квота не измерена');
+  render(<QuotaMatrix accounts={[onlyExtra]} />);
+  const card = cells('Claude');
+  expect([...card.querySelectorAll('[data-period]')].map(e => e.textContent)).toEqual(['—', '—', '—']);
+  (card as HTMLElement).focus();
+  const tip = await screen.findByRole('tooltip');
+  expect(tip.querySelector('.navigation-tooltip-status')?.textContent).toBe('Fresh data');
+  expect(tip.textContent).toContain('Opus weekly');
+});
+
+it('compact mode marks extras and describes them for assistive technology', async () => {
+  const onOpen = vi.fn();
+  render(<QuotaMatrix accounts={[kimi, claude]} compact onOpen={onOpen} />);
+  const btn = screen.getByRole('button', { name: 'Лимиты моделей' });
+  expect(btn.querySelector('.quota-compact-extra')).not.toBeNull();
+  expect(btn).toHaveAccessibleDescription(/Opus weekly: 81%/);
+  await userEvent.hover(btn);
+  expect((await screen.findByRole('tooltip')).textContent).toContain('Дополнительные лимиты · 2');
+  await userEvent.click(btn); expect(onOpen).toHaveBeenCalled();
+});

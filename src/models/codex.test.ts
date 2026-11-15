@@ -175,12 +175,53 @@ describe("codex provider operations", () => {
         expect(calls[0]!.headers.originator).toBe("codex_cli_rs");
         const usage = await ctx.fns.models.usage({ id: view.id, refresh: true });
         expect(usage.windows).toEqual([
-            { label: "Session (5h)", usedPercent: 12.5, resetAt: expect.any(Number) },
-            { label: "Weekly (7d)", usedPercent: 40, resetAt: 2000000000 * 1000 },
+            { id: "codex:primary", label: "Session (5h)", period: "fiveHour", scope: "account", durationSeconds: 18000, observedAt: expect.any(Number), usedPercent: 12.5, resetAt: expect.any(Number) },
+            { id: "codex:secondary", label: "Weekly (7d)", period: "weekly", scope: "account", durationSeconds: 604800, observedAt: expect.any(Number), usedPercent: 40, resetAt: 2000000000 * 1000 },
         ]);
         const usageCall = calls.find(x => x.url.endsWith("/wham/usage"))!;
         expect(usageCall.headers["chatgpt-account-id"]).toBe(ACCOUNT);
         expect((await ctx.fns.models.test({ id: view.id })).status).toBe("available");
+    });
+
+    // One connection per test: other tests recreate the provider fixture, so a shared one would not survive.
+    const usageClient = async () => {
+        let body: unknown = {};
+        const { ctx, view, conn } = await setup(call => call.url.endsWith("/wham/usage") ? Response.json(body) : new Response("", { status: 500 }));
+        await store(ctx, await conn(), now() + 3600);
+        return async (next: unknown) => { body = next; return await ctx.fns.models.usage({ id: view.id, refresh: true }); };
+    };
+    const brief = (r: types.models.UsageReport) => (r.windows ?? []).map(w => [w.id, w.period ?? null, w.scope, w.usedPercent ?? null]);
+
+    test("usage periods come from duration, never slot, label or reset countdown", async () => {
+        const usageOf = await usageClient();
+        expect(brief(await usageOf({ rate_limit: { primary_window: { used_percent: 30, limit_window_seconds: 604800, reset_after_seconds: 100 } } })))
+            .toEqual([["codex:primary", "weekly", "account", 30]]);
+        expect(brief(await usageOf({ rate_limit: { primary_window: { used_percent: 1, limit_window_seconds: 604800 }, secondary_window: { used_percent: 2, limit_window_seconds: 18000 } } })))
+            .toEqual([["codex:primary", "weekly", "account", 1], ["codex:secondary", "fiveHour", "account", 2]]);
+        expect(brief(await usageOf({ rate_limit: { primary: { used_percent: 5, window_minutes: 10080 } } }))).toEqual([["codex:primary", "weekly", "account", 5]]);
+        const unknown = await usageOf({ rate_limit: {
+            primary_window: { used_percent: 7, reset_after_seconds: 18000 },
+            secondary_window: { used_percent: 8, limit_window_seconds: 18000, window_minutes: 10080 },
+        } });
+        expect(brief(unknown)).toEqual([["codex:primary", null, "account", 7], ["codex:secondary", null, "account", 8]]);
+        expect(unknown.windows![0]).toMatchObject({ label: "Codex", resetAt: expect.any(Number) });
+        for (const bad of [{ limit_window_seconds: 0 }, { limit_window_seconds: -5 }, { limit_window_seconds: "18000" }, { limit_window_seconds: 86400 }])
+            expect(brief(await usageOf({ rate_limit: { primary_window: { used_percent: 9, ...bad } } }))).toEqual([["codex:primary", null, "account", 9]]);
+    });
+
+    test("null usage is never zero, valid siblings and extra rate_limits entries survive", async () => {
+        const usageOf = await usageClient();
+        expect(brief(await usageOf({ rate_limit: { primary_window: { used_percent: null, limit_window_seconds: 18000 }, secondary_window: { used_percent: 4, limit_window_seconds: 604800 } } })))
+            .toEqual([["codex:secondary", "weekly", "account", 4]]);
+        const r = await usageOf({ rate_limits: [
+            { limit_id: "gpt-5-codex-mini", limit_name: "GPT-5 Codex Mini", primary_window: { used_percent: 90, limit_window_seconds: 604800 } },
+            { limit_id: "codex", primary_window: { used_percent: 10, limit_window_seconds: 18000 }, secondary_window: { used_percent: 20, limit_window_seconds: 604800 } },
+            { limit_id: "other", primary_window: { used_percent: Infinity } },
+            null, "junk",
+        ] });
+        expect(brief(r)).toEqual([["codex:primary", "fiveHour", "account", 10], ["codex:secondary", "weekly", "account", 20], ["codex:gpt-5-codex-mini:primary", "weekly", "model", 90]]);
+        expect(r.windows![2]).toMatchObject({ label: "GPT-5 Codex Mini (7d)", model: "GPT-5 Codex Mini" });
+        await expect(usageOf({ rate_limit: { primary_window: { used_percent: null } } })).resolves.toMatchObject({ status: "unavailable" });
     });
 
     test("401 from the backend marks login required", async () => {

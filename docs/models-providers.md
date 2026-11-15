@@ -217,7 +217,16 @@ calling the provider. `ModelInfo` contains a provider-native `id` with optional
 
 `UsageReport` contains `status`, optional `reason`, and `checkedAt`; optional
 `windows` contain `label`, `usedPercent` (0–100), `remaining`, and `resetAt`
-(epoch milliseconds). Optional `balance` is `{ amount, currency }`. The planned
+(epoch milliseconds), plus optional classification metadata: a stable `id`,
+`period` (`fiveHour`, `weekly`, `monthly`), `scope` (`account`, `model`,
+`unknown`), `durationSeconds`, `model` and `observedAt` (epoch ms of the
+window's own observation). Only windows with `scope: "account"` and an explicit
+`period` fill the main quota columns; a period claimed by several distinct
+account windows fills none. **Every other window — including label-only windows
+from adapters that supply no metadata — is shown only as an additional limit.**
+Labels are display text and are never parsed for a period. `models.connections.usage`
+validates each metadata field and drops invalid values without dropping the
+window. Optional `balance` is `{ amount, currency }`. The planned
 status-only fallback contains no invented quota data. `State.health` reserves
 cache entries with `expiresAt`, `result` and an in-flight `pending` promise;
 cache execution is not implemented by the registry.

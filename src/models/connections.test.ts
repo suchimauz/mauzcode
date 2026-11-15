@@ -161,6 +161,22 @@ describe("models test/listModels/usage/action", () => {
         expect(n).toBe(2);
     });
 
+    test("usage window metadata survives normalization and cache; invalid fields drop alone; general windows win the bound", async () => {
+        const extras = Array.from({ length: 45 }, (_, i) => ({ id: `m:${i}`, label: `Model ${i}`, scope: "model", usedPercent: i }));
+        const general = { id: "g:week", label: "Weekly", period: "weekly", scope: "account", durationSeconds: 604800, model: "  ", observedAt: 7, usedPercent: 20 };
+        const bad = { id: "m:0", label: "Dup", period: "daily", scope: "global", durationSeconds: -1, observedAt: Infinity, usedPercent: null, remaining: 4 };
+        let list: unknown[] = [...extras, general, bad];
+        const { ctx, create } = await setup({ usage: async () => ({ status: "available", checkedAt: 0, windows: list as never }) });
+        const c = await create();
+        const u = await ctx.fns.models.usage({ id: c.id });
+        expect(u.windows).toHaveLength(40);
+        expect(u.windows![0]).toEqual({ id: "m:0", label: "Model 0", scope: "model", observedAt: expect.any(Number), usedPercent: 0 });
+        expect(u.windows!.find((w: { id?: string }) => w.id === "g:week")).toEqual({ id: "g:week", label: "Weekly", period: "weekly", scope: "account", durationSeconds: 604800, observedAt: 7, usedPercent: 20 });
+        expect((await ctx.fns.models.usage({ id: c.id })).windows).toEqual(u.windows);
+        list = [general, bad];
+        expect((await ctx.fns.models.usage({ id: c.id, refresh: true })).windows![1]).toEqual({ label: "Dup", id: "m:0", observedAt: expect.any(Number), remaining: 4 });
+    });
+
     test("listModels: provider list, manual fallback on failure, manual without provider", async () => {
         let fail = false;
         let discovered = 0;
