@@ -24,7 +24,7 @@ export default function (
     'codex':{'chatgpt.com/backend-api/codex/responses':'POST','chatgpt.com/backend-api/codex/responses/compact':'POST','chatgpt.com/backend-api/codex/models':'GET','chatgpt.com/backend-api/wham/usage':'GET','auth.openai.com/oauth/token':'POST'},
     'claude-code':{'api.anthropic.com/v1/messages':'POST','api.anthropic.com/v1/messages/count_tokens':'POST','api.anthropic.com/api/oauth/usage':'GET','console.anthropic.com/v1/oauth/token':'POST'},
     'kimi-coding':{'api.kimi.com/coding/v1/messages':'POST','api.kimi.com/coding/v1/models':'GET','api.kimi.com/coding/v1/usages':'GET','api.kimi.com/coding/v1/me':'GET','auth.kimi.com/api/oauth/token':'POST'},
-    'zai-coding':{'api.z.ai/api/coding/paas/v4/chat/completions':'POST','api.z.ai/api/coding/paas/v4/models':'GET','api.z.ai/api/monitor/usage/quota/limit':'GET'},
+    'zai-coding':{'api.z.ai/api/coding/paas/v4/chat/completions':'POST','api.z.ai/api/coding/paas/v4/models':'GET','api.z.ai/api/monitor/usage/quota/limit':'GET','api.z.ai/api/anthropic/v1/messages':'POST'},
     'minimax-coding':{'api.minimax.io/anthropic/v1/messages':'POST','api.minimax.io/anthropic/v1/messages/count_tokens':'POST','api.minimax.io/anthropic/v1/models':'GET','www.minimax.io/v1/token_plan/remains':'GET'}};
     if(p!=='opencode'){if(fixed[p]?.[u.hostname+path]!==opts.method)throw Error('Provider endpoint denied');return u;}
     if(u.hostname!=='opencode.ai')throw Error('Provider endpoint denied');

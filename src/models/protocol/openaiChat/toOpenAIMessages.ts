@@ -1,8 +1,9 @@
 /**
  * Convert canonical transcripts into OpenAI chat messages with tool and image support
  *
- * Use inside models for provider wire compatibility without the legacy runtime. Preserves existing transcript, authentication or client identity behavior.
+ * Use inside models for provider wire compatibility without the legacy runtime. Preserves existing transcript, authentication or client identity behavior. With replayReasoning, an assistant tool-call message replays the non-empty reasoning its first tool call carries as reasoning_content; without it, stored reasoning is ignored. Tool results, images and PDF fallbacks are unchanged.
  * @param opts.messages Conversation messages to convert.
+ * @param opts.replayReasoning Replay stored assistant reasoning on tool-call turns. @default false
  */
 export default function (
     ctx: Context,
@@ -10,6 +11,8 @@ export default function (
     opts: {
         /** Conversation messages to convert. */
         messages: any[];
+        /** Replay the first tool call's non-empty reasoning_content on the assistant wire message. @default false */
+        replayReasoning?: boolean;
     },
 ): any[] {
     const out: any[] = [];
@@ -39,6 +42,11 @@ export default function (
                 function: { name: c.name, arguments: JSON.stringify(c.args ?? {}) },
             })) };
             if (text.trim() !== "") msg.content = text;
+            // Opt-in replay only: reasoning saved on the first tool call of a persisted turn.
+            if (opts.replayReasoning === true) {
+                const reasoning = calls[0]?.reasoning_content;
+                if (typeof reasoning === "string" && reasoning) msg.reasoning_content = reasoning;
+            }
             out.push(msg);
         }
     

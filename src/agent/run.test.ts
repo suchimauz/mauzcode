@@ -303,4 +303,26 @@ describe('transcript surgery keeps JSON pairs intact', () => {
         expect(msgs.filter((m: any) => m.message_type === 'plan_feedback')).toHaveLength(2);
     });
 
+    test('streamed reasoning is stored only on the first tool call of a tool-call turn', async () => {
+        const ctx: any = await mkCtx();
+        ctx.fns.tools.read = async (_c: any, _s: any, o: any) => `READ:${o.path}`;
+        const stream = ctx.state.registry.models.stream;
+        ctx.state.registry.models.stream = async (c: any, s: any, o: any) => {
+            o.onEvent?.({ type: 'thinking_delta', delta: 'checked ', visibility: 'public_summary' });
+            o.onEvent?.({ type: 'thinking_delta', delta: 'the file', visibility: 'public_summary' });
+            return stream(c, s, o);
+        };
+        const agent = await mkAgent(ctx, [
+            { toolCalls: [{ name: 'read', args: { path: 'a.ts' } }, { name: 'read', args: { path: 'b.ts' } }] },
+            { text: 'готово' },
+        ]);
+        await ctx.fns.agent.run({ agent, userText: 'go' });
+        const msgs = await ctx.fns.session.getMessages({ id: agent.id });
+        expect(msgs[1]!.tool_calls[0].reasoning_content).toBe('checked the file');
+        expect(msgs[1]!.tool_calls[1].reasoning_content).toBeUndefined();
+        expect(msgs.at(-1)!.role).toBe('assistant');
+        expect(msgs.at(-1)!.reasoning_content).toBeUndefined();
+        expect(msgs.at(-1)!.tool_calls).toBeUndefined();
+    });
+
 });

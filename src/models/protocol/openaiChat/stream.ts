@@ -1,9 +1,9 @@
 /**
  * Stream one OpenAI Chat Completions generation through a provider-supplied endpoint
  *
- * Shared openai-chat protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript (instructions become a leading system message), sends POST {base}/chat/completions with stream:true and include_usage, maps temperature, maxTokens (max_tokens) and responseFormat (response_format), reports text, reasoning_content and tool argument deltas, and returns a StreamResult with finish reason stop, length, tool_calls or the upstream value. HTTP errors become classified SDK failures; a cut-off or malformed stream fails STREAM_INTERRUPTED with acceptance uncertain. SDK-resolved reasoning (opted-in providers) is sent as reasoning_effort using its wire value; applied auto, and off without a wire value, send nothing.
+ * Shared openai-chat protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript (instructions become a leading system message; endpoint.replayReasoning replays stored assistant reasoning on tool-call turns), sends POST {base}/chat/completions with stream:true and include_usage, maps temperature, maxTokens (max_tokens) and responseFormat (response_format), merges the endpoint's optional extra body fields after the protocol's own fields without overriding them, reports text, reasoning_content and tool argument deltas, and returns a StreamResult with finish reason stop, length, tool_calls or the upstream value. HTTP errors become classified SDK failures; a cut-off or malformed stream fails STREAM_INTERRUPTED with acceptance uncertain. SDK-resolved reasoning (opted-in providers) is sent as reasoning_effort using its wire value; applied auto, and off without a wire value, send nothing.
  * @param opts.fetch Transport-bound fetch of the connection.
- * @param opts.endpoint Provider-built versioned base and headers.
+ * @param opts.endpoint Provider-built versioned base, headers and optional extra body fields.
  * @param opts.request Streaming request without checkpoint entries.
  * @param opts.signal Optional cancellation signal.
  */
@@ -24,7 +24,7 @@ export default async function (
     const { request: req, signal } = opts;
     const label = "OpenAI Chat";
     const transcript = (req.messages as Record<string, unknown>[]).filter(m => m.role !== "system");
-    const messages = [...(req.instructions ? [{ role: "system", content: req.instructions }] : []), ...ctx.fns.models.protocol.openaiChat.toOpenAIMessages({ messages: transcript })];
+    const messages = [...(req.instructions ? [{ role: "system", content: req.instructions }] : []), ...ctx.fns.models.protocol.openaiChat.toOpenAIMessages({ messages: transcript, replayReasoning: opts.endpoint.replayReasoning === true })];
     const format = req.responseFormat;
     // SDK-resolved reasoning only reaches opted-in providers; auto sends nothing.
     // Off has no OpenAI-native name unless the capabilities declare one (e.g. "none"); otherwise it is omitted.
@@ -38,6 +38,9 @@ export default async function (
         ...(effort ? { reasoning_effort: effort } : {}),
         ...(format?.type === "json_object" ? { response_format: { type: "json_object" } } : {}),
         ...(format?.type === "json_schema" ? { response_format: { type: "json_schema", json_schema: { name: format.name, schema: format.schema, strict: format.strict ?? true } } } : {}),
+        // Provider extras validated by models.inference.streamRoute: they add fields, never replace
+        // the protocol's own model/messages/stream/tools/sampling/reasoning fields.
+        ...(opts.endpoint.body ?? {}),
     };
     const res = await ctx.fns.models.protocol.common.streamFetch({ fetch: opts.fetch, url: opts.endpoint.base + "/chat/completions", headers: opts.endpoint.headers, body, label, signal });
     let text = "", thinking = "", finish: string | null = null, done = false;

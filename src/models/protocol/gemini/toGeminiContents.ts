@@ -60,7 +60,7 @@ export default async function (
            if(typeof c.thoughtSignature !== 'string') throw new Error('Gemini invalid thought signature');
            p.thoughtSignature=c.thoughtSignature;
           }
-          if(c.thought_signature !== undefined || c.reasoning_content !== undefined) throw new Error('Gemini cannot replay foreign reasoning signature protocol');
+          if(c.thought_signature !== undefined) throw new Error('Gemini cannot replay foreign reasoning signature protocol');
           calls.set(c.id,{name:c.name}); ps.push(p);
          }
          push(m.role === 'assistant' ? 'model':'user',ps);
