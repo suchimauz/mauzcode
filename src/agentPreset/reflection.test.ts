@@ -236,6 +236,94 @@ describe('preset reflection: snapshot and registry lifecycle (1.3)', () => {
         expect(Object.keys(local).sort()).toEqual(['hidden', 'run']);
         expect(local.run({})).toBe('local');
     });
+    test('read-only facades reject writes, definitions, deletion and prototype changes', () => {
+        const { registry, standard, creator, view } = fixture();
+        const guarded = view(standard), other = view(creator);
+        const before = registry.files.read;
+        for (const node of [guarded, guarded.files, Object.getOwnPropertyDescriptor(guarded, 'files')!.value]) {
+            expect(Reflect.set(node, 'read', () => 'injected')).toBe(false);
+            expect(Reflect.defineProperty(node, 'read', { value: () => 'injected' })).toBe(false);
+            expect(Reflect.deleteProperty(node, 'read')).toBe(false);
+            expect(Reflect.setPrototypeOf(node, { injected: true })).toBe(false);
+            expect(Object.getPrototypeOf(node)).toBeNull();
+            expect(() => Object.defineProperty(node, 'injected', { value: true })).toThrow(TypeError);
+        }
+        expect(registry.files.read).toBe(before);
+        expect(guarded.files.read({ path: 'safe' }).path).toBe('safe');
+        expect(other.files.read({ path: 'other' }).path).toBe('other');
+        expect(Object.keys(guarded.files)).toEqual(['read']);
+        expect('injected' in registry).toBe(false);
+    });
+    test('freeze, seal and preventExtensions fail without poisoning subsequent live reflection', () => {
+        const { registry, creator, view, advance } = fixture();
+        const guarded = view(creator), docs = guarded.runtime.docs;
+        for (const node of [guarded, docs]) {
+            expect(Reflect.preventExtensions(node)).toBe(false);
+            for (const freeze of [Object.freeze, Object.seal, Object.preventExtensions]) {
+                expect(() => freeze(node)).toThrow(TypeError);
+                expect(Object.isExtensible(node)).toBe(true);
+                expect(Object.isFrozen(node)).toBe(false);
+                expect(Object.isSealed(node)).toBe(false);
+            }
+        }
+        registry.runtime = { docs: { replacement: () => 'new' } };
+        advance();
+        expect(Object.keys(docs)).toEqual(['replacement']);
+        expect(Object.getOwnPropertyDescriptor(docs, 'replacement')!.value({})).toBe('new');
+        expect(Object.isExtensible(registry)).toBe(true);
+        expect(Object.isExtensible(registry.runtime.docs)).toBe(true);
+    });
+    test('frozen raw namespaces do not impose raw descriptor invariants on the facade', () => {
+        const { registry, standard, view } = fixture();
+        Object.freeze(registry.files);
+        Object.defineProperty(registry.plugins, 'reload', { configurable: false, writable: false });
+        Object.defineProperty(registry, 'redmine', { configurable: false, writable: false });
+        const guarded = view(standard);
+        expect(Object.keys(guarded.plugins).sort()).toEqual(['functions', 'read', 'search']);
+        const descriptor = Object.getOwnPropertyDescriptor(guarded.files, 'read')!;
+        expect(descriptor.configurable).toBe(true);
+        expect(descriptor.writable).toBe(false);
+        // Inspection does not invoke $main's proxy on frozen raw properties.
+        expect(descriptor.value).not.toBe(registry.files.read);
+    });
+    test('symbols, accessors, scalar metadata and inherited properties are not capabilities', () => {
+        const { registry, creator, view } = fixture();
+        let accesses = 0;
+        registry.odd = Object.create({ inherited: () => 'inherited' });
+        Object.assign(registry.odd, { run: () => 'run', scalar: 42 });
+        const symbol = Symbol('raw');
+        registry.odd[symbol] = () => 'symbol';
+        Object.defineProperty(registry.odd, 'accessor', { get: () => { accesses++; return registry.files; } });
+        Object.defineProperty(registry.odd, 'hidden', { value: () => 'hidden' });
+        const odd = view(creator).odd;
+        expect(Reflect.ownKeys(odd).sort()).toEqual(['hidden', 'run']);
+        expect(odd[symbol]).toBeUndefined();
+        expect(odd.accessor).toBeUndefined();
+        expect(odd.scalar).toBeUndefined();
+        expect(odd.inherited).toBeUndefined();
+        expect(accesses).toBe(0);
+        expect('inherited' in odd).toBe(false);
+    });
+    test('retained descriptor callable and view survive full registry replacement and restore', () => {
+        const { ctx, registry, creator, view } = fixture();
+        const guarded = view(creator);
+        const docs = Object.getOwnPropertyDescriptor(guarded.runtime, 'docs')!.value;
+        const get = Object.getOwnPropertyDescriptor(docs, 'get')!.value;
+        ctx.state.registry = { ...registry, runtime: { docs: { get: () => 'new root' } } };
+        expect(get({})).toBe('new root');
+        (ctx.state.registry as any).runtime.docs.get = {};
+        expect(Object.keys(docs)).toEqual([]);
+        expect(() => get({})).toThrow('runtime.docs.get is no longer available');
+        ctx.state.registry = registry;
+        expect(get({})).toBe('docs');
+    });
+    test('cyclic empty namespaces are not advertised or traversed forever', () => {
+        const { registry, creator, view } = fixture();
+        registry.cycle = {};
+        registry.cycle.self = registry.cycle;
+        expect(Object.keys(view(creator))).not.toContain('cycle');
+        expect('cycle' in view(creator)).toBe(false);
+    });
     test('retained views track origin changes and newly denied plugins without snapshot edits', () => {
         const { ctx, plugins, standard, view } = fixture();
         const before = JSON.stringify(standard);

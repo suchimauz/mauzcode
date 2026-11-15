@@ -8,9 +8,9 @@
 
 ## 2. Guarded runtime view
 
-- [ ] 2.1 Implement a reflection-safe, non-mutating namespace facade with live path resolution and a consistent visibility predicate.
-- [ ] 2.2 Preserve Proxy invariants under property-descriptor inspection and attempted mutation/freeze operations; prevent accidental writes to shared registry state.
-- [ ] 2.3 Add generation-scoped visibility caching only if needed; verify mount/reload/unload and origin changes without stale entries.
+- [x] 2.1 Implement a reflection-safe, non-mutating namespace facade with live path resolution and a consistent visibility predicate.
+- [x] 2.2 Preserve Proxy invariants under property-descriptor inspection and attempted mutation/freeze operations; prevent accidental writes to shared registry state.
+- [x] 2.3 Add generation-scoped visibility caching only if needed; verify mount/reload/unload and origin changes without stale entries.
 
 ## 3. Adjacent capability discovery
 
