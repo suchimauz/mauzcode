@@ -224,7 +224,7 @@ The models stream and one-shot call SHALL accept tools in one provider-neutral f
 - **THEN** OpenAI-shaped wire tools are sent with `strict: false`
 
 ### Requirement: Protocol-route providers
-A provider definition MAY declare a protocol route instead of a streaming operation, returning a shared protocol id, base URL and headers for a connection, model, cached model metadata and session id. Registration MUST reject a definition declaring both. The core SHALL run all existing inference checks first, then stream through that shared protocol on the connection's transport, merging headers as: JSON accept, protocol headers, provider headers.
+A provider definition MAY declare a protocol route instead of a streaming operation, returning a shared protocol id, base URL and headers for a connection, model, cached model metadata and session id. The route MAY also return provider body fields and a reasoning-replay flag. Registration MUST reject a definition declaring both. The core SHALL run all existing inference checks first, then stream through that shared protocol on the connection's transport, merging headers as: JSON accept, protocol headers, provider headers.
 
 #### Scenario: Provider streams through a route
 - **WHEN** a stream request targets an enabled model of a provider declaring a protocol route that returns `anthropic`
@@ -248,6 +248,10 @@ A provider definition MAY declare a protocol route instead of a streaming operat
 - **WHEN** the requested model or connection is disabled
 - **THEN** the existing disabled-state error is returned and the protocol route is not called
 
+#### Scenario: Route without body fields or replay
+- **WHEN** a protocol route returns only protocol, base URL and headers
+- **THEN** the request body is unchanged from the behavior before body fields and replay existed
+
 ### Requirement: Provider usage refresh interval
 A provider definition MAY declare `usageRefreshMs`, the minimum interval in milliseconds between usage requests for one connection. The value MUST be a finite integer from 10000 to 3600000; otherwise registration of that declaration fails and other providers stay registered. When omitted, the interval is 60000.
 
@@ -262,3 +266,22 @@ A provider definition MAY declare `usageRefreshMs`, the minimum interval in mill
 #### Scenario: Omitted interval
 - **WHEN** a provider declares usage without `usageRefreshMs`
 - **THEN** its usage reports are reused for 60 s
+
+### Requirement: Protocol route body fields
+A protocol route MAY return `body`, a JSON object of provider fields the core passes to the shared protocol with the endpoint. A key the protocol owns (`model`, `messages`, `stream`, `stream_options`, `tools`, `max_tokens`, `temperature`, `response_format`, `reasoning_effort` for `openai-chat`) MUST fail with `INVALID_INPUT` before any request. Protocols that do not support body fields SHALL ignore them.
+
+#### Scenario: Extra field accepted
+- **WHEN** a route for `openai-chat` returns body `{ thinking: { type: "enabled" } }`
+- **THEN** the request body contains that field alongside the protocol's own fields
+
+#### Scenario: Protocol-owned key
+- **WHEN** a route returns body `{ model: "other" }`
+- **THEN** inference fails with code `INVALID_INPUT` and no request is sent
+
+### Requirement: Protocol route reasoning replay
+A protocol route MAY return `replayReasoning: true`, which the core passes to the shared protocol with the endpoint, asking it to replay reasoning stored on earlier assistant tool-call turns in its native form. Without the flag no stored reasoning SHALL be sent.
+
+#### Scenario: Replay not requested
+- **GIVEN** a transcript with stored reasoning on an assistant tool-call turn
+- **WHEN** a route without `replayReasoning` streams through `openai-chat`
+- **THEN** no wire message carries `reasoning_content`
