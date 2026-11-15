@@ -52,6 +52,15 @@ Use a small fixed internal preparation limit (initial target: five seconds total
 
 RTK 1.2.0 provides the initial compatibility fixture. Verify actual protocol behavior instead of accepting a version string alone. A policy refusal from a health probe is not proof the binary crashed; report a safe failed check when rewrite capability cannot be demonstrated without altering policy. For actual commands, code 2 is always a denial, never a technical fallback.
 
+#### Implementation decisions (blocks 1–2)
+
+- Persistence: a dedicated single-row table `rtk_control` (id = 1) created by the plugin migration, with `enabled`, `revision`, `availability` (`unknown` | `available` | `unavailable`), `path`, `version`, `reason`, `checked_at`, `updated_at`. A missing row reads as disabled/unknown.
+- Probe failure codes: `missing`, `permission`, `signal` (SIGILL named explicitly), `timeout`, `overflow` (output cap exceeded, never trusted), `spawn`, `incompatible` (unrecognized `--version` or rewrite response) and `policy` (rewrite of the read-only probe exits 1/2: capability not demonstrated under current RTK policy, reported as a failed check rather than a crash). Healthy rewrite: exit 0 or 3 with one nonempty line containing `rtk`.
+- Probe budget: one 5-second deadline shared by `--version` and `rewrite`; each step's output is capped at 4 KiB. On timeout or overflow the process is killed and pipe reads are cancelled, so descendants holding the pipe cannot stall the check.
+- Lifecycle: in-process `generation` (bumped by plugin start/stop) and `verifiedRevision` (cleared on start/stop/disable) live in `ctx.state.rtk`; check/enable/revalidate are serialized in-process, disable is not queued so it can invalidate an in-flight enable.
+- HTTP: `GET /rtk/api` returns state and the cookie-bound CSRF token without probing; `POST /rtk/api` accepts only `{ action: "check" | "enable" | "disable" }` (owner, same origin, `x-csrf-token`, JSON ≤ 1 KiB); failed enable returns 409 with the current state.
+- Settings host: the shared page is the Settings dialog tab "Plugins"; sections are keyed `<plugin>/<id>`, use the surface-id grammar for ids and receive `{ context }` with `agentId: null`.
+
 ### 5. Single-command rewrite protocol
 
 Invoke `[resolvedRtk, 'rewrite', originalCommand]`, with the complete original command as one argument. Do not parse shell syntax ourselves, wrap arbitrary scripts blindly, or expand substitutions before rewrite. Validate that a proposed command is nonempty and contains no invalid transport/NUL data; do not claim to semantically validate arbitrary shell code.
@@ -80,6 +89,14 @@ Bypass is prospective. There is no guarantee of recovering the complete output o
 Render a settings section with the local-bash toggle, Check RTK button, availability status, independent enabled state, path/version/check time and failure text. Disable enabling while availability is unknown, checking or unavailable; backend always checks again. Disallow duplicate submissions and refresh authoritative state after actions. Respect readOnly, owner access, semantic themes, focus, accessible status/error announcements and reduced motion using existing SDK components.
 
 If live updates are used, declare the topic, supply resync/onError and clean up subscriptions. Polling or fetching must also abort on unmount. Do not add dependency installation, savings charts or configuration editors.
+
+## Implementation Notes (block 3)
+
+- Seam: `tools.bash` calls the optional `rtk.prepare` (absent/unloaded plugin or `rtk:false` → unchanged behavior; an exception inside it → original once with a notice). Remote branch is untouched.
+- `rtk` is resolved on the call's effective PATH; a different or missing executable skips RTK for that call (notice) instead of switching binaries or disabling.
+- Revalidation after restart uses the remaining caller budget; a probe timeout caused only by a shortened budget returns `expired` and does not disable RTK.
+- Disable or plugin reload during the rewrite yields outcome `stale`: the original runs once, the replacement is not used. A user stop observed before launch starts nothing.
+- Safe details (`outcome`, `original`, `executed`, `code`, `notice`, `diagnostic`, secrets masked) travel as `details.rtk` through `tools.call` into the tool-call event and are shown in the bash tool details; no raw RTK output is stored.
 
 ## Risks / Trade-offs
 

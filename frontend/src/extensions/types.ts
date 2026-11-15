@@ -45,6 +45,11 @@ export type ExtensionReviewReference = Readonly<{ version: 1; host: string; dir:
 export type ExtensionChatCardProps = ExtensionViewProps & { eventIdx: number; reference: ExtensionReviewReference };
 /** Detail renderer for a host-classified chat card kind (`git.review`); requires a chatCards grant. */
 export type ExtensionChatCard = { kind: string; component: ComponentType<ExtensionChatCardProps> };
+/** Props of a plugin-owned Plugin Settings section. The host owns placement, heading and lifecycle; visibility and
+ * readOnly never authorize a write — the plugin's endpoints must check owner access and CSRF again. */
+export type ExtensionSettingsSectionProps = ExtensionViewProps;
+/** A titled section on the shared Plugin Settings page; requires a settingsSections grant for its id. */
+export type ExtensionSettingsSection = { id: string; title: string; description?: string; component: ComponentType<ExtensionSettingsSectionProps> };
 export type ExtensionPage = { id: string; title: string; component: ComponentType<ExtensionViewProps> };
 export type ExtensionPanel = { id: string; title: string; component: ComponentType<ExtensionViewProps> };
 export type ExtensionAction = { id: string; title: string; run: (context: ExtensionContext) => void | Promise<void>; mutates?: boolean };
@@ -67,13 +72,17 @@ export type UiExtension = {
   modelProviders?: readonly ExtensionModelProvider[];
   /** Detail renderers for host chat cards; each also requires a chatCards grant. */
   chatCards?: readonly ExtensionChatCard[];
+  /** Sections of the shared Plugin Settings page; each also requires a settingsSections grant. */
+  settingsSections?: readonly ExtensionSettingsSection[];
   actions?: readonly ExtensionAction[];
 };
-export type ExtensionGrant = Readonly<{ inputKinds?: readonly string[]; pages?: readonly string[]; sidebarNavigation?: readonly string[]; panels?: readonly string[]; actions?: readonly string[]; canvasKinds?: readonly string[]; canvasLaunchers?: readonly string[]; modelProviders?: readonly string[]; chatCards?: readonly string[] }>;
+export type ExtensionGrant = Readonly<{ inputKinds?: readonly string[]; pages?: readonly string[]; sidebarNavigation?: readonly string[]; panels?: readonly string[]; actions?: readonly string[]; canvasKinds?: readonly string[]; canvasLaunchers?: readonly string[]; modelProviders?: readonly string[]; chatCards?: readonly string[]; settingsSections?: readonly string[] }>;
 export type RegisteredView = Readonly<{ key: string; title: string; component: ComponentType<ExtensionViewProps> }>;
 /** A granted launcher; `icon` is resolved (launcher icon, else plugin icon, else null → default). */
 export type RegisteredLauncher = Readonly<Omit<ExtensionCanvasLauncher, 'icon'> & { key: string; icon: string | null }>;
 export type RegisteredAction = Readonly<ExtensionAction & { key: string }>;
+/** A granted settings section; `extension` is the owning plugin/extension id. */
+export type RegisteredSettingsSection = Readonly<ExtensionSettingsSection & { key: string; extension: string }>;
 export type ExtensionRegistry = Readonly<{
   inputKinds: readonly Readonly<ExtensionInputKind & { key: string }>[];
   pages: readonly RegisteredView[];
@@ -84,5 +93,6 @@ export type ExtensionRegistry = Readonly<{
   canvasLaunchers: readonly RegisteredLauncher[];
   modelProviders: readonly Readonly<ExtensionModelProvider & { key: string }>[];
   chatCards: readonly Readonly<ExtensionChatCard & { key: string }>[];
+  settingsSections: readonly RegisteredSettingsSection[];
   actions: readonly RegisteredAction[];
 }>;

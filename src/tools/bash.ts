@@ -8,7 +8,12 @@
  * @param opts.cwd Working directory; relative to the workspace locally, remote path with host.
  * @param opts.env Additional environment variables.
  * @param opts.secrets Secret references exposed as environment variables; values are redacted from output.
- * @param opts.timeout Timeout in seconds.
+ * @param opts.timeout Timeout in seconds; on a local call it also bounds optional RTK preparation.
+ * @param opts.rtk Pass false to skip automatic RTK output compression for this local call; omitted follows the instance setting.
+ *
+ * Local calls (no host, or host "local", in a local workspace) may be prepared by the optional official RTK plugin
+ * when its owner enabled it: the command can be replaced by its `rtk …` equivalent and run once. SSH targets are never
+ * touched. The result then carries `details.rtk` with the original and executed command (secrets masked).
  */
 export default async function (
     ctx: Context,
@@ -24,10 +29,12 @@ export default async function (
         env?: Record<string, string>;
         /** Secret references (op://, env:// or secret://namespace/name) exposed as environment variables; values are redacted from output. */
         secrets?: Record<string, string>;
-        /** Timeout in seconds. */
+        /** Timeout in seconds; on a local call it also bounds optional RTK preparation. */
         timeout?: number;
+        /** Pass false to skip automatic RTK output compression for this local call; omitted follows the instance setting. It never enables RTK. */
+        rtk?: boolean;
     },
-): Promise<{ output: string; isError: boolean }> {
+): Promise<{ output: string; isError: boolean; details?: { rtk: RtkDetails } }> {
     const secretEnv: Record<string, string> = {};
     const sensitive: string[] = [];
 
@@ -42,19 +49,90 @@ export default async function (
         sensitive.push(value);
     }
 
+    // Longer values first avoids partial masking when one secret prefixes another.
+    const ordered = [...new Set(sensitive)].sort((a, b) => b.length - a.length);
+    const redact = (text: string) => ordered.reduce((acc, value) => acc.replaceAll(value, "[REDACTED]"), text);
+
     const at = ctx.fns.workspace.target({ host: opts.host, path: opts.cwd });
-    const result = at.host ? await remote(ctx, at.host, opts.command, at.path, { ...opts.env, ...secretEnv }, opts.timeout) : await ctx.fns.agent.executeBash({
-        code: opts.command,
+    if (at.host) {
+        const result = await remote(ctx, at.host, opts.command, at.path, { ...opts.env, ...secretEnv }, opts.timeout);
+        result.output = redact(result.output);
+        return result;
+    }
+
+    const startedAt = Date.now();
+    const seconds = Number(opts.timeout);
+    const timed = Number.isFinite(seconds) && seconds > 0;
+    const prepared = opts.rtk === false ? null : await prepareRtk(ctx, opts.command, at.path, { ...opts.env, ...secretEnv }, timed ? startedAt + seconds * 1000 : undefined);
+    const details = prepared && (prepared.outcome !== "inactive" || prepared.notice)
+        ? { rtk: {
+            outcome: prepared.outcome,
+            original: redact(prepared.original),
+            executed: prepared.action === "execute" ? redact(prepared.command) : null,
+            code: prepared.code,
+            notice: prepared.notice === null ? null : redact(prepared.notice),
+            diagnostic: prepared.diagnostic === null ? null : redact(prepared.diagnostic),
+        } }
+        : undefined;
+    const withDetails = (r: { output: string; isError: boolean }) => details ? { ...r, details } : r;
+
+    if (prepared?.action === "deny") {
+        const why = details?.rtk.diagnostic ? `\n${details.rtk.diagnostic}` : "";
+        return withDetails({ output: `[rtk: denied by RTK rules (rewrite exit 2) — the command was not executed]${why}`, isError: true });
+    }
+    if (prepared?.action === "timeout") {
+        return withDetails({ output: `[timed out after ${seconds}s — the deadline passed while RTK prepared the command; it was not started]`, isError: true });
+    }
+
+    // A user stop that arrived while RTK was preparing must not start the command at all.
+    if (prepared && (ctx as any).toolRun?.controller?.signal?.aborted) {
+        return withDetails({ output: "[stopped by the user before the command started — nothing was executed]", isError: true });
+    }
+
+    // The one and only execution. A failure after this point is a result, never a reason to run anything again.
+    const remaining = timed && prepared ? Math.max(0.001, (startedAt + seconds * 1000 - Date.now()) / 1000) : opts.timeout;
+    const result = await ctx.fns.agent.executeBash({
+        code: prepared?.command ?? opts.command,
         cwd: opts.cwd,
         env: { ...opts.env, ...secretEnv },
-        timeout: opts.timeout,
+        timeout: remaining,
     });
+    // Report the caller's declared timeout even though execution got only the share left after preparation.
+    if (timed && remaining !== opts.timeout) result.output = result.output.replace(`[timed out after ${remaining}s`, `[timed out after ${seconds}s`);
+    result.output = redact(result.output);
+    if (details?.rtk.notice) result.output = `${details.rtk.notice}\n${result.output}`;
+    return withDetails(result);
+}
 
-    // Longer values first avoids partial masking when one secret prefixes another.
-    for (const value of [...new Set(sensitive)].sort((a, b) => b.length - a.length)) {
-        result.output = result.output.replaceAll(value, "[REDACTED]");
+/** Safe record of what RTK did to a local bash call; every string has resolved secrets masked. */
+type RtkDetails = {
+    /** Preparation outcome, see rtk.prepare. */
+    outcome: string;
+    /** Command as the caller wrote it. */
+    original: string;
+    /** Command actually executed; null when nothing ran (denied or deadline). */
+    executed: string | null;
+    /** Exit code of `rtk rewrite`, when it finished normally. */
+    code: number | null;
+    /** Notice prepended to the result, e.g. a technical disablement. */
+    notice: string | null;
+    /** RTK denial message (exit 2) or why RTK was skipped for this call. */
+    diagnostic: string | null;
+};
+
+// Optional seam: the official RTK plugin may be absent or unloaded, then bash behaves exactly as without it.
+// A failure inside preparation happens before the command starts, so running the original once is still safe.
+async function prepareRtk(ctx: Context, command: string, cwd: string, extra: Record<string, string>, deadline?: number): Promise<types.rtk.Preparation | null> {
+    const prepare = (ctx.fns as any).rtk?.prepare;
+    if (typeof prepare !== "function") return null;
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) if (typeof v === "string") env[k] = v;
+    Object.assign(env, extra);
+    try {
+        return await prepare({ command, cwd, env, ...(deadline === undefined ? {} : { deadline }) }) as types.rtk.Preparation;
+    } catch {
+        return { action: "execute", command, original: command, outcome: "fallback", code: null, notice: "[rtk: preparation failed unexpectedly; the original command ran unchanged]", diagnostic: null, path: null };
     }
-    return result;
 }
 
 // Remote branch: same output contract as agent.executeBash, transported by remote.exec.

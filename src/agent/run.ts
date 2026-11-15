@@ -843,6 +843,7 @@ export default async function (
             await ctx.fns.session.appendToolCallEvent({ id: agent.id, payload: {
                 name: call.name, args: call.args, result: output, result_ref,
                 isError: r.isError,
+                ...(r.details ? { details: r.details } : {}),
                 durationMs: toolDurationMs,
                 messageIdx: append.idx,
             } });

@@ -23,3 +23,17 @@ it('separates Eval input and output into labeled sections', () => {
   expect(screen.getByRole('region', { name: 'Вывод' })).toHaveTextContent('42');
   expect(screen.getByRole('region', { name: 'Вывод' })).not.toHaveTextContent('return');
 });
+it('shows the RTK outcome and the actually executed command next to the original bash command', () => {
+  const rtk = { outcome: 'rewritten', original: 'git log', executed: 'rtk git log', code: 3, notice: null, diagnostic: null };
+  render(<ToolBody details={{ ...details, name: 'bash', result: 'compact log', rtk }} kind="bash" args={{ command: 'git log' }} />);
+  expect(screen.getByText('git log')).toBeVisible();
+  expect(screen.getByText(/команда переписана RTK \(код 3\)/)).toBeVisible();
+  expect(screen.getByLabelText('Выполненная команда')).toHaveTextContent('rtk git log');
+});
+it('shows an RTK denial without an executed command', () => {
+  const rtk = { outcome: 'denied', original: 'rm -rf x', executed: null, code: 2, notice: null, diagnostic: 'blocked by rule' };
+  render(<ToolBody details={{ ...details, name: 'bash', isError: true, result: '[rtk: denied]', rtk }} kind="bash" args={{ command: 'rm -rf x' }} />);
+  expect(screen.getByText(/запрещено правилами RTK/)).toBeVisible();
+  expect(screen.getByText('blocked by rule')).toBeVisible();
+  expect(screen.queryByLabelText('Выполненная команда')).toBeNull();
+});

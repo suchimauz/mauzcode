@@ -8,7 +8,9 @@ export type ActiveTool = { id: string; name: string; subject: string; startedAt:
 /** A compaction model call waiting out a retry: memory-only, never a transcript row. */
 export type CompactionRetryStatus = { attempt: number; maxRetries: number; delayMs: number; startedAt: number; code: string | null };
 export type EventPage = { mascot?: 'crab' | 'deepy' | 'whalegirl' | 'desksprite' | 'bitty' | 'tmuxai' | 'planet' | 'rainbow-terminal-cat'; streamHandoff?: boolean; archived?: boolean; runs?: import('../components/mauzcode/transcriptGroups').RunMetadata[]; turnStartedAt?: number | null; activityStartedAt?: number | null; thinking?: { startedAt: number; publicSummary?: string } | null; activeTools?: ActiveTool[]; compactionRetry?: CompactionRetryStatus | null; agentId: string; events: ChatEvent[]; olderBefore: number | null; hasOlder: boolean; isRunning: boolean; runState: string; lastError: string | null; partial: { text: string; revision: number; startedAt: number } | null };
-export type ToolDetails = { idx: number; ts: number; type: string; name: string; args: string; argsTruncated: boolean; result: string; resultTruncated: boolean; isError: boolean };
+export type ToolDetails = { idx: number; ts: number; type: string; name: string; args: string; argsTruncated: boolean; result: string; resultTruncated: boolean; isError: boolean; rtk?: RtkToolDetails };
+/** How the optional RTK plugin prepared a local bash call; strings are secret-masked by the server. */
+export type RtkToolDetails = { outcome: string; original: string; executed: string | null; code: number | null; notice: string | null; diagnostic: string | null };
 /** Fetch details only when a tool row is expanded, using the existing bounded endpoint. */
 export function getToolDetails(agentId: string, idx: number, signal?: AbortSignal) {
   return requestJson<{ event: ToolDetails }>(`/api/v1/agents/${encodeURIComponent(agentId)}/events/${idx}`, { signal });

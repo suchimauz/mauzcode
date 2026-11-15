@@ -145,3 +145,23 @@ test('chatCards grants compile only for kinds owned by the plugin and changes in
   }
  } finally { await rm(dir,{recursive:true,force:true}); }
 });
+
+test('settingsSections grants compile, are validated and changes invalidate third-party approval', async () => {
+ const dir = await plugin({ settingsSections: ['shell'] }, { 'ui/index.tsx': view, 'ui/helper.ts': "export const helper = 'Demo';" });
+ try {
+  const built = await compile(context(dir), null, {name:'demo'});
+  expect(built.build?.error).toBeNull();
+  expect(built.build?.grants.settingsSections).toEqual(['shell']);
+  expect((await manifest(context(dir,'user'),null,{})).pending[0]?.reason).toBe('unapproved');
+  const old = {pages:[],panels:[],actions:[],canvasKinds:[]};
+  expect((await manifest(context(dir,'user',[{name:'demo',hash:built.build!.hash,grants:old}]),null,{})).pending[0]?.reason).toBe('changed');
+  expect((await manifest(context(dir,'user',[{name:'demo',hash:built.build!.hash,grants:built.build!.grants}]),null,{})).plugins[0]?.grants.settingsSections).toEqual(['shell']);
+  for (const id of ['Shell', 'a_b', '1x']) {
+   await writeFile(join(dir,'package.json'), JSON.stringify({procs:{ui:{settingsSections:[id]}}}));
+   expect((await compile(context(dir),null,{name:'demo'})).build?.error).toContain('Invalid surface id');
+  }
+  await writeFile(join(dir,'package.json'), JSON.stringify({procs:{ui:{pages:['main']}}}));
+  const legacy = await compile(context(dir),null,{name:'demo'});
+  expect(legacy.build?.error).toBeNull(); expect('settingsSections' in legacy.build!.grants).toBe(false);
+ } finally { await rm(dir,{recursive:true,force:true}); }
+});
