@@ -15,6 +15,10 @@ export type ModelInfo = {
         wire?: Partial<Record<types.models.ReasoningLevel, string>>;
         /** The model can switch thinking off through its protocol's native disable form (Anthropic thinking disabled). */
         disable?: boolean;
+        /** The model has a native adaptive-thinking switch; protocols that support it send it for every applied level other than off. */
+        adaptive?: boolean;
+        /** False means the model only switches thinking on or off and no effort value is sent. @default true */
+        effort?: boolean;
     };
     /** Native shared protocol of this model, used by protocol-route providers. */
     protocol?: types.models.ProtocolRoute["protocol"];

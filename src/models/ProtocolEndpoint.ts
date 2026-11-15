@@ -8,4 +8,8 @@ export type ProtocolEndpoint = {
     body?: Record<string, unknown>;
     /** Replay stored assistant reasoning from tool-call turns where the protocol can carry it; false or absent sends nothing extra. @default false */
     replayReasoning?: boolean;
+    /** Set by streamRoute from ProtocolRoute.serverMaxTokens: the protocol sends no output budget and lets the upstream choose. @default false */
+    serverMaxTokens?: boolean;
+    /** Set by streamRoute: connection and model that produced stored reasoning, so replay only sends blocks this exact route captured. */
+    origin?: { connectionId: string; model: string };
 };

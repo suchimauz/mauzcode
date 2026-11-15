@@ -30,10 +30,11 @@ test("original public model signatures, async declarations, types and HTTP route
     for (const [name, source] of Object.entries({...baseline.types, ...baseline.routes}) as [string, string][]) {
         // Intentional SDK additions are checked structurally, without rewriting the historical snapshot.
         let actual = normalize(await readFile(join(import.meta.dir, name), "utf8"));
-        // Protocol routing and optional reasoning defaults are intentional SDK extensions.
-        if (["ModelInfo.ts", "ReasoningCapabilities.ts"].includes(name)) actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace('protocol?:types.models.ProtocolRoute["protocol"];', "");
+        // Protocol routing, optional reasoning defaults and the adaptive/effort thinking flags are intentional SDK extensions.
+        if (name === "ModelInfo.ts") actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "").replace('protocol?:types.models.ProtocolRoute["protocol"];', "");
         if (name === "ModelInfo.ts") actual = actual.replace("default:types.models.ReasoningLevel;}", "default:types.models.ReasoningLevel}");
-        if (name === "ReasoningResolution.ts") actual = actual.replace('applied:types.models.ReasoningLevel|"auto";', 'applied:types.models.ReasoningLevel;').replace("wire?:string;", "").replace("disable?:boolean;", "");
+        if (name === "ReasoningCapabilities.ts") actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
+        if (name === "ReasoningResolution.ts") actual = actual.replace('applied:types.models.ReasoningLevel|"auto";', 'applied:types.models.ReasoningLevel;').replace("wire?:string;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
         // usageRefreshMs is an intentional optional SDK addition (provider-paced usage cache).
         if (name === "ProviderDefinition.ts") actual = actual.replace("usageRefreshMs?:number;", "");
         // add-zai-coding-provider: the route request also carries the SDK-resolved reasoning.

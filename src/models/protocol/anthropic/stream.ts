@@ -1,7 +1,7 @@
 /**
  * Stream one Anthropic Messages generation through a provider-supplied endpoint
  *
- * Shared anthropic protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript with llm.toAnthropicMessages, sends POST {base}/messages with stream:true, the instructions as system, max_tokens (maxTokens, default 4096) and optional temperature and tools. responseFormat is applied as a JSON-only instruction appended to the system prompt. Reports text, thinking and tool argument deltas and returns a StreamResult (end_turn/stop_sequence → stop, max_tokens → length, tool_use → tool_calls). HTTP errors become classified SDK failures; a missing message_stop or malformed stream fails with acceptance uncertain. SDK-resolved reasoning is sent as output_config.effort (wire value), or thinking disabled for off when declared; applied auto sends nothing.
+ * Shared anthropic protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript with llm.toAnthropicMessages, sends POST {base}/messages with stream:true, the instructions as system, max_tokens (maxTokens, default 4096, omitted when the endpoint declares a server-chosen budget) and optional temperature and tools, and merges the endpoint's optional extra body fields after its own fields without overriding them. responseFormat is applied as a JSON-only instruction appended to the system prompt. Reports text, thinking and tool argument deltas and returns a StreamResult (end_turn/stop_sequence → stop, max_tokens → length, tool_use → tool_calls). HTTP errors become classified SDK failures; a missing message_stop or malformed stream fails with acceptance uncertain. SDK-resolved reasoning is sent as output_config.effort (wire value) — omitted entirely when the resolution declares effort:false — as thinking {type:"adaptive"} when the resolution carries the adaptive flag, or as thinking disabled for off when declared; applied auto sends nothing.
  * @param opts.fetch Transport-bound fetch of the connection.
  * @param opts.endpoint Provider-built versioned base and headers.
  * @param opts.request Streaming request without checkpoint entries.
@@ -29,16 +29,25 @@ export default async function (
     const json = req.responseFormat ? ctx.fns.models.inference.structured({ action: "instruction", format: req.responseFormat }) : "";
     const system = [req.instructions, json].filter(Boolean).join("\n\n");
     // SDK-resolved reasoning only reaches opted-in providers; auto sends nothing. Off uses the native disable form when
-    // declared, else its wire value; without either, off has no representation and is omitted.
+    // declared, else its wire value; without either, off has no representation and is omitted. A concrete on-level uses
+    // the native adaptive switch when the resolution carries the flag, and omits the effort value when effort:false.
     const r = req.reasoning && req.reasoning.applied !== "auto" ? req.reasoning : null;
     const reasoningFields = r?.applied === "off" && r.disable ? { thinking: { type: "disabled" } }
-        : r && (r.applied !== "off" || r.wire) ? { output_config: { effort: r.wire ?? r.applied } } : {};
+        : !r ? {}
+        : r.applied === "off" ? (r.wire ? { output_config: { effort: r.wire } } : {})
+        : {
+            ...(r.adaptive ? { thinking: { type: "adaptive" } } : {}),
+            ...(r.effort === false ? {} : { output_config: { effort: r.wire ?? r.applied } }),
+        };
     const body: Record<string, unknown> = {
-        model: req.model, messages, stream: true, max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+        model: req.model, messages, stream: true,
+        ...(opts.endpoint.serverMaxTokens === true ? {} : { max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS }),
         ...(system ? { system } : {}),
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
         ...(req.tools?.length ? { tools: ctx.fns.models.protocol.anthropic.toTools({ tools: req.tools }) } : {}),
         ...reasoningFields,
+        // Provider body extras arrive validated by streamRoute (no protocol-owned keys) and are additive.
+        ...(opts.endpoint.body ?? {}),
     };
     const res = await ctx.fns.models.protocol.common.streamFetch({ fetch: opts.fetch, url: opts.endpoint.base + "/messages", headers: opts.endpoint.headers, body, label, signal });
     let text = "", thinking = "", stop: string | null = null, terminal = false;

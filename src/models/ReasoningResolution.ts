@@ -8,6 +8,10 @@ export type ReasoningResolution = {
     wire?: string;
     /** Applied off should use the protocol's native thinking-disable form. */
     disable?: boolean;
+    /** The protocol should send its native adaptive-thinking switch; only on a concrete applied level other than off. */
+    adaptive?: boolean;
+    /** False means no effort value is sent: the model only switches thinking on or off. @default true */
+    effort?: boolean;
     /** Why applied differs from requested (fallback), or null. */
     fallbackReason: string | null;
     source: types.models.ReasoningCapabilities["source"];
