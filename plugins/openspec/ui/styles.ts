@@ -40,6 +40,7 @@ export const styles = `
 .osv-primary{background:var(--text,#161616);color:var(--bg,#fff)!important;border-color:transparent}
 .osv-primary:hover:not(:disabled){background:color-mix(in srgb,var(--text,#161616) 85%,var(--bg,#fff))}
 .osv-icon-btn{display:inline-grid;place-items:center;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:var(--text-secondary,inherit);transition:background-color .2s var(--osv-ease),transform .2s var(--osv-ease)}
+.osv-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .osv-icon-btn:hover{background:var(--hover,rgba(0,0,0,.06));color:var(--text,inherit)}
 .osv-spin{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:osv-spin .7s linear infinite;display:inline-block}
 @keyframes osv-spin{to{transform:rotate(360deg)}}

@@ -56,7 +56,7 @@ function Progress({ progress }: { progress: Change['progress'] }) {
   </span>;
 }
 const Icon = ({ d, size = 14 }: { d: string; size?: number }) => <svg className="osv-icon" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path d={d} /></svg>;
-const ICONS = { check: 'M20 6L9 17l-5-5', back: 'M15 18l-6-6 6-6', doc: 'M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5', close: 'M18 6L6 18M6 6l12 12', refresh: 'M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5', alert: 'M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z' };
+const ICONS = { copy: 'M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1', check: 'M20 6L9 17l-5-5', back: 'M15 18l-6-6 6-6', doc: 'M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5', close: 'M18 6L6 18M6 6l12 12', refresh: 'M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5', alert: 'M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z' };
 const ago = (ms: number) => { const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
 
 /** One-step Start-page launcher: the server opens (or reactivates) the tab for the agent's current local workspace. */
@@ -77,6 +77,7 @@ export function Workspace({ context, item }: ExtensionCanvasProps) {
   const [error, setError] = useState(''), [docError, setDocError] = useState('');
   const [validation, setValidation] = useState<Validation | null>(null), [validating, setValidating] = useState(false);
   const [tick, setTick] = useState(0);
+  const [copied, setCopied] = useState<string | null>(null);
   const [transport, setTransport] = useState<LiveStatus>(() => window.mauzcodeLive?.getStatus?.() ?? 'connecting');
   const [keepAliveOk, setKeepAliveOk] = useState(true), [liveError, setLiveError] = useState(false);
   const [active, setActive] = useState(0);
@@ -182,6 +183,9 @@ export function Workspace({ context, item }: ExtensionCanvasProps) {
     setSelected(entry.id); setDocId(nextDoc); setOpen(true);
     save({ section, selected: entry.id, doc: nextDoc });
   };
+  const copyName = (name: string) => {
+    navigator.clipboard?.writeText(name).then(() => { setCopied(name); setTimeout(() => setCopied(c => c === name ? null : c), 1500); }).catch(e => setDocError('Copy failed: ' + errorText(e)));
+  };
   const pickDoc = (id: string) => { setDocId(id); save({ doc: id }); };
   const validate = () => {
     setValidating(true); setValidation(null);
@@ -251,6 +255,8 @@ export function Workspace({ context, item }: ExtensionCanvasProps) {
         {current && <div className="osv-doc-head">
           <button className="osv-icon-btn osv-back" onClick={() => setOpen(false)} aria-label="Back to list"><Icon d={ICONS.back} size={16} /></button>
           <div className="osv-doc-title"><span className="osv-eyebrow">{section === 'changes' ? 'Change' : section === 'archive' ? 'Archived change' : 'Spec'}</span><h3>{current.title}</h3></div>
+          {section !== 'specs' && <button className="osv-icon-btn" onClick={() => copyName(current.title)} aria-label={copied === current.title ? 'Copied' : 'Copy change name'} title={copied === current.title ? 'Copied' : 'Copy change name'}><Icon d={copied === current.title ? ICONS.check : ICONS.copy} /></button>}
+          <span className="osv-sr" role="status" aria-live="polite">{copied === current.title ? 'Change name copied' : ''}</span>
           {current.progress && <span className="osv-pill" data-done={current.progress.done === current.progress.total}>{current.progress.done}/{current.progress.total} tasks</span>}
         </div>}
         {current && current.artifacts.length > 1 && <div className="osv-arts" role="group" aria-label="Artifacts">
