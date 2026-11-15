@@ -16,8 +16,8 @@ export type ModelUsageReport = {
 };
 export type ModelTestResult = { status: ModelUsageReport['status']; reason: string; message: string; checkedAt: number };
 export type ModelInfo = { id: string; label?: string; description?: string; contextWindow?: number; maxOutputTokens?: number; disabled?: boolean };
-/** Effective local context budget of a model: owner override, else provider metadata, else 200,000 tokens. */
-export type ModelContextLimit = { provider: number | null; override: number | null; effective: number; source: 'override' | 'provider' | 'fallback' };
+/** Effective local context budget of a model: owner override, else provider metadata, else a public catalogue value, else 200,000 tokens. */
+export type ModelContextLimit = { provider: number | null; override: number | null; catalog?: number; effective: number; source: 'override' | 'provider' | 'catalog' | 'fallback' };
 /** Reply of the `models` action: catalogue plus stored owner overrides (including absent models) and effective limits per listed model. */
 export type ConnectionModels = { models: ModelInfo[]; source: 'provider' | 'manual'; cachedAt?: number | null; error?: string; contextOverrides?: Record<string, number>; contextLimits?: Record<string, ModelContextLimit> };
 export type SavedProxy = { id: string; name: string; host: string; port: number };

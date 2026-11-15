@@ -12,10 +12,10 @@ export type ResolvedRoute = types.models.ModelRoute & {
     systemPreamble?: string;
     /** Optional public price catalogue vendor, absent when not declared. */
     priceVendor?: string;
-    /** Effective local context budget: owner override, else cached provider metadata; absent when neither exists. */
+    /** Effective local context budget: owner override, else cached provider metadata, else public catalogue; absent when none exists. */
     contextWindow?: number;
-    /** Effective context limit with provenance (override, provider or 200000 fallback); raw provider metadata stays in `provider`. */
+    /** Effective context limit with provenance (override, provider, catalog or 200000 fallback); raw provider metadata stays in `provider`. */
     contextLimit?: types.models.ContextLimit;
-    /** Cached maximum output token budget. */
+    /** Maximum output token budget: cached provider metadata, else public catalogue. */
     maxOutputTokens?: number;
 };

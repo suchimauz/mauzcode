@@ -51,6 +51,7 @@
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.1",
+    "@earendil-works/pi-ai": "1.5.2",
     "@huggingface/tokenizers": "^0.2.0",
     "@replit/codemirror-vim": "^6.3.0",
     "@tailwindcss/cli": "^4.3.3",
