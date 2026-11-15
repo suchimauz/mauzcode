@@ -16,4 +16,8 @@ export type State = {
     codexRefresh?: Record<string, Promise<string>>;
     /** Process-local Codex device-code login flows by connection id; lost on restart. */
     loginFlows?: Record<string, types.models.LoginFlow>;
+    /** In-memory cache of the installation-wide session affinity salt (hex), loaded once from the local encrypted secret store. */
+    sessionAffinitySalt?: Promise<string | null>;
+    /** True once a failure to read or create the session affinity salt has been logged. */
+    sessionAffinityWarned?: boolean;
 };

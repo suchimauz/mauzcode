@@ -14,6 +14,7 @@ export default {
             { value: "gemini", label: "Gemini" },
         ] },
         { key: "testModel", label: "Test model", type: "text", help: "Optional model for a minimal generation test, which may incur a charge. Manual model ids are configured through the shared models list." },
+        { key: "sessionAffinity", label: "Send x-session-affinity header", type: "boolean", default: true, help: "Sends an x-session-affinity header with a stable, opaque per-conversation identifier on inference requests so the endpoint can keep a conversation on one backend and its prompt cache warm. It reveals no agent id but lets the endpoint group requests of one conversation. Turn off to stop sending it." },
     ],
     transports: ["direct", "socks", "ssh-tunnel"],
     validate(ctx, config) { return ctx.fns.models.provider.custom.customValidate({ config }); },

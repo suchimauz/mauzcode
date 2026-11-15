@@ -7,7 +7,7 @@ A custom endpoint that understands the `x-session-affinity` header can keep a co
 - The `custom` provider sends an `x-session-affinity` header on every streaming inference request, derived from the request's prompt cache identity (falling back to its session id).
 - The header value is an opaque, stable digest: keyed with a persistent per-installation secret salt and scoped to the connection, so raw agent ids never leave the machine, different installations sharing a gateway do not collide, and the same session on two connections is not linkable.
 - Forks that share their parent's transcript prefix keep the parent's affinity value (existing cache-root lineage); delegated children without inherited history get their own value, so parallel sub-agents spread across backends.
-- New boolean connection field `sessionAffinity` ("Send session affinity header"), enabled by default; existing connections without the field behave as enabled.
+- New boolean connection field `sessionAffinity` ("Send x-session-affinity header"), enabled by default; existing connections without the field behave as enabled.
 - Model discovery and connection tests do not send the header.
 
 ## Privacy

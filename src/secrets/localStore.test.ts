@@ -30,3 +30,15 @@ describe("encrypted local secret store", () => {
         expect(calls).toBe(1);
     });
 });
+
+describe("putLocal ifAbsent", () => {
+    test("inserts once and never overwrites an existing entry", async () => {
+        const ctx = await mkTestCtx({ env: { MAUZCODE_OAUTH_ENCRYPTION_KEY: Buffer.alloc(32, 14).toString("base64") } });
+        const name = "if-absent:" + crypto.randomUUID();
+        expect(await ctx.fns.secrets.putLocal({ namespace: "test", name, value: "first", ifAbsent: true })).toMatchObject({ created: true, version: 1 });
+        expect(await ctx.fns.secrets.putLocal({ namespace: "test", name, value: "second", ifAbsent: true })).toMatchObject({ created: false, version: 1 });
+        expect(await ctx.fns.secrets.getLocal({ namespace: "test", name })).toBe("first");
+        expect(await ctx.fns.secrets.putLocal({ namespace: "test", name, value: "third" })).toMatchObject({ version: 2 });
+        expect(await ctx.fns.secrets.getLocal({ namespace: "test", name })).toBe("third");
+    });
+});

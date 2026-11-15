@@ -50,6 +50,7 @@ describe("custom protocol local HTTP requests", () => {
                     expect(r.headers.get("anthropic-version")).toBe(protocol === "anthropic" ? "2023-06-01" : null);
                     expect(r.headers.get("x-goog-api-key")).toBe(protocol === "gemini" ? "test-only-key" : null);
                 }
+                for (const r of f.requests) expect(r.headers.get("x-session-affinity")).toBeNull();
                 expect(gen!.path).toBe(({ "openai-chat": "/v1/chat/completions", "openai-responses": "/v1/responses", anthropic: "/v1/messages", gemini: "/v1beta/models/mock:generateContent" })[protocol]!);
                 if (protocol === "gemini") { expect(gen!.body.generationConfig.maxOutputTokens).toBe(1); expect(gen!.body.contents[0].parts[0].text).toBe("Hi"); }
                 else { expect(gen!.body.model).toBe("mock"); expect(gen!.body[protocol === "openai-responses" ? "max_output_tokens" : "max_tokens"]).toBe(1); expect(gen!.body.stream).toBe(false); }
@@ -58,6 +59,7 @@ describe("custom protocol local HTTP requests", () => {
                 expect((await provider.test(f.ctx, f.conn)).reason).toBe("generation-failed");
                 f.state.modelsStatus = 500;
                 expect((await provider.test(f.ctx, f.conn)).status).toBe("unavailable");
+                for (const r of f.requests) expect(r.headers.get("x-session-affinity")).toBeNull();
             } finally { f.server.stop(true); }
         });
     }
@@ -191,9 +193,9 @@ describe("custom provider streaming through shared protocols", () => {
     };
     for (const protocol of Object.keys(frames)) {
         test(protocol + " stream goes through the configured protocol with the API key", async () => {
-            const seen: { path: string; auth: string | null; body: any }[] = [];
+            const seen: { path: string; auth: string | null; affinity: string | null; body: any }[] = [];
             const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
-                seen.push({ path: new URL(req.url).pathname, auth: req.headers.get("authorization") ?? req.headers.get("x-api-key") ?? req.headers.get("x-goog-api-key"), body: await req.json() });
+                seen.push({ path: new URL(req.url).pathname, auth: req.headers.get("authorization") ?? req.headers.get("x-api-key") ?? req.headers.get("x-goog-api-key"), affinity: req.headers.get("x-session-affinity"), body: await req.json() });
                 const body = frames[protocol]!.map(f => "data: " + (typeof f === "string" ? f : JSON.stringify(f)) + "\n\n").join("");
                 return new Response(body, { headers: { "content-type": "text/event-stream" } });
             } });
@@ -208,9 +210,78 @@ describe("custom provider streaming through shared protocols", () => {
                 expect(r).toMatchObject({ text: "ok", finishReason: "stop" });
                 expect(seen).toHaveLength(1);
                 expect(seen[0]!.auth).toContain("test-only-key");
+                expect(seen[0]!.affinity).toMatch(/^[0-9a-f]{32}$/);
+                expect(seen[0]!.affinity).not.toContain("s1");
                 await expect(provider.stream!(ctx, conn, { model: "mock", instructions: "", messages: [{ role: "user", content: "hi" }], sessionId: "s1", providerOptions: { x: 1 } })).rejects.toMatchObject({ code: "INVALID_INPUT" });
                 expect(seen).toHaveLength(1);
             } finally { server.stop(true); }
         });
     }
+});
+
+describe("custom provider session affinity header", () => {
+    const frames = "data: " + JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }) + "\n\ndata: [DONE]\n\n";
+    async function harness() {
+        const seen: (string | null)[] = [];
+        const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
+            seen.push(req.headers.get("x-session-affinity"));
+            return new Response(frames, { headers: { "content-type": "text/event-stream" } });
+        } });
+        const ctx = await mkTestCtx({ env: { MAUZCODE_OAUTH_ENCRYPTION_KEY: Buffer.alloc(32, 21).toString("base64") } });
+        await ctx.fns.procs.db.run({ sql: "DELETE FROM local_secrets WHERE namespace='models' AND name='session-affinity-salt'", params: [] });
+        ctx.state.models ??= {};
+        ctx.state.models.sessionAffinitySalt = undefined;
+        const conn = (id: string, extra: Record<string, boolean> = {}): types.models.ResolvedConnection => ({
+            id, provider: "custom", accountName: "mock", config: { baseUrl: server.url.origin, protocol: "openai-chat", ...extra },
+            secret: async () => null, fetch: async (url, init) => await fetch(url, init),
+        });
+        const send = async (c: types.models.ResolvedConnection, sessionId: string, promptCacheKey?: string) => {
+            await provider.stream!(ctx, c, { model: "mock", instructions: "", messages: [{ role: "user", content: "hi" }], sessionId, ...(promptCacheKey ? { promptCacheKey } : {}) });
+            return seen.at(-1);
+        };
+        return { ctx, server, conn, send, seen };
+    }
+
+    test("stable per connection and key, differs across connections and keys, falls back to session id", async () => {
+        const h = await harness();
+        try {
+            const a = h.conn("conn-a"), b = h.conn("conn-b");
+            const first = await h.send(a, "child", "root");
+            expect(first).toMatch(/^[0-9a-f]{32}$/);
+            expect(await h.send(a, "other", "root")).toBe(first!);
+            h.ctx.state.models!.sessionAffinitySalt = undefined;
+            expect(await h.send(a, "child", "root")).toBe(first!);
+            expect(await h.send(b, "child", "root")).not.toBe(first!);
+            expect(await h.send(a, "child", "fresh")).not.toBe(first!);
+            expect(await h.send(a, "root")).toBe(first!);
+            expect(await h.send(a, "child")).not.toBe(first!);
+        } finally { h.server.stop(true); }
+    });
+
+    test("absent when disabled, present when the field is missing", async () => {
+        const h = await harness();
+        try {
+            expect(await h.send(h.conn("c", { sessionAffinity: false }), "s1")).toBeNull();
+            expect(await h.send(h.conn("c", { sessionAffinity: true }), "s1")).toMatch(/^[0-9a-f]{32}$/);
+            expect(await h.send(h.conn("c"), "s1")).toMatch(/^[0-9a-f]{32}$/);
+        } finally { h.server.stop(true); }
+    });
+
+    test("concurrent first calls store one salt; an undecryptable salt is replaced", async () => {
+        const h = await harness();
+        try {
+            const values = await Promise.all([1, 2, 3].map(async () => {
+                h.ctx.state.models!.sessionAffinitySalt = undefined;
+                return await h.ctx.fns.models.provider.custom.sessionAffinity({ connectionId: "c", key: "k" });
+            }));
+            expect(new Set(values).size).toBe(1);
+            const rows = await h.ctx.fns.procs.db.select({ sql: "SELECT count(*)::int AS n FROM local_secrets WHERE namespace='models' AND name='session-affinity-salt'", params: [] }) as any[];
+            expect(rows[0].n).toBe(1);
+            await h.ctx.fns.procs.db.run({ sql: "UPDATE local_secrets SET value_enc='broken' WHERE namespace='models' AND name='session-affinity-salt'", params: [] });
+            h.ctx.state.models!.sessionAffinitySalt = undefined;
+            const replaced = await h.ctx.fns.models.provider.custom.sessionAffinity({ connectionId: "c", key: "k" });
+            expect(replaced).toMatch(/^[0-9a-f]{32}$/);
+            expect(replaced).not.toBe(values[0]);
+        } finally { h.server.stop(true); }
+    });
 });
