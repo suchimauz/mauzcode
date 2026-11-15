@@ -5,6 +5,8 @@
  * @param opts.id Connection UUID.
  * @param opts.signal Cancellation applied to every request made through the resolved fetch.
  * @param opts.timeoutMs Deadline for each request made through the resolved fetch. @default 30000 @minimum 1 @maximum 3600000
+ * @param opts.headerTimeoutMs Response header deadline for each request, capped by timeoutMs. @default 300000 @minimum 1 @maximum 600000
+ * @param opts.idleTimeoutMs Maximum silence between body chunks for each request, capped by timeoutMs. @default 300000 @minimum 1 @maximum 600000
  */
 export default async function (
     ctx: Context,
@@ -16,6 +18,10 @@ export default async function (
         signal?: AbortSignal;
         /** Deadline for each request made through the resolved fetch. @default 30000 @minimum 1 @maximum 3600000 */
         timeoutMs?: number;
+        /** Response header deadline for each request, capped by timeoutMs. @default 300000 @minimum 1 @maximum 600000 */
+        headerTimeoutMs?: number;
+        /** Maximum silence between body chunks for each request, capped by timeoutMs. @default 300000 @minimum 1 @maximum 600000 */
+        idleTimeoutMs?: number;
     },
 ): Promise<{ view: types.models.ConnectionView; definition: types.models.ProviderDefinition; conn: types.models.ResolvedConnection }> {
     const view = await ctx.fns.models.connections.get({ id: opts.id });
@@ -33,7 +39,7 @@ export default async function (
             if (!secretKeys.has(key) || !view.secrets[key]) return null;
             return await ctx.fns.secrets.getLocal({ namespace: "models", name: `${view.id}.${key}` });
         },
-        fetch: (url: string, init?: RequestInit) => ctx.fns.models.transport.fetch({ transport, url, init, signal: opts.signal, timeoutMs: opts.timeoutMs ?? 30000 }),
+        fetch: (url: string, init?: RequestInit) => ctx.fns.models.transport.fetch({ transport, url, init, signal: opts.signal, timeoutMs: opts.timeoutMs ?? 30000, headerTimeoutMs: opts.headerTimeoutMs, idleTimeoutMs: opts.idleTimeoutMs }),
     };
     return { view, definition, conn };
 }

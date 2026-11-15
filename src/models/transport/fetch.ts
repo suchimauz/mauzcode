@@ -1,12 +1,14 @@
 /**
  * Fetch a response through an explicit model transport
  *
- * Use for ResolvedConnection.fetch. Refuse redirects, credentials and non-HTTPS proxy destinations; never fall back. Deadline and cancellation cover setup and streamed bodies. Proxy requests support GET/POST and eight MiB bodies. Connection-id resolution belongs to the later connection layer.
+ * Use for ResolvedConnection.fetch. Refuse redirects, credentials and non-HTTPS proxy destinations; never fall back. Deadline and cancellation cover setup and streamed bodies; header and idle (between body chunks) deadlines apply identically to direct, SOCKS and SSH-tunnel transports and are capped by the total deadline. Proxy requests support GET/POST and eight MiB bodies. Connection-id resolution belongs to the later connection layer.
  * @param opts.transport Saved transport bound to this connection.
  * @param opts.url Absolute credential-free HTTP(S) destination.
  * @param opts.init Request options; redirects always fail and proxy methods must be GET or POST.
  * @param opts.signal Cancellation combined with init.signal through body EOF.
  * @param opts.timeoutMs Total deadline including setup and body streaming. @default 120000 @minimum 1 @maximum 3600000
+ * @param opts.headerTimeoutMs Deadline for receiving response headers, capped by timeoutMs. @default 300000 @minimum 1 @maximum 600000
+ * @param opts.idleTimeoutMs Maximum silence between response body chunks, capped by timeoutMs; restarts on every chunk. @default 300000 @minimum 1 @maximum 600000
  */
 export default async function (
     ctx: Context,
@@ -22,6 +24,10 @@ export default async function (
         signal?: AbortSignal;
         /** Total deadline including setup and body streaming. @default 120000 @minimum 1 @maximum 3600000 */
         timeoutMs?: number;
+        /** Deadline for receiving response headers, capped by timeoutMs. @default 300000 @minimum 1 @maximum 600000 */
+        headerTimeoutMs?: number;
+        /** Maximum silence between response body chunks, capped by timeoutMs; restarts on every chunk. @default 300000 @minimum 1 @maximum 600000 */
+        idleTimeoutMs?: number;
     },
 ): Promise<Response> {
     const error = (message: string, cause?: unknown) => Object.assign(new Error(message, {cause}), {code: 'TRANSPORT'});
@@ -30,6 +36,9 @@ export default async function (
     const configError = (message: string, cause?: unknown) => Object.assign(error(message, cause), {retryable: false});
         const timeout = opts.timeoutMs ?? 120000;
         if (!Number.isInteger(timeout) || timeout < 1 || timeout > 3600000) throw configError('Invalid transport timeout');
+        for (const value of [opts.headerTimeoutMs, opts.idleTimeoutMs]) if (value !== undefined && (!Number.isInteger(value) || value < 1 || value > 600000)) throw configError('Invalid transport timeout');
+        // Header and idle deadlines are explicit and equal for every transport, never above the total deadline.
+        const headerTimeout = Math.min(opts.headerTimeoutMs ?? 300000, timeout), idleTimeout = Math.min(opts.idleTimeoutMs ?? 300000, timeout);
         let url: URL;
         try { url = new URL(opts.url); } catch (cause) { throw configError('Absolute HTTP(S) URL required', cause); }
         if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw configError('Credential-free HTTP(S) URL required');
@@ -40,6 +49,8 @@ export default async function (
         const sources = [opts.signal, opts.init?.signal].filter((s): s is AbortSignal => !!s);
         const abort = () => controller.abort(error('Transport cancelled'));
         const timer = setTimeout(() => controller.abort(error('Transport timed out')), timeout);
+        let headerTimer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => controller.abort(error('Transport response header deadline exceeded')), headerTimeout);
+        let idleTimer: ReturnType<typeof setTimeout> | undefined;
         let lease: {release: () => void; signal: AbortSignal} | undefined;
         let released = false, finished = false;
         const release = () => { if (lease && !released) { released = true; lease.release(); } };
@@ -47,7 +58,7 @@ export default async function (
         let output: ReadableStreamDefaultController<Uint8Array> | undefined;
         const cleanup = () => {
          if (finished) return;
-         finished = true; clearTimeout(timer);
+         finished = true; clearTimeout(timer); clearTimeout(headerTimer); clearTimeout(idleTimer);
          for (const source of sources) source.removeEventListener('abort', abort);
          signal.removeEventListener('abort', cancelled);
          lease?.signal.removeEventListener('abort', abort);
@@ -87,16 +98,19 @@ export default async function (
            proxy = {host:'127.0.0.1', port:acquired.port};
           }
           signal.throwIfAborted();
-          response = await bounded(ctx.fns.socksProxy.request({proxy, url:url.href, method:request.method as 'GET'|'POST', headers:Object.fromEntries(request.headers), body, signal, timeoutMs:timeout, onDone:release}));
+          response = await bounded(ctx.fns.socksProxy.request({proxy, url:url.href, method:request.method as 'GET'|'POST', headers:Object.fromEntries(request.headers), body, signal, timeoutMs:timeout, headerTimeoutMs:headerTimeout, idleTimeoutMs:idleTimeout, onDone:release}));
          }
+         clearTimeout(headerTimer); headerTimer = undefined;
          if (signal.aborted) { await response.body?.cancel(signal.reason); throw signal.reason; }
          if (!response.body) { cleanup(); return response; }
          reader = response.body.getReader();
          const body = new ReadableStream<Uint8Array>({
           start(c) { output = c; },
           async pull(c) {
-           try { const next = await bounded(reader!.read()); if (finished) return; if (next.done) { c.close(); cleanup(); } else c.enqueue(next.value!); }
-           catch (cause) { if (!finished) { c.error(error('Transport response failed', cause)); cleanup(); } }
+           // The idle deadline measures only time spent waiting for upstream bytes.
+           idleTimer = setTimeout(() => controller.abort(error('Transport idle deadline exceeded')), idleTimeout);
+           try { const next = await bounded(reader!.read()); clearTimeout(idleTimer); if (finished) return; if (next.done) { c.close(); cleanup(); } else c.enqueue(next.value!); }
+           catch (cause) { clearTimeout(idleTimer); if (!finished) { c.error(error('Transport response failed', cause)); cleanup(); } }
           },
           // Consumer cancellation is a normal end of use: cancel the source, then abort the transport without rejecting.
           async cancel(reason) { cleanup(); await reader!.cancel(reason).catch(() => undefined); controller.abort(error('Response cancelled')); }

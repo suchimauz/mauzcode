@@ -82,7 +82,7 @@ export default async function (
             reasoning = ctx.fns.models.inference.resolveReasoning({ model: opts.model, preference: opts.reasoningEffort, metadata: info?.reasoning ?? null, profile });
         }
         opts.signal?.throwIfAborted();
-        const { definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id, signal: opts.signal, timeoutMs: 600000 });
+        const { definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id, signal: opts.signal, timeoutMs: 1800000, headerTimeoutMs: 300000, idleTimeoutMs: 300000 });
         const { connectionId: _c, temperature, maxTokens, responseFormat, ...rest } = opts;
         // Capability gating: a provider never sees options it did not opt into.
         const gated = {

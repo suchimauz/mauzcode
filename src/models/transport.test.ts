@@ -88,6 +88,23 @@ describe('model transports', () => {
   expect(network.retryable).toBeUndefined();
  });
  test('unsupported proxy method rejected',async () => {const f=fixture(); await expect(call(f,socks,{init:{method:'PUT'}})).rejects.toMatchObject({code:'TRANSPORT'});expect(f.request).not.toHaveBeenCalled();});
+ test('proxied requests get explicit 5-minute header and idle deadlines, capped by the total',async () => {
+  const f=fixture();
+  for(const t of [socks,ssh]) await (await call(f,t,{timeoutMs:1800000})).text();
+  for(const c of f.request.mock.calls) expect(c[0]).toMatchObject({timeoutMs:1800000,headerTimeoutMs:300000,idleTimeoutMs:300000});
+  await (await call(f,ssh,{timeoutMs:20000})).text();
+  expect(f.request.mock.calls[2]![0]).toMatchObject({headerTimeoutMs:20000,idleTimeoutMs:20000});
+  await (await call(f,socks,{timeoutMs:1800000,headerTimeoutMs:600000,idleTimeoutMs:90000})).text();
+  expect(f.request.mock.calls[3]![0]).toMatchObject({headerTimeoutMs:600000,idleTimeoutMs:90000});
+  for(const idleTimeoutMs of [0,1.5,600001]) await expect(call(f,ssh,{idleTimeoutMs})).rejects.toMatchObject({code:'TRANSPORT',retryable:false});
+ });
+ test('a body that stays silent past the idle deadline fails; silence below it does not',async () => {
+  const slow=(gap:number)=>mock(async (_url:any,_init:any)=>new Response(new ReadableStream({async start(c){c.enqueue(new TextEncoder().encode('a'));await Bun.sleep(gap);c.enqueue(new TextEncoder().encode('b'));c.close();}})));
+  globalThis.fetch=slow(60) as any;
+  expect(await (await call(fixture(),direct,{idleTimeoutMs:200})).text()).toBe('ab');
+  globalThis.fetch=slow(200) as any;
+  await expect((await call(fixture(),direct,{idleTimeoutMs:30})).text()).rejects.toThrow();
+ });
 });
 describe('model transport validation', () => {
  const check=(f:ReturnType<typeof fixture>,transport:types.models.TransportSpec,allowed:types.models.TransportSpec['kind'][]=['direct','socks','ssh-tunnel'])=>validate(f.ctx,null,{transport,allowed});

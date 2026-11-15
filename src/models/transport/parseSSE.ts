@@ -3,7 +3,7 @@
  *
  * SDK-owned SSE framing for provider streams: yields { event, data } per blank-line-delimited frame (multi-line data joined by newline, one leading space stripped, comment/keepalive frames skipped, CRLF accepted). An unterminated trailing frame is dropped as truncated. Throws when no chunk arrives within idleTimeoutMs. Callers JSON-parse and dispatch themselves.
  * @param opts.body Response byte stream.
- * @param opts.idleTimeoutMs Maximum wait between chunks in milliseconds. @default 120000 @minimum 1
+ * @param opts.idleTimeoutMs Maximum wait between chunks in milliseconds. @default 300000 @minimum 1
  */
 export default function (
     ctx: Context,
@@ -11,12 +11,12 @@ export default function (
     opts: {
         /** Response byte stream. */
         body: ReadableStream<Uint8Array>;
-        /** Maximum wait between chunks in milliseconds. @default 120000 @minimum 1 */
+        /** Maximum wait between chunks in milliseconds. @default 300000 @minimum 1 */
         idleTimeoutMs?: number;
     },
 ): AsyncGenerator<{ event: string | null; data: string }> {
     async function* iterate(): AsyncGenerator<{ event: string | null; data: string }> {
-        const idleMs = opts.idleTimeoutMs ?? 120000;
+        const idleMs = opts.idleTimeoutMs ?? 300000;
         const reader = opts.body.getReader();
         const decoder = new TextDecoder();
         let buf = "";
