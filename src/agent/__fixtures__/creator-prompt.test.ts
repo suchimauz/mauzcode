@@ -2,21 +2,24 @@ import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { testCtx } from "../../$test";
 
-// Pre-split baseline: deliberately assembled by the unchanged production function.
-// Explicit fixture values avoid dependence on cwd, user plugins or user settings.
-// UPDATE_CREATOR_PROMPT=1 is only for the initial capture, never for equivalence fixes.
-test("capture the pre-split Creator prompt for a fixed fixture agent", async () => {
+// Immutable pre-split baseline committed as e0230a31; never recapture it.
+// Runtime context had no blank separator in the original; compare its lines independently.
+test("Creator preserves the reviewed pre-split prompt", async () => {
     const ctx = await testCtx();
     ctx.state.registry.plugins.list = () => [{
         name: "openspec", source: "official", namespaces: ["openspec"],
         description: "Fixture plugin for deterministic Creator prompt coverage.",
     }];
+    ctx.state.registry.openspec = { run: () => {} };
     const agent = {
         id: "fixture", model: "mock:test", workspaceDir: "/fixture/workspace",
         systemPrompt: "Fixture per-agent instructions.", messages: [], events: [], scratchpad: {},
     } as any;
     const prompt = await ctx.fns.agent.fullSystemPrompt({ agent });
     const path = resolve(import.meta.dir, "creator-prompt.before.md");
-    if (process.env.UPDATE_CREATOR_PROMPT === "1") await Bun.write(path, prompt);
-    expect(prompt).toBe(await Bun.file(path).text());
+    const before = await Bun.file(path).text();
+    const manifest = await Bun.file(resolve(import.meta.dir, "creator-prompt.relocations.json")).json();
+    const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
+    const missing = before.split(/\n\s*\n/).filter(p => !manifest.paragraphs.includes(p)).flatMap(p => p.includes("## Runtime context") ? p.split("\n") : [p]).filter(p => !normalize(prompt).includes(normalize(p)));
+    expect(missing).toEqual([]);
 });

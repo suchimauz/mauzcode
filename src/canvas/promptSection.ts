@@ -3,15 +3,19 @@
 /**
  * Builds the system-prompt block that tells agents how to show things on the canvas beside the chat and lists the loaded kinds.
  */
-export default async function (ctx: Context, _session: Session | null, _opts: {}): Promise<string> {
+export default async function (ctx: Context, _session: Session | null, opts: {
+    /** Restrict advertised kinds and launch functions to reachable capabilities. */
+    allows?: (name: string) => boolean;
+}): Promise<string> {
     // Built-in kinds are described in full; plugin kinds and the functions that show their result on the
     // canvas are only named — canvas.search finds them with their args, so the prompt does not grow
     // with every mounted plugin.
-    const all = (await ctx.fns.canvas.kinds({})).filter(k => k.hint);
+    const all = (await ctx.fns.canvas.kinds({})).filter(k => k.hint && (!opts.allows || k.module === "canvas" ||
+        Object.keys(k.module.split(".").reduce((node, key) => node?.[key], ctx.state.registry) ?? {}).some(fn => opts.allows!(`${k.module}.${fn}`))));
     if (!all.length) return "";
     const kinds = all.filter(k => k.module === "canvas");
     const plugin = all.filter(k => k.module !== "canvas").map(k => k.name);
-    const shows = (await ctx.fns.canvas.search({ limit: 100 })).filter(r => r.type === "function").map(r => r.name);
+    const shows = (await ctx.fns.canvas.search({ limit: 100 })).filter(r => r.type === "function" && (!opts.allows || opts.allows(r.name))).map(r => r.name);
     return [
         "## Canvas",
         "",

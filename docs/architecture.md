@@ -1,5 +1,16 @@
 # Architecture
 
+## Capability prompt sections
+
+`src/agent/SYSTEM_PROMPT_BASE.md` holds API-free invariants and the generic requirement to follow workspace `AGENTS.md`. `CLAUDE.md` links to `AGENTS.md`; project-specific policies stay there, not in generated prompts.
+
+Add a section as `src/<module>/$prompt_<id>.md` (plugins use the same path grammar). YAML frontmatter requires a unique nonempty `id`, `title`, `requires: [module.function]` and numeric `order`; optional `generator: module.function` supplies dynamic text and receives `{ allows }`. Every required function must be allowed by every frozen preset layer, and any layer's `excludeSections` removes the section. Include all APIs advertised by a paragraph in its requirements. Sections sort by order then ID. Base → sections → preset additions → per-agent additions → runtime context is the assembly order. Tools are filtered by implementation function, plugin indexes require a reachable granted function, and fences are an independent output channel.
+
+`src/prompts/$loader_prompt.ts` owns `ctx.state.prompts.registry`; same-source reload replaces a section, different-source duplicate IDs fail. Reload the owning namespace after edits. No assembled-prompt cache is used: current registry origins are checked each turn. Presets are guardrails, not a sandbox; eval and shell retain server-process privileges.
+
+Classify each new core namespace in `src/agentPreset/coreCatalogue.ts`, and review new functions under wildcard grants. Keep `AGENTS.md` and `docs/architecture.md` current when changing section authoring. Creator equivalence is checked against the immutable `src/agent/__fixtures__/creator-prompt.before.md` captured in `e0230a31`; only the exact three project-policy paragraphs in `creator-prompt.relocations.json` are exempt, with their text preserved in `AGENTS.md`.
+
+
 ## Direction
 
 The primary shell is React/Vite in `frontend/`, served at `/`. Trusted browser extensions use the local `@mauzcode/ui` SDK and explicit grants for pages, navigation, panels and actions. React/React DOM is supplied by the host; private imports and a second runtime are not supported. See [ui-architecture.md](ui-architecture.md) for the actual contract, not the older SSR extension mechanisms below.
