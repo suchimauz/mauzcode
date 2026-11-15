@@ -64,10 +64,10 @@ The system SHALL re-register provider declarations when their module or plugin i
 - **THEN** the provider catalogue reflects the new definition
 
 ### Requirement: Optional inference operations
-A provider definition MAY declare streaming and compaction operations that receive the resolved connection and a request, and send network traffic only through the connection's transport. The core inference entry point SHALL refuse a request with code `UNSUPPORTED` when the provider declares no such operation, without contacting the network.
+A provider definition MAY declare streaming and compaction operations that receive the resolved connection and a request, and send network traffic only through the connection's transport. A protocol route counts as streaming support. The core inference entry point SHALL refuse a request with code `UNSUPPORTED` when the provider declares neither a streaming operation nor a protocol route (or no compaction operation for compaction), without contacting the network.
 
 #### Scenario: Provider without streaming
-- **WHEN** a stream request targets a connection whose provider declares no streaming operation
+- **WHEN** a stream request targets a connection whose provider declares neither a streaming operation nor a protocol route
 - **THEN** it fails with code `UNSUPPORTED` and no request is sent
 
 #### Scenario: Provider with streaming
@@ -135,12 +135,16 @@ The SDK SHALL support optional opaque provider continuation state in stream requ
 - **THEN** no Codex-specific header or requirement is imposed on it
 
 ### Requirement: SDK-owned reasoning capabilities
-The SDK SHALL define provider-owned supported reasoning levels, a supported default and requested/applied preference diagnostics. Opted-in providers SHALL receive normalized preferences before inference, without legacy routes, accounts or types. Automatic or omitted preference SHALL use the default; unsupported levels SHALL use the nearest supported lower-or-equal level, otherwise the lowest higher level. Providers not opting in MUST retain their existing behavior.
+The SDK SHALL define provider-owned supported reasoning levels, an optional supported default, optional native wire values per level, an optional thinking-disable flag and requested/applied preference diagnostics. Opted-in providers SHALL receive normalized preferences before inference, without legacy routes, accounts or types. Automatic or omitted preference SHALL use the default; when capabilities declare no default it SHALL apply `auto`, meaning no reasoning setting is sent. Unsupported levels SHALL use the nearest supported lower-or-equal level, otherwise the lowest higher level. Providers not opting in MUST retain their existing behavior.
 
 #### Scenario: Capability-backed normalization
 - **GIVEN** a provider participating in SDK reasoning normalization and validated capabilities
 - **WHEN** a caller submits a preference
 - **THEN** the SDK resolves it before provider inference and retains the requested value for diagnostics without mutating caller settings
+
+#### Scenario: Auto without a declared default
+- **WHEN** capabilities declare supported levels but no default and the caller requests auto
+- **THEN** the applied value is `auto` and no reasoning field is sent upstream
 
 #### Scenario: Missing capabilities
 - **WHEN** an opted-in provider has neither validated capabilities nor an applicable documented SDK profile
@@ -148,7 +152,7 @@ The SDK SHALL define provider-owned supported reasoning levels, a supported defa
 - **AND** the SDK does not discover legacy model routes to fill the gap
 
 #### Scenario: Invalid metadata or preference
-- **WHEN** supported levels are empty, a default is unsupported, or the preference is outside the SDK enumeration
+- **WHEN** supported levels are empty, a declared default is unsupported, a wire value is empty or for an unsupported level, or the preference is outside the SDK enumeration
 - **THEN** the SDK reports a validation failure rather than sending an invalid effort downstream
 
 #### Scenario: Provider not opted in
@@ -215,3 +219,43 @@ The models stream and one-shot call SHALL accept tools in one provider-neutral f
 #### Scenario: Optional fields disable strict mode
 - **WHEN** a neutral tool schema has an optional property at any nesting level
 - **THEN** OpenAI-shaped wire tools are sent with `strict: false`
+
+### Requirement: Protocol-route providers
+A provider definition MAY declare a protocol route instead of a streaming operation, returning a shared protocol id, base URL and headers for a connection, model, cached model metadata and session id. Registration MUST reject a definition declaring both. The core SHALL run all existing inference checks first, then stream through that shared protocol on the connection's transport, merging headers as: JSON accept, protocol headers, provider headers.
+
+#### Scenario: Provider streams through a route
+- **WHEN** a stream request targets an enabled model of a provider declaring a protocol route that returns `anthropic`
+- **THEN** the request is sent in Anthropic Messages format to the returned base through the connection's transport
+- **AND** the normalized result is returned as for any streaming provider
+
+#### Scenario: Route returns an unknown protocol
+- **WHEN** a protocol route returns an id outside the shared protocol set
+- **THEN** inference fails with code `INVALID_INPUT` and no request is sent
+
+#### Scenario: Route and stream both declared
+- **WHEN** a provider declaration contains both a streaming operation and a protocol route
+- **THEN** registration of that provider fails with an error
+
+#### Scenario: Route model without reasoning controls
+- **GIVEN** a protocol-route provider opted into reasoning
+- **WHEN** the requested model was discovered without reasoning metadata and no profile applies
+- **THEN** the request streams without any reasoning field instead of failing capability-unavailable
+
+#### Scenario: Disabled model with a route provider
+- **WHEN** the requested model or connection is disabled
+- **THEN** the existing disabled-state error is returned and the protocol route is not called
+
+### Requirement: Provider usage refresh interval
+A provider definition MAY declare `usageRefreshMs`, the minimum interval in milliseconds between usage requests for one connection. The value MUST be a finite integer from 10000 to 3600000; otherwise registration of that declaration fails and other providers stay registered. When omitted, the interval is 60000.
+
+#### Scenario: Provider declares an interval
+- **WHEN** a provider declares `usageRefreshMs: 180000`
+- **THEN** it is registered and its usage reports are reused for 180 s
+
+#### Scenario: Invalid interval
+- **WHEN** a provider declares `usageRefreshMs: 1000`
+- **THEN** registration of that declaration fails with an error naming `usageRefreshMs`
+
+#### Scenario: Omitted interval
+- **WHEN** a provider declares usage without `usageRefreshMs`
+- **THEN** its usage reports are reused for 60 s
