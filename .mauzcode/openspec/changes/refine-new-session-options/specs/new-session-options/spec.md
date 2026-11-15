@@ -52,6 +52,24 @@ The system SHALL NOT provide prompt presets for session creation. The new-sessio
 - **WHEN** a client posts a new-session request that includes `promptPreset`
 - **THEN** the server answers HTTP 400 and creates no session
 
+### Requirement: New-session bridge accepts only UI fields
+The new-session submit endpoint SHALL accept only `requestKey`, `projectId`, `model`, `effort`, `mascot`, `text`, `title` and attached files. A request containing `workspaceDir`, `createWorkspaceDir` or `systemPrompt` MUST be rejected with HTTP 400 and MUST NOT create a session. The public agent API keeps these fields.
+
+#### Scenario: Submit with a custom directory
+- **WHEN** a client posts a new-session request that includes `workspaceDir`
+- **THEN** the server answers HTTP 400 and creates no session
+
+### Requirement: Legacy creation path removed
+The system SHALL NOT provide `POST /agent/new`, `agent.createFromPopup` or `ui.newAgentPopup`. The "new agent" menu entry SHALL open the new-session composer directly. `GET /agent/new` SHALL keep redirecting to the new-session composer without creating a session.
+
+#### Scenario: Menu entry
+- **WHEN** the person picks "new agent" in the menu
+- **THEN** the new-session composer opens without an intermediate redirect
+
+#### Scenario: Old bookmark
+- **WHEN** a browser opens `GET /agent/new?projectId=p`
+- **THEN** it is redirected to the new-session composer with project `p` selected and no session is created
+
 ### Requirement: Legacy drafts stay usable
 A saved new-session draft or pending submit that still contains `promptPreset` or other removed fields SHALL load without an error. The removed fields SHALL be ignored and MUST NOT be sent.
 
@@ -60,12 +78,22 @@ A saved new-session draft or pending submit that still contains `promptPreset` o
 - **THEN** the composer opens normally with the rest of the draft
 - **AND** a later submit does not include `promptPreset`
 
+#### Scenario: Old pending retry with a custom directory
+- **WHEN** the composer finds a pending first-message retry saved with a non-empty `workspaceDir`, `createWorkspaceDir`, `promptPreset` or `systemPrompt`
+- **THEN** the retry is not sent
+- **AND** its text and title are restored into the ordinary draft, the pending record is cleared and the person can pick a Workspace and send again
+
 ### Requirement: Accessible options popover
 The options chip SHALL be reachable with the keyboard and SHALL have an accessible name. Enter or Space on the focused chip SHALL open the popover and move focus to the "Название" field. Escape SHALL close the popover and return focus to the chip. Opening and closing MUST respect the reduced-motion preference, and the popover MUST follow the active theme.
 
 #### Scenario: Keyboard flow
 - **WHEN** the person focuses the chip, presses Enter, types a title and presses Escape
 - **THEN** the title is kept and focus is back on the chip
+
+#### Scenario: Enter in the title field
+- **WHEN** the "Название" field has focus and the person presses Enter
+- **THEN** the popover closes, the title is kept and focus returns to the chip
+- **AND** the first message is not sent
 
 #### Scenario: Reduced motion
 - **WHEN** the system requests reduced motion
