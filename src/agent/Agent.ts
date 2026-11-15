@@ -13,6 +13,8 @@ export type Agent = {
     /** SSH host alias the workspace lives on (see remote.servers); empty/undefined = local. When set, workspaceDir is a path on that host. */
     workspaceHost?: string;
     systemPrompt: string;
+    /** Creation-time access rules; persisted on insert only, independent of later preset edits. */
+    preset?: types.agentPreset.Snapshot;
     /** Narrow this agent to a subset of the declared tools (wire names). Unset
      *  = every loaded tool. What is excluded here never reaches the prompt or
      *  the provider's tool list, so it costs no prefix tokens either. */

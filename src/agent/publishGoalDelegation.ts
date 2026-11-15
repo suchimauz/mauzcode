@@ -15,6 +15,8 @@ export default async function (
     opts: {
         /** Delegator matching the run-owned invocation scope. */
         parent: types.agent.Agent;
+        /** Optional preset to narrow the parent's creation snapshot. */
+        presetId?: string;
         /** Optional child title. */
         title?: string;
         /** Inherit full transcript when true; false constructs a fresh child. Omit for a zero-offset fork. */
@@ -31,8 +33,8 @@ export default async function (
     if(!a) throw new Error('Goal publication requires invocation authority');
     const child = await ctx.fns.procs.db.transaction({fn:async()=>{
      const child=opts.forkContext===false
-     ? await ctx.fns.agent.start({model:ctx.fns.agent.requireModel({model:opts.parent.model,agentId:opts.parent.id}),systemPrompt:opts.parent.systemPrompt,workspaceDir:opts.parent.workspaceDir,workspaceHost:opts.parent.workspaceHost,visibility:'team',deferPublication:true})
-     : await ctx.fns.session.fork({id:a.sourceAgentId,title:opts.title,visibility:'team',...(opts.forkContext?{}:{offset:0}),deferPublication:true});
+     ? await ctx.fns.agent.start({preset:await ctx.fns.agentPreset.resolve({id:opts.presetId,parent:opts.parent.preset}),model:ctx.fns.agent.requireModel({model:opts.parent.model,agentId:opts.parent.id}),systemPrompt:opts.parent.systemPrompt,workspaceDir:opts.parent.workspaceDir,workspaceHost:opts.parent.workspaceHost,visibility:'team',deferPublication:true})
+     : await ctx.fns.session.fork({id:a.sourceAgentId,presetId:opts.presetId,title:opts.title,visibility:'team',...(opts.forkContext?{}:{offset:0}),deferPublication:true});
      const reservation=await ctx.fns.goal.delegationReserve({rootAgentId:a.rootAgentId,goalId:a.goalId,delegatorAgentId:a.sourceAgentId,delegatorRunToken:a.runToken,sourceAgentId:child.id,parentCapabilityId:a.parentCapabilityId});
      child.scratchpad={...opts.scratchpad};
      await ctx.fns.session.updateScratchpad({id:child.id,scratchpad:child.scratchpad});

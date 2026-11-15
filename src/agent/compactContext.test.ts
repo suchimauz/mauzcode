@@ -14,6 +14,17 @@ async function seeded(ctx: any) {
 }
 
 describe("agent.compactContext", () => {
+  test("hidden compaction child inherits its parent's preset instead of the default", async () => {
+    const ctx = await mkTestCtx();
+    const parent = await seeded(ctx);
+    parent.preset = await ctx.fns.agentPreset.resolve({ id: 'minimal' });
+    ctx.state.registry.models.call = () => ({text:'summary',finishReason:'stop',usage:{},raw:{}});
+    await ctx.fns.agent.compactContext({ agent: parent });
+    const rows = await ctx.fns.procs.db.select({ sql: 'SELECT preset_snapshot FROM agents WHERE parent_id = ? AND visibility = ?', params: [parent.id, 'hidden'] });
+    expect(rows).toHaveLength(1);
+    const snapshot = typeof rows[0].preset_snapshot === 'string' ? JSON.parse(rows[0].preset_snapshot) : rows[0].preset_snapshot;
+    expect(snapshot).toEqual(parent.preset);
+  });
   test("preservation loss keeps prior active context and fails the draft without retry", async () => {
     const ctx = await mkTestCtx();
     const agent = await seeded(ctx);

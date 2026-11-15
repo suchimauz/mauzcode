@@ -23,6 +23,8 @@ export default async function (
     systemPrompt?: string;
             /** Narrow the agent to these tool wire names; unset means every declared tool. */
     tools?: string[];
+    /** Resolved creation snapshot supplied by trusted creation/fork paths; omitted resolves the configured default. */
+    preset?: types.agentPreset.Snapshot;
     /** Parent id used by the operation. */
     parentId?: string | null;
         /** Listing policy; this does not grant or restrict access. @default nav */
@@ -35,6 +37,7 @@ export default async function (
     if (opts.deferPublication && !(ctx.state.procs as any)?.db?.transactionStorage?.getStore()?.active) {
         throw new Error('Deferred agent publication requires an active framework transaction');
     }
+    const preset = opts.preset ? structuredClone(opts.preset) : await ctx.fns.agentPreset.resolve({});
     const id = await ctx.fns.agent.nextId({});
     const workspaceHost = String(opts.workspaceHost ?? "").trim();
     const workspaceDir = workspaceHost && opts.workspaceDir?.startsWith("/")
@@ -51,6 +54,7 @@ export default async function (
         workspaceHost,
         systemPrompt: opts.systemPrompt ?? "",
         tools: opts.tools,
+        preset,
         messages: [],
         events: [],
         cursors: {},

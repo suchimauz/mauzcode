@@ -23,10 +23,10 @@
 
 ## 4. Agent snapshot lifecycle
 
-- [ ] 4.1 Add `preset?: types.agentPreset.Snapshot` to `types.agent.Agent`; persist `preset_id`/`preset_snapshot` on insert only in `session.save`, read them in `session.load`/`loadAll` (missing snapshot → Creator plus `procs.log.warn`). Verify with a test that a later save does not change the stored snapshot.
-- [ ] 4.2 `ui.createAgent({ presetId? })` resolves and stores the snapshot. Verify with a test: Standard by default; an unknown id throws and creates nothing.
-- [ ] 4.3 `session.fork({ presetId? })` copies the parent snapshot or narrows it through `resolve({ parent })`; pass `presetId` through `agent.delegate`, `agent.delegateTask`, `agent.publishGoalDelegation` and `sharedAgent.delegate`. Verify with tests for "Standard parent asks for Creator" and "Default inheritance", and a goal sidecar inheriting its parent.
-- [ ] 4.4 Verify the "Preset edited after creation" and "Preset deleted after creation" scenarios with an integration test across `agentPreset.update/remove` and two agents.
+- [x] 4.1 Add `preset?: types.agentPreset.Snapshot` to `types.agent.Agent`; persist `preset_id`/`preset_snapshot` on insert only in `session.save`, read them in `session.load`/`loadAll` (missing snapshot → Creator plus `procs.log.warn`). Verify with a test that a later save does not change the stored snapshot.
+- [x] 4.2 `ui.createAgent({ presetId? })` resolves and stores the snapshot. Verify with a test: Standard by default; an unknown id throws and creates nothing.
+- [x] 4.3 `session.fork({ presetId? })` copies the parent snapshot or narrows it through `resolve({ parent })`; pass `presetId` through `agent.delegate`, `agent.delegateTask`, `agent.publishGoalDelegation` and `sharedAgent.delegate`. Verify with tests for "Standard parent asks for Creator" and "Default inheritance", and a goal sidecar inheriting its parent.
+- [x] 4.4 Verify the "Preset edited after creation" and "Preset deleted after creation" scenarios with an integration test across `agentPreset.update/remove` and two agents.
 
 ## 5. Native tools and tool calls
 

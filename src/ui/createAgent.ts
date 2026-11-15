@@ -12,15 +12,18 @@ export default async function (
     ctx: Context,
     _session: Session | null,
     opts: {
+        /** Preset identifier for this new session; omitted uses the configured default. */ presetId?: string;
         /** Model identifier to use. */ model?: string;
         /** Additional system instructions for the new conversation. */ systemPrompt?: string;
         /** Emit best-effort compatibility navigation to the new conversation. @default true */ open?: boolean;
         /** Initial user text; a nonblank value starts a background turn. */ startText?: string } = {},
 ): Promise<{ id: string; model: string; opened: boolean; started: boolean; offset?: number }> {
+    const preset = await ctx.fns.agentPreset.resolve({ id: opts.presetId });
     // Explicit opts.model, otherwise the selection rule (last used → first enabled model → NO_MODEL).
     const model = String(opts.model ?? '').trim() || await ctx.fns.settings.modelDefault({});
     const agent = await ctx.fns.agent.start({
         model,
+        preset,
         systemPrompt: opts.systemPrompt ?? '',
     });
     try { await ctx.fns.session?.save?.({ agent }); } catch (e: any) { console.error('[session.save]', e?.message); }

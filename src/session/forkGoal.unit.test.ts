@@ -9,6 +9,7 @@ function fixture(){
  const state:any={binding:{sourceAgentId:'a',rootAgentId:'a',goalId:'g',runToken:'t'},sealed:false,pendingRequests:new Set()};
  const owner:any={run_state:'idle',run_token:null}; let goal:any={goalId:'g',revision:2,status:'active'};
  const ctx:any={state:{agent:{a:source},procs:{db:{transactionStorage:{getStore:()=>active?{active:true}:undefined}}}},fns:{}};
+ ctx.fns.agentPreset={resolve:async()=>({presetId:'standard',name:'Standard',layers:[]})};
  ctx.fns.agent={nextId:async()=> 'b',start:(o:any)=>start(ctx,null,o)};
  ctx.fns.workspace={normalize:async()=>'/tmp'};
  ctx.fns.planning={inherit:async(o:any)=>{expect(o).toEqual({sourceId:'a',targetId:'b'});expect(ctx.state.agent.b===undefined||!active).toBe(true);}};

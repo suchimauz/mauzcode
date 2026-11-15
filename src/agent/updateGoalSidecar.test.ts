@@ -23,6 +23,8 @@ function mockSidecarModel(ctx: any, turns: any[]) {
     const fork = ctx.state.registry.session.fork;
     ctx.state.registry.session.fork = async (c: any, s: any, opts: any) => {
         const child = await fork(c, s, opts);
+        expect(child.preset).toEqual(c.state.agent[opts.id].preset);
+        expect(child.preset).not.toBe(c.state.agent[opts.id].preset);
         child.scratchpad = { ...(child.scratchpad ?? {}), mockLLM: { turns, defaultText: "done" } };
         const save = ctx.state.registry.session.save;
         // updateGoalSidecar replaces sidecar.scratchpad right after forking;
@@ -36,6 +38,16 @@ function mockSidecarModel(ctx: any, turns: any[]) {
 }
 
 describe("agent.updateGoalSidecar", () => {
+    test('sidecar inherits the creation snapshot even after its definition changes', async () => {
+        const ctx = await mkTestCtx();
+        const parent = await ctx.fns.agent.start({ model: 'mock:test', preset: await ctx.fns.agentPreset.resolve({ id: 'minimal' }) });
+        await ctx.fns.agentPreset.update({ id: 'minimal', patch: { allow: ['*'] } });
+        let observed;
+        ctx.state.registry.agent.run = async (_c: Context, _s: Session | null, opts: { agent: types.agent.Agent }) => { observed = opts.agent.preset; };
+        await ctx.fns.agent.updateGoalSidecar({ agent: parent, messageIdx: 0, userMessage: 'Goal' });
+        expect(observed).toEqual(parent.preset);
+        expect(observed).not.toBe(parent.preset);
+    });
     test("forks a hidden observer that reports goals through agent.setObservedGoals", async () => {
         const ctx: any = await mkTestCtx();
         const parent = await ctx.fns.agent.start({ model: "mock:test", title: "Main" });

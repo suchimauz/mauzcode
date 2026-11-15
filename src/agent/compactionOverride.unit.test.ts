@@ -12,6 +12,8 @@ function fixture() {
  ctx.fns.procs.ui.attr=()=>'';
  ctx.fns.procs.ui.button=(o:any)=>button(ctx,null,o);
  ctx.fns.agent.setCompaction=(o:any)=>setCompaction(ctx,null,o);
+ ctx.fns.agentPreset={defaults:()=>[{id:'creator',name:'Creator',allow:['*'],deny:[],plugins:['*'],exclude_sections:[],prompt:''}]};
+ ctx.fns.procs.log={warn:()=>{}};
  return {ctx,live,updates,events};
 }
 test('setter validates finite bounds, updates only target, and reset persists null',async()=>{

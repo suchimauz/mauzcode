@@ -93,6 +93,8 @@ export async function testCtx(opts?: { root?: string; workdir?: string; env?: Re
             try { await builder.fns.procs.migrate.up({}); } finally { await builder.fns.procs.db.close({}); }
         });
     }
+    // Worker schemas clone table structure, not seed rows; mirror the preset startup hook.
+    await ctx.fns.agentPreset.ensureBuiltins({});
     trackTestCtx(ctx);
     return ctx;
 }
