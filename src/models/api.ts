@@ -1,7 +1,7 @@
 /**
  * Owner-only HTTP API for model providers and connections
  *
- * Backs GET/POST /models/api for the Models settings tab. GET returns the provider catalogue, secret-free connections, inert provider logos (`providerLogos` by provider id from frontendBridge.modelMark: brand marks, the generic plug for `custom`, null only when resolution fails), saved SOCKS proxies, trusted SSH instance names and a cookie-bound CSRF token. POST takes one JSON object `{ action, ... }` (action `models` returns every model with the shared display name in `label`, for all providers) with action `providers`, `list`, `get`, `create`, `update`, `remove`, `test`, `models` (cached list; `refresh: true` asks the provider and updates the cache), `usage`, `setModelEnabled` (`{ id, model, enabled }`, returns the updated connection) or `action`; it requires same origin, a valid `x-csrf-token`, `application/json` and at most 64 KiB. Non-owners get 403, anonymous 401. Responses never contain secret values or references.
+ * Backs GET/POST /models/api for the Models settings tab. GET returns the provider catalogue, secret-free connections, inert provider logos (`providerLogos` by provider id from frontendBridge.modelMark: brand marks, the generic plug for `custom`, null only when resolution fails), saved SOCKS proxies, trusted SSH instance names and a cookie-bound CSRF token. POST takes one JSON object `{ action, ... }` (action `models` returns every model with the shared display name in `label`, for all providers) with action `providers`, `list`, `get`, `create`, `update`, `remove`, `test`, `models` (cached list; `refresh: true` asks the provider and updates the cache), `usage`, `setModelEnabled` (`{ id, model, enabled }`, returns the updated connection), `setContextLimits` (`{ id, limits: { [model]: tokens | null } }`, atomic owner context-window override patch, returns `{ overrides, limits }`) or `action`; the `models` reply also carries `contextOverrides` (all stored overrides, including absent models) and `contextLimits` (effective limit, provider value, override and source per listed model); it requires same origin, a valid `x-csrf-token`, `application/json` and at most 64 KiB. Non-owners get 403, anonymous 401. Responses never contain secret values or references.
  * @param opts.req Incoming GET or JSON POST request.
  */
 export default async function (
@@ -97,19 +97,27 @@ export default async function (
                 if (typeof data.enabled !== "boolean") return reply({ error: "enabled must be true or false", field: "enabled" }, 400);
                 return reply({ connection: await ctx.fns.models.catalog.setModelEnabled({ id, model: typeof data.model === "string" ? data.model : "", enabled: data.enabled }) });
             }
+            case "setContextLimits": {
+                const limits = data.limits;
+                if (!limits || typeof limits !== "object" || Array.isArray(limits)) return reply({ error: "limits must be an object of model id → tokens or null", field: "limits" }, 400);
+                return reply(await ctx.fns.models.catalog.setContextLimits({ id, limits: limits as Record<string, number | null> }));
+            }
             case "test": return reply({ result: await ctx.fns.models.connections.test({ id }) });
             case "models": {
                 // Every provider's list carries the shared display name (provider label, else models.dev, else prettified id), like the pickers.
                 const list = await ctx.fns.models.catalog.listModels({ id, refresh: data.refresh === true });
                 let view: types.models.ConnectionView | null = null;
                 try { view = await ctx.fns.models.connections.get({ id }); } catch { view = null; /* names are cosmetic; keep the plain list */ }
-                if (!view || !list.models.length) return reply(list);
+                // Owner context overrides and each model's effective limit; overrides of absent models are kept and returned too.
+                const overrides = await ctx.fns.models.catalog.contextOverrides({ id });
+                const contextLimits = Object.fromEntries(list.models.map(m => [m.id, ctx.fns.models.catalog.contextLimit({ provider: m.contextWindow ?? null, override: overrides[m.id] ?? null })]));
+                if (!view || !list.models.length) return reply({ ...list, contextOverrides: overrides, contextLimits });
                 const conn = view;
                 const route = (model: string) => conn.provider + "/" + conn.accountName + ":" + model;
                 const labels = Object.fromEntries(list.models.filter(m => m.label?.trim()).map(m => [route(m.id), m.label!.trim()]));
                 let names: Record<string, string> = {};
                 try { names = await ctx.fns.models.catalog.displayNames({ routes: list.models.map(m => route(m.id)), labels }); } catch { names = {}; /* fall back to provider labels */ }
-                return reply({ ...list, models: list.models.map(m => ({ ...m, label: names[route(m.id)] || m.label })) });
+                return reply({ ...list, models: list.models.map(m => ({ ...m, label: names[route(m.id)] || m.label })), contextOverrides: overrides, contextLimits });
             }
             case "usage": return reply({ usage: await ctx.fns.models.connections.usage({ id, refresh: data.refresh === true }) });
             case "action": {

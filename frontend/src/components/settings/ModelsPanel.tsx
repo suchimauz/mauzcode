@@ -8,8 +8,8 @@ import { ApiError } from '../../lib/mauzcode';
 import { usePluginUi } from '../../extensions/pluginRuntime';
 import type { ExtensionContext } from '../../extensions/types';
 import {
-  connectionAction, connectionModels, connectionUsage, createConnection, setModelEnabled, getModelsState, removeConnection, setConnectionEnabled, testConnection, transportLabel, updateConnection,
-  type ConnectionInput, type ModelConnectionView, type ModelFieldSpec, type ModelInfo, type ModelProviderView, type ModelsState, type ModelTransportSpec, type ModelUsageReport,
+  connectionAction, connectionModels, connectionUsage, createConnection, setContextLimits, setModelEnabled, getModelsState, removeConnection, setConnectionEnabled, testConnection, transportLabel, updateConnection,
+  type ConnectionInput, type ConnectionModels, type ModelContextLimit, type ModelConnectionView, type ModelFieldSpec, type ModelInfo, type ModelProviderView, type ModelsState, type ModelTransportSpec, type ModelUsageReport,
 } from '../../lib/modelConnections';
 import { SettingsField as Field } from './SettingsField';
 
@@ -149,11 +149,57 @@ function ProviderForm({ provider, connection, actions, onDone }: { provider: Mod
 
 type Section = 'edit' | 'models' | 'remove' | null;
 
+const SOURCE_LABEL: Record<ModelContextLimit['source'], string> = { override: 'Owner override', provider: 'Provider', fallback: 'Fallback' };
+const FALLBACK_LIMIT = 200_000;
+const formatTokens = (n: number) => `${n.toLocaleString('en-US')} tokens`;
+/** Parses a context draft: '' resets to the default (null); otherwise a positive safe integer without rounding or coercion. */
+function parseLimit(draft: string): { value: number | null } | { error: string } {
+  const text = draft.trim();
+  if (!text) return { value: null };
+  if (!/^\d+$/.test(text)) return { error: 'Enter a whole number of tokens' };
+  const value = Number(text);
+  if (!Number.isSafeInteger(value) || value <= 0) return { error: 'Enter a positive whole number of tokens' };
+  return { value };
+}
+
+/**
+ * One model's context-limit editor. Lives outside the availability label so typing or
+ * pressing its buttons never toggles the model. The draft stays local until Save.
+ */
+function ContextLimitControl({ model, limit, override, draft, error, saving, disabled, onDraft, onSave, onReset, onDiscard }: {
+  model: string; limit?: ModelContextLimit; override: number | null; draft: string | undefined; error?: string; saving: boolean; disabled: boolean;
+  onDraft: (value: string) => void; onSave: () => void; onReset: () => void; onDiscard: () => void;
+}) {
+  const id = useId();
+  const stored = override == null ? '' : String(override);
+  const value = draft ?? stored;
+  const dirty = draft !== undefined && draft.trim() !== stored;
+  const effective = limit ?? { provider: null, override, effective: override ?? FALLBACK_LIMIT, source: override != null ? 'override' as const : 'fallback' as const };
+  const pendingReset = dirty && !draft!.trim();
+  return <div className="models-context" role="group" aria-label={`Context limit ${model}`}>
+    <label className="models-context-field" htmlFor={id}><span>Context limit</span>
+      <input id={id} type="text" inputMode="numeric" autoComplete="off" spellCheck={false} value={value} placeholder={String(effective.provider ?? FALLBACK_LIMIT)}
+        aria-label={`Context limit for ${model}`} aria-invalid={error ? true : undefined} aria-describedby={`${id}-value${error ? ` ${id}-error` : ''}`}
+        disabled={saving || disabled} onChange={e => onDraft(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && dirty) { e.preventDefault(); onSave(); } else if (e.key === 'Escape' && draft !== undefined) { e.preventDefault(); onDiscard(); } }} />
+    </label>
+    <span id={`${id}-value`} className="models-context-value" data-context-source={effective.source}>
+      {formatTokens(effective.effective)} · {SOURCE_LABEL[effective.source]}{dirty && <span className="models-context-draft">{pendingReset ? ' · unsaved: reset to default' : ` · unsaved: ${value.trim()}`}</span>}
+    </span>
+    <span className="models-context-actions">
+      {dirty && <Button variant="primary" size="compact" disabled={saving || disabled} onClick={onSave}>{saving ? 'Saving…' : 'Save'}</Button>}
+      {override != null && !pendingReset && <Button variant="ghost" size="compact" disabled={saving || disabled} onClick={onReset}>Reset to default</Button>}
+      {draft !== undefined && <Button variant="ghost" size="compact" disabled={saving} onClick={onDiscard}>Discard</Button>}
+    </span>
+    {error && <span id={`${id}-error`} className="models-context-error" role="alert">{error}</span>}
+  </div>;
+}
+
 function ConnectionCard({ connection, provider, actions }: { connection: ModelConnectionView; provider?: ModelProviderView; actions: Actions }) {
   const [usage, setUsage] = useState<ModelUsageReport | null>(null);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [open, setOpen] = useState<Section>(null);
-  const [models, setModels] = useState<{ models: ModelInfo[]; source: string; cachedAt?: number | null; error?: string } | null>(null);
+  const [models, setModels] = useState<ConnectionModels | null>(null);
   const [updatingModels, setUpdatingModels] = useState(false);
   const confirmRef = useRef<HTMLDivElement>(null);
   const loadUsage = useCallback(async (refresh: boolean, signal?: AbortSignal) => {
@@ -188,6 +234,33 @@ function ConnectionCard({ connection, provider, actions }: { connection: ModelCo
       if (saved) { const off = new Set(saved.disabledModels ?? []); setModels(prev => prev && { ...prev, models: prev.models.map(x => ({ ...x, disabled: off.has(x.id) })) }); }
     } finally { setSaving(false); }
   };
+  // Context-limit drafts are keyed by model id and independent of the catalogue rows,
+  // so refreshing models never discards them, even when a model temporarily disappears.
+  const [contextDrafts, setContextDrafts] = useState<Record<string, string>>({});
+  const [contextErrors, setContextErrors] = useState<Record<string, string>>({});
+  const [contextSaving, setContextSaving] = useState<string | null>(null);
+  const overrides = models?.contextOverrides ?? {};
+  const setDraft = (id: string, value: string | undefined) => {
+    setContextDrafts(prev => { const next = { ...prev }; if (value === undefined) delete next[id]; else next[id] = value; return next; });
+    setContextErrors(prev => { if (!(id in prev)) return prev; const next = { ...prev }; delete next[id]; return next; });
+  };
+  const saveContext = async (id: string) => {
+    const parsed = parseLimit(contextDrafts[id] ?? '');
+    if ('error' in parsed) { setContextErrors(prev => ({ ...prev, [id]: parsed.error })); return; }
+    setContextSaving(id);
+    try {
+      const saved = await setContextLimits(actions.csrf, connection.id, { [id]: parsed.value });
+      setModels(prev => prev && { ...prev, contextOverrides: saved.overrides, contextLimits: { ...prev.contextLimits, ...saved.limits } });
+      setDraft(id, undefined);
+    } catch (error) {
+      setContextErrors(prev => ({ ...prev, [id]: message(error, 'Saving the context limit failed') }));
+    } finally { setContextSaving(null); }
+  };
+  const contextControl = (id: string, limit?: ModelContextLimit) => <ContextLimitControl model={id} limit={limit} override={overrides[id] ?? null} draft={contextDrafts[id]} error={contextErrors[id]}
+    saving={contextSaving === id} disabled={contextSaving !== null && contextSaving !== id}
+    onDraft={v => setDraft(id, v)} onSave={() => { void saveContext(id); }} onReset={() => setDraft(id, '')} onDiscard={() => setDraft(id, undefined)} />;
+  const listed = new Set((models?.models ?? []).map(m => m.id));
+  const pendingAbsent = Object.keys(contextDrafts).filter(id => !listed.has(id)).sort();
   const label = provider?.label ?? connection.provider;
   return <article className="ssh-card" data-model-connection={connection.id} aria-label={connection.accountName}>
     <header className="ssh-card-header">
@@ -213,7 +286,13 @@ function ConnectionCard({ connection, provider, actions }: { connection: ModelCo
       {models.models.length ? <ul className="models-list" aria-label={`Models of ${connection.accountName}`}>{models.models.map(m => { const off = draftOff.has(m.id); return <li key={m.id} className={off ? 'is-disabled' : undefined} data-model-disabled={off ? 'true' : undefined}>
         <label className="models-model-row"><input type="checkbox" role="switch" aria-label={`Enabled ${m.id}`} checked={!off} disabled={saving} onChange={() => toggleDraft(m.id)} />
           <code>{m.id}</code>{m.label && m.label !== m.id && <span className="models-model-label">{m.label}</span>}{off && <span className="ssh-badge is-pending"><span aria-hidden="true" />Disabled</span>}</label>
+        {contextControl(m.id, models.contextLimits?.[m.id])}
       </li>; })}</ul> : <p className="settings-note">No models.</p>}
+      {pendingAbsent.length > 0 && <div className="models-context-pending" role="group" aria-label="Pending context edits for models not in the current list">
+        <p className="settings-field-hint">Unsaved context edits for models missing from the current list:</p>
+        <ul className="models-list">{pendingAbsent.map(id => <li key={id}><code>{id}</code>{contextControl(id)}</li>)}</ul>
+      </div>}
+      <p className="settings-field-hint models-context-help">Context limit is a local budget for compaction and context usage. It cannot increase what the provider accepts; empty means the provider value or 200,000.</p>
       {changed.length > 0 && <div className="ssh-form-actions models-save">
         <Button variant="ghost" disabled={saving} onClick={() => setDraftOff(new Set(models.models.filter(m => m.disabled).map(m => m.id)))}>Reset</Button>
         <Button disabled={saving || actions.busy} onClick={() => { void saveModels(); }}>{saving ? 'Saving…' : `Save (${changed.length})`}</Button>

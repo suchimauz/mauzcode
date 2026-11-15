@@ -308,3 +308,106 @@ it.each([true, false])('supports Claude authorization paste, rejection and retry
   fireEvent.click(within(region).getByRole('button', { name: 'Cancel login' }));
   await waitFor(() => expect(within(region).getByRole('status')).toHaveTextContent('Login cancelled'));
 });
+
+function mockContextApi(opts: { failSave?: boolean } = {}) {
+  const posts = mockApi([stored]);
+  const fetchMock = vi.mocked(fetch);
+  const base = fetchMock.getMockImplementation()!;
+  let overrides: Record<string, number> = {};
+  let catalogue: { id: string; contextWindow?: number; disabled?: boolean }[] = [{ id: 'qwen', disabled: false }, { id: 'big', contextWindow: 262144, disabled: false }];
+  const limit = (m: { id: string; contextWindow?: number }) => {
+    const provider = m.contextWindow ?? null, override = overrides[m.id] ?? null;
+    return override != null ? { provider, override, effective: override, source: 'override' } : provider != null ? { provider, override, effective: provider, source: 'provider' } : { provider, override, effective: 200000, source: 'fallback' };
+  };
+  fetchMock.mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') !== 'GET') {
+      const body = JSON.parse(String(init.body));
+      if (body.action === 'models') {
+        posts.push({ body, headers: init.headers });
+        if (body.refresh) catalogue = [{ id: 'big', contextWindow: 300000, disabled: false }];
+        return json({ models: catalogue, source: 'provider', cachedAt: 1_000_000, contextOverrides: overrides, contextLimits: Object.fromEntries(catalogue.map(m => [m.id, limit(m)])) });
+      }
+      if (body.action === 'setContextLimits') {
+        posts.push({ body, headers: init.headers });
+        if (opts.failSave) return json({ error: 'Storage unavailable' }, 422);
+        for (const [k, v] of Object.entries(body.limits as Record<string, number | null>)) { if (v == null) delete overrides[k]; else overrides[k] = v; }
+        overrides = { ...overrides };
+        return json({ overrides, limits: Object.fromEntries(Object.keys(body.limits).map(k => [k, limit(catalogue.find(m => m.id === k) ?? { id: k })])) });
+      }
+    }
+    return base(url, init);
+  });
+  return posts;
+}
+
+it('shows fallback limits, saves an override and distinguishes reset from discard without touching availability', async () => {
+  const posts = mockContextApi();
+  render(<ModelsPanel context={context} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Models' }));
+  const field = await screen.findByLabelText('Context limit for qwen');
+  expect(field).toHaveValue('');
+  const group = screen.getByRole('group', { name: 'Context limit qwen' });
+  expect(group).toHaveTextContent('200,000 tokens · Fallback');
+  expect(screen.getByRole('group', { name: 'Context limit big' })).toHaveTextContent('262,144 tokens · Provider');
+  expect(screen.getByText(/cannot increase what the provider accepts/)).toBeVisible();
+  const toggle = screen.getByRole('switch', { name: 'Enabled qwen' });
+  await waitFor(() => expect(toggle).toBeChecked());
+  // Focusing, typing and clicking context controls never toggles availability.
+  fireEvent.click(field); fireEvent.focus(field);
+  fireEvent.change(field, { target: { value: '128000' } });
+  expect(toggle).toBeChecked();
+  expect(screen.queryByRole('button', { name: /^Save \(/ })).toBeNull();
+  expect(group).toHaveTextContent('unsaved: 128000');
+  fireEvent.click(within(group).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(group).toHaveTextContent('128,000 tokens · Owner override'));
+  expect(toggle).toBeChecked();
+  const save = posts.filter(p => p.body.action === 'setContextLimits');
+  expect(save.map(p => p.body)).toEqual([{ action: 'setContextLimits', id: 'c1', limits: { qwen: 128000 } }]);
+  expect(save[0].headers).toMatchObject({ 'X-CSRF-Token': 'csrf' });
+  expect(posts.some(p => p.body.action === 'setModelEnabled')).toBe(false);
+  // Reset then Discard keeps the stored override; Reset then Save removes it.
+  fireEvent.click(within(group).getByRole('button', { name: 'Reset to default' }));
+  expect(group).toHaveTextContent('unsaved: reset to default');
+  fireEvent.click(within(group).getByRole('button', { name: 'Discard' }));
+  expect(field).toHaveValue('128000');
+  expect(posts.filter(p => p.body.action === 'setContextLimits')).toHaveLength(1);
+  fireEvent.click(within(group).getByRole('button', { name: 'Reset to default' }));
+  fireEvent.click(within(group).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(group).toHaveTextContent('200,000 tokens · Fallback'));
+  expect(posts.filter(p => p.body.action === 'setContextLimits').at(-1)!.body.limits).toEqual({ qwen: null });
+});
+
+it('validates context input locally and keeps the draft after a failed save', async () => {
+  const posts = mockContextApi({ failSave: true });
+  render(<ModelsPanel context={context} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Models' }));
+  const field = await screen.findByLabelText('Context limit for qwen');
+  const group = screen.getByRole('group', { name: 'Context limit qwen' });
+  for (const bad of ['0', '-5', '1.5', '12k']) {
+    fireEvent.change(field, { target: { value: bad } });
+    fireEvent.click(within(group).getByRole('button', { name: 'Save' }));
+    expect(await within(group).findByRole('alert')).toHaveTextContent(/whole number/);
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+  }
+  expect(posts.some(p => p.body.action === 'setContextLimits')).toBe(false);
+  fireEvent.change(field, { target: { value: '64000' } });
+  fireEvent.keyDown(field, { key: 'Enter' });
+  expect(await within(group).findByRole('alert')).toHaveTextContent('Storage unavailable');
+  expect(field).toHaveValue('64000');
+  expect(group).toHaveTextContent('200,000 tokens · Fallback');
+});
+
+it('keeps context drafts across refresh, including for models that disappeared', async () => {
+  mockContextApi();
+  render(<ModelsPanel context={context} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Models' }));
+  fireEvent.change(await screen.findByLabelText('Context limit for qwen'), { target: { value: '32000' } });
+  fireEvent.change(screen.getByLabelText('Context limit for big'), { target: { value: '100000' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Update models' }));
+  await waitFor(() => expect(screen.getByRole('group', { name: 'Context limit big' })).toHaveTextContent('300,000 tokens · Provider'));
+  expect(screen.getByLabelText('Context limit for big')).toHaveValue('100000');
+  const pending = screen.getByRole('group', { name: /Pending context edits/ });
+  expect(within(pending).getByLabelText('Context limit for qwen')).toHaveValue('32000');
+  fireEvent.click(within(pending).getByRole('button', { name: 'Discard' }));
+  expect(screen.queryByRole('group', { name: /Pending context edits/ })).toBeNull();
+});

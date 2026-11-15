@@ -1,7 +1,7 @@
 /**
  * Resolve a stored model route using only current storage and cached metadata
  *
- * Use through models.resolveRoute to obtain connection identity, provider inference descriptors, native compaction support and optional cached limits. Never discovers models, reads secrets or sends provider requests, including on cold caches. Disabled and missing routes fail with nonretryable SDK failures.
+ * Use through models.resolveRoute to obtain connection identity, provider inference descriptors, native compaction support, optional cached limits and the effective context limit (owner override, cached provider metadata, 200000 fallback) with its source. Never discovers models, reads secrets or sends provider requests, including on cold caches. Disabled and missing routes fail with nonretryable SDK failures.
  * @param opts.route Exact registered provider/accountName:modelId route.
  */
 export default async function (
@@ -26,12 +26,15 @@ export default async function (
         await ctx.fns.models.inference.assertModelEnabled({ id: conn.id, model: parsed.modelId });
         const catalogue = await ctx.fns.models.catalog.listModels({ id: conn.id, cacheOnly: true });
         const model = catalogue.models.find(m => m.id === parsed.modelId);
+        const overrides = await ctx.fns.models.catalog.contextOverrides({ id: conn.id });
+        const contextLimit = ctx.fns.models.catalog.contextLimit({ provider: model?.contextWindow ?? null, override: overrides[parsed.modelId] ?? null });
         return {
             ...parsed, route: opts.route, model: parsed.modelId, connectionId: conn.id,
             nativeCompaction: typeof definition.compact === "function",
             ...(definition.inference?.systemPreamble !== undefined ? { systemPreamble: definition.inference.systemPreamble } : {}),
             ...(definition.inference?.priceVendor !== undefined ? { priceVendor: definition.inference.priceVendor } : {}),
-            ...(model?.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
+            ...(contextLimit.source !== "fallback" ? { contextWindow: contextLimit.effective } : {}),
+            contextLimit,
             ...(model?.maxOutputTokens !== undefined ? { maxOutputTokens: model.maxOutputTokens } : {}),
         };
     } catch (error) {
