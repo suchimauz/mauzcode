@@ -188,6 +188,23 @@ describe("exact token counting", () => {
         const count = await ctx.fns.models.countTokens({ connectionId: "no-such-connection", model: "m1", messages: [{ role: "user", content: "hi" }] });
         expect(count).toBeNull();
     });
+    test("an enabled provider without declared counting returns null before any transport use", async () => {
+        const registry = (ctx as any).state.registry;
+        const saved = { enabled: registry.models.inference.assertModelEnabled, resolve: registry.models.connections.resolve };
+        registry.models.inference.assertModelEnabled = async () => ({ id: "conn-y", provider: "plain" });
+        (ctx.state.models.providers as Record<string, { definition: types.models.ProviderDefinition }>).plain = { definition: { id: "plain", label: "plain", fields: [], transports: ["direct"], test: async () => ({ status: "configured", reason: "fixture", message: "fixture", checkedAt: 0 }) } };
+        let resolved = 0;
+        registry.models.connections.resolve = async () => { resolved++; throw new Error("resolve must not be reached"); };
+        try {
+            const count = await ctx.fns.models.countTokens({ connectionId: "conn-y", model: "m1", messages: [{ role: "user", content: "hi" }] });
+            expect(count).toBeNull();
+            expect(resolved).toBe(0);
+        } finally {
+            registry.models.inference.assertModelEnabled = saved.enabled;
+            registry.models.connections.resolve = saved.resolve;
+            delete (ctx.state.models.providers as Record<string, unknown>).plain;
+        }
+    });
 });
 
 describe("anthropic reasoning block capture", () => {
