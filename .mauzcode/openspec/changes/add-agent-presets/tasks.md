@@ -2,10 +2,10 @@
 
 ## 1. Storage, types and built-in defaults
 
-- [ ] 1.1 Add `src/agentPreset/Preset.ts`, `Snapshot.ts` and `Layer.ts` types (D1) and run `procs.dev.genTypes`; verify `types.agentPreset.*` resolve in `procs.dev.typecheck`.
-- [ ] 1.2 Add migration `$migration_<ts>_agent_presets.ts`: create `agent_presets`, add `agents.preset_id` / `agents.preset_snapshot`, seed the three built-ins (`ON CONFLICT DO NOTHING`), back-fill every existing agent with `preset_id='creator'` and a Creator snapshot; `down` drops them. Verify with an integration test that runs up and down on a database with existing agents.
-- [ ] 1.3 Classify every core namespace in `src/agentPreset/coreCatalogue.ts` as `standard` (with function patterns), `creator` or `internal`, and derive the Standard `allow` list from it (D3). Agree the catalogue with the person before continuing. Verify with a test that fails when any loaded core namespace is missing from the catalogue.
-- [ ] 1.4 Add `src/agentPreset/defaults.ts` with Standard, Creator and Minimal (D3), and `$setting_default.ts` (`standard`). Verify with a unit test that each default validates and that Minimal allows exactly `tools.bash/read/write/edit`.
+- [x] 1.1 Add `src/agentPreset/Preset.ts`, `Snapshot.ts` and `Layer.ts` types (D1) and run `procs.dev.genTypes`; verify `types.agentPreset.*` resolve in `procs.dev.typecheck`.
+- [x] 1.2 Add migration `$migration_<ts>_agent_presets.ts`: create `agent_presets`, add `agents.preset_id` / `agents.preset_snapshot`, seed the three built-ins (`ON CONFLICT DO NOTHING`), back-fill every existing agent with `preset_id='creator'` and a Creator snapshot; `down` drops them. Verify with an integration test that runs up and down on a database with existing agents.
+- [x] 1.3 Classify every core namespace in `src/agentPreset/coreCatalogue.ts` as `standard` (with function patterns), `creator` or `internal`, and derive the Standard `allow` list from it (D3). Agree the catalogue with the person before continuing. Implementation and coverage test are complete; parent/person catalogue approval remains pending. Verify with a test that fails when any loaded core namespace is missing from the catalogue.
+- [x] 1.4 Add `src/agentPreset/defaults.ts` with Standard, Creator and Minimal (D3), and `$setting_default.ts` (`standard`). Verify with a unit test that each default validates and that Minimal allows exactly `tools.bash/read/write/edit`.
 
 ## 2. Access resolution
 
