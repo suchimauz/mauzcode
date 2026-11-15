@@ -325,4 +325,46 @@ describe('transcript surgery keeps JSON pairs intact', () => {
         expect(msgs.at(-1)!.tool_calls).toBeUndefined();
     });
 
+    test('native reasoning blocks are stored on the first tool call with their origin', async () => {
+        const ctx: any = await mkCtx();
+        ctx.fns.tools.read = async (_c: any, _s: any, o: any) => `READ:${o.path}`;
+        const blocks = [{ type: 'thinking', thinking: 'hidden plan', signature: 'sig-1' }];
+        const stream = ctx.state.registry.models.stream;
+        ctx.state.registry.models.stream = async (c: any, s: any, o: any) => {
+            const r = await stream(c, s, o);
+            return { ...r, reasoningBlocks: blocks };
+        };
+        const agent = await mkAgent(ctx, [
+            { toolCalls: [{ name: 'read', args: { path: 'a.ts' } }, { name: 'read', args: { path: 'b.ts' } }] },
+            { text: 'готово' },
+        ]);
+        await ctx.fns.agent.run({ agent, userText: 'go' });
+        const msgs = await ctx.fns.session.getMessages({ id: agent.id });
+        expect(msgs[1]!.tool_calls[0].reasoning_blocks).toEqual(blocks);
+        expect(msgs[1]!.tool_calls[0].reasoning_origin).toEqual({ connectionId: 'mock/default', model: 'test' });
+        expect(msgs[1]!.tool_calls[1].reasoning_blocks).toBeUndefined();
+        // A final answer keeps no stored blocks.
+        expect(msgs.at(-1)!.reasoning_blocks).toBeUndefined();
+    });
+
+    test('oversized reasoning blocks are skipped, text reasoning still stored', async () => {
+        const ctx: any = await mkCtx();
+        ctx.fns.tools.read = async (_c: any, _s: any, o: any) => `READ:${o.path}`;
+        const big = [{ type: 'thinking', thinking: 'x'.repeat(200001), signature: 'sig' }];
+        const stream = ctx.state.registry.models.stream;
+        ctx.state.registry.models.stream = async (c: any, s: any, o: any) => {
+            o.onEvent?.({ type: 'thinking_delta', delta: 'kept text', visibility: 'public_summary' });
+            const r = await stream(c, s, o);
+            return { ...r, reasoningBlocks: big };
+        };
+        const agent = await mkAgent(ctx, [
+            { toolCalls: [{ name: 'read', args: { path: 'a.ts' } }] },
+            { text: 'готово' },
+        ]);
+        await ctx.fns.agent.run({ agent, userText: 'go' });
+        const msgs = await ctx.fns.session.getMessages({ id: agent.id });
+        expect(msgs[1]!.tool_calls[0].reasoning_blocks).toBeUndefined();
+        expect(msgs[1]!.tool_calls[0].reasoning_content).toBe('kept text');
+    });
+
 });

@@ -99,6 +99,125 @@ describe("anthropic protocol request", () => {
     });
 });
 
+describe("anthropic reasoning block capture", () => {
+    test("thinking block: two deltas and one signature, usage from the final delta", async () => {
+        const { conn } = fixtureConn(() => sse([
+            { type: "message_start", message: { usage: { input_tokens: 0 } } },
+            { type: "content_block_start", index: 0, content_block: { type: "thinking" } },
+            { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Think" } },
+            { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: " more" } },
+            { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig123" } },
+            { type: "content_block_start", index: 1, content_block: { type: "text" } },
+            { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "Hello" } },
+            { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { input_tokens: 1200, output_tokens: 4 } },
+            { type: "message_stop" },
+        ]));
+        const r = await ctx.fns.models.protocol.anthropic.stream({ fetch: conn.fetch, endpoint: { base: "https://example.test/v1", headers: {} }, request: req() });
+        expect(r.thinking).toBe("Think more");
+        expect(r.reasoningBlocks).toEqual([{ type: "thinking", thinking: "Think more", signature: "sig123" }]);
+        expect(r.usage).toMatchObject({ prompt_tokens: 1200, completion_tokens: 4 });
+    });
+    test("redacted block carries its data; blocks without content are not reported", async () => {
+        const { conn } = fixtureConn(() => sse([
+            { type: "message_start", message: { usage: {} } },
+            { type: "content_block_start", index: 0, content_block: { type: "redacted_thinking", data: "enc" } },
+            { type: "content_block_start", index: 1, content_block: { type: "thinking" } },
+            { type: "content_block_delta", index: 1, delta: { type: "thinking_delta", thinking: "kept" } },
+            { type: "content_block_start", index: 2, content_block: { type: "text" } },
+            { type: "content_block_delta", index: 2, delta: { type: "text_delta", text: "ok" } },
+            { type: "message_delta", delta: { stop_reason: "end_turn" } },
+            { type: "message_stop" },
+        ]));
+        const r = await ctx.fns.models.protocol.anthropic.stream({ fetch: conn.fetch, endpoint: { base: "https://example.test/v1", headers: {} }, request: req() });
+        expect(r.reasoningBlocks).toEqual([{ type: "redacted_thinking", data: "enc" }, { type: "thinking", thinking: "kept" }]);
+    });
+});
+
+describe("anthropic reasoning block replay", () => {
+    const stored = [{ type: "thinking", thinking: "hidden", signature: "sig" }];
+    const transcript = (blocks: unknown, origin: unknown) => [
+        { role: "user", content: "hi" },
+        { role: "assistant", content: "doing", tool_calls: [{ id: "t1", name: "f", args: {}, ...(blocks ? { reasoning_blocks: blocks } : {}), ...(origin ? { reasoning_origin: origin } : {}) }] },
+        { role: "tool", tool_call_id: "t1", content: "res" },
+    ];
+    const convert = (messages: unknown[], extra: Record<string, unknown> = {}) =>
+        ctx.fns.models.protocol.anthropic.toAnthropicMessages({ messages, ...extra }) as Array<{ role: string; content: any[] }>;
+    test("same connection and model: blocks open the assistant message before text and tool_use", () => {
+        const out = convert(transcript(stored, { connectionId: "c1", model: "model-a" }), { replayReasoning: true, origin: { connectionId: "c1", model: "model-a" } });
+        const assistant = out.find(m => m.role === "assistant")!;
+        expect(assistant.content[0]).toEqual({ type: "thinking", thinking: "hidden", signature: "sig" });
+        expect(assistant.content.map((b: any) => b.type)).toEqual(["thinking", "text", "tool_use"]);
+    });
+    test("different connection, different model, no replay or unsigned blocks send nothing", () => {
+        for (const [opts, origin] of [
+            [{ replayReasoning: true, origin: { connectionId: "c2", model: "model-a" } }, { connectionId: "c1", model: "model-a" }],
+            [{ replayReasoning: true, origin: { connectionId: "c1", model: "model-b" } }, { connectionId: "c1", model: "model-a" }],
+            [{ origin: { connectionId: "c1", model: "model-a" } }, { connectionId: "c1", model: "model-a" }],
+        ] as const) {
+            const out = convert(transcript(stored, origin), opts);
+            expect(out.find(m => m.role === "assistant")!.content.map((b: any) => b.type)).toEqual(["text", "tool_use"]);
+        }
+        const unsigned = convert(transcript([{ type: "thinking", thinking: "no signature" }], { connectionId: "c1", model: "model-a" }), { replayReasoning: true, origin: { connectionId: "c1", model: "model-a" } });
+        expect(unsigned.find(m => m.role === "assistant")!.content.map((b: any) => b.type)).toEqual(["text", "tool_use"]);
+    });
+    test("redacted blocks replay through their data", () => {
+        const out = convert(transcript([{ type: "redacted_thinking", data: "enc" }], { connectionId: "c1", model: "model-a" }), { replayReasoning: true, origin: { connectionId: "c1", model: "model-a" } });
+        expect(out.find(m => m.role === "assistant")!.content[0]).toEqual({ type: "redacted_thinking", data: "enc" });
+    });
+    test("the protocol streams stored blocks back when replay and origin match", async () => {
+        const { conn, calls } = fixtureConn(() => sse([{ type: "message_start", message: { usage: {} } }, { type: "content_block_start", index: 0, content_block: { type: "text" } }, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } }, { type: "message_delta", delta: { stop_reason: "tool_use" } }, { type: "message_stop" }]));
+        await ctx.fns.models.protocol.anthropic.stream({
+            fetch: conn.fetch,
+            endpoint: { base: "https://example.test/v1", headers: {}, replayReasoning: true, origin: { connectionId: "c1", model: "model-a" } },
+            request: req({ messages: transcript(stored, { connectionId: "c1", model: "model-a" }) as types.models.StreamRequest["messages"] }),
+        });
+        const assistant = calls[0]!.body.messages.find((m: any) => m.role === "assistant");
+        expect(assistant.content[0]).toEqual({ type: "thinking", thinking: "hidden", signature: "sig" });
+        expect(assistant.content.map((b: any) => b.type)).toEqual(["thinking", "text", "tool_use"]);
+    });
+});
+
+describe("other protocols ignore stored reasoning blocks", () => {
+    const callWithBlocks = { id: "t1", name: "f", args: { a: 1 }, reasoning_content: "text reasoning", reasoning_blocks: [{ type: "thinking", thinking: "hidden", signature: "sig" }], reasoning_origin: { connectionId: "c1", model: "model-a" } };
+    test("openai-chat conversion drops the blocks and keeps its own replay field", () => {
+        const out = ctx.fns.models.protocol.openaiChat.toOpenAIMessages({ messages: [
+            { role: "user", content: "hi" },
+            { role: "assistant", content: "", tool_calls: [callWithBlocks] },
+            { role: "tool", tool_call_id: "t1", content: "res" },
+        ], replayReasoning: true }) as any[];
+        expect(out[1]).toEqual({ role: "assistant", tool_calls: [{ id: "t1", type: "function", function: { name: "f", arguments: '{"a":1}' } }], reasoning_content: "text reasoning" });
+        expect(JSON.stringify(out)).not.toContain("reasoning_blocks");
+        expect(JSON.stringify(out)).not.toContain("hidden");
+    });
+    test("openai-responses builds function calls without the blocks", async () => {
+        const { conn, calls } = fixtureConn(() => new Response('data: {"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":1}}}\n\n', { headers: { "content-type": "text/event-stream" } }));
+        await ctx.fns.models.protocol.openaiResponses.stream({ fetch: conn.fetch, endpoint: { base: "https://example.test/v1", headers: {} }, request: req({ messages: [
+            { role: "user", content: "hi" },
+            { role: "assistant", content: "", tool_calls: [callWithBlocks] },
+            { role: "tool", tool_call_id: "t1", content: "res" },
+        ] as types.models.StreamRequest["messages"] }) });
+        const input = calls[0]!.body.input as any[];
+        expect(JSON.stringify(input)).not.toContain("hidden");
+        expect(JSON.stringify(input)).not.toContain("reasoning_blocks");
+        expect(input.filter((i: any) => i.type === "function_call")).toHaveLength(1);
+    });
+    test("gemini keeps rejecting a foreign thought signature but ignores reasoning blocks", () => {
+        const base = [
+            { role: "user", content: "hi" },
+            { role: "assistant", content: "", tool_calls: [callWithBlocks] },
+            { role: "tool", tool_call_id: "t1", content: "res" },
+        ];
+        const contents = ctx.fns.models.protocol.gemini.toGeminiContents({ messages: base }) as any[];
+        expect(JSON.stringify(contents)).not.toContain("hidden");
+        const foreign = [
+            { role: "user", content: "hi" },
+            { role: "assistant", content: "", tool_calls: [{ ...callWithBlocks, thought_signature: "foreign" }] },
+            { role: "tool", tool_call_id: "t1", content: "res" },
+        ];
+        expect(() => ctx.fns.models.protocol.gemini.toGeminiContents({ messages: foreign })).toThrow();
+    });
+});
+
 describe("route body fields per protocol", () => {
     /** Fake protocol registry: captures the endpoint streamRoute forwards. */
     let seen: types.models.ProtocolEndpoint | null = null;

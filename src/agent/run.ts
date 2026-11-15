@@ -416,8 +416,11 @@ export default async function (
         const goalFormat = 'common-stream' as const;
         const thinkingSpans: { startedAt: number; endedAt: number; summary: string }[] = [];
         let thinkingStart: number | null = null;
-        // Provider reasoning text of this request, kept only to replay it on a tool-call turn.
+        // Provider reasoning text of this request, kept only to replay it on a tool-call turn. Native signed
+        // reasoning blocks and the origin that produced them are captured the same way, with a size cap.
         let reasoningText = '';
+        let reasoningBlocks: types.models.StreamResult['reasoningBlocks'] = undefined;
+        let reasoningOrigin: { connectionId: string; model: string } | null = null;
         const closeThinking = () => {
             if (thinkingStart === null) return;
             thinkingSpans.push({ startedAt: thinkingStart, endedAt: Date.now(), summary: mobileStream.thinkingSummary });
@@ -450,6 +453,7 @@ export default async function (
             };
             const requestModel = ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id });
             const route = await ctx.fns.models.resolveRoute({ route: requestModel });
+            reasoningOrigin = { connectionId: route.connectionId, model: route.model };
             goalProvider = route.provider;
             // Read again in the catch block below; the route binding is block-scoped.
             requestProvider = route.provider;
@@ -504,6 +508,7 @@ export default async function (
                 state: continuationState, signal: sampling.signal, onEvent,
             });
             streamed.metrics = { llmTimeMs: Math.max(0, performance.now() - requestStartedAt), ttftMs: firstEventMs };
+            reasoningBlocks = Array.isArray(streamed.reasoningBlocks) && streamed.reasoningBlocks.length ? streamed.reasoningBlocks : undefined;
             continuationState = streamed.state;
             continuationKey = stateKey;
             await estimating;
@@ -652,8 +657,19 @@ export default async function (
 
         // A provider that replays reasoning needs it on the turn that made the calls:
         // store it once, on the first call only. Other protocols ignore the field.
+        // Native signed blocks are stored beside the text with their origin; oversized
+        // block payloads are skipped so a transcript cannot grow without bound.
+        let storedBlocks: types.models.StreamResult['reasoningBlocks'] = undefined;
+        if (toolCalls.length && reasoningBlocks && reasoningOrigin) {
+            const serialized = JSON.stringify(reasoningBlocks);
+            if (serialized.length <= 200000) storedBlocks = reasoningBlocks;
+        }
+        const firstCallExtras = {
+            ...(reasoningText ? { reasoning_content: reasoningText } : {}),
+            ...(storedBlocks ? { reasoning_blocks: storedBlocks, reasoning_origin: reasoningOrigin } : {}),
+        };
         const calls: types.session.Message['tool_calls'] = toolCalls.length
-            ? (toolCalls as NonNullable<types.session.Message["tool_calls"]>).map((call, i) => i === 0 && reasoningText ? { ...call, reasoning_content: reasoningText } : call)
+            ? (toolCalls as NonNullable<types.session.Message["tool_calls"]>).map((call, i) => i === 0 && Object.keys(firstCallExtras).length ? { ...call, ...firstCallExtras } : call)
             : undefined;
         const append = await ctx.fns.session.appendMessage({ id: agent.id, message: {
             role: 'assistant',

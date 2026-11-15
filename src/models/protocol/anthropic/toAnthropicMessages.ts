@@ -1,9 +1,11 @@
 /**
  * Convert canonical transcripts into Anthropic messages with stable-prefix caching
  *
- * Use inside models for provider wire compatibility without the legacy runtime. Preserves existing transcript, authentication or client identity behavior.
+ * Use inside models for provider wire compatibility without the legacy runtime. Preserves existing transcript, authentication or client identity behavior. With replayReasoning, an assistant tool-call turn replays its stored native reasoning blocks — signed thinking and redacted thinking — unchanged at the start of that assistant message, but only when they were captured from the same connection and model as the current request; without replay, a mismatching origin or unsigned blocks, nothing extra is sent.
  * @param opts.messages Conversation messages to convert.
  * @param opts.cacheableMessageCount Exclusive canonical-message boundary for a stable-prefix cache marker. Omit to disable marking. @minimum 0
+ * @param opts.replayReasoning Replay stored native reasoning blocks on tool-call turns. @default false
+ * @param opts.origin Connection and model the current request targets; stored blocks replay only from the same origin.
  */
 export default function (
     ctx: Context,
@@ -13,6 +15,10 @@ export default function (
         messages: any[];
         /** Exclusive canonical-message boundary for a stable-prefix cache marker. Omit to disable marking. @minimum 0 */
         cacheableMessageCount?: number;
+        /** Replay stored native reasoning blocks on tool-call turns. @default false */
+        replayReasoning?: boolean;
+        /** Connection and model the current request targets; stored blocks replay only from the same origin. */
+        origin?: { connectionId: string; model: string };
     },
 ): any[] {
     const out: { role: "user" | "assistant"; content: any[] }[] = [];
@@ -87,6 +93,16 @@ export default function (
             if (m?.message_type === "codex_compaction") continue;
     
             if (role !== "user" && role !== "assistant") continue;   // system handled elsewhere
+    
+            // Opt-in replay only, same connection and model only: signatures are model-bound, so a foreign origin
+            // would fail upstream. A block needs its signature (thinking) or data (redacted) to be replayable.
+            const firstCall = role === "assistant" ? m?.tool_calls?.[0] : undefined;
+            const storedBlocks = opts.replayReasoning === true && opts.origin && firstCall
+                && firstCall.reasoning_origin?.connectionId === opts.origin.connectionId
+                && firstCall.reasoning_origin?.model === opts.origin.model
+                ? (Array.isArray(firstCall.reasoning_blocks) ? firstCall.reasoning_blocks : []).filter((b: any) => b && (b.type === "redacted_thinking" && typeof b.data === "string" && b.data || typeof b.signature === "string" && b.signature))
+                : [];
+            for (const b of storedBlocks) push("assistant", b.type === "redacted_thinking" ? { type: "redacted_thinking", data: b.data } : { type: "thinking", thinking: typeof b.thinking === "string" ? b.thinking : "", signature: b.signature });
     
             if (text.trim() !== "") push(role, { type: "text", text });
             for (const image of images) push(role, { type: "image", source: { type: "base64", media_type: image.mimeType, data: image.data } });

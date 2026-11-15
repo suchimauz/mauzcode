@@ -37,6 +37,8 @@ test("original public model signatures, async declarations, types and HTTP route
         if (name === "ReasoningResolution.ts") actual = actual.replace('applied:types.models.ReasoningLevel|"auto";', 'applied:types.models.ReasoningLevel;').replace("wire?:string;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
         // usageRefreshMs is an intentional optional SDK addition (provider-paced usage cache).
         if (name === "ProviderDefinition.ts") actual = actual.replace("usageRefreshMs?:number;", "");
+        // extend-models-sdk-for-anthropic-routes: optional native reasoning block capture.
+        if (name === "StreamResult.ts") actual = actual.replace("reasoningBlocks?:{type:\\\"thinking\\\"|\\\"redacted_thinking\\\";thinking?:string;signature?:string;data?:string;}[];", "");
         // add-zai-coding-provider: the route request also carries the SDK-resolved reasoning.
         if (name === "ProviderDefinition.ts") actual = actual.replace("route?:(ctx:Context,conn:types.models.ResolvedConnection,req:{model:string;info:types.models.ModelInfo|null;sessionId:string;reasoning?:types.models.ReasoningResolution})=>Promise<types.models.ProtocolRoute>;", "");
         let expected = normalize(source);
