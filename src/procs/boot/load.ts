@@ -43,6 +43,9 @@ export async function apply(ctx: Context, entries: any[], mounted: any[], opts: 
     assertUserPluginCollisions(entries, mounted);
     // module records, a build) can read it instead of scanning again.
     (((ctx.state as any).procs ??= {}).boot ??= {}).entries = entries;
+    const provenance = (ctx.state as any).procs.boot;
+    provenance.namespaceSources = {};
+    provenance.registryGeneration = (provenance.registryGeneration ?? 0) + 1;
     // The framework's own loaders are imported by name before anything else —
     // that is bootstrap, not loading, and it is what lets phase A hand functions
     // to `loaders.fn` instead of registering them a second way.

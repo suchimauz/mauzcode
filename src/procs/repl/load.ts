@@ -70,6 +70,13 @@ async function loadFile(ctx: Context, modPath: string, fnName: string, all?: any
     // metadata (name, module, file, docstring) a booted one does.
     const load = (ctx.state as any).procs?.boot?.loaders?.fn;
     if (load) await load(ctx, null, { entries: [{ ...(e as any), fn }] });
-    else setPath(ctx.state.registry, [...modPath.split('/'), fnName], bindSelf(fn, (e as any).namespace));
+    else {
+        setPath(ctx.state.registry, [...modPath.split('/'), fnName], bindSelf(fn, (e as any).namespace));
+        const boot = ctx.state.procs.boot as any;
+        const sources = (boot.namespaceSources ??= {});
+        const provenance = (sources[modPath.split('/')[0]!] ??= { core: false, project: false });
+        provenance[/(?:^|\/)\.mauzcode(?:\/|$)/.test(e.rootDir ?? e.abs) ? 'project' : 'core'] = true;
+        boot.registryGeneration = (boot.registryGeneration ?? 0) + 1;
+    }
     ctx.fns.procs.log.info({ event: "reload.fn", msg: `${modPath.replaceAll('/', '.')}.${fnName}`, from: source(e as any) });
 }

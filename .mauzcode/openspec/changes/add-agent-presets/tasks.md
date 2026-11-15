@@ -9,9 +9,9 @@
 
 ## 2. Access resolution
 
-- [ ] 2.1 Implement `agentPreset.origin({ name })` → `plugin` (with plugin name) | `project` | `core`, using `plugins.list` namespaces and loader origin; a project file overriding a core function stays `core`. Verify with unit tests for each origin and the override case.
-- [ ] 2.2 Implement pattern validation and compilation (`*` → any characters including dots; allowed characters `[A-Za-z0-9_.*$-]`). Verify with unit tests for nested names, escaping and rejected characters.
-- [ ] 2.3 Implement `agentPreset.allows({ snapshot, name })` with per-layer AND, deny precedence, plugin-only grants, project-local allowance and per-snapshot/name/registry-generation memoisation (D2). Advance the generation on load, unload, override and namespace-origin changes; invalidate derived discovery/prompt caches as needed. Verify with unit tests for every "Function access resolution", "Manual plugin grants" and built-in-defaults scenario in `specs/agent-presets/spec.md`, including warmed-cache origin changes and wildcard grants for existing agents after registration. Assert snapshots remain unchanged.
+- [x] 2.1 Implement `agentPreset.origin({ name })` → `plugin` (with plugin name) | `project` | `core`, using `plugins.list` namespaces and loader origin; a project file overriding a core function stays `core`. Verify with unit tests for each origin and the override case.
+- [x] 2.2 Implement pattern validation and compilation (`*` → any characters including dots; allowed characters `[A-Za-z0-9_.*$-]`). Verify with unit tests for nested names, escaping and rejected characters.
+- [x] 2.3 Implement `agentPreset.allows({ snapshot, name })` with per-layer AND, deny precedence, plugin-only grants, project-local allowance and per-snapshot/name/registry-generation memoisation (D2). Advance the generation on load, unload, override and namespace-origin changes; invalidate derived discovery/prompt caches as needed. Verify with unit tests for every "Function access resolution", "Manual plugin grants" and built-in-defaults scenario in `specs/agent-presets/spec.md`, including warmed-cache origin changes and wildcard grants for existing agents after registration. Assert snapshots remain unchanged.
 
 ## 3. Preset management API
 

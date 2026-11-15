@@ -35,6 +35,15 @@ export default async function (ctx: Context, _session: Session | null, opts: { e
             continue;
         }
         setPath(ctx.state.registry, [...entry.moduleDir.split("/"), entry.runtimeName], bindSelf(fn, entry.namespace));
+        // Namespace provenance is accumulated across all roots: a project override
+        // must never turn a host namespace into an unrestricted project namespace.
+        const boot = ctx.state.procs.boot as any;
+        const sources = (boot.namespaceSources ??= {});
+        const namespace = entry.moduleDir.split('/')[0];
+        const provenance = (sources[namespace] ??= { core: false, project: false });
+        const project = /(?:^|\/)\.mauzcode(?:\/|$)/.test(entry.rootDir ?? entry.abs ?? '');
+        provenance[project ? 'project' : 'core'] = true;
+        boot.registryGeneration = (boot.registryGeneration ?? 0) + 1;
         loaded.push(entry);
     }
     // Logged after the loop: `log.debug` calls `log.emit`, and readdir order is
