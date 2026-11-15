@@ -1,4 +1,4 @@
-/** Build provider-neutral tool declarations, respecting the agent's selection and prose-only goal receipts.
+/** Build provider-neutral tool declarations, respecting the agent's preset, selection and prose-only goal receipts.
  * Providers own wire dialect conversion; callers must not select an API dialect.
  * @param opts.agent Agent whose tool selection is used.
  */
@@ -14,5 +14,9 @@ export default function (
     const only = opts.agent.tools;
     return ctx.fns.tools.list({})
         .filter(tool => !only?.length || only.includes(tool.wireName) || only.includes(tool.name))
+        .filter(tool => !opts.agent.preset || ctx.fns.agentPreset.allows({
+            snapshot: opts.agent.preset,
+            name: tool.fn ?? `${tool.module}.${tool.name}`,
+        }))
         .map(tool => ({ name: tool.wireName, description: tool.description, parameters: tool.parameters }));
 }

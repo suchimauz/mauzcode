@@ -11,6 +11,7 @@
 // same way, because in JSON mode the model picks the name itself.
 /**
  * Validates and invokes a registered tool, preserving text, tool envelopes and JSON data results for the model.
+ * Rejects tools denied by the owning agent's preset before argument validation.
  * Use handlerExecuted to account for handler invocation independently of success:
  * false means rejection or cancellation before invocation; true includes thrown
  * handlers and cancellation after invocation, whose eventual result is unknown.
@@ -24,7 +25,7 @@ export default async function (
         name: string;
         /** Tool arguments validated against the registered JSON schema before execution. */
         args?: any;
-        /** Owning agent whose workspace and cancellation scope apply to this call. */
+        /** Owning agent whose preset, workspace and cancellation scope apply to this call. */
         agent?: types.agent.Agent;
     },
 ): Promise<{ output: string; content?: types.tools.Content[]; isError: boolean; handlerExecuted: boolean; terminal?: { type: 'html'; html: string; text: string }; details?: Record<string, unknown> }> {
@@ -33,6 +34,11 @@ export default async function (
     const tool = all.find((t: any) => t.wireName === name || t.name === name || t.key === name);
     if (!tool) {
         return { output: `Error: unknown tool "${name}". Available: ${all.map((t: any) => t.wireName).join(", ")}`, isError: true, handlerExecuted: false };
+    }
+
+    const implementingFn = tool.fn ?? `${tool.module}.${tool.name}`;
+    if (opts.agent?.preset && !ctx.fns.agentPreset.allows({ snapshot: opts.agent.preset, name: implementingFn })) {
+        return { output: `Error: ${implementingFn} is not available in preset ${opts.agent.preset.name}`, isError: true, handlerExecuted: false };
     }
 
     const args = opts.args ?? {};

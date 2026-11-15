@@ -30,8 +30,8 @@
 
 ## 5. Native tools and tool calls
 
-- [ ] 5.1 `agent.wireTools` keeps a tool only when `allows(snapshot, implementingFn)` and, if set, `agent.tools` contains it. Verify with tests for "Plugin tool hidden", "Tool selection narrows" and "Minimal tool set".
-- [ ] 5.2 `tools.call` with an agent rejects a denied tool before validation, using the error `"<fn> is not available in preset <name>"`, `handlerExecuted: false`. Verify with a test that calls a hidden Redmine tool from a Standard agent.
+- [x] 5.1 `agent.wireTools` keeps a tool only when `allows(snapshot, implementingFn)` and, if set, `agent.tools` contains it. Verify with tests for "Plugin tool hidden", "Tool selection narrows" and "Minimal tool set".
+- [x] 5.2 `tools.call` with an agent rejects a denied tool before validation, using the error `"<fn> is not available in preset <name>"`, `handlerExecuted: false`. Verify with a test that calls a hidden Redmine tool from a Standard agent.
 
 ## 6. Eval guard
 
