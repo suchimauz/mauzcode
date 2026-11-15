@@ -3,12 +3,14 @@
 ## 1. Usage contract and provider compatibility
 
 - [ ] 1.1 Inspect code slices/callers for usage producers and consumers, then add documented optional window identity, scope, period and observation metadata to SDK and bridge types; verify existing label-only reports remain accepted and are treated as unclassified in focused contract tests.
-- [ ] 1.2 Audit supported built-in/plugin usage producers, including OpenCode Go, and add explicit metadata for their established general periods; document the label-only additional-window fallback and verify each provider's existing standard periods with focused tests. Coordinate overlapping OpenCode Go work before edits.
+- [ ] 1.2 Extend `models.connections.usage` normalization to validate and pass through window metadata (bounded identity/label strings, enum-checked period/scope, finite observation time), dropping invalid fields rather than whole windows and never truncating general windows in favour of extras; add and pass tests that metadata survives normalization and the 60 s cache.
+- [ ] 1.3 Audit supported built-in/plugin usage producers, including OpenCode Go, and add explicit metadata for their established general periods; keep other valid windows from every provider as additional with stable identities; document in the provider SDK that label-only windows are shown only as additional limits (deliberate breaking change, no label fallback) and verify each provider's existing standard periods with focused tests. Coordinate overlapping OpenCode Go work before edits.
 
 ## 2. Codex normalization
 
 - [ ] 2.1 Classify periods from reported seconds/minutes independently of slot and label; add and pass tests for weekly-only primary, conventional/reordered pairs, minutes-only input, missing/invalid/unsupported/conflicting durations and reset-countdown independence.
 - [ ] 2.2 Preserve valid unknown-period windows and reject null/non-finite utilization without zero coercion; verify identity, usage and reset retention plus valid-sibling behavior in provider tests, and update affected normalization JSDoc.
+- [ ] 2.3 Keep every valid `rate_limits` entry, not only `limit_id: codex`: non-codex entries are additional windows with their limit identity and model/unknown scope even when their duration is standard; add and pass tests for multiple entries, a same-period model limit and malformed entries. Do not change `codexQuota`.
 
 ## 3. Claude additional windows and cache
 

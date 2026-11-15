@@ -31,6 +31,11 @@ The provider SHALL preserve the identity and available usage/reset data of each 
 - **WHEN** a primary window reports a valid used percentage and reset time but no duration
 - **THEN** its identity, used percentage and reset time remain in the report without a fabricated session classification
 
+#### Scenario: Additional rate-limit entries
+- **WHEN** the usage response contains the `codex` rate-limit entry and another valid entry, such as a model-specific limit with a weekly duration
+- **THEN** the `codex` entry supplies the account-wide windows
+- **AND** the other entry is retained as an additional limit with its own identity and does not populate the weekly column
+
 #### Scenario: Null utilization
 - **WHEN** an entry reports null or non-finite utilization and no other valid usage measurement
 - **THEN** it is not emitted as a zero-percent quota

@@ -19,6 +19,15 @@ Usage reports and the quota API SHALL preserve window identity, scope, known per
 - **WHEN** a provider supplies only a label such as `Session (7d)` without structured classification
 - **THEN** the window remains additional and is not mapped by its label prefix
 
+#### Scenario: Metadata survives core normalization
+- **WHEN** a provider adapter returns windows with identity, period, scope and observation metadata
+- **THEN** the normalized connection usage and its cached result preserve valid metadata
+- **AND** an invalid metadata field is dropped without discarding the window's measurements
+
+#### Scenario: Additional limits from any provider
+- **WHEN** any provider reports valid windows beyond its account-wide standard periods
+- **THEN** those windows are retained as additional limits with stable identities
+
 #### Scenario: Existing providers remain supported
 - **WHEN** supported providers report their established general five-hour, weekly or monthly limits
 - **THEN** their adapters supply explicit classification and those limits remain in the corresponding existing columns
