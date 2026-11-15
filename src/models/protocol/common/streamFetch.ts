@@ -1,3 +1,6 @@
+/** What a provider failure classifier may return: null means fall back to the status rules. */
+type ClassifiedFailure = { code: string; classification: types.models.FailureInfo["classification"]; retryable: boolean; retryAfterMs?: number; resetAt?: number; message: string } | null;
+
 /**
  * Send one streaming generation request for a shared protocol and classify HTTP failures
  *
@@ -10,9 +13,6 @@
  * @param opts.signal Optional cancellation signal.
  * @param opts.classifyFailure Optional provider classifier consulted before the status rules.
  */
-/** What a provider failure classifier may return: null means fall back to the status rules. */
-type ClassifiedFailure = { code: string; classification: types.models.FailureInfo["classification"]; retryable: boolean; retryAfterMs?: number; resetAt?: number; message: string } | null;
-
 export default async function (
     ctx: Context,
     session: Session | null,
