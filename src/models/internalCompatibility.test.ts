@@ -13,7 +13,7 @@ test("root model procedures are exactly the minimal facade plus providers and ap
         .filter(file => !file.endsWith(".test.ts") && !file.startsWith("$") && /^[a-z]/.test(file))
         .map(file => file.slice(0, -3)).sort();
     expect(roots).toEqual([...Object.keys(baseline.procedures), "displayNames", "resolveRoute", "setContextLimits", "tokenPrice"].sort());
-    expect(roots).toEqual(["action", "api", "call", "compact", "create", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setContextLimits", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
+    expect(roots).toEqual(["action", "api", "call", "compact", "countTokens", "create", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setContextLimits", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
 });
 
 test("original public model signatures, async declarations, types and HTTP route contracts survive", async () => {
@@ -30,14 +30,20 @@ test("original public model signatures, async declarations, types and HTTP route
     for (const [name, source] of Object.entries({...baseline.types, ...baseline.routes}) as [string, string][]) {
         // Intentional SDK additions are checked structurally, without rewriting the historical snapshot.
         let actual = normalize(await readFile(join(import.meta.dir, name), "utf8"));
-        // Protocol routing and optional reasoning defaults are intentional SDK extensions.
-        if (["ModelInfo.ts", "ReasoningCapabilities.ts"].includes(name)) actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace('protocol?:types.models.ProtocolRoute["protocol"];', "");
+        // Protocol routing, optional reasoning defaults and the adaptive/effort thinking flags are intentional SDK extensions.
+        if (name === "ModelInfo.ts") actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "").replace('protocol?:types.models.ProtocolRoute["protocol"];', "");
         if (name === "ModelInfo.ts") actual = actual.replace("default:types.models.ReasoningLevel;}", "default:types.models.ReasoningLevel}");
-        if (name === "ReasoningResolution.ts") actual = actual.replace('applied:types.models.ReasoningLevel|"auto";', 'applied:types.models.ReasoningLevel;').replace("wire?:string;", "").replace("disable?:boolean;", "");
+        if (name === "ReasoningCapabilities.ts") actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
+        if (name === "ReasoningResolution.ts") actual = actual.replace('applied:types.models.ReasoningLevel|"auto";', 'applied:types.models.ReasoningLevel;').replace("wire?:string;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
         // usageRefreshMs is an intentional optional SDK addition (provider-paced usage cache).
         if (name === "ProviderDefinition.ts") actual = actual.replace("usageRefreshMs?:number;", "");
+        // extend-models-sdk-for-anthropic-routes: optional native reasoning block capture.
+        if (name === "StreamResult.ts") actual = actual.replace("reasoningBlocks?:{type:\\\"thinking\\\"|\\\"redacted_thinking\\\";thinking?:string;signature?:string;data?:string;}[];", "");
         // add-zai-coding-provider: the route request also carries the SDK-resolved reasoning.
         if (name === "ProviderDefinition.ts") actual = actual.replace("route?:(ctx:Context,conn:types.models.ResolvedConnection,req:{model:string;info:types.models.ModelInfo|null;sessionId:string;reasoning?:types.models.ReasoningResolution})=>Promise<types.models.ProtocolRoute>;", "");
+        // extend-models-sdk-for-anthropic-routes: optional provider failure classifier and exact token counting.
+        if (name === "ProviderDefinition.ts") actual = actual.replace(/classifyFailure\?:\(ctx:Context,conn:types\.models\.ResolvedConnection,input:\{status:number;body:unknown\|null;model:string\}\)=>Promise<\{code:string;classification:types\.models\.FailureInfo\["classification"\];retryable:boolean;retryAfterMs\?:number;resetAt\?:number;message:string\}\|null>\|\{code:string;classification:types\.models\.FailureInfo\["classification"\];retryable:boolean;retryAfterMs\?:number;resetAt\?:number;message:string\}\|null;/, "");
+        if (name === "ProviderDefinition.ts") actual = actual.replace("countTokens?:(ctx:Context,conn:types.models.ResolvedConnection,req:{model:string;messages:(Record<string,unknown>|types.models.CheckpointEntry)[];instructions?:string;tools?:types.models.ToolSpec[]})=>Promise<number>;", "");
         let expected = normalize(source);
         if (name === "StreamRequest.ts") expected = expected.replace("tools?:Record<string,unknown>[]", "tools?:types.models.ToolSpec[]");
         const additive: Record<string, string> = {

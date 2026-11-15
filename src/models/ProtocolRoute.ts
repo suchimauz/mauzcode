@@ -10,4 +10,6 @@ export type ProtocolRoute = {
     body?: Record<string, unknown>;
     /** Ask the shared protocol to replay stored assistant reasoning on tool-call turns; honored only by protocols that can carry it. @default false */
     replayReasoning?: boolean;
+    /** Let the upstream choose the output budget: the shared protocol sends no max_tokens. @default false */
+    serverMaxTokens?: boolean;
 };

@@ -8,6 +8,10 @@ export type ReasoningCapabilities = {
     wire?: Partial<Record<types.models.ReasoningLevel, string>>;
     /** Off is sent through the protocol's native thinking-disable form. */
     disable?: boolean;
+    /** The model has a native adaptive-thinking switch; protocols that support it send it for every applied level other than off. */
+    adaptive?: boolean;
+    /** False means the model only switches thinking on or off and no effort value is sent. @default true */
+    effort?: boolean;
     /** Where the capabilities came from: provider model discovery or a versioned SDK profile. */
     source: "metadata" | "profile";
     /** Versioned profile id when source is profile, e.g. codex-2026-07. */

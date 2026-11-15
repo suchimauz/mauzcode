@@ -32,5 +32,7 @@ export type Protocol = {
         endpoint: types.models.ProtocolEndpoint;
         request: types.models.StreamRequest;
         signal?: AbortSignal;
+        /** Optional provider failure classifier consulted on a failed response before the status rules; forwarded to models.protocol.common.streamFetch. */
+        classifyFailure?: types.models.ProtocolStreamClassify;
     }) => Promise<types.models.StreamResult>;
 };

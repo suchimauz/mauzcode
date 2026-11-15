@@ -36,6 +36,10 @@ export type ProviderDefinition = {
     route?: (ctx: Context, conn: types.models.ResolvedConnection, req: { model: string; info: types.models.ModelInfo | null; sessionId: string; reasoning?: types.models.ReasoningResolution }) => Promise<types.models.ProtocolRoute>;
     /** Optional native transcript compaction; called only through models.compact after the enabled checks. */
     compact?: (ctx: Context, conn: types.models.ResolvedConnection, req: types.models.CompactRequest) => Promise<types.models.CompactResult>;
+    /** Optional classifier for a failed protocol-route request: receives the upstream status and the bounded, JSON-parsed error body (null when unparseable) and returns a stable code, classification, retryability, optional reset time and a fixed credential-safe message — never body text. Return null (or throw) to fall back to the status-based classification. */
+    classifyFailure?: (ctx: Context, conn: types.models.ResolvedConnection, input: { status: number; body: unknown | null; model: string }) => Promise<{ code: string; classification: types.models.FailureInfo["classification"]; retryable: boolean; retryAfterMs?: number; resetAt?: number; message: string } | null> | { code: string; classification: types.models.FailureInfo["classification"]; retryable: boolean; retryAfterMs?: number; resetAt?: number; message: string } | null;
+    /** Optional exact input token counting through the connection's transport, with the same request shape as streaming (no generation happens); called through models.countTokens after the enabled checks. Return the provider-reported non-negative count. */
+    countTokens?: (ctx: Context, conn: types.models.ResolvedConnection, req: { model: string; messages: (Record<string, unknown> | types.models.CheckpointEntry)[]; instructions?: string; tools?: types.models.ToolSpec[] }) => Promise<number>;
     /** Additive SDK features this provider opts into; omitted means none. */
     capabilities?: {
         /** Accepts and returns run-scoped ProviderState. */

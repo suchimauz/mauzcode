@@ -14,4 +14,6 @@ export type StreamResult = {
     quota?: types.models.QuotaObservation;
     /** Requested/applied reasoning for providers opting into SDK normalization. */
     reasoning?: types.models.ReasoningResolution;
+    /** Complete native reasoning blocks of an anthropic response, in order; stored on tool-call turns and replayed unchanged by the anthropic protocol only. */
+    reasoningBlocks?: { type: "thinking" | "redacted_thinking"; thinking?: string; signature?: string; data?: string }[];
 };

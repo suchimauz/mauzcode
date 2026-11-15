@@ -1,7 +1,7 @@
 /**
  * Stream one Anthropic Messages generation through a provider-supplied endpoint
  *
- * Shared anthropic protocol strategy for ProviderDefinition.stream implementations. Converts the OpenAI-shaped transcript with llm.toAnthropicMessages, sends POST {base}/messages with stream:true, the instructions as system, max_tokens (maxTokens, default 4096) and optional temperature and tools. responseFormat is applied as a JSON-only instruction appended to the system prompt. Reports text, thinking and tool argument deltas and returns a StreamResult (end_turn/stop_sequence → stop, max_tokens → length, tool_use → tool_calls). HTTP errors become classified SDK failures; a missing message_stop or malformed stream fails with acceptance uncertain. SDK-resolved reasoning is sent as output_config.effort (wire value), or thinking disabled for off when declared; applied auto sends nothing.
+ * Reports text, thinking and tool argument deltas and returns a StreamResult (end_turn/stop_sequence → stop, max_tokens → length, tool_use → tool_calls) that also carries the complete thinking and redacted_thinking content blocks in order as reasoningBlocks.
  * @param opts.fetch Transport-bound fetch of the connection.
  * @param opts.endpoint Provider-built versioned base and headers.
  * @param opts.request Streaming request without checkpoint entries.
@@ -19,29 +19,63 @@ export default async function (
         request: types.models.StreamRequest;
         /** Optional cancellation signal. */
         signal?: AbortSignal;
+        /** Optional provider failure classifier consulted on a failed response before the status rules. */
+        classifyFailure?: types.models.ProtocolStreamClassify;
     },
 ): Promise<types.models.StreamResult> {
     const { request: req, signal } = opts;
     const label = "Anthropic Messages";
     const DEFAULT_MAX_TOKENS = 4096;
     const transcript = (req.messages as Record<string, unknown>[]).filter(m => m.role !== "system");
-    const messages = ctx.fns.models.protocol.anthropic.toAnthropicMessages({ messages: transcript });
+    const messages = ctx.fns.models.protocol.anthropic.toAnthropicMessages({
+        messages: transcript,
+        ...(opts.endpoint.replayReasoning === true ? { replayReasoning: true } : {}),
+        ...(opts.endpoint.origin ? { origin: opts.endpoint.origin } : {}),
+    });
     const json = req.responseFormat ? ctx.fns.models.inference.structured({ action: "instruction", format: req.responseFormat }) : "";
     const system = [req.instructions, json].filter(Boolean).join("\n\n");
     // SDK-resolved reasoning only reaches opted-in providers; auto sends nothing. Off uses the native disable form when
-    // declared, else its wire value; without either, off has no representation and is omitted.
+    // declared, else its wire value; without either, off has no representation and is omitted. A concrete on-level uses
+    // the native adaptive switch when the resolution carries the flag, and omits the effort value when effort:false.
     const r = req.reasoning && req.reasoning.applied !== "auto" ? req.reasoning : null;
     const reasoningFields = r?.applied === "off" && r.disable ? { thinking: { type: "disabled" } }
-        : r && (r.applied !== "off" || r.wire) ? { output_config: { effort: r.wire ?? r.applied } } : {};
+        : !r ? {}
+        : r.applied === "off" ? (r.wire ? { output_config: { effort: r.wire } } : {})
+        : {
+            ...(r.adaptive ? { thinking: { type: "adaptive" } } : {}),
+            ...(r.effort === false ? {} : { output_config: { effort: r.wire ?? r.applied } }),
+        };
     const body: Record<string, unknown> = {
-        model: req.model, messages, stream: true, max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+        model: req.model, messages, stream: true,
+        ...(opts.endpoint.serverMaxTokens === true ? {} : { max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS }),
         ...(system ? { system } : {}),
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
         ...(req.tools?.length ? { tools: ctx.fns.models.protocol.anthropic.toTools({ tools: req.tools }) } : {}),
         ...reasoningFields,
+        // Provider body extras arrive validated by streamRoute (no protocol-owned keys) and are additive.
+        ...(opts.endpoint.body ?? {}),
     };
-    const res = await ctx.fns.models.protocol.common.streamFetch({ fetch: opts.fetch, url: opts.endpoint.base + "/messages", headers: opts.endpoint.headers, body, label, signal });
+    const res = await ctx.fns.models.protocol.common.streamFetch({ classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/messages", headers: opts.endpoint.headers, body, label, signal });
     let text = "", thinking = "", stop: string | null = null, terminal = false;
+    // Native reasoning blocks captured by index: thinking text from thinking_delta, the model signature from
+    // signature_delta, and redacted data from the start event. Returned whole as StreamResult.reasoningBlocks.
+    const reasoningBlocks: NonNullable<types.models.StreamResult["reasoningBlocks"]> = [];
+    const blockByIndex = new Map<string, { type: "thinking" | "redacted_thinking"; thinking?: string; signature?: string; data?: string }>();
+    const captureBlock = (ev: Record<string, any>) => {
+        const kind = ev.content_block?.type;
+        if (kind !== "thinking" && kind !== "redacted_thinking") return;
+        const index = String(ev.index ?? 0);
+        if (blockByIndex.has(index)) return;
+        const block = kind === "thinking" ? { type: kind, thinking: "" } : { type: kind, ...(typeof ev.content_block.data === "string" ? { data: ev.content_block.data } : {}) };
+        blockByIndex.set(index, block);
+        reasoningBlocks.push(block);
+    };
+    const captureDelta = (ev: Record<string, any>, d: Record<string, any>) => {
+        const block = blockByIndex.get(String(ev.index ?? 0));
+        if (!block) return;
+        if (d.type === "thinking_delta" && typeof d.thinking === "string" && block.type === "thinking") block.thinking = (block.thinking ?? "") + d.thinking;
+        else if (d.type === "signature_delta" && typeof d.signature === "string" && block.type === "thinking") block.signature = (block.signature ?? "") + d.signature;
+    };
     const usage: types.models.StreamResult["usage"] = {};
     const tools = ctx.fns.models.protocol.common.collectToolCalls({ onEvent: req.onEvent });
     const setUsage = (u: Record<string, number | undefined> | undefined) => {
@@ -62,11 +96,13 @@ export default async function (
             if (type === "message_start") setUsage(ev.message?.usage);
             else if (type === "message_delta") { if (ev.delta?.stop_reason) stop = ev.delta.stop_reason; setUsage(ev.usage); }
             else if (type === "content_block_start" && ev.content_block?.type === "tool_use") tools.start(String(ev.index ?? 0), ev.content_block.id ?? "", ev.content_block.name ?? "");
+            else if (type === "content_block_start") captureBlock(ev);
             else if (type === "content_block_delta") {
                 const d = ev.delta ?? {};
                 if (d.type === "text_delta" && typeof d.text === "string") { text += d.text; req.onEvent?.({ type: "text_delta", delta: d.text }); }
                 else if (d.type === "thinking_delta" && typeof d.thinking === "string") { thinking += d.thinking; req.onEvent?.({ type: "thinking_delta", delta: d.thinking, visibility: "public_summary" }); }
                 else if (d.type === "input_json_delta" && typeof d.partial_json === "string") tools.append(String(ev.index ?? 0), d.partial_json);
+                captureDelta(ev, d);
             }
         }
     } catch (error) {
@@ -75,5 +111,6 @@ export default async function (
     }
     if (!terminal) throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "ended" });
     const finishReason = stop === "end_turn" || stop === "stop_sequence" ? "stop" : stop === "max_tokens" ? "length" : stop === "tool_use" ? "tool_calls" : stop;
-    return { text, thinking, finishReason, usage, toolCalls: tools.finish() };
+    const keptBlocks = reasoningBlocks.filter(b => (b.thinking ?? "").length > 0 || (b.signature ?? "").length > 0 || (b.data ?? "").length > 0);
+    return { text, thinking, finishReason, usage, toolCalls: tools.finish(), ...(keptBlocks.length ? { reasoningBlocks: keptBlocks } : {}) };
 }
