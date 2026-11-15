@@ -1,0 +1,28 @@
+{
+  "962f9c5523795700eb5370d2598270634267ea80620899032b85ad6c806af49f": [
+    "UI compatibility limits: the primary React shell does not load /ui/control.js; minimal SSR ui.layout still does.",
+    "ui.eval returns dispatched:true for emission, not execution.",
+    "ui.action returns dispatched:true for emission, not execution.",
+    "Navigation and toast events need a compatible consumer",
+    "An event subscriber alone proves neither that bridge nor a specific target.",
+    "screen.eval waits for a result through the compatibility bridge and can time out; its consumer requires window.page from the screen client, even for plain DOM code.",
+    "screen.openTab first needs screen.eval for the origin before using CDP.",
+    "UI compatibility bridge limits do not disable server-side ui.createAgent/sendToAgent effects; their optional navigation is best-effort.",
+    "For browser automation, discover the browser plugin with plugins.search({ query: \"browser automation\" }), then plugins.read({ name: \"browser\" }) and follow its prerequisites rather than guessing APIs or Chrome availability."
+  ],
+  "32b7559357172bcbc746f0a7b632d49d6200e519e5575be50c2549a0b42dbf44": [
+    "A large surface left of the chat where you can put something in front of the person — a file, document or diagram.",
+    "Open a tab with `await ctx.fns.canvas.show({ kind, args, title? })`; it becomes active and the canvas opens.",
+    "When the canvas changes you get a short `Canvas` block saying what is open.",
+    "`canvas.list({})` shows the tabs; `canvas.list({ closed: true })` lists recently closed tabs with their `closedAt`.",
+    "`canvas.close({ itemId })` marks a tab closed; it is kept for 30 days.",
+    "`canvas.reopen({ itemId })` brings a closed tab back with its state.",
+    "`canvas.setState({ itemId, state })` remembers a tab's own state."
+  ],
+  "83c70082481c59d056f8c28f3cc1f3adc0ffe5ac2bf3197d2f1122a35a65a16d": [
+    "When the person asks to open, show or look at a file, a README, a document or a picture, put it on the canvas.",
+    "Only the canvas region refreshes; the chat, drafts and scroll stay.",
+    "Showing the same thing again just switches to its tab.",
+    "Relative paths resolve in your workspace; for another project pass an absolute path."
+  ]
+}

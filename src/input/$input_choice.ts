@@ -36,6 +36,7 @@ const batch: types.input.BatchCodec = {
 };
 
 export default {
+    requires: ["input.request"],
     batch,
     icon: "list-checks",
     prepare(_ctx: Context, opts: { spec: Record<string, any> }) {

@@ -19,6 +19,10 @@ export default async function (ctx: Context, _session: Session | null, opts: { e
         const imported = entry.mod ?? await import(entry.abs + `?t=${Date.now()}`);
         const def = imported?.default;
         if (!def || typeof def.render !== "function") throw new Error(`${entry.rel}: $canvas_ file must default-export { render }`);
+        if (def.requires !== undefined && (!Array.isArray(def.requires) || !def.requires.includes("canvas.show") ||
+            def.requires.some((name: unknown) => typeof name !== "string" || !/^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*)+$/.test(name)))) {
+            throw new Error(`${entry.rel}: requires must contain exact function names including canvas.show`);
+        }
         const hint = imported.hint;
         if (hint !== undefined && typeof hint !== "string" && typeof hint !== "function") throw new Error(`${entry.rel}: $canvas_ hint must be a string or a function of ctx`);
         kinds[name] = { ...def, name, module, rel: entry.rel, hint };

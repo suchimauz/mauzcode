@@ -34,6 +34,7 @@ const batch: types.input.BatchCodec = {
 };
 
 export default {
+    requires: ["input.request","tools.bash","secrets.get"],
     batch,
     icon: "key",
     prepare(ctx: Context, opts: { spec: Record<string, any> }) {

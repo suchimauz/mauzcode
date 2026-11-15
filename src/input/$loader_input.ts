@@ -56,6 +56,10 @@ export default async function (ctx: Context, _session: Session | null, opts: { e
             if (!codec || typeof codec !== "object" || codec.version !== 1 || Object.keys(codec).some(k => !["version", ...required, "history"].includes(k)) || required.some(k => typeof codec[k] !== "function") || (codec.history !== undefined && typeof codec.history !== "function")) throw new Error(`${entry.rel}: invalid batch codec version or hooks`);
             if ([...required, ...(codec.history ? ["history"] : [])].some(k => ["AsyncFunction", "GeneratorFunction", "AsyncGeneratorFunction"].includes(codec[k].constructor?.name))) throw new Error(`${entry.rel}: batch codec hooks must be synchronous`);
         }
+        if (def.requires !== undefined && (!Array.isArray(def.requires) || !def.requires.includes("input.request") ||
+            def.requires.some((name: unknown) => typeof name !== "string" || !/^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*)+$/.test(name)))) {
+            throw new Error(`${entry.rel}: requires must contain exact function names including input.request`);
+        }
         const hint = typeof imported.hint === "string" ? imported.hint : undefined;
         kinds[name] = { ...def, name, owner, module: entry.moduleDir === "." ? "app" : String(entry.moduleDir), rel: entry.rel, hint };
         ctx.fns.procs.log.debug({ event: "load.input", msg: name, from: entry.rel });

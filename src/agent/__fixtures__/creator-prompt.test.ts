@@ -20,6 +20,17 @@ test("Creator preserves the reviewed pre-split prompt", async () => {
     const before = await Bun.file(path).text();
     const manifest = await Bun.file(resolve(import.meta.dir, "creator-prompt.relocations.json")).json();
     const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
-    const missing = before.split(/\n\s*\n/).filter(p => !manifest.paragraphs.includes(p)).flatMap(p => p.includes("## Runtime context") ? p.split("\n") : [p]).filter(p => !normalize(prompt).includes(normalize(p)));
+    // Only these three exact baseline hashes have capability-split replacements.
+    // No baseline or relocation exemptions are rewritten; every replacement stays asserted.
+    const splits: Record<string, string[]> = await Bun.file(resolve(import.meta.dir, "scoped-guidance-splits.json")).json();
+    expect(Object.keys(splits)).toHaveLength(3);
+    const paragraphs = before.split(/\n\s*\n/).filter(p => !manifest.paragraphs.includes(p));
+    for (const [hash, fragments] of Object.entries(splits)) {
+        expect(paragraphs.some(p => new Bun.CryptoHasher("sha256").update(p).digest("hex") === hash)).toBe(true);
+        for (const fragment of fragments) expect(normalize(prompt)).toContain(normalize(fragment));
+    }
+    expect(prompt).toContain('To show files beside chat, use canvas.show with kind:"file".');
+    expect(prompt).toContain('not `ui.openFile`, which navigates the whole page away from the chat.');
+    const missing = paragraphs.filter(p => !splits[new Bun.CryptoHasher("sha256").update(p).digest("hex")]).flatMap(p => p.includes("## Runtime context") ? p.split("\n") : [p]).filter(p => !normalize(prompt).includes(normalize(p)));
     expect(missing).toEqual([]);
 });

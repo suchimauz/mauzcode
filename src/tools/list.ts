@@ -10,7 +10,10 @@
 export default function (
     ctx: Context,
     _session: Session | null,
-    _opts: { /** Value for module. */ module?: string } = {},
+    _opts: {
+        /** Restrict results to this exact tool namespace. */ module?: string;
+        /** Internal capability predicate supplied by the guarded agent boundary. */ allows?: (name: string) => boolean;
+    } = {},
 ): any[] {
     const registry: Map<string, any> = (ctx.state as any).tools?.registry ?? new Map();
     const all = [...registry.values()].sort((a, b) => String(a.key).localeCompare(String(b.key)));
@@ -23,5 +26,6 @@ export default function (
         wireName: (claims.get(t.name) ?? 0) > 1 ? `${String(t.module).replaceAll(".", "_")}_${t.name}` : t.name,
     }));
 
-    return _opts?.module ? out.filter(t => t.module === _opts.module) : out;
+    return out.filter(t => (!_opts?.module || t.module === _opts.module) &&
+        (!_opts.allows || ctx.fns.agentPreset.discoveryVisible({ requires: [t.fn ?? `${t.module}.${t.name}`], allows: _opts.allows })));
 }

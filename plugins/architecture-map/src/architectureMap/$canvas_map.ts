@@ -1,6 +1,7 @@
 export const hint = "MauzCode's live module dependency map with core/plugin filters, cycle and ownership-boundary highlighting — args `{ scope?: \"all\"|\"core\"|\"plugins\", minWeight?: number }`";
 
 export default {
+    requires: ["canvas.show","architectureMap.analyze"],
     icon: "graph",
     live: true,
     prepare(_ctx: Context, opts: { agentId: string; args: Record<string, any> }) {

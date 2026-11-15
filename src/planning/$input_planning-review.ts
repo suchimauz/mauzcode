@@ -1,5 +1,6 @@
 /** Native card for an immutable plan. Generic input.submit deliberately cannot authorize it. */
 export default {
+    requires: ["input.request","planning.propose"],
     icon: 'list-checks', cancel: false,
     // Server-only identity fence. Exact browser approval remains in planning.review.
     completionAuthority: {},

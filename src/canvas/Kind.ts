@@ -5,6 +5,8 @@
 // the tab body, and one line saying what is on screen.
 
 export type Kind = {
+    /** Exact live capabilities required for scoped discovery, including canvas.show. Missing metadata hides this kind only from scoped discovery, never authorizes or denies actions. */
+    requires?: string[];
     /** Validate and normalise the arguments when a tab is opened; throw to refuse. May suggest a tab title. */
     prepare?: (ctx: Context, opts: { agentId: string; args: Record<string, any> }) => { args: Record<string, any>; title?: string } | Promise<{ args: Record<string, any>; title?: string }>;
     /** HTML of the tab body. Called on every display, so it shows fresh data. */

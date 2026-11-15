@@ -81,6 +81,7 @@ const batch: types.input.BatchCodec = {
 };
 
 export default {
+    requires: ["input.request"],
     batch,
     icon: "table",
     async prepare(ctx: Context, opts: { spec: Record<string, any> }) {

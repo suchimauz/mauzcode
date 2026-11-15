@@ -11,6 +11,12 @@ Add a section as `src/<module>/$prompt_<id>.md` (plugins use the same path gramm
 Classify each new core namespace in `src/agentPreset/coreCatalogue.ts`, and review new functions under wildcard grants. Keep `AGENTS.md` and `docs/architecture.md` current when changing section authoring. Creator equivalence is checked against the immutable `src/agent/__fixtures__/creator-prompt.before.md` captured in `e0230a31`; only the exact three project-policy paragraphs in `creator-prompt.relocations.json` are exempt, with their text preserved in `AGENTS.md`.
 
 
+## Scoped kind discovery
+
+Canvas/input kind definitions declare `requires: string[]` with exact runtime names, including `canvas.show` / `input.request` and every capability advertised by their hint. Loaders reject malformed metadata and missing public entrypoints. `agentPreset.discoveryVisible` requires every dependency to be live and allowed for scoped catalogue/prompt calls, before ranking and limits. Missing metadata intentionally omits a kind even for Creator; unscoped internal discovery retains it. This metadata is discovery-only, not action authorization: allowed procedures retain unguarded internal calls. External plugin authors must add metadata to opt into scoped discovery; an unrelated module grant is never a substitute.
+
+The guarded facade injects its own predicate into direct catalogue and prompt-generator calls, overriding caller-supplied predicates. Tools and docs catalogues filter represented functions; partially visible plugin results omit denied function and namespace entries. Compatibility prompt paragraphs have separate capability requirements so a grant for `ui.eval` does not advertise browser/screen actions. Markdown renderers remain an independent output channel.
+
 ## Direction
 
 The primary shell is React/Vite in `frontend/`, served at `/`. Trusted browser extensions use the local `@mauzcode/ui` SDK and explicit grants for pages, navigation, panels and actions. React/React DOM is supplied by the host; private imports and a second runtime are not supported. See [ui-architecture.md](ui-architecture.md) for the actual contract, not the older SSR extension mechanisms below.
