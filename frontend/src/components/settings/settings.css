@@ -7,6 +7,8 @@
 .settings-nav-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
 .settings-nav-cell { height: 40px; display: flex; align-items: center; gap: 8px; padding: 9px 16px 9px 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text); font: inherit; font-size: 14px; line-height: 22px; text-align: left; cursor: pointer; }
 .settings-nav-cell span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* Plugin tab icons are spans too: keep them icon-sized so the label stays left-aligned like built-in tabs. */
+.settings-nav-cell .phosphor-icon { flex: none; overflow: visible; }
 .settings-nav-cell.is-active { background: var(--selected); }
 .settings-content { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .settings-nav-select { display: none; }

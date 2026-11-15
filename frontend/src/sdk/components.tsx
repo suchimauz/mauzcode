@@ -24,6 +24,16 @@ export function TextField({ label, description, error, id, className = '', 'aria
   const helpId = `${inputId}-help`; const errorId = `${inputId}-error`;
   return <div className="mauzcode-sdk-field"><label htmlFor={inputId}>{label}</label><input {...props} id={inputId} className={`mauzcode-sdk-input ${className}`} aria-invalid={error ? true : props['aria-invalid']} aria-describedby={[describedBy, description ? helpId : '', error ? errorId : ''].filter(Boolean).join(' ') || undefined} />{description && <p id={helpId}>{description}</p>}{error && <p id={errorId} className="mauzcode-sdk-error" role="alert">{error}</p>}</div>;
 }
+export type SwitchProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'role' | 'children'> & { label: string; description?: ReactNode };
+/** On/off control row: visible label and optional description on the left, a native checkbox with switch semantics on the right.
+ * Use for settings that take effect immediately; keyboard (Space), focus ring, disabled state and reduced motion are built in. */
+export function Switch({ label, description, id, className = '', 'aria-describedby': describedBy, ...props }: SwitchProps) {
+  const generated = useId(); const inputId = id ?? generated; const helpId = `${inputId}-help`;
+  return <div className={`mauzcode-sdk-switch-row ${className}`}>
+    <div className="mauzcode-sdk-switch-text"><label htmlFor={inputId}>{label}</label>{description && <p id={helpId}>{description}</p>}</div>
+    <input {...props} id={inputId} type="checkbox" role="switch" className="mauzcode-sdk-switch" aria-describedby={[describedBy, description ? helpId : ''].filter(Boolean).join(' ') || undefined} />
+  </div>;
+}
 export type DialogProps = { open: boolean; onOpenChange: (open: boolean) => void; title: string; description?: string; children: ReactNode; closeLabel?: string };
 /** Accessible modal: Base UI owns focus trapping, Escape, focus return and outside dismissal. */
 export function Dialog({ open, onOpenChange, title, description, children, closeLabel = 'Close' }: DialogProps) {

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ApiError, Button, Stack, requestJson, type ExtensionSettingsTabProps, type UiExtension } from '@mauzcode/ui';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { ApiError, Button, Stack, Switch, requestJson, type ExtensionSettingsTabProps, type UiExtension } from '@mauzcode/ui';
 
 /** Safe instance-wide RTK state served by the owner-only GET/POST /rtk/api. */
 export type RtkControl = {
@@ -73,7 +73,7 @@ export function RtkSettings({ context }: ExtensionSettingsTabProps) {
     }
   };
 
-  // Host Settings classes keep the tab in the dialog's visual language (key/value card, feedback banners, check rows).
+  // Laid out like the built-in tabs: feedback banner, a grouped card with the main switch, then a details card.
   if (!data) return <Stack gap={3}>
     {busy === 'load' && <p className="settings-loading" role="status">Загрузка состояния RTK…</p>}
     {error && <p role="alert" className="settings-feedback is-error">{error}</p>}
@@ -84,29 +84,37 @@ export function RtkSettings({ context }: ExtensionSettingsTabProps) {
   const locked = busy !== null || context.readOnly;
   const canEnable = c.availability === 'available';
   const toggleDisabled = locked || (!c.enabled && !canEnable);
+  const help = context.readOnly ? 'Только чтение: менять настройку может владелец.'
+    : !c.enabled && !canEnable ? 'Сначала проверьте RTK — включить можно только доступный RTK.'
+    : 'Общая настройка экземпляра. SSH и Terminal не затрагиваются; разовый обход — rtk:false у вызова bash.';
+  const tone = busy === 'check' ? 'pending' : c.availability === 'available' ? 'ok' : c.availability === 'unavailable' ? 'error' : 'pending';
+  const badge: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 8px', borderRadius: 999, fontSize: 'var(--font-xs)', fontWeight: 500,
+    color: tone === 'ok' ? 'var(--success)' : tone === 'error' ? 'var(--tool-error)' : 'var(--text-secondary)',
+    background: tone === 'ok' ? 'var(--success-soft)' : tone === 'error' ? 'color-mix(in srgb, var(--tool-error) 10%, transparent)' : 'var(--hover)' };
+  const card: CSSProperties = { padding: 'var(--space-4)', border: '1px solid var(--line)', borderRadius: 'var(--radius-md)', background: 'var(--surface-raised)' };
   const row = (label: string, value: ReactNode, testId?: string) => <div className="settings-kv-row"><dt>{label}</dt><dd data-testid={testId}>{value}</dd></div>;
   return <Stack gap={4} aria-busy={busy !== null}>
     {notice && <p role="status" className={`settings-feedback ${notice.startsWith('Проверка не прошла') ? 'is-error' : 'is-success'}`}>{notice}</p>}
     {error && <p role="alert" className="settings-feedback is-error">{error}</p>}
-    <dl className="settings-kv">
-      {row('Состояние', c.enabled ? 'Включён' : 'Выключен', 'rtk-enabled')}
-      {row('Доступность', busy === 'check' ? 'Проверка…' : AVAILABILITY[c.availability], 'rtk-availability')}
-      {row('Путь', <code>{c.path ?? '—'}</code>)}
-      {row('Версия', c.version ?? '—')}
-      {row('Проверено', c.checkedAt ? new Date(c.checkedAt).toLocaleString() : 'Никогда')}
-      {c.reason && row('Причина', <span className="settings-kv-flag">{c.reason}</span>)}
-    </dl>
-    <label className="settings-check">
-      <input type="checkbox" role="switch" checked={c.enabled} disabled={toggleDisabled} aria-describedby="rtk-toggle-help" onChange={() => run(c.enabled ? 'disable' : 'enable')} />
-      <span>Сжимать вывод локального bash через RTK
-        <span id="rtk-toggle-help" className="settings-field-hint" style={{ display: 'block' }}>
-          {context.readOnly ? 'Только чтение: менять настройку может владелец.' : !c.enabled && !canEnable ? 'Сначала выполните успешную проверку — включить можно только доступный RTK.' : 'Настройка общая для всего экземпляра; SSH и Terminal не затрагиваются. Разовый обход — параметр rtk:false у вызова bash.'}
-        </span>
-      </span>
-    </label>
-    <div className="settings-actions">
-      <Button onClick={() => run('check')} disabled={locked}>{busy === 'check' ? 'Проверка…' : 'Проверить RTK'}</Button>
+    <div style={card}>
+      <Switch label="Сжимать вывод bash через RTK" description={help} checked={c.enabled} disabled={toggleDisabled} onChange={() => run(c.enabled ? 'disable' : 'enable')} />
+      <span data-testid="rtk-enabled" hidden>{c.enabled ? 'Включён' : 'Выключен'}</span>
     </div>
+    <Stack gap={2}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <h3 style={{ margin: 0, fontSize: 'var(--font-lg)', fontWeight: 600 }}>Установка</h3>
+        <span style={badge}><span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} /><span data-testid="rtk-availability">{busy === 'check' ? 'Проверка…' : AVAILABILITY[c.availability]}</span></span>
+      </div>
+      <dl className="settings-kv">
+        {row('Путь', <code>{c.path ?? '—'}</code>)}
+        {row('Версия', c.version ?? '—')}
+        {row('Проверено', c.checkedAt ? new Date(c.checkedAt).toLocaleString() : 'Никогда')}
+        {c.reason && row('Причина', <span className="settings-kv-flag">{c.reason}</span>)}
+      </dl>
+      <div className="settings-actions">
+        <Button onClick={() => run('check')} disabled={locked}>{busy === 'check' ? 'Проверка…' : 'Проверить RTK'}</Button>
+      </div>
+    </Stack>
   </Stack>;
 }
 

@@ -102,7 +102,7 @@ Use `subscribeLive` or `useLiveSubscription`, with **both** `resync` and `onErro
 
 The host owns sidebar entries, selected pages, secondary panels and action slots. An extension does not mutate the shell DOM or assume a `#main` target. Do not promise arbitrary pane placement, URL persistence or global search providers merely because the type supports a page; only the implemented host slots are public today.
 
-Use the SDK's `Button`, `IconButton`, `Sheet`, `Stack`, `Panel`, `TextField` and `Dialog`. Preserve semantic light/dark tokens, visible labels, keyboard focus, focus restoration and reduced-motion behavior. For MauzCode UI work first read [Apple Design](skills/apple-design/SKILL.md) and its [scope notes](skills/apple-design/README.md); this preference does not apply to unrelated projects.
+Use the SDK's `Button`, `IconButton`, `Sheet`, `Stack`, `Panel`, `TextField`, `Switch` (immediate on/off setting row) and `Dialog`. Preserve semantic light/dark tokens, visible labels, keyboard focus, focus restoration and reduced-motion behavior. For MauzCode UI work first read [Apple Design](skills/apple-design/SKILL.md) and its [scope notes](skills/apple-design/README.md); this preference does not apply to unrelated projects.
 
 ## Compatibility only: SSR and HTMX; generic RPC retired
 
