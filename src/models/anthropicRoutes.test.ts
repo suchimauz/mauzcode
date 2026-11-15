@@ -99,6 +99,97 @@ describe("anthropic protocol request", () => {
     });
 });
 
+describe("provider failure classification", () => {
+    test("a recognized quota error carries the classifier code, reset time and fixed message", async () => {
+        const { conn } = fixtureConn(() => new Response(JSON.stringify({ error: { type: "billing", message: "secret upstream body" } }), { status: 429 }));
+        let seen: { status: number; body: unknown } | null = null;
+        const err = await ctx.fns.models.protocol.anthropic.stream({
+            fetch: conn.fetch, endpoint: { base: "https://example.test/v1", headers: {} }, request: req(),
+            classifyFailure: (input: { status: number; body: unknown }) => {
+                seen = input;
+                return { code: "QUOTA_EXHAUSTED", classification: "quota", retryable: true, resetAt: 1900000000000, message: "Plan usage limit reached" };
+            },
+        }).then(() => null, (e: any) => e);
+        expect(seen).toMatchObject({ status: 429 });
+        expect((seen as any)!.body).toMatchObject({ error: { type: "billing" } });
+        expect(err.failure).toMatchObject({ code: "QUOTA_EXHAUSTED", classification: "quota", retryable: true, resetAt: 1900000000000, upstreamStatus: 429 });
+        expect(String(err.message)).toBe("Plan usage limit reached");
+        expect(String(err.message)).not.toContain("secret upstream body");
+    });
+    test("classifier returning nothing or throwing falls back to status rules", async () => {
+        const reply = () => new Response("no json", { status: 429 });
+        for (const classify of [() => null, () => { throw new Error("classifier boom"); }]) {
+            const { conn } = fixtureConn(reply);
+            const err = await ctx.fns.models.protocol.anthropic.stream({
+                fetch: conn.fetch, endpoint: { base: "https://example.test/v1", headers: {} }, request: req(),
+                classifyFailure: classify as types.models.ProtocolStreamClassify,
+            }).then(() => null, (e: any) => e);
+            expect(err.failure).toMatchObject({ code: "THROTTLED", classification: "throttled" });
+        }
+    });
+    test("a route provider classifier is consulted through streamRoute with the model", async () => {
+        const fakeCtx = () => ({
+            fns: { models: {
+                inference: { failure: ctx.fns.models.inference.failure },
+                connections: { safeMessage: ctx.fns.models.connections.safeMessage },
+                protocol: {
+                    list: () => [{ id: "anthropic" }],
+                    get: ({ id }: { id: string }) => id === "anthropic" ? {
+                        baseUrl: (_c: Context, raw: string) => raw,
+                        defaultHeaders: () => ({}),
+                        stream: async (_c: Context, o: { fetch: types.models.ResolvedConnection["fetch"]; request: types.models.StreamRequest; classifyFailure?: types.models.ProtocolStreamClassify }) =>
+                            ctx.fns.models.protocol.anthropic.stream({ fetch: o.fetch, endpoint: { base: "https://example.test/v1", headers: {} }, request: o.request, ...(o.classifyFailure ? { classifyFailure: o.classifyFailure } : {}) }),
+                    } : undefined,
+                },
+            } },
+        } as unknown as Context);
+        const conn = { id: "c1", fetch: async () => new Response('{"error":"limit"}', { status: 429 }) } as unknown as types.models.ResolvedConnection;
+        const calls: string[] = [];
+        const definition = {
+            id: "fixture",
+            route: async () => ({ protocol: "anthropic", baseUrl: "https://example.test/v1", headers: {} }),
+            classifyFailure: (_c: Context, c: types.models.ResolvedConnection, input: { status: number; model: string }) => {
+                calls.push(`${c.id}|${input.model}|${input.status}`);
+                return { code: "QUOTA_EXHAUSTED", classification: "quota", retryable: true, resetAt: 1900000000000, message: "Plan limit" };
+            },
+        } as unknown as types.models.ProviderDefinition;
+        const err = await route(fakeCtx(), null, { definition, conn, req: req({ model: "model-a" }), info: null }).then(() => null, (e: any) => e);
+        expect(calls).toEqual(["c1|model-a|429"]);
+        expect(err.failure).toMatchObject({ code: "QUOTA_EXHAUSTED", classification: "quota", resetAt: 1900000000000 });
+        expect(String(err.message)).toBe("Plan limit");
+    });
+});
+
+describe("exact token counting", () => {
+    test("hit: the provider count wins and no generation request is sent", async () => {
+        const registry = (ctx as any).state.registry;
+        const seen: unknown[] = [];
+        const saved = { enabled: registry.models.inference.assertModelEnabled, resolve: registry.models.connections.resolve };
+        registry.models.inference.assertModelEnabled = async () => ({ id: "conn-x", provider: "fixtureCounter" });
+        registry.models.connections.resolve = async () => ({ conn: { id: "c1", fetch: async () => { throw new Error("network must not be reached"); } } });
+        (ctx.state.models.providers as Record<string, { definition: types.models.ProviderDefinition }>).fixtureCounter = { definition: {
+            id: "fixtureCounter", label: "fixture", fields: [], transports: ["direct"], test: async () => ({ status: "configured", reason: "fixture", message: "fixture", checkedAt: 0 }),
+            countTokens: async (_c: Context, conn: types.models.ResolvedConnection, input: { model: string; messages: unknown[] }) => {
+                seen.push([conn.id, input.model, input.messages.length]);
+                return 4321.4;
+            },
+        } };
+        try {
+            const count = await ctx.fns.models.countTokens({ connectionId: "conn-x", model: "m1", messages: [{ role: "user", content: "hi" }], instructions: "sys" });
+            expect(count).toBe(4321);
+            expect(seen).toEqual([["c1", "m1", 1]]);
+        } finally {
+            registry.models.inference.assertModelEnabled = saved.enabled;
+            registry.models.connections.resolve = saved.resolve;
+            delete (ctx.state.models.providers as Record<string, unknown>).fixtureCounter;
+        }
+    });
+    test("a provider without counting returns null without any network request", async () => {
+        const count = await ctx.fns.models.countTokens({ connectionId: "no-such-connection", model: "m1", messages: [{ role: "user", content: "hi" }] });
+        expect(count).toBeNull();
+    });
+});
+
 describe("anthropic reasoning block capture", () => {
     test("thinking block: two deltas and one signature, usage from the final delta", async () => {
         const { conn } = fixtureConn(() => sse([
@@ -201,13 +292,13 @@ describe("other protocols ignore stored reasoning blocks", () => {
         expect(JSON.stringify(input)).not.toContain("reasoning_blocks");
         expect(input.filter((i: any) => i.type === "function_call")).toHaveLength(1);
     });
-    test("gemini keeps rejecting a foreign thought signature but ignores reasoning blocks", () => {
+    test("gemini keeps rejecting a foreign thought signature but ignores reasoning blocks", async () => {
         const base = [
             { role: "user", content: "hi" },
             { role: "assistant", content: "", tool_calls: [callWithBlocks] },
             { role: "tool", tool_call_id: "t1", content: "res" },
         ];
-        const contents = ctx.fns.models.protocol.gemini.toGeminiContents({ messages: base }) as any[];
+        const contents = await ctx.fns.models.protocol.gemini.toGeminiContents({ messages: base }) as any[];
         expect(JSON.stringify(contents)).not.toContain("hidden");
         const foreign = [
             { role: "user", content: "hi" },

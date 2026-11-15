@@ -19,6 +19,8 @@ export default async function (
         request: types.models.StreamRequest;
         /** Optional cancellation signal. */
         signal?: AbortSignal;
+        /** Optional provider failure classifier consulted on a failed response before the status rules. */
+        classifyFailure?: types.models.ProtocolStreamClassify;
     },
 ): Promise<types.models.StreamResult> {
     const { request: req, signal } = opts;
@@ -53,7 +55,7 @@ export default async function (
         // Provider body extras arrive validated by streamRoute (no protocol-owned keys) and are additive.
         ...(opts.endpoint.body ?? {}),
     };
-    const res = await ctx.fns.models.protocol.common.streamFetch({ fetch: opts.fetch, url: opts.endpoint.base + "/messages", headers: opts.endpoint.headers, body, label, signal });
+    const res = await ctx.fns.models.protocol.common.streamFetch({ classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/messages", headers: opts.endpoint.headers, body, label, signal });
     let text = "", thinking = "", stop: string | null = null, terminal = false;
     // Native reasoning blocks captured by index: thinking text from thinking_delta, the model signature from
     // signature_delta, and redacted data from the start event. Returned whole as StreamResult.reasoningBlocks.

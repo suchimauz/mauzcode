@@ -19,6 +19,8 @@ export default async function (
         request: types.models.StreamRequest;
         /** Optional cancellation signal. */
         signal?: AbortSignal;
+        /** Optional provider failure classifier consulted on a failed response before the status rules. */
+        classifyFailure?: types.models.ProtocolStreamClassify;
     },
 ): Promise<types.models.StreamResult> {
     const { request: req, signal } = opts;
@@ -58,7 +60,7 @@ export default async function (
         ...(effort ? { reasoning: { effort } } : {}),
         ...(format ? { text: { format: format.type === "json_schema" ? { type: "json_schema", name: format.name, schema: format.schema, strict: format.strict ?? true } : { type: "json_object" } } } : {}),
     };
-    const res = await ctx.fns.models.protocol.common.streamFetch({ fetch: opts.fetch, url: opts.endpoint.base + "/responses", headers: opts.endpoint.headers, body, label, signal });
+    const res = await ctx.fns.models.protocol.common.streamFetch({ classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/responses", headers: opts.endpoint.headers, body, label, signal });
     let text = "", thinking = "", finish: string | null = null, completed = false;
     const usage: types.models.StreamResult["usage"] = {};
     const tools = ctx.fns.models.protocol.common.collectToolCalls({ onEvent: req.onEvent });

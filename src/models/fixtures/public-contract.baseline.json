@@ -160,6 +160,16 @@
       ],
       "returnType": "Promise<types.models.UsageReport>",
       "generator": false
+    },
+    "countTokens": {
+      "async": true,
+      "generator": false,
+      "parameters": [
+        "ctx: Context",
+        "session: Session | null",
+        "opts: {\n        /** Model connection UUID. */\n        connectionId: string;\n        /** Provider-native model id on the connection. */\n        model: string;\n        /** Ordered input in the same OpenAI-shaped shape streaming accepts; checkpoint entries only for checkpoint-capable providers. */\n        messages: (Record<string, unknown> | types.models.CheckpointEntry)[];\n        /** Effective system instructions sent with the request. */\n        instructions?: string;\n        /** Provider-neutral tools advertised to the model, never executed here. */\n        tools?: types.models.ToolSpec[];\n        /** Deadline for the whole counting request. @minimum 1 @maximum 3600000 */\n        timeoutMs?: number;\n    }"
+      ],
+      "returnType": "Promise<number | null>"
     }
   },
   "types": {

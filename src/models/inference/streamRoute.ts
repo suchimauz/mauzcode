@@ -9,7 +9,7 @@ const PROTOCOL_OWNED_BODY_KEYS: Record<string, Set<string>> = {
 /**
  * Stream one inference turn for a protocol-route provider through the shared protocol it selects.
  *
- * Use only from models.inference.stream after every enabled, input, reasoning and capability check, for providers declaring ProviderDefinition.route instead of stream. Calls the provider's route with the model id, its cached ModelInfo and the session id, rejects a protocol outside the shared registry with INVALID_INPUT before any request, validates the base through the protocol's baseUrl, merges headers case-insensitively (Accept application/json, protocol defaultHeaders, then provider headers), validates any optional route body as a JSON object that touches no body key the selected protocol owns (protocols that do not support body fields ignore them) and forwards body, replayReasoning, serverMaxTokens and the { connectionId, model } origin on the endpoint, then delegates to Protocol.stream over the connection's transport-bound fetch; never makes a direct request.
+ * Use only from models.inference.stream after every enabled, input, reasoning and capability check, for providers declaring ProviderDefinition.route instead of stream. Calls the provider's route with the model id, its cached ModelInfo and the session id, rejects a protocol outside the shared registry with INVALID_INPUT before any request, validates the base through the protocol's baseUrl, merges headers case-insensitively (Accept application/json, protocol defaultHeaders, then provider headers), validates any optional route body as a JSON object that touches no body key the selected protocol owns (protocols that do not support body fields ignore them), forwards body, replayReasoning, serverMaxTokens and the { connectionId, model } origin on the endpoint, and hands the provider's optional classifyFailure (bound to the connection and model) to the protocol for failed responses, then delegates to Protocol.stream over the connection's transport-bound fetch; never makes a direct request.
  * @param opts.definition Registered provider definition declaring route.
  * @param opts.conn Resolved connection bound to its saved transport.
  * @param opts.req Gated stream request, including SDK-resolved reasoning when the provider opted in.
@@ -67,5 +67,12 @@ export default async function (
             ...(route.serverMaxTokens === true ? { serverMaxTokens: true } : {}),
             origin: { connectionId: conn.id, model: req.model },
         };
-        return protocol.stream(ctx, { fetch: conn.fetch, endpoint, request: req, ...(req.signal ? { signal: req.signal } : {}) });
+        return protocol.stream(ctx, {
+            fetch: conn.fetch, endpoint, request: req,
+            ...(definition.classifyFailure ? {
+                classifyFailure: (input: { status: number; body: unknown | null }) =>
+                    definition.classifyFailure!(ctx, conn, { ...input, model: req.model }),
+            } : {}),
+            ...(req.signal ? { signal: req.signal } : {}),
+        });
 }

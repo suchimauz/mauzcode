@@ -13,7 +13,7 @@ test("root model procedures are exactly the minimal facade plus providers and ap
         .filter(file => !file.endsWith(".test.ts") && !file.startsWith("$") && /^[a-z]/.test(file))
         .map(file => file.slice(0, -3)).sort();
     expect(roots).toEqual([...Object.keys(baseline.procedures), "displayNames", "resolveRoute", "setContextLimits", "tokenPrice"].sort());
-    expect(roots).toEqual(["action", "api", "call", "compact", "create", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setContextLimits", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
+    expect(roots).toEqual(["action", "api", "call", "compact", "countTokens", "create", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setContextLimits", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
 });
 
 test("original public model signatures, async declarations, types and HTTP route contracts survive", async () => {
@@ -41,6 +41,9 @@ test("original public model signatures, async declarations, types and HTTP route
         if (name === "StreamResult.ts") actual = actual.replace("reasoningBlocks?:{type:\\\"thinking\\\"|\\\"redacted_thinking\\\";thinking?:string;signature?:string;data?:string;}[];", "");
         // add-zai-coding-provider: the route request also carries the SDK-resolved reasoning.
         if (name === "ProviderDefinition.ts") actual = actual.replace("route?:(ctx:Context,conn:types.models.ResolvedConnection,req:{model:string;info:types.models.ModelInfo|null;sessionId:string;reasoning?:types.models.ReasoningResolution})=>Promise<types.models.ProtocolRoute>;", "");
+        // extend-models-sdk-for-anthropic-routes: optional provider failure classifier and exact token counting.
+        if (name === "ProviderDefinition.ts") actual = actual.replace(/classifyFailure\?:\(ctx:Context,conn:types\.models\.ResolvedConnection,input:\{status:number;body:unknown\|null;model:string\}\)=>Promise<\{code:string;classification:types\.models\.FailureInfo\["classification"\];retryable:boolean;retryAfterMs\?:number;resetAt\?:number;message:string\}\|null>\|\{code:string;classification:types\.models\.FailureInfo\["classification"\];retryable:boolean;retryAfterMs\?:number;resetAt\?:number;message:string\}\|null;/, "");
+        if (name === "ProviderDefinition.ts") actual = actual.replace("countTokens?:(ctx:Context,conn:types.models.ResolvedConnection,req:{model:string;messages:(Record<string,unknown>|types.models.CheckpointEntry)[];instructions?:string;tools?:types.models.ToolSpec[]})=>Promise<number>;", "");
         let expected = normalize(source);
         if (name === "StreamRequest.ts") expected = expected.replace("tools?:Record<string,unknown>[]", "tools?:types.models.ToolSpec[]");
         const additive: Record<string, string> = {
