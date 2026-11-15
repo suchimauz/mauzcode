@@ -23,7 +23,7 @@
 
 ## 4. Integration and rollout
 
-- [ ] 4.1 Add an agent-eval integration regression reproducing the original module enumeration and the adjacent canvas/input leaks; verify existing sessions use their unchanged snapshots.
-- [ ] 4.2 Run focused Bun tests, strict runtime-doc validation for changed functions, one coordinated full-project typecheck and relevant quality checks; preserve complete diagnostics and distinguish pre-existing failures.
-- [ ] 4.3 Hot-reload the settled implementation and run read-only smoke checks without changing live plugin installations, presets or transcripts.
-- [ ] 4.4 Update guardrail documentation, run strict OpenSpec validation and record acceptance evidence before requesting archive approval.
+- [x] 4.1 Add an agent-eval integration regression reproducing the original module enumeration and the adjacent canvas/input leaks; verify existing sessions use their unchanged snapshots.
+- [x] 4.2 Run focused Bun tests, strict runtime-doc validation for changed functions, one coordinated full-project typecheck and relevant quality checks; preserve complete diagnostics and distinguish pre-existing failures.
+- [x] 4.3 Hot-reload the settled implementation and run read-only smoke checks without changing live plugin installations, presets or transcripts. Completed in isolated worktree runtime using copied existing snapshots; main-runtime rollout remains owner-controlled after merge (see acceptance.md).
+- [x] 4.4 Update guardrail documentation, run strict OpenSpec validation and record acceptance evidence before requesting archive approval.

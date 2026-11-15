@@ -26,11 +26,14 @@ import pluginFunctions from '../plugins/functions';
 import pluginSearch from '../plugins/search';
 import canvasLoader from '../canvas/$loader_canvas';
 import inputLoader from '../input/$loader_input';
+import agentEval from '../repl/eval';
+import processEval from '../procs/repl/eval';
+import toolEval from '../tools/eval';
 
 function fixture() {
  const ctx = makeCtx(); const r = ctx.state.registry as any;
  const plugins = [{name:'external',plugin:true,namespaces:['external','privateAlias'],fns:['external.view','privateAlias.hidden'],routes:[],label:'External',description:'external catalogue'}];
- r.agentPreset={allows,generation,origin,compilePattern,defaults,coreCatalogue,discoveryVisible};
+ r.agentPreset={allows,generation,origin,compilePattern,defaults,coreCatalogue,discoveryVisible,guardFns};
  r.procs={modules:{list:()=>plugins},log:{debug:()=>{}}};
  r.canvas={kinds:canvasKinds,search:canvasSearch,promptSection:canvasPrompt,show:()=>true,list:()=>[],close:()=>{},reopen:()=>{},setState:()=>{}};
  r.input={kinds:inputKinds,promptSection:inputPrompt,request:()=>true};
@@ -58,7 +61,7 @@ describe('live required-function discovery',()=>{
   expect(f.input.promptSection({})).not.toContain('external-unknown');
   expect(await ctx.fns.canvas.promptSection({})).toContain('external.unknown');
   expect(ctx.fns.input.promptSection({})).toContain('external-unknown');
-  expect(await f.canvas.show({kind:'external.unknown',args:{}})).toBe(true);
+  expect(Boolean(await f.canvas.show({kind:'external.unknown',args:{}}))).toBe(true);
   (ctx.state as any).canvas.kinds.unknown.requires=['canvas.show','external.view'];
   (ctx.state as any).input.kinds.unknown.requires=['input.request','external.view'];
   expect(await f.canvas.kinds({})).toHaveLength(3); expect(f.input.kinds({})).toHaveLength(3);
@@ -83,8 +86,8 @@ describe('live required-function discovery',()=>{
   for(const s of [parent,child]) {const f=view(s);expect((await f.canvas.kinds({})).map(x=>x.name)).toEqual(['file']);expect(f.input.kinds({})).toHaveLength(1);}
  });
  test('allowed procedures still call denied internals',async()=>{
-  const {r,view,snapshot}=fixture();r.canvas.show=(c:Context)=>c.fns.privateAlias.hidden({});r.privateAlias.hidden=()=>42;
-  expect(await view(snapshot(['privateAlias.hidden'])).canvas.show({kind:'file',args:{}})).toBe(42);
+  const {r,view,snapshot}=fixture();r.canvas.show=(c:Context)=>(c.fns as unknown as {privateAlias:{hidden(opts:{}):number}}).privateAlias.hidden({});r.privateAlias.hidden=()=>42;
+  expect(Number(await view(snapshot(['privateAlias.hidden'])).canvas.show({kind:'file',args:{}}))).toBe(42);
  });
 });
 
@@ -104,7 +107,7 @@ describe('catalogues and exact lookup',()=>{
   expect(f.plugins.functions({name:'external'}).map(x=>x.name)).toEqual(['external.view']);
   expect((await f.plugins.read({name:'external'})).namespaces).toEqual(['external']);
   expect((await f.plugins.read({name:'external',includeFunctions:false})).namespaces).toEqual(['external']);
-  expect((await f.plugins.search({query:'external',mode:'lexical'}))[0].functions.map(x=>x.name)).toEqual(['external.view']);
+  expect((await f.plugins.search({query:'external',mode:'lexical'}))[0]!.functions.map(x=>x.name)).toEqual(['external.view']);
   const denied=view(snapshot([],[]));expect(()=>denied.plugins.functions({name:'external'})).toThrow();
   expect(denied.plugins.read({name:'external'})).rejects.toThrow();
   expect(await denied.plugins.search({query:'external',mode:'lexical'})).toEqual([]);
@@ -141,7 +144,7 @@ test('compatibility prompt splits advertise only granted functions; markdown ren
  const sections=[];
  for(const suffix of ['compatibility','compatibilityAction','compatibilityAgents','compatibilityScreen','compatibilityBrowser']) {
   const source=await Bun.file(`${import.meta.dir}/../agent/$prompt_${suffix}.md`).text();
-  sections.push({id:suffix,order:25,requires:source.match(/requires: \[([^\]]+)\]/)![1].split(',').map(x=>x.trim()),body:source.split('---')[2]});
+  sections.push({id:suffix,order:25,requires:source.match(/requires: \[([^\]]+)\]/)![1]!.split(',').map(x=>x.trim()),body:source.split('---')[2]});
  }
  (ctx.state as any).prompts={registry:new Map(sections.map(s=>[s.id,s]))};
  const preset=snapshot(['ui.action','ui.createAgent','ui.sendToAgent','screen.*','browser.*']);
@@ -172,3 +175,28 @@ test('HTML survives denied optional state guidance in direct and full prompts',a
  expect(await view().canvas.promptSection({})).toContain('You can poll the state with canvas.list or change it with canvas.setState');
  expect(await ctx.fns.canvas.promptSection({})).toContain('You can poll the state with canvas.list or change it with canvas.setState');
 });
+
+ test('real tools.eval → repl.eval → process eval filters existing snapshots without rewriting them',async()=>{
+ const {ctx,r,snapshot}=fixture();
+ r.repl={eval:agentEval}; r.procs.repl={eval:processEval}; r.settings={get:()=>false};
+ const standard=snapshot([],[]),creator=snapshot();
+ const child=snapshot();child.layers.unshift(...standard.layers);
+ const partial=snapshot(['input.request','external.view']);
+ for(const preset of [standard,creator,child,partial]) {
+  const before=JSON.stringify(preset);const agent={id:'fixture',preset,messages:[],events:[]};
+  const code=`console.log(JSON.stringify({modules:Object.keys(ctx.fns), keys:Reflect.ownKeys(ctx.fns), canvas:(await ctx.fns.canvas.kinds({})).map(x=>x.name), input:ctx.fns.input.kinds({}).map(x=>x.name), prompt:ctx.fns.input.promptSection({allows:()=>true})}));`;
+  // Use the actual native eval handler and both evaluation layers, not a proxy-only assertion.
+  const result=JSON.parse(await toolEval(ctx,{agent} as any,{code}) as string);
+  expect(result.modules.includes('external')).toBe(preset===creator||preset===partial);
+  expect(result.keys).toEqual(result.modules);
+  expect(result.canvas).toEqual(preset===creator?['external.panel','file']:['file']);
+  expect(result.input).toEqual(preset===partial?[]:preset===creator?['choice','external-form']:['choice']);
+  expect(result.prompt).not.toContain('external-unknown');
+  if(preset===partial) expect(result.prompt).toBe('');
+  expect(JSON.stringify(preset)).toBe(before);expect(agent.preset).toBe(preset);
+  expect(agent.messages).toEqual([]);expect(agent.events).toEqual([]);
+  // A subsequent eval on the same agent uses the unchanged persisted-policy shape.
+  expect(await toolEval(ctx,{agent} as any,{code})).toBe(JSON.stringify(result));
+ }
+ expect(await ctx.fns.canvas.kinds({})).toHaveLength(3);
+ });
