@@ -135,7 +135,18 @@ The SDK SHALL support optional opaque provider continuation state in stream requ
 - **THEN** no Codex-specific header or requirement is imposed on it
 
 ### Requirement: SDK-owned reasoning capabilities
-The SDK SHALL define provider-owned supported reasoning levels, an optional supported default, optional native wire values per level, an optional thinking-disable flag and requested/applied preference diagnostics. Opted-in providers SHALL receive normalized preferences before inference, without legacy routes, accounts or types. Automatic or omitted preference SHALL use the default; when capabilities declare no default it SHALL apply `auto`, meaning no reasoning setting is sent. Unsupported levels SHALL use the nearest supported lower-or-equal level, otherwise the lowest higher level. Providers not opting in MUST retain their existing behavior.
+The SDK SHALL define provider-owned supported reasoning levels, an optional supported default, optional native wire values per level, an optional thinking-disable flag and requested/applied preference diagnostics. Providers not opting in MUST retain their existing behavior.
+
+#### Scenario: Invalid metadata or preference
+- **WHEN** supported levels are empty, a declared default is unsupported, a wire value is empty or for an unsupported level, or the preference is outside the SDK enumeration
+- **THEN** the SDK reports a validation failure rather than sending an invalid effort downstream
+
+#### Scenario: Provider not opted in
+- **WHEN** an existing provider without SDK capability normalization receives its existing reasoning input
+- **THEN** its established behavior is preserved and no new capability lookup is forced on it
+
+### Requirement: Reasoning preference normalization
+Opted-in providers SHALL receive normalized preferences before inference, without legacy routes, accounts or types. Automatic or omitted preference SHALL use the default; when capabilities declare no default it SHALL apply `auto`, meaning no reasoning setting is sent. Unsupported levels SHALL use the nearest supported lower-or-equal level, otherwise the lowest higher level.
 
 #### Scenario: Capability-backed normalization
 - **GIVEN** a provider participating in SDK reasoning normalization and validated capabilities
@@ -150,14 +161,6 @@ The SDK SHALL define provider-owned supported reasoning levels, an optional supp
 - **WHEN** an opted-in provider has neither validated capabilities nor an applicable documented SDK profile
 - **THEN** inference fails explicitly with a capability-unavailable classification before the inference request
 - **AND** the SDK does not discover legacy model routes to fill the gap
-
-#### Scenario: Invalid metadata or preference
-- **WHEN** supported levels are empty, a declared default is unsupported, a wire value is empty or for an unsupported level, or the preference is outside the SDK enumeration
-- **THEN** the SDK reports a validation failure rather than sending an invalid effort downstream
-
-#### Scenario: Provider not opted in
-- **WHEN** an existing provider without SDK capability normalization receives its existing reasoning input
-- **THEN** its established behavior is preserved and no new capability lookup is forced on it
 
 ### Requirement: Typed portable native checkpoints
 The SDK SHALL define a serializable native checkpoint contract with provider, connection and model compatibility identity and opaque payload. A compact result SHALL expose this checkpoint, and stream input SHALL accept it in an explicitly ordered position alongside retained messages. The contract MUST NOT require legacy message types, agent storage or transcript mutation. Existing compact result fields and optional focus/output-budget input SHALL remain supported during additive adoption.
