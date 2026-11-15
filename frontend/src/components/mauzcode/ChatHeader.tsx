@@ -8,8 +8,11 @@ import { getChatHeader, renameChat, type ChatHeaderData } from '../../lib/chatHe
 import { liveRefresh } from '../../lib/liveRefresh';
 import './chat-header.css';
 
-/** Native session title and direct team children; editing never navigates away from the chat. */
-export function ChatHeader({ agentId, title, icon, colorHue, active, archived, canvasOpen, canvasDisabled, onCanvas, onSelect, onRenamed, onOpenSide, widthControlRef, onMenu }: { onMenu?: () => void;  agentId: string; title: string; icon?: NavigationIcon | null; colorHue?: number | null; active?: boolean; archived?: boolean; canvasOpen: boolean; canvasDisabled?: boolean; onCanvas: () => void; onSelect: (id: string) => void; onRenamed: () => void; widthControlRef?: (node: HTMLSpanElement | null) => void; onOpenSide?: (id: string, title: string) => void }) {
+/**
+ * Native session title and direct team children; editing never navigates away from the chat.
+ * Draft mode (no agentId, onDraftTitle given) edits a new session's local title: no request is made.
+ */
+export function ChatHeader({ agentId, title, icon, colorHue, active, archived, canvasOpen, canvasDisabled, onCanvas, onSelect, onRenamed, onOpenSide, widthControlRef, onMenu, draftTitle, onDraftTitle, draftLocked }: { onMenu?: () => void;  agentId: string; draftTitle?: string; onDraftTitle?: (title: string) => void; draftLocked?: boolean; title: string; icon?: NavigationIcon | null; colorHue?: number | null; active?: boolean; archived?: boolean; canvasOpen: boolean; canvasDisabled?: boolean; onCanvas: () => void; onSelect: (id: string) => void; onRenamed: () => void; widthControlRef?: (node: HTMLSpanElement | null) => void; onOpenSide?: (id: string, title: string) => void }) {
   const [data, setData] = useState<ChatHeaderData | null>(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
@@ -33,7 +36,9 @@ export function ChatHeader({ agentId, title, icon, colorHue, active, archived, c
     return () => live.dispose();
   }, [agentId]);
   useEffect(() => { if (editing) { inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
-  const name = data?.title || title;
+  const draftMode = !agentId && !!onDraftTitle;
+  const name = draftMode ? (draftTitle || '').trim() || title : data?.title || title;
+  useEffect(() => { if (draftMode && draftLocked) { cancelled.current = true; setEditing(false); } }, [draftMode, draftLocked]);
   const self = data?.siblings?.find(child => child.id === agentId);
   const identityIcon = icon ?? self?.icon;
   const identityHue = colorHue ?? self?.colorHue;
@@ -41,6 +46,7 @@ export function ChatHeader({ agentId, title, icon, colorHue, active, archived, c
   const save = async () => {
     if (lock.current || cancelled.current) return;
     const next = draft.trim();
+    if (draftMode) { cancelled.current = true; if (!draftLocked && next !== (draftTitle || '').trim()) onDraftTitle?.(next); cancel(); return; }
     if (!next || next === name) { cancel(); return; }
     if (!data) return;
     lock.current = true; setSaving(true); setError(''); mutation.current++;
@@ -58,8 +64,8 @@ export function ChatHeader({ agentId, title, icon, colorHue, active, archived, c
         {data?.parent && <><button type="button" className="chat-header-parent" title={`Вернуться: ${data.parent.title || data.parent.id}`} onClick={() => onSelect(data.parent!.id)}>{data.parent.title || data.parent.id}</button><span className="chat-header-separator">/</span></>}
         {agentId && <span className="chat-header-identity"><NavigationChatIcon icon={identityIcon} active={active ?? (self?.runState === 'running' || self?.runState === 'claimed')} /><span className={`workspace-chat-id ${identityHue != null ? 'has-agent-color' : ''}`} style={identityHue != null ? { '--agent-hue': identityHue } as CSSProperties : undefined}>{agentId}</span></span>}
         <div className="chat-header-name">
-          <button ref={titleRef} type="button" className="chat-header-title" title={agentId ? 'Переименовать чат' : undefined} aria-label={agentId ? `Переименовать чат: ${name}` : undefined} disabled={!agentId || archived || !data} onClick={() => { cancelled.current = false; setDraft(name); setEditing(true); }}>{name}</button>
-          {editing && <input ref={inputRef} className="chat-header-title-input" aria-label="Название чата" value={draft} maxLength={120} disabled={saving} aria-invalid={!!error} onChange={e => setDraft(e.target.value)} onBlur={() => { void save(); }} onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); cancelled.current = true; setDraft(name); cancel(); } if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void save(); } }} />}
+          <button ref={titleRef} type="button" className="chat-header-title" title={agentId ? 'Переименовать чат' : draftMode ? 'Переименовать новую сессию' : undefined} aria-label={agentId ? `Переименовать чат: ${name}` : draftMode ? `Переименовать новую сессию: ${name}` : undefined} disabled={draftMode ? !!draftLocked : !agentId || archived || !data} onClick={() => { cancelled.current = false; setDraft(draftMode ? (draftTitle || '').trim() : name); setEditing(true); }}>{name}</button>
+          {editing && <input ref={inputRef} className="chat-header-title-input" aria-label={draftMode ? 'Название новой сессии' : 'Название чата'} placeholder={draftMode ? title : undefined} value={draft} maxLength={120} disabled={saving} aria-invalid={!!error} onChange={e => setDraft(e.target.value)} onBlur={() => { void save(); }} onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); cancelled.current = true; cancel(); } if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void save(); } }} />}
         </div>
         {!!data?.children.length && <Popover.Root open={open} onOpenChange={setOpen}>
           <Popover.Trigger openOnHover delay={150} closeDelay={200} className="chat-header-team">{data.children.some(child => child.runState === 'running' || child.runState === 'claimed') && <span className="chat-header-team-dot" role="img" aria-label="Сабагенты работают" />}{`${data.children.length} ${data.children.length === 1 ? 'subagent' : 'subagents'}`}<ChevronDown size={14} strokeWidth={1} className={open ? 'is-open' : ''} /></Popover.Trigger>

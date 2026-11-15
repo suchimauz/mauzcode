@@ -21,15 +21,8 @@ button.new-session-chip:hover { background: var(--hover); }
 .new-session-retry { margin-top: 8px; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); }
 .workspace-draft-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 4px 6px; border-radius: 6px; font: inherit; font-size: var(--font-body); text-align: left; }
 .workspace-draft-row.is-selected { background: var(--selected); }
+.workspace-draft-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 480px) { .new-session-chips { gap: 8px; } .new-session-model { gap: 8px; } }
 
-.new-session-options { box-sizing: border-box; width: 280px; max-width: calc(100vw - 24px); padding: 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); box-shadow: 0 3px 12px #0000000d; outline: none; transform-origin: var(--transform-origin); transition: opacity 150ms ease, transform 150ms ease; }
-.new-session-options[data-starting-style], .new-session-options[data-ending-style] { opacity: 0; transform: scale(.98); }
-.new-session-options-field { display: grid; gap: 6px; font: 500 13px/18px var(--font-sans); color: var(--text-secondary); }
-.new-session-options-field input { box-sizing: border-box; width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); font: 400 13px/20px var(--font-sans); }
-.new-session-options-field input::placeholder { color: var(--text-tertiary); }
-.new-session-options-field input:focus-visible { outline: 2px solid var(--accent, var(--text)); outline-offset: 1px; }
 .new-session-chip:focus-visible { outline: 2px solid var(--accent, var(--text)); outline-offset: 2px; }
 button.new-session-chip:disabled { opacity: .5; cursor: default; }
-@media (prefers-reduced-motion: reduce) { .new-session-options { transition: opacity 120ms ease; } .new-session-options[data-starting-style], .new-session-options[data-ending-style] { transform: none; } }
-@media (prefers-contrast: more) { .new-session-options { border-color: var(--text); } }

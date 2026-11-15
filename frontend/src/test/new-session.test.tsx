@@ -68,37 +68,33 @@ it('catalog failure keeps a slash draft editable and never creates a session', a
   expect(sessionStorage.getItem('mauzcode-ui-new-session-pending')).toBeNull();
 });
 
-it('options chip edits the title in a popover; Enter closes it without sending and returns focus', async () => {
+it('has no options chip; the footer label shows the draft title or New Session', () => {
+  function Titled({ title }: { title?: string }) { const [draft,setDraft] = useState<NewSessionDraft>({ ...initial, title }); return <NewSessionComposer draft={draft} onChange={setDraft} projects={projects} onCreated={created} onPending={() => {}} />; }
+  const view = render(<Titled title="  Ревью API " />);
+  expect(screen.queryByRole('button', { name: 'Параметры сессии' })).toBeNull();
+  expect(screen.queryByText('Параметры')).toBeNull();
+  expect(document.querySelector('.new-session-draft-label')).toHaveTextContent(/^Ревью API$/);
+  view.unmount(); render(<Titled title="   " />);
+  expect(document.querySelector('.new-session-draft-label')).toHaveTextContent(/^New Session$/);
+});
+it('the draft title is sent with the first message', async () => {
   const { submitNewSession } = await import('../lib/newSession');
-  render(<Draft />);
-  const chip = screen.getByRole('button', { name: 'Параметры сессии' });
-  expect(chip).toHaveTextContent('Параметры');
-  expect(screen.queryByText('Advanced options')).toBeNull();
-  fireEvent.click(chip);
-  const input = await screen.findByPlaceholderText('Без названия');
-  expect(input).toHaveAttribute('maxlength', '120');
-  await waitFor(() => expect(input).toHaveFocus());
-  for (const removed of [/Project workspace/i, /Prompt presets/i, /system instructions/i, /Create this directory/i]) expect(screen.queryByText(removed)).toBeNull();
-  fireEvent.change(input, { target: { value: 'Мой чат' } });
-  fireEvent.keyDown(input, { key: 'Enter' });
-  await waitFor(() => expect(screen.queryByPlaceholderText('Без названия')).toBeNull());
-  expect(chip).toHaveFocus();
-  expect(chip).toHaveTextContent('Мой чат');
-  expect(submitNewSession).not.toHaveBeenCalled(); expect(created).not.toHaveBeenCalled();
+  vi.mocked(submitNewSession).mockResolvedValue({agentId:'zz',projectId:'p1',status:'sent'});
+  function Titled() { const [draft,setDraft] = useState<NewSessionDraft>({ ...initial, title: 'Ревью API' }); return <NewSessionComposer draft={draft} onChange={setDraft} projects={projects} onCreated={created} onPending={() => {}} />; }
+  render(<Titled />);
+  fireEvent.input(screen.getByRole('textbox'),{target:{textContent:'Hello'}});
+  fireEvent.submit(screen.getByRole('form',{name:'Ввод сообщения'}));
+  await waitFor(() => expect(created).toHaveBeenCalledWith('zz'));
+  expect(vi.mocked(submitNewSession).mock.calls[0][0]).toMatchObject({ title: 'Ревью API', text: 'Hello' });
 });
-it('Escape closes the options popover and returns focus to the chip', async () => {
-  render(<Draft />);
-  const chip = screen.getByRole('button', { name: 'Параметры сессии' });
-  fireEvent.click(chip);
-  const input = await screen.findByPlaceholderText('Без названия');
-  fireEvent.keyDown(input, { key: 'Escape' });
-  await waitFor(() => expect(screen.queryByPlaceholderText('Без названия')).toBeNull());
-  await waitFor(() => expect(chip).toHaveFocus());
-});
-it('options chip is disabled while a first message is pending', () => {
-  sessionStorage.setItem('mauzcode-ui-new-session-pending', JSON.stringify({ ...initial, text: 'Waiting', requestKey: 'pending-key-000001' }));
-  render(<Draft />);
-  expect(screen.getByRole('button', { name: 'Параметры сессии' })).toBeDisabled();
+it('the sidebar draft row shows the draft title in tree and flat views', () => {
+  const base = { projects, selected: '', draftProjectId: 'p1', onNewSession: vi.fn(), user: null, theme: 'light' as const, onTheme: () => {}, onToggle: () => {}, onSelect: () => {}, onRetry: () => {} };
+  const view = render(<WorkspaceSidebar {...base} draftTitle="Ревью API" />);
+  expect(document.querySelector('.workspace-draft-row')).toHaveTextContent('Ревью API');
+  view.unmount();
+  localStorage.setItem('mauzcode.workspace-view', JSON.stringify({ group: 'flat' }));
+  render(<WorkspaceSidebar {...base} draftTitle=" " />);
+  expect(document.querySelector('.workspace-draft-row')).toHaveTextContent('New Session');
 });
 it('a legacy pending submit with removed fields is not replayed; its text and title return to the draft', async () => {
   const { submitNewSession } = await import('../lib/newSession');
@@ -106,8 +102,11 @@ it('a legacy pending submit with removed fields is not replayed; its text and ti
   render(<Draft />);
   await waitFor(() => expect(screen.getByRole('textbox')).toHaveTextContent('Old text'));
   expect(sessionStorage.getItem('mauzcode-ui-new-session-pending')).toBeNull();
-  expect(screen.getByRole('button', { name: 'Параметры сессии' })).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'Параметры сессии' })).toHaveTextContent('Old title');
+  expect(document.querySelector('.new-session-draft-label')).toHaveTextContent('Old title');
   expect(screen.queryByText('Повторить отправку')).toBeNull();
   expect(submitNewSession).not.toHaveBeenCalled();
+});
+it('a ?newSession=1&title= link pre-fills the draft title', () => {
+  history.replaceState(null, '', '/?newSession=1&title=%D0%A0%D0%B5%D0%B2%D1%8C%D1%8E');
+  expect(readNewSessionDraft().title).toBe('Ревью');
 });
