@@ -12,6 +12,13 @@ export type ProviderDefinition = {
         systemPreamble?: string;
         /** Public price catalogue vendor identifier. */
         priceVendor?: string;
+        /** Ordered public catalogue sections describing this provider's models' context and output limits; each list defaults to [priceVendor]. */
+        catalog?: {
+            /** models.dev vendor sections, tried in order with exact model ids. */
+            modelsDev?: string[];
+            /** @earendil-works/pi-ai built-in provider ids, tried in order with exact model ids. */
+            piAi?: string[];
+        };
     };
     fields: types.models.FieldSpec[];
     transports: types.models.TransportSpec["kind"][];

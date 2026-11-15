@@ -1,7 +1,7 @@
 /**
  * Set or remove owner context-window overrides for models on one connection
  *
- * Owner operation behind the Models tab context fields. `limits` maps exact provider-native model ids to a positive safe integer of tokens, or null to remove the override (reset to provider metadata, else 200,000). Only the supplied entries change: the patch is applied in one atomic UPDATE, so concurrent saves for different models never lose each other and the last successful save wins for the same model. The whole patch is validated first and rejected without writes (VALIDATION) on a malformed model id, a non-integer, zero, negative, unsafe or string value, or more than 500 entries; an unknown connection fails with NOT_FOUND. Models need not be in the current catalogue. Does not change availability, the provider models cache or updatedAt, never calls a provider, and never adds a parameter to upstream requests: the value is a local budget for compaction and context displays, not provider capacity. Emits the llm-models refresh topic and returns all stored overrides plus the effective limit of every patched model.
+ * Owner operation behind the Models tab context fields. `limits` maps exact provider-native model ids to a positive safe integer of tokens, or null to remove the override (reset to provider metadata, else a public catalogue value, else 200,000). Only the supplied entries change: the patch is applied in one atomic UPDATE, so concurrent saves for different models never lose each other and the last successful save wins for the same model. The whole patch is validated first and rejected without writes (VALIDATION) on a malformed model id, a non-integer, zero, negative, unsafe or string value, or more than 500 entries; an unknown connection fails with NOT_FOUND. Models need not be in the current catalogue. Does not change availability, the provider models cache or updatedAt, never calls a provider, and never adds a parameter to upstream requests: the value is a local budget for compaction and context displays, not provider capacity. Emits the llm-models refresh topic and returns all stored overrides plus the effective limit of every patched model.
  * @param opts.id Connection UUID.
  * @param opts.limits Model id → tokens (positive safe integer) or null to remove; 1–500 entries.
  */
@@ -38,7 +38,8 @@ export default async function (
     const overrides = await ctx.fns.models.catalog.contextOverrides({ id: view.id });
     const catalogue = await ctx.fns.models.catalog.listModels({ id: view.id, cacheOnly: true });
     const provider = new Map(catalogue.models.map(m => [m.id, m.contextWindow ?? null]));
+    const catalog = await ctx.fns.models.catalog.catalogLimits({ provider: view.provider, models: entries.map(([model]) => model).filter(model => provider.get(model) == null) });
     const out: Record<string, types.models.ContextLimit> = {};
-    for (const [model] of entries) out[model] = ctx.fns.models.catalog.contextLimit({ provider: provider.get(model) ?? null, override: overrides[model] ?? null });
+    for (const [model] of entries) out[model] = ctx.fns.models.catalog.contextLimit({ provider: provider.get(model) ?? null, override: overrides[model] ?? null, catalog: catalog[model]?.context ?? null });
     return { overrides, limits: out };
 }

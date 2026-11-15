@@ -1,7 +1,7 @@
 /**
  * Resolve a stored model route using only current storage and cached metadata
  *
- * Use through models.resolveRoute to obtain connection identity, provider inference descriptors, native compaction support, optional cached limits and the effective context limit (owner override, cached provider metadata, 200000 fallback) with its source. Never discovers models, reads secrets or sends provider requests, including on cold caches. Disabled and missing routes fail with nonretryable SDK failures.
+ * Use through models.resolveRoute to obtain connection identity, provider inference descriptors, native compaction support, optional cached limits and the effective context limit (owner override, cached provider metadata, public catalogue via models.catalog.catalogLimits, 200000 fallback) with its source; the output limit falls back to the catalogue too. Never discovers models, reads secrets or sends provider requests, including on cold caches. Disabled and missing routes fail with nonretryable SDK failures.
  * @param opts.route Exact registered provider/accountName:modelId route.
  */
 export default async function (
@@ -27,7 +27,11 @@ export default async function (
         const catalogue = await ctx.fns.models.catalog.listModels({ id: conn.id, cacheOnly: true });
         const model = catalogue.models.find(m => m.id === parsed.modelId);
         const overrides = await ctx.fns.models.catalog.contextOverrides({ id: conn.id });
-        const contextLimit = ctx.fns.models.catalog.contextLimit({ provider: model?.contextWindow ?? null, override: overrides[parsed.modelId] ?? null });
+        // Public catalogues fill gaps only: cached models.dev snapshot, then bundled pi-ai data; never awaited from the network.
+        const catalog = model?.contextWindow !== undefined && model?.maxOutputTokens !== undefined ? undefined
+            : (await ctx.fns.models.catalog.catalogLimits({ provider: parsed.provider, models: [parsed.modelId] }))[parsed.modelId];
+        const contextLimit = ctx.fns.models.catalog.contextLimit({ provider: model?.contextWindow ?? null, override: overrides[parsed.modelId] ?? null, catalog: catalog?.context ?? null });
+        const maxOutputTokens = model?.maxOutputTokens ?? catalog?.output;
         return {
             ...parsed, route: opts.route, model: parsed.modelId, connectionId: conn.id,
             nativeCompaction: typeof definition.compact === "function",
@@ -35,7 +39,7 @@ export default async function (
             ...(definition.inference?.priceVendor !== undefined ? { priceVendor: definition.inference.priceVendor } : {}),
             ...(contextLimit.source !== "fallback" ? { contextWindow: contextLimit.effective } : {}),
             contextLimit,
-            ...(model?.maxOutputTokens !== undefined ? { maxOutputTokens: model.maxOutputTokens } : {}),
+            ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
         };
     } catch (error) {
         const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";

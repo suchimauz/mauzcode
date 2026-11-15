@@ -1,14 +1,18 @@
 /**
- * Read the cached models.dev public price catalogue keyed by vendor
+ * Read the cached models.dev public model catalogue (prices and limits) keyed by vendor
  *
- * Use only inside models to price routes. Fetches https://models.dev/api.json once, refreshes hourly in the background, and keeps the last good snapshot on failure (logged without bodies). Returns an empty object when the catalogue was never fetched.
+ * Use only inside models to price routes and to look up catalogue context/output limits. Fetches https://models.dev/api.json once, refreshes hourly in the background, and keeps the last good snapshot on failure (logged without bodies). Returns an empty object when the catalogue was never fetched. With `cacheOnly` it never waits for the network: it returns the current snapshot (possibly empty) and starts a background fetch when none is cached.
+ * @param opts.cacheOnly Return the current snapshot without awaiting a fetch.
  */
 export default async function (
     ctx: Context,
     session: Session | null,
-    opts: {},
-): Promise<Record<string, { name?: string; models?: Record<string, { name?: string; cost?: Record<string, number> }> }>> {
-    type Catalog = Record<string, { name?: string; models?: Record<string, { name?: string; cost?: Record<string, number> }> }>;
+    opts: {
+        /** Return the current snapshot at once; a missing snapshot starts a background fetch instead of being awaited. @default false */
+        cacheOnly?: boolean;
+    },
+): Promise<Record<string, { name?: string; models?: Record<string, { name?: string; cost?: Record<string, number>; limit?: { context?: number; output?: number } }> }>> {
+    type Catalog = Record<string, { name?: string; models?: Record<string, { name?: string; cost?: Record<string, number>; limit?: { context?: number; output?: number } }> }>;
     const state = ctx.state as typeof ctx.state & { modelsPriceCatalog?: { data?: Catalog; pending?: Promise<void>; timer?: ReturnType<typeof setInterval> } };
     const cache = state.modelsPriceCatalog ??= {};
     const refresh = () => cache.pending ??= (async () => {
@@ -20,6 +24,9 @@ export default async function (
         finally { delete cache.pending; }
     })();
     if (!cache.timer) { cache.timer = setInterval(() => { void refresh(); }, 3600000); cache.timer.unref?.(); }
-    if (!cache.data) await refresh();
+    if (!cache.data) {
+        if (opts?.cacheOnly) { void refresh().catch(() => {}); return {}; }
+        await refresh();
+    }
     return cache.data ?? {};
 }

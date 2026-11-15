@@ -4,7 +4,7 @@ export default {
     label: "Z.ai Coding Plan",
     description: "Z.ai Coding Plan subscription: GLM coding models over Chat Completions or Anthropic Messages, with quota windows.",
     icon: "brand:zai",
-    inference: { priceVendor: "zai" },
+    inference: { priceVendor: "zai", catalog: { modelsDev: ["zai-coding-plan", "zai"], piAi: ["zai"] } },
     fields: [
         { key: "apiKey", label: "API key", type: "secret", required: true, help: "Coding Plan API key from the Z.ai subscription page. It is sent only to api.z.ai." },
         { key: "protocol", label: "Protocol", type: "select", required: true, default: "openai-chat", options: [

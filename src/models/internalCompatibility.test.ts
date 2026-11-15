@@ -41,7 +41,7 @@ test("original public model signatures, async declarations, types and HTTP route
         let expected = normalize(source);
         if (name === "StreamRequest.ts") expected = expected.replace("tools?:Record<string,unknown>[]", "tools?:types.models.ToolSpec[]");
         const additive: Record<string, string> = {
-            "ProviderDefinition.ts": "inference?:{systemPreamble?:string;priceVendor?:string;};",
+            "ProviderDefinition.ts": "inference?:{systemPreamble?:string;priceVendor?:string;catalog?:{modelsDev?:string[];piAi?:string[];};};",
             "CallRequest.ts": "tools?:types.models.ToolSpec[];",
             "FailureInfo.ts": "resetAt?:number;",
             // fix-usage-window-classification: optional window identity/classification metadata.

@@ -110,7 +110,9 @@ export default async function (
                 try { view = await ctx.fns.models.connections.get({ id }); } catch { view = null; /* names are cosmetic; keep the plain list */ }
                 // Owner context overrides and each model's effective limit; overrides of absent models are kept and returned too.
                 const overrides = await ctx.fns.models.catalog.contextOverrides({ id });
-                const contextLimits = Object.fromEntries(list.models.map(m => [m.id, ctx.fns.models.catalog.contextLimit({ provider: m.contextWindow ?? null, override: overrides[m.id] ?? null })]));
+                let catalog: Awaited<ReturnType<typeof ctx.fns.models.catalog.catalogLimits>> = {};
+                if (view) try { catalog = await ctx.fns.models.catalog.catalogLimits({ provider: view.provider, models: list.models.filter(m => m.contextWindow == null).map(m => m.id) }); } catch { catalog = {}; /* catalogues are optional defaults */ }
+                const contextLimits = Object.fromEntries(list.models.map(m => [m.id, ctx.fns.models.catalog.contextLimit({ provider: m.contextWindow ?? null, override: overrides[m.id] ?? null, catalog: catalog[m.id]?.context ?? null })]));
                 if (!view || !list.models.length) return reply({ ...list, contextOverrides: overrides, contextLimits });
                 const conn = view;
                 const route = (model: string) => conn.provider + "/" + conn.accountName + ":" + model;

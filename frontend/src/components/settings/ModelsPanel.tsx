@@ -149,7 +149,7 @@ function ProviderForm({ provider, connection, actions, onDone }: { provider: Mod
 
 type Section = 'edit' | 'models' | 'remove' | null;
 
-const SOURCE_LABEL: Record<ModelContextLimit['source'], string> = { override: 'Owner override', provider: 'Provider', fallback: 'Fallback' };
+const SOURCE_LABEL: Record<ModelContextLimit['source'], string> = { override: 'Owner override', provider: 'Provider', catalog: 'Catalog', fallback: 'Fallback' };
 const FALLBACK_LIMIT = 200_000;
 const formatTokens = (n: number) => `${n.toLocaleString('en-US')} tokens`;
 /** Parses a context draft: '' resets to the default (null); otherwise a positive safe integer without rounding or coercion. */
@@ -178,7 +178,7 @@ function ContextLimitControl({ model, limit, override, draft, error, saving, dis
   const pendingReset = dirty && !draft!.trim();
   return <div className="models-context" role="group" aria-label={`Context limit ${model}`}>
     <label className="models-context-field" htmlFor={id}><span>Context limit</span>
-      <input id={id} type="text" inputMode="numeric" autoComplete="off" spellCheck={false} value={value} placeholder={String(effective.provider ?? FALLBACK_LIMIT)}
+      <input id={id} type="text" inputMode="numeric" autoComplete="off" spellCheck={false} value={value} placeholder={String(effective.provider ?? effective.catalog ?? FALLBACK_LIMIT)}
         aria-label={`Context limit for ${model}`} aria-invalid={error ? true : undefined} aria-describedby={`${id}-value${error ? ` ${id}-error` : ''}`}
         disabled={saving || disabled} onChange={e => onDraft(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && dirty) { e.preventDefault(); onSave(); } else if (e.key === 'Escape' && draft !== undefined) { e.preventDefault(); onDiscard(); } }} />
