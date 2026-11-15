@@ -155,6 +155,12 @@ bun script/repl.ts -f /tmp/play.js                     # from file; stdin works 
 
 Vendored `src/procs/` is upstream code: keep local patches minimal and marked with a `mauzcode:` comment; prefer fixing upstream and re-vendoring.
 
+## Agent preset access review
+
+- For every new core namespace, classify it in `src/agentPreset/coreCatalogue.ts` as Standard, Creator-only or internal; keep the catalogue coverage test passing.
+- For a new function under an existing Standard wildcard grant (such as `files.*`), explicitly review whether Standard should receive it. Existing snapshots gain matching functions automatically. Narrow the shipped grant or add an appropriate deny when needed, and test the decision; changing defaults does not rewrite existing snapshots.
+- Review plugin/project-local origins and direct-call guards separately from internal calls. Presets are a guardrail, not a sandbox; eval and shell retain server privileges. See `docs/agent-presets.md`.
+
 ## Secrets
 
 - **Read secrets with `ctx.fns.secrets.get({ ref })`, never `secrets.resolve`.** `get` is

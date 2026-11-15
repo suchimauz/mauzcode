@@ -15,11 +15,11 @@
 
 ## 3. Preset management API
 
-- [ ] 3.1 Implement `agentPreset.list`, `get`, `create`, `update` with strict field validation (unknown fields, kebab id, patterns, string arrays) through `procs.dev.createFunction`. Verify with tests: duplicate id fails, invalid pattern fails, update persists.
-- [ ] 3.2 Implement `agentPreset.remove` (refuses built-ins and the configured default) and `agentPreset.reset` (built-ins only, restores constants). Verify with tests for the "Reset after edit" and "Delete a built-in" scenarios.
-- [ ] 3.3 Implement `agentPreset.ensureBuiltins` as a boot lifecycle step that inserts missing built-ins without overwriting edits. Verify with a test that edits Standard, reruns it and sees the edit kept, and that a deleted-row Minimal is restored.
-- [ ] 3.4 Implement `agentPreset.resolve({ id?, parent? })`: default from the setting, unknown id throws with its name, `parent` prepends parent layers. Verify with tests for "Create without a preset", a missing default and narrowing by a child.
-- [ ] 3.5 Validate each new function with `runtime.docs.validate({ strict: true, typecheck: false })` and write `docs/agent-presets.md` (concepts, patterns, origins, built-ins, how to grant a plugin, explicit "guardrail, not a sandbox" section). Verify that the doc exists and covers the "Presets are a guardrail, not a sandbox" requirement. Document that snapshots freeze rules rather than installed functions, including future matches of core wildcards and `plugins: ["*"]`. Add an `AGENTS.md` review checklist for new functions under Standard's existing wildcard grants.
+- [x] 3.1 Implement `agentPreset.list`, `get`, `create`, `update` with strict field validation (unknown fields, kebab id, patterns, string arrays) through `procs.dev.createFunction`. Verify with tests: duplicate id fails, invalid pattern fails, update persists.
+- [x] 3.2 Implement `agentPreset.remove` (refuses built-ins and the configured default) and `agentPreset.reset` (built-ins only, restores constants). Verify with tests for the "Reset after edit" and "Delete a built-in" scenarios.
+- [x] 3.3 Implement `agentPreset.ensureBuiltins` as a boot lifecycle step that inserts missing built-ins without overwriting edits. Verify with a test that edits Standard, reruns it and sees the edit kept, and that a deleted-row Minimal is restored.
+- [x] 3.4 Implement `agentPreset.resolve({ id?, parent? })`: default from the setting, unknown id throws with its name, `parent` prepends parent layers. Verify with tests for "Create without a preset", a missing default and narrowing by a child.
+- [x] 3.5 Validate each new function with `runtime.docs.validate({ strict: true, typecheck: false })` and write `docs/agent-presets.md` (concepts, patterns, origins, built-ins, how to grant a plugin, explicit "guardrail, not a sandbox" section). Verify that the doc exists and covers the "Presets are a guardrail, not a sandbox" requirement. Document that snapshots freeze rules rather than installed functions, including future matches of core wildcards and `plugins: ["*"]`. Add an `AGENTS.md` review checklist for new functions under Standard's existing wildcard grants.
 
 ## 4. Agent snapshot lifecycle
 
