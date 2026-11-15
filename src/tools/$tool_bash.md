@@ -7,10 +7,8 @@ marker: bash
 promptSnippet: "run shell commands (rg, jq, git, tests)"
 promptGuidelines:
   - "To work on another machine pass host (an alias from ~/.ssh/config, list with ctx.fns.remote.servers({})) to bash, read, write or edit — no ssh quoting needed; the connection is kept open between calls."
-  - "Give bash a timeout when a command could hang (a server, a watcher, a prompt) — and make it generous: a slow search needs minutes, and a timeout that is too tight kills work that was about to succeed."
-  - "Prefer rg for text search and rg --files -g '<glob>' for file discovery through bash; scope searches to the relevant directory and bound output. Keep .gitignore filtering unless ignored files are explicitly needed; avoid broad shell find walks. Use the grep/find tools when their structured options or hashline edit anchors are useful."
-  - "Prefer jq to select, filter and summarize JSON in shell pipelines before returning it to the model; do not dump large JSON blobs or parse JSON with grep/sed."
-  - "If rg or jq is unavailable on the execution host, use an alternative: grep/find tools for search, or Bun/Node/Python JSON parsing for jq. Check command -v when needed; do not repeatedly retry a missing command or install software without permission. rg exit 1 means no matches, not a missing command."
+  - "Set a generous timeout for commands that may hang. Scope searches and bound output; prefer rg and rg --files -g '<glob>', preserving ignore rules. Avoid broad shell find walks."
+  - "Summarize JSON with jq, not grep/sed. Check command -v before retrying missing utilities; use installed alternatives, never install without permission. rg exit 1 means no matches."
 parameters:
   type: object
   properties:

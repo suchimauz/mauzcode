@@ -1,0 +1,6 @@
+{
+  "description": "Historical pre-optimization measurement; do not regenerate to make a regression pass. Isolated testCtx, openspec fixture (official; namespace openspec; description Spec workflow), /fixture/workspace, no additions. Native JSON is JSON.stringify(wireTools).",
+  "minimal": { "promptChars": 3009, "generatedChars": 1944, "nativeSchemaChars": 6716, "nativeToolCount": 4 },
+  "standard": { "promptChars": 20285, "generatedChars": 8914, "nativeSchemaChars": 13305, "nativeToolCount": 11 },
+  "creator": { "promptChars": 32287, "generatedChars": 10540, "nativeSchemaChars": 13305, "nativeToolCount": 11 }
+}

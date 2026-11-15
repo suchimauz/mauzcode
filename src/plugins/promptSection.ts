@@ -3,6 +3,8 @@ export default function (ctx: Context, _session: Session | null, opts: {
     /** Frozen-preset access predicate evaluated against the live registry. */
     allows?: (name: string) => boolean;
 }): string {
+    // A partial discovery grant must not advertise an unusable workflow, including direct calls.
+    if (opts.allows && !["plugins.search", "plugins.read", "plugins.functions"].every(opts.allows)) return "";
     const plugins = ctx.fns.plugins.list({}).filter(plugin => !opts.allows || plugin.namespaces.some((namespace: string) => {
         const node = namespace.split(".").reduce((value, key) => value?.[key], ctx.state.registry);
         return Object.entries(node ?? {}).some(([name, fn]) => typeof fn === "function" && opts.allows!(`${namespace}.${name}`));

@@ -1,7 +1,39 @@
 import { dirname, join } from "node:path";
 import { mkdir, rename, rm, realpath } from "node:fs/promises";
 
-/** Creates a documented runtime function with type checking; use activate:false to author offline without loading, generating declarations, or indexing it. */
+/**
+ * Creates a documented runtime function with type checking; use activate:false to author offline without loading, generating declarations, or indexing it.
+ *
+ * MauzCode runtime authoring guide (mauzcode: portable discovery reference).
+ * Read this before creating or changing a runtime extension, including from another workspace.
+ * These rules govern the host runtime and its plugins, NOT arbitrary target-project source.
+ * Source roots are resolved against the host project, not the agent workspace. Use an explicit root;
+ * keep core features in src, small private procedures in .mauzcode, and substantial private integrations
+ * in a mounted user plugin. Discover plugin setup through plugins.search/read before authoring one.
+ *
+ * One procedure per lower-case file: anonymous default function (ctx, session, opts).
+ * Call other procedures through ctx.fns.namespace.function({ ...opts }); the Proxy injects ctx/session.
+ * No imports between project files; imports from bun, node:* and npm are permitted.
+ * Capitalized files export global types.namespace.Name; never edit generated ctx_ns.d.ts.
+ * Store runtime state under ctx.state's owning module, not module-level mutable variables.
+ *
+ * Supply capability-focused summary/description, explicit params ([] for none), returnType and body.
+ * Document every option with meaningful descriptions and applicable default/minimum/maximum bounds.
+ * Prefer precise types. Do not hand-write localized keyword lists or benchmark phrases: retrieval
+ * localization derives from honest TypeScript/JSDoc metadata. createFunction validates and loads by
+ * default; activate:false is offline authoring, not a promise that a running registry was updated.
+ *
+ * After changing existing procedures, hot-reload with procs.repl.load({ name }), then validate each
+ * through runtime.docs.validate({ name, strict:true, typecheck:false }). Run procs.dev.typecheck({})
+ * ONCE per settled batch, with one owner across collaborating agents. Preserve complete diagnostics,
+ * distinguish pre-existing errors, and rerun only after further changes; filtered output is not a
+ * clean-project check. Never parallelize full-project checks or loop validate({typecheck:true}).
+ * Adding/removing files requires procs.dev.genTypes({}); routes/assets require procs.http.loadRoutes({});
+ * migrations require procs.migrate.up({}). Reload does not replace already-running lifecycle closures
+ * or imported dependencies: inspect the lifecycle and obtain approval before a disruptive restart.
+ * Read the host repository's AGENTS.md and docs/runtime-authoring.md when changing MauzCode itself.
+ * Never mutate agent.messages/events directly, expose secrets, or bypass action-specific approvals.
+ */
 export default async function (
     ctx: Context,
     _session: Session | null,

@@ -1,7 +1,7 @@
 ---
 id: plugins
 title: plugins
-requires: [plugins.search]
+requires: [plugins.search, plugins.read, plugins.functions]
 order: 150
 generator: plugins.promptSection
 ---

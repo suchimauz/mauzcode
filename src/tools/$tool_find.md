@@ -4,7 +4,7 @@ description: >-
   shelling out to `find` — a walk over a home directory takes minutes and usually times out.
 promptSnippet: "find files by glob (respects .gitignore)"
 promptGuidelines:
-  - "For file discovery use rg --files -g '<glob>' through bash or the find tool, not broad shell find walks; both respect ignore rules by default."
+  - "Use scoped glob patterns for file discovery; keep ignore rules unless ignored files are needed."
 parameters:
   type: object
   properties:

@@ -37,7 +37,17 @@ await ctx.fns.agentPreset.update({
 
 This replaces the plugin list; read the current row first when preserving other grants. `remove({ id })` returns whether a custom row was deleted. `reset({ id })` is built-in only. `resolve({ id?, parent? })` copies rules into a snapshot, using the configured default for root creation and copying the parent when both a parent and no explicit id are supplied. Unknown identifiers fail explicitly.
 
+## Prompt size and exclusions
+
+Prompt brevity changes presentation, **not access rules or snapshots**. All presets use the same compact, API-free base; capability-specific sections are included only when every required runtime function is allowed by every snapshot layer. Standard should not inherit Creator-only runtime-management instructions simply because it can edit target-project files. MauzCode is the host, not necessarily the target project: follow the target's own stack and instructions.
+
+Keep section IDs, ordering and exclusion behavior stable when shortening prose; required APIs must cover the workflow actually advertised. An `excludeSections` entry in **any** frozen layer still removes the matching section. Excluded sections must not leak back through a catch-all section, generator, preset-specific summary or base text. Stored `exclude_sections`, snapshot layers, denies, plugin grants and user-added instructions are unchanged; shortening shipped prompt text does not rewrite any of them. Generators filter advertised functions with their supplied `allows` predicate. See [architecture](architecture.md#capability-prompt-sections).
+
+Detailed host policies live in `AGENTS.md` and linked topic docs rather than duplicated UI/SSR/runtime paragraphs in each turn. Runtime authoring remains discoverable from external workspaces through `runtime.docs.get({ name: "procs.dev.createFunction" })`; [runtime-authoring.md](runtime-authoring.md) is the longer reference in the host checkout. The historical Creator fixture is retained as evidence, while active regression tests cover intentional concise wording, important invariants, preset capability boundaries and unchanged exclusions—not verbatim preservation of superseded paragraphs.
+
 ## Guardrail, not a sandbox
+
+See the [optimization record](agent-prompt-optimization.md) for controlled measurements, reviewed relocations and verification limitations.
 
 Presets steer what an agent is offered and calls directly. They are **not a security or isolation boundary**. Evaluation and shell commands still execute with server-process privileges; imports, raw runtime state, process APIs and shell access are not isolated by presets. Calls made internally by an allowed function use normal access. Do not use presets to execute untrusted agents or code safely; actual isolation requires a separate security boundary.
 

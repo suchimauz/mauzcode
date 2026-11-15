@@ -9,9 +9,8 @@ marker: edit
 validate: tools.editValidate
 promptSnippet: "edit files in place"
 promptGuidelines:
-  - "Read the file (or the range you will change) first and pass its readId; the edit is refused if the file changed since, with the fresh content in the same result."
-  - "An edit replaces exact text, so copy oldText verbatim from what you read, including indentation, and give enough of it to be unique."
-  - "Several changes to one file belong in one edit call with several entries in edits, not in several calls. Use the readId the result returns for the next edit."
+  - "Read the target range before editing; pass its readId and use hashline for anchor edits. If the file changed, review fresh content before retrying; never overwrite concurrent changes."
+  - "Copy literal oldText exactly and uniquely. Batch changes to one file in one edit; use its returned readId for the next edit."
 parameters:
   type: object
   properties:

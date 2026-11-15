@@ -7,7 +7,7 @@ description: >-
 marker: read
 promptSnippet: "read files, whole or by line range"
 promptGuidelines:
-  - "Before editing, read the file or the range you will change and keep the readId from the first result line; read with hashline when you will edit by anchors."
+  - "Read the target range before editing; pass its readId and use hashline for anchor edits. If the file changed, review fresh content before retrying; never overwrite concurrent changes."
   - "To look at a screenshot or any image, read its path: the image is attached to the result and you see it."
 parameters:
   type: object

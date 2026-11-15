@@ -114,20 +114,21 @@ describe('prompt assembly', () => {
 
         expect(section).toContain('- `read` — read files, whole or by line range');
         // guidelines are merged from the tools that contribute them, deduped
-        expect(section).toContain('keep the readId from the first result line');
+        expect(section).toContain('Read the target range before editing; pass its readId');
     });
 
 
     test('shell guidance prefers rg/jq and includes missing-command alternatives', async () => {
         const ctx = await setup();
         const section = ctx.fns.tools.promptSection({ protocol: 'json' });
-        expect(section).toContain('Prefer rg for text search');
-        expect(section).toContain('Prefer jq to select, filter and summarize JSON');
-        expect(section).toContain('If rg or jq is unavailable on the execution host');
+        expect(section).toContain('prefer rg and rg --files');
+        expect(section).toContain('Summarize JSON with jq');
+        expect(section).toContain('Check command -v before retrying missing utilities');
+        expect(section).toContain('use installed alternatives, never install without permission');
         expect(section).toContain('rg exit 1 means no matches');
         expect(section).not.toContain('To locate files use the find tool and to search contents use grep');
         const narrow = ctx.fns.tools.promptSection({ protocol: 'json', only: ['read'] });
-        expect(narrow).not.toContain('Prefer jq');
+        expect(narrow).not.toContain('Summarize JSON with jq');
     });
 
     test('the system prompt carries it, and narrowing an agent shrinks the prefix', async () => {

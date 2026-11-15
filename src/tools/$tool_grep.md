@@ -6,8 +6,7 @@ description: >-
 marker: grep
 promptSnippet: "search file contents (respects .gitignore)"
 promptGuidelines:
-  - "To change what grep found: grep, read the range, then edit with the readId from that read."
-  - "Use literal:true to search for text that contains regex characters instead of escaping them."
+  - "Search results are locations, not edit receipts. Use literal:true for plain text containing regex characters."
 parameters:
   type: object
   properties:

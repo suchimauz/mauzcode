@@ -3,253 +3,39 @@ description: mauzcode — procs-based Bun codebase with a self-extending agent a
 alwaysApply: true
 ---
 
-# mauzcode — agent guide
+# MauzCode — project guide
 
-Procedural TypeScript on Bun, running on the **procs framework** (vendored at `src/procs/` — see `~/health-workspaces/procs` for the upstream). One HTTP server, a multi-agent chat driven by native JSON tool calls, all code hot-reloadable through a tokened external REPL.
+This file governs the **MauzCode product checkout**, not every project an agent opens through MauzCode. The **host** is the running Bun/procs server; the **target workspace** can be another project or SSH machine. Inspect that target's own instructions and declared configuration before editing it. Never infer its language, OS, paths, database, launcher or UI conventions from the host. `CLAUDE.md` links here.
 
-## UI design — MauzCode only
+## Working rules
 
-Before designing, implementing, or reviewing **MauzCode's own UI**, read `docs/skills/apple-design/SKILL.md` and the scope notes in `docs/skills/apple-design/README.md`. Apple Design is the default reference for the MauzCode app shell, chat, settings, built-in pages, and plugin surfaces inside MauzCode. Follow the user's request and MauzCode's existing accessible components and light/dark design tokens; favor clear hierarchy, restraint, immediate feedback, keyboard focus, usable targets, and reduced-motion support over decorative effects.
+- Use Bun for this project (`bun`, `bun test`, `bunx`, `bun build`); prefer built-ins over npm packages. `.env` loads automatically. This is not a runtime prescription for other projects.
+- Scope and bound searches; preserve ignore rules. Prefer structured file tools or `rg` / `rg --files`; summarize JSON with `jq`, not grep/sed. Check unavailable commands once and use installed alternatives, never install without permission. `rg` exit 1 means no matches. Structured grep can fall back in-process; shell commands do not automatically do so.
+- Runtime eval executes in the **host process**. Raw relative Bun file I/O uses server cwd, not workspace; use workspace-aware tools, explicit resolved paths and SSH host-aware tools as appropriate. Scratch files go through `workspace.tmp` to `.mauzcode/tmp/<agent-id>/`, never root or `src/`.
+- One anonymous default-exported function per file. Call `ctx.fns.namespace.function({ ... })` with only options: context/session are injected. No project cross-imports (including types), no module-level mutable state; use global types and namespace-owned `ctx.state`. Never edit generated `src/ctx_ns.d.ts`.
+- Core dependencies belong in `src/`, never solely in the gitignored `.mauzcode/` overlay. Keep vendored `src/procs/` patches minimal and marked `mauzcode:`; no application features there. Private substantial integrations belong in configured `USER_PLUGINS`, not official plugins.
+- Inspect source/dependencies with `code.slice` before unfamiliar runtime edits and `code.callers` before signature changes. Discover live schemas before calls. Before creating/changing extensions, read `runtime.docs.get({ name: "procs.dev.createFunction" })`; it works from external workspaces without locating this checkout. See [runtime authoring](docs/runtime-authoring.md) for grammar, placement, metadata, generated types and reload workflow.
+- Hot-reload changed functions with `procs.repl.load`; do not restart by default. Coordinate **one typecheck owner and one complete project check per settled batch**; preserve full diagnostics and invalidate them after edits. Validate function metadata without repeated project typechecks. Tests use isolated Postgres and mock LLMs, never working data/accounts. See [testing](docs/testing.md).
 
-This rule is scoped to the **product being edited**, not the agent's host: other projects worked on through MauzCode are unaffected unless the user explicitly requests Apple Design there. Do not install or enforce this skill globally. The local copy is pinned, includes the upstream MIT license, and is read on demand rather than pasted into every prompt.
+## Non-negotiable host invariants
 
-## Runtime environment
+- Postgres is runtime storage. Use async `procs.db.*`, not bare `Bun.sql`/`new SQL()` defaults. Inspect the live schema; never commit credentials or expose DB ports beyond loopback. Database restarts affect all agents and require user approval.
+- The DB owns transcripts/events; use authorized `session.*` persistence helpers and sync state, never direct array mutation or transcript SQL. Preserve atomic index allocation and the inline `agents` queue; do not casually rename `agent.run`/`workerLoop`. Details: [runtime operations and queue](docs/runtime-operations.md).
+- Never expose secrets in chat, logs, errors or tool results. Discover references with `secrets.list`; use secret inputs/tool secret maps. Runtime consumers use `secrets.get`, never direct `secrets.resolve`.
+- Presets are guardrails, **not a sandbox**. Classify new core namespaces and review new functions under wildcard grants; preserve direct-call guards, capability-gated discovery, prompt section IDs and exclusions. Keep the base generic/API-free and project policy here or in topic docs. See [agent presets](docs/agent-presets.md), [authoring](docs/runtime-authoring.md#access-and-prompt-review) and [architecture](docs/architecture.md).
 
-- **Bun, not Node.js.** Use `bun`, `bun test`, `bun install`, `bunx`, `bun build`. `.env` loads automatically.
-- Prefer Bun built-ins over npm packages: `Bun.serve()`, `Bun.file()`, `Bun.write()`, `Bun.$` shell, `Bun.Glob`, `Bun.spawn`, `bun:sqlite`, `Bun.markdown.html`, etc.
-- Tests: `bun:test`. Filename must match `*.test.ts` for auto-discovery.
-- Prefer `rg` for text search and `rg --files -g '<glob>'` for file discovery through bash. Scope searches to the relevant directory, preserve ignore rules by default, and bound output; avoid broad shell `find` walks. Use the structured grep/find tools when their options or hashline edit anchors are useful.
-- Prefer `jq` to select, filter and summarize JSON in shell pipelines before returning it to the model. Do not dump large JSON blobs or parse JSON with grep/sed.
-- If `rg` or `jq` is unavailable on the execution host, use the grep/find tools or Bun/Node/Python JSON parsing instead. Check `command -v` when needed; do not repeatedly retry a missing command or install software without permission. `rg` exit 1 means no matches, not a missing command.
-- The structured `ctx.fns.files.grep` tool uses `rg --json` for .gitignore-aware search when available; without it, it reports that it is using an in-process fallback. This is separate from shell commands: bash does not automatically substitute missing `rg` or `jq`.
+## UI — product-scoped
 
-## The procs contract (calling convention)
+Before designing, implementing or reviewing **MauzCode's UI**, read [Apple Design skill](docs/skills/apple-design/SKILL.md) and its [scope notes](docs/skills/apple-design/README.md). Respect user intent, existing accessible components/light-dark tokens, focus and reduced motion. Do not enforce this preference in other projects or global settings.
 
-- **`ctx.fns` is an injecting Proxy**: `ctx.fns.mod.fn({ ...opts })` calls the raw fn as `raw(ctx, ctx.session, opts)`. Callers NEVER pass ctx.
-- Every function file: `export default [async] function (ctx: Context, session: Session | null, opts: {...})` — **anonymous**, one per file, folder = namespace. Zero-arg fns take `(ctx, _session, _opts?: {})`, called as `ctx.fns.mod.fn({})`.
-- **No cross-imports between project files** — call through `ctx.fns`. `import` only from `bun`, `node:*`, npm. This is what makes hot reload work.
-- State lives on `ctx.state` under the module's own name. Never in module-level variables.
-- Types are global via auto-generated `src/ctx_ns.d.ts` (never edit): `mod/Name.ts` (capitalized noun) → `types.mod.Name`; `Context` from `src/Context.ts`, `Session` from `src/Session.ts`. Never `import type` project types.
-- The framework's own modules live under `ctx.fns.procs.*` (`procs.db`, `procs.http`, `procs.repl`, `procs.dev`, `procs.events`, `procs.config`, `procs.log`, `procs.migrate`, …) and can't be shadowed. Full contract: upstream `PROCS.md`.
+The primary shell is React/Vite; new trusted extensions use public `@mauzcode/ui` and host React. Plugin UI stays in its own `ui/`, with declared grants and exact bundle approval where required. Frontend grants never replace backend auth, ownership, CSRF or explicit human approval. Shared SSR, Canvas renderers, secure inputs and Redmine approval authority still have consumers: **do not delete them because `/old-ui` redirects**. Bridge dispatch is not proof of execution. Read [UI maintenance](docs/ui-maintenance.md) and [UI architecture](docs/ui-architecture.md) before changing these contracts; [live updates](docs/live-updates.md) covers resync.
 
-## File-name grammar ($-prefix = parsed by the scanner)
+## On-demand references
 
-| file | becomes |
-|---|---|
-| `mod/fn.ts` (verb, lower-case) | `ctx.fns.mod.fn` |
-| `mod/Name.ts` (noun, capitalized) | `types.mod.Name` (compile-time only) |
-| `mod/$route_<path>_<METHOD>.ts` | route; `_`→`/`, `$id`→`:id`; handler `(ctx, session, { req, params })` |
-| `mod/$middleware[_<path>].ts` | middleware under that prefix |
-| `mod/$start.ts` / `$stop.ts` | lifecycle, in `package.json procs.prod` order |
-| `mod/$config.ts` | config schema → `ctx.fns.procs.config.resolve({ module })` |
-| `mod/$migration_<id>.ts` | db migration (`{up, down?}`), applied by `procs.migrate.up` in id order |
-| `mod/$setting_<key>.ts` | declared runtime setting (owned by `settings/$loader_setting.ts`) → `ctx.state.settings.registry` |
-| `mod/$script_<n>.js\|css` | browser asset, bundled, served at `/mod/<n>.js` |
-| `mod/$cli_<cmd>.ts` | CLI command (`bun script/cli.ts <cmd>`) |
-| `$main.ts` · `$test.ts` · `*.test.ts` · `*.entry.ts` · `*.d.ts` | skipped by the scanner |
+- [Runtime authoring](docs/runtime-authoring.md): procedure contract, file grammar, placement, createFunction, hot reload and access review.
+- [Runtime operations](docs/runtime-operations.md): launcher discovery (no OS assumptions), REPL, Postgres, queue/transcripts and secrets.
+- [Testing](docs/testing.md): test kinds, fixtures, current template/worker test DB and verification discipline.
+- [UI maintenance](docs/ui-maintenance.md): SDK contract and residual SSR/screen/tour guarantees without duplicated shell guidance.
+- [Agent presets](docs/agent-presets.md), [architecture](docs/architecture.md): snapshot/access and prompt composition contracts.
 
-## Layout
-
-```
-src/
-  $main.ts            procs boot (makeCtx + injecting Proxy) — entry
-  $test.ts            testCtx for bun tests (root defaults to this repo)
-  Context.ts          global Context type (framework)
-  Session.ts          global Session type (request session — NOT the agent transcript)
-  ctx_ns.d.ts         AUTO-GEN by ctx.fns.procs.dev.genTypes
-  procs/              VENDORED framework — ctx.fns.procs.* (patched: .mauzcode overlay
-                      root in modules/discover, _migrations name→id compat, WAL)
-  agent/              native JSON tool-call loop: run, workerLoop, wireTools,
-                      routes /agent/:id*, $start.ts (loadAll + workerLoop), SYSTEM_PROMPT_CORE.txt
-  session/            DB-first agent persistence (agents/messages/events) + $migration_*.ts
-  llm/                stream dispatch by "provider:model" + OAuth refreshers + streamMock
-  files/ ui/ markdown/ git/ settings/ events/ dev/ skill/ tools/
-script/repl.ts        external REPL client (reads .runtime/port + .runtime/repl-token)
-.runtime/             port, repl-token, signing key, bundled scripts (gitignored)
-.mauzcode/               runtime-writable overlay — scanned AFTER src/, overrides by name;
-                      _runtime/sessions is the LEGACY sqlite file (storage is Postgres now)
-```
-
-## Server, REPL, hot reload
-
-Long-running server on **PORT 3010** (:3000 is a different project), supervised by **launchd**, not tmux:
-
-```bash
-launchctl list | grep com.suchimauz.mauzcode   # pid of script/run-service.ts, which spawns src/$main.ts
-launchctl kickstart -k gui/$(id -u)/com.suchimauz.mauzcode   # restart the supervisor and its child
-```
-
-`~/Library/LaunchAgents/com.suchimauz.mauzcode.plist` runs `bun script/run-service.ts` with `KeepAlive`, so an
-ordinary crash is restarted automatically (`ThrottleInterval` 10s). `run-service.ts` is also the updater: it
-applies a staged fast-forward from `.runtime/update-pending.json`, health-checks the new child and rolls the
-checkout (and the database) back if it fails.
-
-- A restart boots whatever is in the **working tree**, not at HEAD — check `git status` before restarting on
-  someone else's uncommitted work.
-- `launchctl kickstart -k` kills the supervisor but **not an orphaned child**: if `src/$main.ts` outlives its
-  parent it keeps the port, every relaunch dies with `EADDRINUSE`, and launchd loops on that forever while the
-  stale process still answers requests. When a restart seems to have no effect, check for it:
-  `lsof -nP -iTCP:3010 -sTCP:LISTEN` and `ps -o ppid= -p <pid>` — `ppid=1` means orphaned, `kill` it and launchd
-  gets the port on its next try. `grep -c EADDRINUSE .runtime/server.error.log` counts how long this has been
-  going on.
-- Logs: `.runtime/server.log` and `.runtime/server.error.log` (the child, rotated), `.runtime/service.*.log`
-  (the supervisor).
-
-```bash
-bun script/repl.ts 'ctx.fns.session.list({})'          # eval inside the live process
-bun script/repl.ts -f /tmp/play.js                     # from file; stdin works too
-```
-
-- `POST /procs/repl` is gated: run-signed JWT in `.runtime/repl-token` (0600) + loopback-only + 403 in production. `script/repl.ts` handles the token automatically.
-- REPL eval is Jupyter-style: `console.log`/`print` captured, last expression returned.
-- Hot reload: `ctx.fns.procs.dev.sync({ rel: "agent/run.ts" })` picks up an edited file (any kind); `ctx.fns.procs.repl.load({ name: "agent.run" })` swaps one fn or a module; `ctx.fns.procs.dev.genTypes({})` regenerates types; `ctx.fns.procs.http.loadRoutes({})` rescans routes; `ctx.fns.procs.migrate.up({})` applies new migrations. The dev **watcher** does sync automatically on save (dev only; `WATCH=0` opts out).
-- Needs a restart: `$main.ts`, any `$start/$stop`, long-lived closures (notably `workerLoop`) — reload swaps the fn but the old promise keeps spinning — and **any npm/git dependency change**, since `bun install` rewrites `node_modules` but the running process keeps the module it already imported.
-- Introspection: `ctx.fns.procs.dev.doc({ name: "agent.run" })`, `ctx.fns.procs.dev.where({ name })`, `ctx.fns.procs.dev.lint({})`.
-
-## Database & migrations
-
-- **Storage is Postgres** (paradedb, container `mauzcode-db`, **127.0.0.1:54393** only, db/user `mauzcode`, password generated by `script/install.sh` into `~/.mauzcode/.env` as `MAUZCODE_DB_PASSWORD` and into `.env` as `DATABASE_URL` — there is NO default password and MauzCode refuses to start without `DATABASE_URL`). The compose file in the repo root is the source of truth: `cp docker-compose.yml ~/.mauzcode/docker-compose.yml && cd ~/.mauzcode && docker compose up -d` (compose reads `~/.mauzcode/.env`). Never publish the port on all interfaces.
-- **Server-level settings go in `docker-compose.yml` (`command: -c …`), never `ALTER SYSTEM` from a REPL.** `shared_preload_libraries` only applies at server start, and `ALTER SYSTEM SET shared_preload_libraries = 'a,b,c'` writes the whole list as ONE quoted file name — the server then refuses to boot. Restarting the database stops every agent: ask the user first.
-- `ctx.fns.procs.db.*` — ALL ASYNC: `select({sql, params})` → rows, `run({sql, params})` → `{changes, lastInsertRowid: 0, rows}` (use RETURNING + `.rows` or `insert` for ids), `insert({into, values})` → `{id, changes}`, `exec({sql})` (multi-statement DDL, no params), `conn()` → Bun.SQL pool. `?` placeholders are translated to `$n` internally — keep writing `?`.
-- NEVER use bare `Bun.sql`/`new SQL()` in app code — it defaults to localhost:5432, not our db.
-- URL from env `DATABASE_URL` (required; `package.json procs.prod."procs/db".url` may set one, but never commit a password). Pool `prepare: false` (Bun 1.3.14 pipelining bug — don't remove).
-- Postgres dialect notes: ms-timestamps are BIGINT (come back as strings — wrap in `Number()`), `COUNT(*)` is bigint-string too, camelCase aliases need quotes (`AS "createdAt"`), `GREATEST` not scalar `MAX`, `ILIKE` not `COLLATE NOCASE`.
-- Tests: each test ctx gets a private **pg_temp** schema on a one-connection pool (self-cleaning); pools are closed per-file by `src/_testPreload.entry.ts` (bunfig `[test].preload`). `max_connections=1000` on the container. CI runs a paradedb service.
-- Migrations: `mod/$migration_<id>.ts` default-exporting `{ up(ctx), down?(ctx) }` (async), tracked in `_migrations(id)`. Ids are `YYYYMMDDHHmmss_name`.
-- One-shot sqlite→pg data copy: `script/migrate-sqlite-to-pg.ts` (already run; old file kept at `.mauzcode/_runtime/sessions`).
-
-## Agent (unchanged core design)
-
-- **Native JSON tool calls** — providers receive schemas from the `$tool_*.md` registry; `agent.run` persists assistant `tool_calls`, validates arguments through `tools.call`, and appends `role='tool'` results. There is no text-marker parser in the active agent loop.
-- The native `eval` tool typechecks its JSON `code` argument against the live project with an in-process TypeScript Language Service before execution. Toggle globally with declared setting `repl.typecheckEval` / env `EVAL_TYPECHECK`; internal callers can override one call with `typecheck: false`.
-- Multi-agent at `ctx.state.agent[id]` (runtime view; **DB is source of truth**). Mutate transcript/events via `ctx.fns.session.append*/replace*/syncAgentState` — never `.push()` directly in runtime code.
-- Queue: `agents.next_run_at` + `run_state` + `last_processed_msg_idx`; single in-process `workerLoop` claims atomically (`UPDATE … RETURNING id`), started by `agent/$start.ts`.
-- Agent-visible behaviour lives in `src/agent/SYSTEM_PROMPT_BASE.md` and `src/<module>/$prompt_<id>.md`, assembled by `agent.fullSystemPrompt`. The old CORE file is replaced; its reviewed text survives in the immutable Creator fixture.
-- Add capability sections with unique `id`, `title`, `requires: [module.function]`, numeric `order`, and optional `generator: module.function` in YAML frontmatter. All required APIs must be allowed; any snapshot layer's `excludeSections` wins. Generators receive `{ allows }` and must filter advertised capabilities. Plugins use the same loader. Reload the owning namespace after edits; preserve the committed Creator paragraph-equivalence fixture.
-- Canvas/input kinds declare exact required runtime names in `requires`, including `canvas.show` / `input.request` and capabilities advertised by their hints. Scoped discovery requires all dependencies live and allowed; unannotated kinds are omitted even for Creator, but retained internally. This metadata filters discovery only, never action authorization. Split mixed prompt guidance by capability requirements; keep markdown renderers independent. See `docs/architecture.md#scoped-kind-discovery`.
-- Classify new core namespaces in `src/agentPreset/coreCatalogue.ts` and review additions to wildcard-granted namespaces. Keep `AGENTS.md` (also read through the `CLAUDE.md` link) and `docs/architecture.md` in sync with prompt authoring rules. Project policies belong here; the base contains only generic, API-free instructions.
-- Forks: child stores `parent_id` + `fork_offset`; effective transcript via `ctx.fns.session.getFullMessages({ id })` — never copy transcripts.
-
-## Testing discipline
-
-- `bun run test` (fast tests) and `bunx tsc --noEmit` must both be clean; run `bun run test:all` before a push or deploy.
-- **One project typecheck per settled edit batch.** Hot-reload changed runtime functions and validate their metadata individually with `runtime.docs.validate({ name, strict: true, typecheck: false })`. Then run `procs.dev.typecheck({})` ONCE and reuse the complete diagnostics for every changed file. `typecheck({ filter })` still compiles the WHOLE project; it only filters output. Never loop `validate({ typecheck: true })` or filtered typechecks over files, and never run duplicate project checks in parallel.
-- **One typecheck owner across collaborating agents.** Parent and children share one result and identify the source state it covers. Preserve complete diagnostics (scratch storage if large), distinguish pre-existing errors from new ones, and rerun only after further edits. If sources change during or after a check, its result is not current; filtered output alone never proves the project is clean.
-- **Test kinds — the kind is in the file name** (listed by `script/test.ts`, run from the Tests page `/code/tests` with a tab per kind; each kind keeps its own report `.runtime/test-report-<kind>.xml`):
-
-  | file | kind | may touch | run |
-  |---|---|---|---|
-  | `*.test.ts` | fast | code, stubs, the test Postgres (`testCtx`) | `bun run test` — on every change |
-  | `*.it.test.ts` | integration | real processes: git repos, docker sshd (`test/ssh`), tsgo, headless Chrome (`test/chrome`) | `bun run test:it` |
-  | `*.live.test.ts` | live | the real network and real accounts | `bun run test:live` — by hand only |
-
-  `bun run test:all` = fast + integration (never live). Per-test timeout is 20 s via `script/test.ts` (bun's own 5 s times out healthy tests under parallel load); `TEST_TIMEOUT_MS` or `--timeout=` overrides it. A new test is fast unless it needs one of the above; a fast file that takes over ~1 s or spawns processes belongs in `.it`. Paths narrow a run: `bun script/test.ts it ./src/remote`.
-- **Test Postgres:** tests never use the working db (54393). They run on `mauzcode-db-test` (127.0.0.1:54399, `docker compose up -d db-test` in `~/.mauzcode`, fsync off) — `TEST_DATABASE_URL`, or `DATABASE_URL` with the port moved to 54399. The core migrations build one template db (`mauzcode_test_t_<hash>`, rebuilt when a migration changes); each test process gets its own copy, reset (TRUNCATE + drop extra tables) after every test that made a ctx and before each new file. Fast suite: `bun run test` (`--parallel=16 --no-isolate`, ~20–40 s); code is loaded once per worker and every `testCtx()` gets a copy of that state.
-- Shared fixture: `mkTestCtx()` from `src/_testCtx.entry.ts` — boots the real registry (full Proxy ctx, test db, migrations, routes), scrubs env for determinism, and stubs `markdown.highlight/render` + `repl.eval`. Override stubs via `ctx.state.registry.<mod>.<fn> = (_c, _s, opts) => …` (raw signature!).
-- Route tests go through `ctx.fns.procs.http.dispatch({ method, url, body, headers })` → real `Response`.
-- **All tests use `model: 'mock:*'`** (`streamMock`; drive via `agent.scratchpad.mockLLM` — `echoUser`/`userText`/`defaultText`). Never hit real LLM providers in the suite.
-- Fixtures go to `.test-tmp/` (gitignored) — NEVER into `src/` or `.mauzcode/` (both are scanned roots).
-- **Test against a controlled environment, not live machines.** Anything that talks to an external system (SSH hosts, databases, browsers, HTTP services) gets a disposable fixture — preferably Docker — that the test starts, seeds and tears down itself. Never make the suite depend on the user's servers, `~/.ssh`, real accounts or network state. Example: `test/ssh/` (Dockerfile + compose + `fixture.ts`) keeps two sshd containers running for `src/remote/remote.it.test.ts` (started on first use, reused across runs, remote home reset each run) and points the ctx at a private ssh_config via `MAUZCODE_SSH_CONFIG`/`MAUZCODE_SSH_CONTROL_DIR`. Such suites `describe.skipIf(!dockerAvailable)` so a machine without Docker skips instead of failing; `MAUZCODE_SKIP_DOCKER_TESTS=1` skips them explicitly.
-- Run test files by explicit path (`bun test ./src/remote/`), not as a bare filter (`bun test src/remote`): a filter makes bun scan the whole tree, including `harnesses/`, and the thousands of open descriptors make `Bun.spawn` fail with `EBADF`.
-
-## Core code placement
-
-**Nothing the app depends on may live in `.mauzcode/`** — it's the gitignored runtime overlay for agent-written extensions. Core features/migrations/routes/types go under `src/`. The scanner skips `_runtime`, `_test_*`, `_tmp_*`, `tmp_*`, `node_modules` segments.
-
-Vendored `src/procs/` is upstream code: keep local patches minimal and marked with a `mauzcode:` comment; prefer fixing upstream and re-vendoring.
-
-## Agent preset access review
-
-- For every new core namespace, classify it in `src/agentPreset/coreCatalogue.ts` as Standard, Creator-only or internal; keep the catalogue coverage test passing.
-- For a new function under an existing Standard wildcard grant (such as `files.*`), explicitly review whether Standard should receive it. Existing snapshots gain matching functions automatically. Narrow the shipped grant or add an appropriate deny when needed, and test the decision; changing defaults does not rewrite existing snapshots.
-- Review plugin/project-local origins and direct-call guards separately from internal calls. Presets are a guardrail, not a sandbox; eval and shell retain server privileges. See `docs/agent-presets.md`.
-
-## Secrets
-
-- **Read secrets with `ctx.fns.secrets.get({ ref })`, never `secrets.resolve`.** `get` is
-  the door: process memory → the encrypted `local_secrets` table → 1Password only on a
-  miss, and it persists what it fetched. `resolve` is the bottom layer and *always* spawns
-  the `op` CLI, so it fails whenever the vault is locked — which is exactly what happens at
-  boot, after a reboot, with nobody there to approve a prompt. The tunnel went dark this
-  way and the UpToDate login broke the same day.
-- References are `env://NAME`, `op://vault/item/field`, or `secret://namespace/name` for
-  values written by `secrets.set` / `secureInput.prompt({ saveAs })` (local only, never
-  bootstrapped from a provider).
-- Guarded on both sides: `src/secrets/callers.test.ts` fails the suite if anything under
-  `src/` or `plugins/` calls `secrets.resolve`, and `resolve` itself logs
-  `secrets.resolve.direct` naming the caller — that one covers out-of-tree plugins in
-  `~/.mauzcode/user`, which no repository test can see.
-- A secret never reaches a log, an error message, a tool result or the transcript. Errors
-  say that a secret could not be resolved, not which one or why.
-
-## What NOT to do
-
-- Don't use npm packages where a Bun built-in exists.
-- Don't import project files across module boundaries; don't name default exports.
-- Don't pass `ctx` at call sites (`ctx.fns.x.y(ctx, …)` is the OLD convention — the Proxy injects it).
-- Don't mutate `agent.messages`/`agent.events` directly in runtime code — session helpers only.
-- Don't rename `ctx.fns.agent.run` / `workerLoop` carelessly.
-- Don't edit `src/ctx_ns.d.ts` (generated) or add files under `src/procs/` for app features.
-
-## Preserved project-specific prompt guidance
-
-MauzCode UI design (product-scoped, not global): when designing, implementing, or reviewing MauzCode's own UI, first read docs/skills/apple-design/SKILL.md and docs/skills/apple-design/README.md in the MauzCode source repository, alongside its AGENTS.md. Use Apple Design as the default reference while respecting the user's request, existing components/design tokens, accessibility, and reduced motion. This includes plugin surfaces inside MauzCode. Do NOT apply this preference to other projects merely because you work on them through MauzCode; use it there only when explicitly requested. Do not copy this policy into their files or global agent settings.
-
-MauzCode UI implementation: the primary shell is React/Vite in frontend/. New trusted UI extensions import the public @mauzcode/ui entry (local Vite alias, not a published package) and host React only; no deep/private imports or second React runtime. Read docs/ui-architecture.md and frontend/src/sdk/index.ts, extensions/{types,registry,installed,pluginRuntime}.ts and extensions/ExtensionHost.tsx under frontend/src/ before extending it. Built-in screens live in frontend/src/core-ui/; a plugin's UI lives only in <plugin>/ui/index.tsx (export default, id = plugin name, imports react, @mauzcode/ui and the plugin's own package.json dependencies only) with grants in package.json procs.ui — MauzCode builds it at runtime, no frontend edits or rebuild; non-official plugin UIs run only after a person approves the bundle hash in the Plugins page. Extensions are trusted same-origin code, not a sandbox; frontend grants/readOnly never replace backend authentication, ownership, CSRF or explicit human approval. SDK requestJson writes require the existing cookie-bound CSRF token; subscribeLive/useLiveSubscription require resync and onError, topic declarations and cleanup. Preserve themes, keyboard focus, accessibility and reduced motion. /old-ui redirects; shared SSR, Canvas content and approval compatibility consumers remain. Do not claim legacy is fully removed or delete shared SSR. HTMX/#main/$script assets are compatibility mechanisms, not the primary extension contract.
-
-The SDK example is absent from production; frontend/src/test/fixtures/sdk-example.tsx remains a dev/test fixture with a separate test registry. The old ui.layout navigation/dock/chat shell is removed, but procs.http.toResponse still dynamically resolves ui.layout as a minimal document renderer for HTTP string/{main}. People and sidebar draft are React surfaces with authorized JSON contracts; necessary built-in/plugin HTML documents remain available through React Applications. Canvas has native text-file editing/directory browsing, explicitly granted React canvasKinds and canvasLaunchers (plugin buttons on the Canvas Start page opening local tabs; Terminal is the official plugins/terminal launcher, not core), with itemDocument kind.render/assets retained for other previews and plugin kinds. Preserve input.compatView secure transports and Redmine's separate confirmation authority. See the residual consumer map in docs/ui-architecture.md; do not equate shell removal with removing all SSR. SSH settings uses a callback to the native llm-connections tab, not a /llms link.
-
-## Primary UI and extension contract
-
-- The primary shell is React/Vite in `frontend/src/LiveApp.tsx`, served at `/`. `/old-ui` only redirects supported GET/HEAD entry links; it is not a second application.
-- New trusted React extensions use `@mauzcode/ui`, the local Vite alias for `frontend/src/sdk/index.ts`, not a published package. Read `docs/ui-architecture.md`, `frontend/src/extensions/{types,registry,installed,pluginRuntime}.ts`, `ExtensionHost.tsx` and the fixture `frontend/src/test/fixtures/sdk-example.tsx` before adding one. Built-in screens live in `frontend/src/core-ui/`; a plugin's UI lives only in its own `ui/index.tsx` (default export, id = plugin name) with grants in `package.json` `procs.ui` — never add plugin UI to frontend sources.
-- Import only the public SDK and host React from extension modules; a plugin UI may also import packages from its own `package.json` `dependencies` (bundled into the approved hash, e.g. xterm in `plugins/terminal`). No deep SDK imports, private host components, remote modules or second React runtime. Vite deduplicates React/React DOM.
-- Extensions declare `apiVersion: 1`, pages, navigation, panels, actions, Canvas kinds and Canvas launchers (buttons on the Canvas Start page that open a local tab with the launcher component; icon defaults to the plugin's `procs.icon`). Core grants live in `extensions/installed.ts`; plugin grants come from `procs.ui`, built at runtime by the backend and served via `/plugins/ui/manifest`. Official plugins are pre-approved; other plugin UIs run only after a person approves the exact bundle hash and grants in the Plugins page.
-- The host owns layout and supplies `agentId`, resolved `theme` and `readOnly` context. Mark mutating actions with `mutates`. These are trusted same-origin modules, not sandboxed plugins; frontend grants and disabled controls never replace backend auth, ownership, CSRF or explicit approval.
-- Use SDK components and `requestJson`; writes require a cookie-bound CSRF token via the supported option/header or meta fallback. Handle 401/403 and failures; do not automatically retry writes or invent token endpoints.
-- Use `subscribeLive`/`useLiveSubscription` with required `resync` and `onError`, cleanup on unmount, and narrow `data-live-topic` declarations. Events invalidate; canonical authorized HTTP reads restore state after gaps.
-- Shared SSR, Canvas content renderers and inline approvals still have compatibility consumers. Do not delete them because `/old-ui` redirects, or describe all Canvas/approval surfaces as migrated. `#main`, HTMX and `$script_*.js` are compatibility mechanisms, not the public React extension contract.
-
-Migration facts: the old `ui.layout` navigation/dock/chat shell is removed; `procs.http.toResponse` still dynamically resolves its minimal standalone document renderer. People and sidebar draft are React surfaces with authorized JSON contracts. React Applications retains necessary declared built-in/plugin HTML pages. Canvas uses native text-file editing/directory browsing, granted React `canvasKinds` and plugin `canvasLaunchers` on its Start page (Terminal lives in the official `plugins/terminal`, not in core), with item documents retained for other previews and plugin renderers. Secure-input transports and Redmine's separate approval authority remain intact. The SDK example stays absent from production, retained only as the dev/test fixture `frontend/src/test/fixtures/sdk-example.tsx`. Plugin UIs live in their plugin's `ui/` folder and load at runtime; `frontend/src/ui-plugins` no longer exists. See the residual consumer map in `docs/ui-architecture.md`; do not equate shell removal with deleting all SSR. SSH settings opens native `llm-connections` via callback, not `/llms`.
-- To show a file alongside chat use `canvas.show({ kind: 'file', args: { path } })`, not whole-page navigation. See `docs/ui-architecture.md`, `docs/ui-design-system.md`, and `docs/live-updates.md`.
-
-## Transcript storage invariants
-
-- `events.idx` / `messages.idx` are per-agent, contiguous, and allocated INSIDE the insert (`SELECT COALESCE(MAX(idx),-1)+1 … RETURNING idx` with a jittered retry on duplicate — `session/appendEvent.ts`, `appendMessage.ts`). Never allocate an idx with a separate SELECT: two overlapping appends (a stop's error event against a running turn's tool events) collide on the pkey.
-- Tool-call cards in the transcript age out client-side (open → one line → tucked circle in a tray); an ERRORED call keeps its red tint but tucks like the rest — only a human click pins a card.
-
-## Compatibility screen & tour (SSR consumers)
-
-- `ctx.fns.screen.*` drives the tab the person already has open — no browser in
-  the process: `screen.eval` pushes code down the SSE stream, the tab answers at
-  `POST /screen/result` (handler in ui/controlScript). Verbs: `open` (partial
-  nav into #main) · `click` · `fill` · `submit` · `point` (pointer+ring+caption)
-  · `say` · `readScreen` (the data-* catalogue) · `text` · `where` (last beacon,
-  no round trip).
-- Targets are addressed by `procs.ui.attr` data-* markers (page/entity/id/form/
-  action/role), NEVER CSS selectors. Seeded so far: the rail's menu button
-  (action: open-menu), chat form (form: chat), agent picker (role), search page/form/hits,
-  agent passport (page: agent + fork/archive/delete actions). These are SSR
-  integration markers, not the public React extension API.
-- `ctx.fns.tour.play({steps})` — scripted walk (Back/Next/Show me); `tour.review`
-  checks steps against pages with no browser; `screen.step` — live tour, one
-  step per turn; the person's press comes back through the `screen.press` hook
-  → `agent/$hook_screen.press.ts` drops "[tour] the user pressed …" into the
-  CURRENT agent's queue.
-- The pointer/tour CSS lives in the framework sheet — the layout links
-  `ctx.state.procs.styles` (procs/styles/app.css); don't remove that link.
-
-## Compatibility UI script routes
-
-- `$script_*.js` files are served as bundled browser assets by `procs/http/$loader_script.ts`, not as fns. After changing one, `ctx.fns.procs.http.loadRoutes({})` (or dev.sync) and verify the actually served HTTP output (e.g. `/agent/chat.js`), including `.mauzcode` overrides — not just the file on disk.
-- Live updates: browser code never listens to `mauzcode-events` directly. A server fragment is a live region (`ui.live`); anything else that mirrors server state uses `window.mauzcodeLive.subscribe({ types, onEvent, resync })` — `resync` re-reads the state after a gap in the stream (hidden tab on HTTP/1.1, network drop) and is required. One-shot instructions use `mauzCodeLive.command`. Enforced by the `live-subscribe` code.quality rule. Read `docs/live-updates.md` before adding anything that updates by itself.
-- The compatibility SSR layout is `src/ui/layout.ts` (procs `toResponse` picks `registry.ui.layout` over the framework default). String / `{main, title}` returns from routes are wrapped by it; `Response` passes through.
-
-## Git helpers
-
-`ctx.fns.git.run/stage/commit/push/status/stageCommitPush({ ... })` — use these from agent code instead of ad-hoc shell (they handle `$`-filenames and take an optional `dir` for temp-repo tests).
-
-
-## Compatibility SSR maintenance
-
-Keep existing SSR consumers working without expanding them into the primary frontend contract. Native controls, `ui.live`, delegated browser handlers and popup RPC remain appropriate where that consumer already uses them. `hx-popup`/`hx-popup-params` owns the shared popup request and swap; do not mix manual fetch or competing HTMX attributes into existing popup triggers. Avoid inherited navigation attributes on containers whose descendants refresh themselves. Preserve authentication, CSRF, explicit approvals, themes, accessible labels/focus, and SSE resync behavior during migration. New React extensions follow the SDK contract above, not an HTMX-first policy.
+Use runtime Git helpers where available (`git.run/stage/commit/push/status/stageCommitPush`) for quoting `$` paths and explicit repo selection; honor action-specific approvals. No documentation grants permission to commit, push, restart or deploy.

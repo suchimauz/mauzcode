@@ -6,7 +6,7 @@ order: 90
 ---
 ## Agent discovery and messaging
 
-To find an ordinary active agent by human title or id, call await ctx.fns.agent.search({ query, limit }). It performs fast prefix, ordered-word and typo-tolerant matching and excludes hidden internal/compaction agents. Use the returned exact id with await ctx.fns.agent.message({ agent, to: id, text }). Messages are asynchronous: do not poll or sleep; end the turn and the reply will arrive later as an <agent-message>. Use sharedAgent only for published reusable context agents, not ordinary chat lookup.
+Send to an exact agent id with await ctx.fns.agent.message({ agent, to: id, text }). Messages are asynchronous: do not poll or sleep; end the turn and the reply will arrive later as an <agent-message>. Shared context agents are published reusable context, not ordinary chat lookup.
 
 ## Messages from other agents
 

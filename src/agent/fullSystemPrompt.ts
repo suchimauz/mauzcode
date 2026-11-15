@@ -28,6 +28,18 @@ export default async function (ctx: Context, _session: Session | null, opts: {
                 }
             }
         }
+        // Optional guidance stays inside its original section so existing exclusions still win.
+        // Keep mandatory safety text in the section body even when an auxiliary API is denied.
+        if (section.id === "eval" && allows("agent.readResult")) {
+            body += '\n\nBig tool results have a bounded preview and immutable result UUID. Read ranges with await ctx.fns.agent.readResult({ id: "<uuid>", offset: 0, limit: 4000 }); inspect ok, text and truncated before reading more. Do not rerun a tool or read scratchpad.results to recover output. Old rN references are unavailable; a storage-failure preview has no full saved result.';
+        }
+        if (section.id === "agentMessaging" && allows("agent.search")) {
+            body += '\n\nFind an ordinary agent by title or id with await ctx.fns.agent.search({ query, limit }); use its exact returned id for messaging. Shared agents are published reusable context, not ordinary chat lookup.';
+        }
+        if (section.id === "sharedAgents") {
+            if (allows("sharedAgent.list")) body += '\n\nSearch for relevant shared context first with await ctx.fns.sharedAgent.list({ query }).';
+            if (allows("sharedAgent.result")) body += '\n\nRead sharedAgent results with await ctx.fns.sharedAgent.result({ childId }) only when needed.';
+        }
         if (body?.trim()) blocks.push(body.trim());
     }
     const additions = agent.preset?.layers.map(layer => layer.prompt.trim()).filter(Boolean) ?? [];
