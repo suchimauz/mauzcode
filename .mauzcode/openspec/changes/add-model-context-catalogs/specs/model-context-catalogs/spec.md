@@ -1,3 +1,7 @@
+## Purpose
+
+Define how public model catalogues (models.dev and the bundled pi-ai catalogue) supply context and output limits for models whose provider does not report them, including source order, per-provider sections and offline behaviour.
+
 ## ADDED Requirements
 
 ### Requirement: Catalogue context limits

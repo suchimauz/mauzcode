@@ -17,4 +17,4 @@
 
 - [x] 3.1 Unit tests: precedence, sections order and default, custom without lookup, cold cache without waiting, output limit
 - [x] 3.2 Existing models/compaction/frontend settings tests and public-contract baseline; typecheck diff against main
-- [ ] 3.3 Hot-reload in the live runtime, strict docs validation, check a real `zai-coding` route
+- [x] 3.3 Hot-reload in the live runtime, strict docs validation, check a real `zai-coding` route
