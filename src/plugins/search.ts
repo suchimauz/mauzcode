@@ -14,6 +14,8 @@ export default async function (
         functionsPerPlugin?: number;
         /** Retrieval strategy used for both levels. @default "hybrid" */
         mode?: "hybrid" | "bm25" | "vector" | "lexical";
+        /** Internal discovery filter supplied by the preset evaluation boundary. */
+        allows?: (name: string) => boolean;
     },
 ): Promise<Array<{
     plugin: string;
@@ -28,14 +30,14 @@ export default async function (
     const limit = Math.max(1, Math.min(20, Math.floor(opts.limit ?? 5)));
     const perPlugin = Math.max(1, Math.min(20, Math.floor(opts.functionsPerPlugin ?? 5)));
     const mode = opts.mode ?? "hybrid";
-    const plugins = (ctx.fns.procs.modules.list({}) as any[]).filter((module: any) => module.plugin);
+    const plugins = (ctx.fns.procs.modules.list({}) as any[]).filter((module: any) => module.plugin && (!opts.allows || module.fns.some((name: string) => opts.allows!(name))));
     const byName = new Map(plugins.map((plugin: any) => [plugin.name, plugin]));
     const owners = new Map<string, any>();
     for (const plugin of plugins) for (const name of [...new Set(plugin.fns as string[])]) owners.set(name, plugin);
 
     const [pluginMatches, functionMatches] = await Promise.all([
         searchPlugins(ctx, plugins, query, Math.min(50, Math.max(20, limit * 4)), mode),
-        ctx.fns.runtime.docs.search({ query, limit: Math.min(50, Math.max(20, plugins.length * perPlugin * 2)), mode }),
+        ctx.fns.runtime.docs.search({ query, limit: Math.min(50, Math.max(20, plugins.length * perPlugin * 2)), mode, allows: opts.allows }),
     ]);
     const grouped = new Map<string, any>();
     const rowFor = (plugin: any) => {

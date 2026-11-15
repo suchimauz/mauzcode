@@ -35,9 +35,9 @@
 
 ## 6. Eval guard
 
-- [ ] 6.1 Add optional `evalCtx` to `procs.repl.eval` and build a guarded ctx in `repl.eval` when the agent has a snapshot (D6): the path-by-path proxy checks `allows`, throws before the call, and invokes the raw function with the unguarded ctx. Verify with tests for "Denied call in evaluation" (nothing reloaded), "Allowed function with internal calls", and namespace probes (`if (ctx.fns.x)`) still working.
+- [x] 6.1 Add optional `evalCtx` to `procs.repl.eval` and build a guarded ctx in `repl.eval` when the agent has a snapshot (D6): the path-by-path proxy checks `allows`, throws before the call, and invokes the raw function with the unguarded ctx. Verify with tests for "Denied call in evaluation" (nothing reloaded), "Allowed function with internal calls", and namespace probes (`if (ctx.fns.x)`) still working.
 - [ ] 6.2 Pass the `allows` predicate into `plugins.search/read/functions` and `runtime.docs.search/get` when called through a guarded eval. Verify that Standard allows all three plugin discovery functions, while its `runtime.docs.search` returns no `procs.dev.*` or ungranted plugin function. Test search/read/functions against an ungranted plugin and a granted plugin with denied functions; no denied function documentation is returned. Verify plugin workflow/index omission with zero reachable granted plugins and inclusion after creating a Standard agent granted `openspec`.
-- [ ] 6.3 Verify the end-to-end scenario: a Creator agent runs `agentPreset.update({ id: "standard", patch: { plugins: ["openspec"] } })` without a confirmation prompt, and a new Standard agent can then call `openspec.run` in eval while an older Standard agent cannot.
+- [x] 6.3 Verify the end-to-end scenario: a Creator agent runs `agentPreset.update({ id: "standard", patch: { plugins: ["openspec"] } })` without a confirmation prompt, and a new Standard agent can then call `openspec.run` in eval while an older Standard agent cannot.
 
 ## 7. Modular system prompt
 
