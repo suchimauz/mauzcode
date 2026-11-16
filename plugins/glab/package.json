@@ -1,0 +1,11 @@
+{
+  "name": "glab",
+  "private": true,
+  "type": "module",
+  "procs": {
+    "src": "src",
+    "label": "GitLab",
+    "icon": "ph-gitlab-logo",
+    "description": "Read GitLab projects, issues, merge requests, pipelines and jobs using the locally authenticated glab CLI. Explicit host, GET-only endpoints and bounded output."
+  }
+}

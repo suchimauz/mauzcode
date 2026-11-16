@@ -68,7 +68,7 @@ describe('agent preset storage and shipped rules', () => {
         expect(defaults[1]?.plugins).toEqual(['*']);
         const catalogue = ctx.fns.agentPreset.coreCatalogue({});
         expect(defaults[0]?.allow).toEqual(Object.values(catalogue).filter(e => e.classification === 'standard').flatMap(e => e.patterns));
-        expect(defaults[0]?.plugins).toEqual([]);
+        expect(defaults[0]?.plugins).toEqual(['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab']);
         expect(setting.default).toBe('standard');
         defaults[0]!.allow.push('unwanted.*');
         expect(ctx.fns.agentPreset.defaults({})[0]?.allow).not.toContain('unwanted.*');

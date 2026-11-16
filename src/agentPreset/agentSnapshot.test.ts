@@ -6,6 +6,14 @@ test('preset edit grants a plugin only to agents created afterwards', async () =
     ctx.state.registry.agentPreset.origin = (_c: Context, _s: Session | null, opts: { name: string }) => opts.name.startsWith('redmine.') ? { kind: 'plugin', plugin: 'redmine' } : { kind: 'core' };
     const first = await ctx.fns.ui.createAgent({ model: 'mock:test', open: false });
     const a = await ctx.fns.session.load({ id: first.id });
+    expect(a.preset?.presetId).toBe('standard');
+    expect(a.preset?.layers[0]?.plugins).toEqual(['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab']);
+    for (const name of ['projects.list', 'projects.get', 'planning.enter', 'input.request']) {
+        expect(ctx.fns.agentPreset.allows({ snapshot: a.preset, name })).toBe(true);
+    }
+    for (const name of ['projects.create', 'projects.remove', 'projects.update', 'projects.chats']) {
+        expect(ctx.fns.agentPreset.allows({ snapshot: a.preset, name })).toBe(false);
+    }
     const snapshot = structuredClone(a.preset);
     await ctx.fns.agentPreset.update({ id: 'standard', patch: { plugins: ['redmine'] } });
     const second = await ctx.fns.ui.createAgent({ model: 'mock:test', open: false });

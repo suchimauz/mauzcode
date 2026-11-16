@@ -68,7 +68,7 @@ describe('preset reflection: Standard and partial namespaces (1.1)', () => {
         test(`${operator} hides denied root, partial and nested properties`, () => {
             const { standard, view } = fixture();
             const guarded = view(standard);
-            expect(keys(guarded).sort()).toEqual(['files', 'local', 'plugins', 'runtime']);
+            expect(keys(guarded).sort()).toEqual(['files', 'gh', 'local', 'plugins', 'runtime']);
             expect(keys(guarded.plugins).sort()).toEqual(['functions', 'read', 'search']);
             expect(keys(guarded.runtime)).toEqual(['docs']);
             expect(keys(guarded.runtime.docs).sort()).toEqual(['get', 'search']);
@@ -77,7 +77,7 @@ describe('preset reflection: Standard and partial namespaces (1.1)', () => {
     test('Object.values traverses only visible namespaces and guarded callable values', () => {
         const { standard, view } = fixture();
         const guarded = view(standard);
-        expect(Object.values(guarded)).toHaveLength(4);
+        expect(Object.values(guarded)).toHaveLength(5);
         expect(Object.values(guarded.plugins)).toHaveLength(3);
         expect(Object.values(guarded.runtime)).toHaveLength(1);
         expect(Object.values(guarded.runtime.docs)).toHaveLength(2);
@@ -174,7 +174,7 @@ describe('preset reflection: snapshot and registry lifecycle (1.3)', () => {
     test('narrowed children intersect Standard parent and Creator child layers', () => {
         const { standard, creator, view } = fixture();
         const child = { ...creator, name: 'Child', layers: [...standard.layers, ...creator.layers] };
-        expect(Object.keys(view(child)).sort()).toEqual(['files', 'local', 'plugins', 'runtime']);
+        expect(Object.keys(view(child)).sort()).toEqual(['files', 'gh', 'local', 'plugins', 'runtime']);
         expect(() => view(child).redmine.secret({})).toThrow('redmine.secret is not available in preset Child');
     });
     test('two agent views do not mutate shared registries or each other’s snapshots', () => {

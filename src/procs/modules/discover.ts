@@ -249,6 +249,17 @@ export default async function (ctx: Context, session: Session | null, _opts?: {}
             selected.push(candidate);
         }
     }
+    // mauzcode: reject duplicate glab containers before any file scan can merge
+    // implementations. Other plugins retain their existing precedence behavior;
+    // explicit pluginRegistry paths select one copy for this newly shipped plugin.
+    const pluginNames = new Map<string, string>();
+    for (const root of selected) {
+        if (!root.plugin || root.name !== 'glab') continue;
+        const folder = await realpath(root.folder ?? root.dir).catch(() => root.folder ?? root.dir);
+        const previous = pluginNames.get(root.name);
+        if (previous && previous !== folder) throw new Error(`Conflicting plugin roots for ${root.name}: ${previous} and ${folder}. Select exactly one concrete path in workspace.json pluginRegistry; user files are not removed.`);
+        pluginNames.set(root.name, folder);
+    }
     const exist: Root[] = [];
     for (const r of selected) {
         if (await Bun.file(r.dir).stat().then(() => true).catch(() => false)) exist.push(r);

@@ -29,6 +29,7 @@ import inputLoader from '../input/$loader_input';
 import agentEval from '../repl/eval';
 import processEval from '../procs/repl/eval';
 import toolEval from '../tools/eval';
+import ghComment from '../../plugins/gh/src/gh/comment';
 
 function fixture() {
  const ctx = makeCtx(); const r = ctx.state.registry as any;
@@ -51,6 +52,31 @@ function fixture() {
 }
 
 describe('live required-function discovery',()=>{
+ test('Standard GitHub grant preserves confirmation before credentials or network access',async()=>{
+  const {ctx,r,view}=fixture();
+  r.plugins.list()[0].name='gh'; r.plugins.list()[0].namespaces=['gh'];
+  r.gh={comment:ghComment};
+  const preset=defaults(ctx,null,{})[0]!;
+  const standard:types.agentPreset.Snapshot={presetId:preset.id,name:preset.name,layers:[{id:preset.id,allow:preset.allow,plugins:preset.plugins,deny:[],prompt:'',excludeSections:[]}]};
+  await expect(view(standard).gh.comment({owner:'fixture',repo:'fixture',n:1,body:'test'})).rejects.toThrow('confirm: true');
+ });
+ test('Standard discovers granted installed plugins and their input instructions without widening other access',async()=>{
+  const {ctx,r,view}=fixture();
+  r.plugins.list()[0].name='openspec';
+  const preset=defaults(ctx,null,{})[0]!;
+  const standard:types.agentPreset.Snapshot={presetId:preset.id,name:preset.name,layers:[{id:preset.id,allow:preset.allow,plugins:preset.plugins,deny:[],prompt:'',excludeSections:[]}]};
+  const f=view(standard);
+  expect(f.runtime.docs.get({name:'external.view'}).name).toBe('external.view');
+  expect(f.plugins.functions({name:'openspec'}).map(x=>x.name)).toContain('external.view');
+  expect(f.input.kinds({}).map(x=>x.name)).toEqual(['choice','external-form']);
+  expect(f.input.promptSection({})).toContain('external-form');
+  const denied=structuredClone(standard); denied.layers[0]!.deny.push('external.view');
+  expect(view(denied).input.kinds({}).map(x=>x.name)).toEqual(['choice']);
+  expect(view(denied).input.promptSection({})).not.toContain('external-form');
+  expect(()=>view(denied).runtime.docs.get({name:'external.view'})).toThrow();
+  const restricted=structuredClone(standard); restricted.layers[0]!.plugins=[];
+  expect(()=>view(restricted).plugins.functions({name:'openspec'})).toThrow();
+ });
  test('Creator requires annotations; internal callers retain unknown kinds; metadata restores visibility without changing actions',async()=>{
   const {ctx,view}=fixture(); const f=view();
   expect((await f.canvas.kinds({})).map(x=>x.name)).toEqual(['external.panel','file']);

@@ -30,7 +30,9 @@ describe('preset management', () => {
         await ctx.fns.agentPreset.ensureBuiltins({});
         await ctx.fns.agentPreset.update({ id: 'standard', patch: { plugins: ['redmine'], prompt: 'edited' } });
         const reset = await ctx.fns.agentPreset.reset({ id: 'standard' });
-        expect(reset.plugins).toEqual([]);
+        expect(reset.plugins).toEqual(['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab']);
+        expect(reset.allow).toEqual(expect.arrayContaining(['projects.list', 'projects.get', 'planning.*', 'input.*']));
+        expect(reset.allow.filter(pattern => pattern.startsWith('projects.'))).toEqual(['projects.list', 'projects.get']);
         expect(reset.prompt).toBe('');
         expect(reset.builtin).toBe(true);
         for (const id of ['standard', 'creator', 'minimal']) await expect(ctx.fns.agentPreset.remove({ id })).rejects.toThrow('built-in');
@@ -75,7 +77,7 @@ describe('preset management', () => {
         inherited.layers[0]!.allow.push('new.*');
         expect(parent.layers[0]!.allow).not.toContain('new.*');
         await ctx.fns.agentPreset.update({ id: 'standard', patch: { plugins: ['redmine'] } });
-        expect(parent.layers[0]!.plugins).toEqual([]);
+        expect(parent.layers[0]!.plugins).toEqual(['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab']);
         expect((await ctx.fns.agentPreset.resolve({})).layers[0]!.plugins).toEqual(['redmine']);
         await ctx.fns.agentPreset.reset({ id: 'standard' });
         await ctx.fns.agentPreset.create({ preset: { id: 'temporary', name: 'Temporary', allow: ['tools.read'] } });

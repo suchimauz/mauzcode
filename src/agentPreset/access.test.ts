@@ -60,13 +60,31 @@ describe('layer resolution', () => {
         const { ctx, check } = fixture();
         const presets = defaults(ctx, null, {}).map(p => ({ presetId: p.id, name: p.name, layers: [{ id: p.id, allow: p.allow, deny: p.deny, plugins: p.plugins, excludeSections: p.exclude_sections, prompt: p.prompt }] }));
         const [standard, creator, minimal] = presets as [types.agentPreset.Snapshot, types.agentPreset.Snapshot, types.agentPreset.Snapshot];
-        for (const name of ['procs.repl.load', 'plugins.reload', 'settings.set', 'future.run', 'redmine.myIssues']) expect(check(standard, name)).toBe(false);
-        for (const name of ['tools.read', 'agent.delegate']) expect(check(standard, name)).toBe(true);
+        expect(standard.layers[0]!.plugins).toEqual(['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab']);
+        for (const name of ['procs.repl.load', 'plugins.reload', 'settings.set', 'agentPreset.update', 'projects.create', 'projects.remove', 'projects.update', 'projects.chats', 'future.run', 'redmine.myIssues']) expect(check(standard, name)).toBe(false);
+        for (const name of ['tools.read', 'agent.delegate', 'projects.list', 'projects.get', 'planning.enter', 'input.request']) expect(check(standard, name)).toBe(true);
         for (const name of ['procs.repl.load', 'future.run', 'redmine.myIssues']) expect(check(creator, name)).toBe(true);
         for (const name of ['tools.bash', 'tools.read', 'tools.write', 'tools.edit']) expect(check(minimal, name)).toBe(true);
         for (const name of ['tools.eval', 'tools.find', 'agent.delegate', 'redmine.myIssues']) expect(check(minimal, name)).toBe(false);
         expect(check({ ...creator, layers: [...standard.layers, ...creator.layers] }, 'procs.repl.load')).toBe(false);
         expect(check({ ...standard, layers: [...standard.layers, ...minimal.layers] }, 'agent.delegate')).toBe(false);
+    });
+    test('expanded Standard plugin grants retain denies and parent intersection', () => {
+        const { ctx, plugins, check, snapshot } = fixture();
+        const preset = defaults(ctx, null, {})[0]!;
+        const standard = snapshot(preset.allow, preset.plugins);
+        for (const plugin of ['openspec', 'git', 'websearch', 'gh', 'terminal', 'glab']) plugins.push({ name: plugin, namespaces: [plugin] });
+        for (const plugin of preset.plugins) {
+            const name = `${plugin}.action`;
+            expect(check(standard, name)).toBe(true);
+            const denied = structuredClone(standard);
+            denied.layers[0]!.deny.push(name);
+            expect(check(denied, name)).toBe(false);
+            const restrictedParent = snapshot(['*'], preset.plugins.filter(grant => grant !== plugin));
+            expect(check({ ...standard, layers: [...restrictedParent.layers, ...standard.layers] }, name)).toBe(false);
+        }
+        expect(check(standard, 'redmine.myIssues')).toBe(false);
+        expect(preset.plugins).not.toContain('*');
     });
     test('generation invalidates warm decisions without recompiling or mutating snapshots', () => {
         const { ctx, plugins, snapshot, check } = fixture();

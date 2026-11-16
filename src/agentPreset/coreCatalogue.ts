@@ -221,8 +221,11 @@ export default function (
             "patterns": []
         },
         "projects": {
-            "classification": "creator",
-            "patterns": []
+            "classification": "standard",
+            "patterns": [
+                "projects.list",
+                "projects.get"
+            ]
         },
         "remote": {
             "classification": "standard",

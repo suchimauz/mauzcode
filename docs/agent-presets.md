@@ -4,11 +4,19 @@ A preset is a stored, named composition of core function patterns, plugin grants
 
 ## Built-ins and defaults
 
-- **Standard**: reviewed core code/task functions, discovery and delegation; no plugins and no runtime-management or settings/preset writes.
+- **Standard**: reviewed core code/task functions, discovery and delegation; exactly `openspec`, `git`, `websearch`, `browser`, `gh`, `terminal` and `glab` plugin grants (no wildcard). Project discovery grants only `projects.list` and `projects.get`, not project creation, deletion, modification or `projects.chats`. Existing `planning.*` and `input.*` grants remain available. Runtime management and settings/preset writes remain denied.
 - **Creator**: `allow: ["*"]`, `plugins: ["*"]`.
 - **Minimal**: `tools.bash`, `tools.read`, `tools.write`, `tools.edit`; no plugins.
 
 Built-ins are seeded by migration and restored when missing at boot, after migrations and before agents resume. Boot never overwrites edits. `agentPreset.reset({ id: "standard" })` restores the shipped definition. Built-ins cannot be deleted. Custom presets can be deleted unless selected by `agentPreset.default` (which defaults to `standard`). A missing default is an error naming that identifier, not an implicit fallback. Pre-preset agents are migrated to Creator to preserve their behaviour.
+
+## Upgrading Standard
+
+The Standard default upgrade changes a stored definition only if every user-configurable field matches the recognized previous factory definition. Customized definitions are preserved; Creator and Minimal are unchanged. The upgrade is idempotent and never rewrites existing agent snapshots. Only agents created afterwards receive the upgraded stored rules.
+
+To opt in explicitly after customizing Standard, use the preset editor to add the seven plugin grants and `projects.list` / `projects.get` while retaining your other changes. Alternatively, `agentPreset.reset({ id: "standard" })` restores the entire shipped definition, replacing custom rules, prompt and exclusions. Create a new agent to use the resulting grants; an existing agent keeps its snapshot.
+
+A grant enables capability-filtered documentation and instructions for installed plugins, not installation, authentication or external-service setup. CLI tools, credentials, browser connections and other plugin prerequisites must still be configured separately. Denies and parent/child intersections still apply. Plugin-specific input kinds require their declared plugin capabilities. Outward actions still require their existing human confirmation process; Plan mode still prohibits OpenSpec artifact writes before approval. Presets do not grant permission to bypass either guard.
 
 ## Patterns and origins
 
