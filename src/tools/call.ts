@@ -31,14 +31,16 @@ export default async function (
 ): Promise<{ output: string; content?: types.tools.Content[]; isError: boolean; handlerExecuted: boolean; terminal?: { type: 'html'; html: string; text: string }; details?: Record<string, unknown> }> {
     const name = String(opts.name ?? "").trim();
     const all = ctx.fns.tools.list({});
+    const snapshot = opts.agent?.preset;
     const tool = all.find((t: any) => t.wireName === name || t.name === name || t.key === name);
-    if (!tool) {
-        return { output: `Error: unknown tool "${name}". Available: ${all.map((t: any) => t.wireName).join(", ")}`, isError: true, handlerExecuted: false };
-    }
-
-    const implementingFn = tool.fn ?? `${tool.module}.${tool.name}`;
-    if (opts.agent?.preset && !ctx.fns.agentPreset.allows({ snapshot: opts.agent.preset, name: implementingFn })) {
-        return { output: `Error: ${implementingFn} is not available in preset ${opts.agent.preset.name}`, isError: true, handlerExecuted: false };
+    // Unknown and preset-denied tools get one indistinguishable message that lists
+    // only the tools this agent may call, never a denied tool, function or preset name.
+    if (!tool || (snapshot && !ctx.fns.tools.permitted({ tool, snapshot }))) {
+        const only = opts.agent?.tools;
+        const available = all
+            .filter((t: any) => (!only?.length || only.includes(t.wireName) || only.includes(t.name)) && (!snapshot || ctx.fns.tools.permitted({ tool: t, snapshot })))
+            .map((t: any) => t.wireName);
+        return { output: `Error: unknown tool "${name}". Available: ${available.join(", ")}`, isError: true, handlerExecuted: false };
     }
 
     const args = opts.args ?? {};

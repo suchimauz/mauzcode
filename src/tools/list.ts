@@ -27,5 +27,5 @@ export default function (
     }));
 
     return out.filter(t => (!_opts?.module || t.module === _opts.module) &&
-        (!_opts.allows || ctx.fns.agentPreset.discoveryVisible({ requires: [t.fn ?? `${t.module}.${t.name}`], allows: _opts.allows })));
+        (!_opts.allows || ctx.fns.agentPreset.discoveryVisible({ requires: ctx.fns.tools.requirements({ tool: t }) ?? [], allows: _opts.allows })));
 }

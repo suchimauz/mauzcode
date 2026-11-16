@@ -14,9 +14,6 @@ export default function (
     const only = opts.agent.tools;
     return ctx.fns.tools.list({})
         .filter(tool => !only?.length || only.includes(tool.wireName) || only.includes(tool.name))
-        .filter(tool => !opts.agent.preset || ctx.fns.agentPreset.allows({
-            snapshot: opts.agent.preset,
-            name: tool.fn ?? `${tool.module}.${tool.name}`,
-        }))
+        .filter(tool => !opts.agent.preset || ctx.fns.tools.permitted({ tool, snapshot: opts.agent.preset }))
         .map(tool => ({ name: tool.wireName, description: tool.description, parameters: tool.parameters }));
 }

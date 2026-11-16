@@ -6,7 +6,7 @@ export default async function (ctx: Context, _session: Session | null, opts: {
     agent: types.agent.Agent;
 }): Promise<string> {
     const { agent } = opts;
-    const allows = (name: string) => !agent.preset || ctx.fns.agentPreset.allows({ snapshot: agent.preset, name });
+    const allows = (agent.preset && ctx.fns.agentPreset.predicate({ snapshot: agent.preset })) || (() => true);
     const excluded = new Set(agent.preset?.layers.flatMap(layer => layer.excludeSections) ?? []);
     const sections = [...(ctx.state.prompts?.registry?.values() ?? [])] as { id: string; order: number; requires: string[]; body: string; generator?: string }[];
     const blocks = [await Bun.file(resolve(import.meta.dir, "SYSTEM_PROMPT_BASE.md")).text()];

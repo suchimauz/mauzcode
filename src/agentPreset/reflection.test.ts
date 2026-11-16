@@ -7,6 +7,7 @@ import origin from './origin';
 import compilePattern from './compilePattern';
 import defaults from './defaults';
 import coreCatalogue from './coreCatalogue';
+import predicate from './predicate';
 
 // Isolated raw registry + the real injecting proxy: descriptor reflection on a plain
 // object of already-bound mocks would miss the raw-(ctx, session, opts) escape.
@@ -21,7 +22,7 @@ function fixture() {
         { name: 'telegram', namespaces: ['telegram'] },
     ];
     const calls: string[] = [];
-    registry.agentPreset = { allows, generation, origin, compilePattern, defaults, coreCatalogue };
+    registry.agentPreset = { allows, generation, origin, compilePattern, defaults, coreCatalogue, predicate };
     registry.plugins = {
         search: (_c: Context, _s: Session | null, opts: { q?: string }) => opts.q,
         read: () => 'read', functions: () => [], list: () => plugins, reload: () => 'reload',

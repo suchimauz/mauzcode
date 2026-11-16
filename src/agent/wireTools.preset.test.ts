@@ -7,6 +7,9 @@ import compilePattern from '../agentPreset/compilePattern';
 import defaults from '../agentPreset/defaults';
 import coreCatalogue from '../agentPreset/coreCatalogue';
 import list from '../tools/list';
+import predicate from '../agentPreset/predicate';
+import permitted from '../tools/permitted';
+import requirements from '../tools/requirements';
 
 function fixture(id = 'standard', tools?: string[]) {
     const declarations = ['bash', 'read', 'write', 'edit', 'eval', 'grep'].map(name => ({
@@ -16,7 +19,9 @@ function fixture(id = 'standard', tools?: string[]) {
         plugins: { list: () => [{ name: 'redmine', namespaces: ['redmine'] }] }, agentPreset: {}, tools: {},
     } };
     ctx.state.tools.registry.set('redmine.myIssues', { key: 'redmine.myIssues', module: 'redmine', name: 'myIssues', fn: 'redmine.myIssues', description: 'Issues', parameters: { type: 'object' } });
-    for (const [name, fn] of Object.entries({ allows, origin, generation, compilePattern, coreCatalogue })) ctx.fns.agentPreset[name] = (opts: any) => fn(ctx, null, opts as never);
+    for (const [name, fn] of Object.entries({ allows, origin, generation, compilePattern, coreCatalogue, predicate })) ctx.fns.agentPreset[name] = (opts: any) => fn(ctx, null, opts as never);
+    ctx.fns.tools.permitted = (opts: any) => permitted(ctx, null, opts);
+    ctx.fns.tools.requirements = (opts: any) => requirements(ctx, null, opts);
     ctx.fns.tools.list = () => list(ctx, null, {});
     const preset = defaults(ctx, null, {}).find(p => p.id === id)!;
     const snapshot: types.agentPreset.Snapshot = { presetId: preset.id, name: preset.name, layers: [{ id: preset.id, allow: preset.allow, deny: preset.deny, plugins: preset.plugins, prompt: preset.prompt, excludeSections: preset.exclude_sections }] };
@@ -57,5 +62,18 @@ describe('native tool preset filtering', () => {
         expect(names()).toEqual(['tools_read']);
         agent.tools = ['read'];
         expect(names()).toEqual(['redmine_read', 'tools_read']);
+    });
+});
+
+describe('native tool requires', () => {
+    test('a tool is advertised only when its adapter and every wrapped capability are allowed', () => {
+        const { ctx, names } = fixture('standard');
+        const add = (requires: unknown) => ctx.state.tools.registry.set('tools.wrap', { key: 'tools.wrap', module: 'tools', name: 'wrap', fn: 'tools.read', requires, description: 'wrap', parameters: { type: 'object' } });
+        add(['agent.readResult']);
+        expect(names()).toContain('wrap');
+        add(['procs.db.select']);
+        expect(names()).not.toContain('wrap');
+        add('agent.readResult');
+        expect(names()).not.toContain('wrap');
     });
 });

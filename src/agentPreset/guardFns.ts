@@ -10,7 +10,7 @@ export default function (
         snapshot: types.agentPreset.Snapshot;
     },
 ): Context["fns"] {
-    const allows = (name: string) => ctx.fns.agentPreset.allows({ snapshot: opts.snapshot, name });
+    const allows = ctx.fns.agentPreset.predicate({ snapshot: opts.snapshot })!;
     const discovery = new Set(["plugins.search", "plugins.read", "plugins.functions", "plugins.docs", "runtime.docs.search", "runtime.docs.get", "runtime.docs.list", "canvas.kinds", "canvas.search", "canvas.promptSection", "input.kinds", "input.promptSection", "tools.list", "tools.schemas"]);
     // Resolve from the current root on every operation, never from a captured namespace.
     // Raw descriptors are used only for shape, never returned to the evaluator.

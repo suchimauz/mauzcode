@@ -47,6 +47,12 @@ export type Tool = {
      *  `<module>.<name>` — the fn sitting next to the declaration. */
     fn?: string;
 
+    /** Exact runtime functions this tool wraps (`agent.readResult`). The tool is
+     *  advertised and executed only when the agent's preset allows `fn` AND every
+     *  entry; a malformed list denies the tool. Use for native adapters, so the
+     *  preset check covers the capability, not just the adapter. */
+    requires?: string[];
+
     /** A function (dotted name) run after the schema passes, for rules a schema
      *  cannot state — "exactly one of these two shapes", "this string may not be
      *  empty". It is handed `{ args }` and returns the complaints; anything

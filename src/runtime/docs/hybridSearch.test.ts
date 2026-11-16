@@ -34,3 +34,19 @@ test("hybrid mode degrades to BM25 while embeddings are off", async () => {
     expect(hits[0]?.name).toBe("telegram.send");
     expect(hits[0]?.similarity).toBeNull();
 });
+
+test("preset filtering runs before candidate truncation in every mode", async () => {
+    const query = "list read search get";
+    const ranked: any[] = await ctx.fns.procs.db.select({
+        sql: "SELECT name FROM functions WHERE search_text @@@ paradedb.match('search_text', ?) ORDER BY paradedb.score(name) DESC, name LIMIT 500",
+        params: [query],
+    });
+    expect(ranked.length).toBeGreaterThan(70);
+    const target = ranked[70]!.name as string;
+    const allows = (name: string) => name === target;
+    for (const mode of ["bm25", "hybrid", "vector", "lexical"] as const) {
+        const hits = await ctx.fns.runtime.docs.search({ query, mode, limit: 5, allows });
+        expect(hits.map(hit => hit.name)).toEqual([target]);
+    }
+    expect(await ctx.fns.runtime.docs.search({ query, mode: "bm25", allows: () => false })).toEqual([]);
+});

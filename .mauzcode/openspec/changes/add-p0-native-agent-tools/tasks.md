@@ -2,10 +2,10 @@
 
 ## 1. Shared permission and leak fixes
 
-- [ ] 1.1 Extract the preset discovery predicate from `guardFns` into a shared trusted helper; verify eval discovery tests still pass
-- [ ] 1.2 Filter `runtime.docs.search` candidates before ranking/truncation; verify a test with more than 60 denied hits above one allowed hit returns the allowed one in bm25, vector and hybrid modes
-- [ ] 1.3 Make the dispatcher's unknown-tool and preset-denied errors identical and list only the caller's wire tools; verify a restricted-preset test shows no denied tool, function or preset names
-- [ ] 1.4 Add optional `requires: string[]` to tool declarations and check it in `agent/wireTools.ts` and `tools/call.ts`; verify tests where the adapter is allowed but a wrapped function is denied
+- [x] 1.1 Extract the preset discovery predicate from `guardFns` into a shared trusted helper; verify eval discovery tests still pass
+- [x] 1.2 Filter `runtime.docs.search` candidates before ranking/truncation; verify a test with more than 60 denied hits above one allowed hit returns the allowed one in bm25, vector and hybrid modes
+- [x] 1.3 Make the dispatcher's unknown-tool and preset-denied errors identical and list only the caller's wire tools; verify a restricted-preset test shows no denied tool, function or preset names
+- [x] 1.4 Add optional `requires: string[]` to tool declarations and check it in `agent/wireTools.ts` and `tools/call.ts`; verify tests where the adapter is allowed but a wrapped function is denied
 
 ## 2. tool_search and tool_describe
 

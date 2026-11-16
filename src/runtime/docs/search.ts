@@ -23,8 +23,11 @@ export default async function (
     try {
         const indexed = Number((await ctx.fns.procs.db.select({ sql: "SELECT count(*)::int n FROM functions", params: [] }) as any[])[0]?.n ?? 0);
         if (!indexed) await ctx.fns.runtime.docs.index({});
-        const visible = (row: { name: string }) => !opts.allows || opts.allows(row.name);
-        const keyword = (await bm25(ctx, query, Math.max(limit, 60), namespace)).filter(visible);
+        // Permission filtering happens inside each candidate query, before ranking
+        // and truncation, so denied matches can never displace allowed ones.
+        const allowed = opts.allows ? ctx.fns.runtime.docs.list({ namespace, allows: opts.allows }).map(item => item.name) : null;
+        if (allowed && !allowed.length) return [];
+        const keyword = await bm25(ctx, query, Math.max(limit, 60), namespace, allowed);
         if (mode === "bm25") return keyword.slice(0, limit);
         // Exact/prefix function names are authoritative and avoid an unnecessary
         // network round trip. Generic prose never takes this fast path.
@@ -34,9 +37,9 @@ export default async function (
         const result = await ctx.fns.embeddings.embed({ input: query });
         const vector = result.vectors[0];
         if (!vector) return keyword.slice(0, limit);
-        const semantic = (await vectorOnly(ctx, vector, 60, namespace)).filter(visible);
+        const semantic = await vectorOnly(ctx, vector, 60, namespace, allowed);
         if (mode === "vector") return semantic.slice(0, limit);
-        const keywords = (await kwBm25(ctx, query, 60, namespace)).filter(visible);
+        const keywords = await kwBm25(ctx, query, 60, namespace, allowed);
         return adaptiveFuse(keyword, semantic, keywords, limit);
     } catch {
         return lexical(ctx, query, limit, namespace, opts.allows);
@@ -51,34 +54,34 @@ export default async function (
 // Scoring the deduplicated keyword field as its own branch removes frequency
 // from the comparison: every capability states each word exactly once, so the
 // question becomes whether the word applies, not how often it was written.
-async function kwBm25(ctx: Context, query: string, limit: number, namespace: string): Promise<any[]> {
+async function kwBm25(ctx: Context, query: string, limit: number, namespace: string, allowed: string[] | null): Promise<any[]> {
     const rows = await ctx.fns.procs.db.select({
         sql: `SELECT name, summary, signature, rel, paradedb.score(name) AS score
                 FROM functions
-               WHERE kw_text @@@ paradedb.match('kw_text', ?)${namespace ? " AND (namespace = ? OR namespace LIKE ?)" : ""}
+               WHERE kw_text @@@ paradedb.match('kw_text', ?)${namespace ? " AND (namespace = ? OR namespace LIKE ?)" : ""}${allowed ? " AND name = ANY(?::text[])" : ""}
                ORDER BY score DESC, name LIMIT ${limit}`,
-        params: namespace ? [query, namespace, namespace + ".%"] : [query],
+        params: [query, ...(namespace ? [namespace, namespace + ".%"] : []), ...(allowed ? [allowed] : [])],
     });
     return rows.map((row: any) => compact(row, Number(row.score), Number(row.score), null, "keywords"));
 }
 
-async function bm25(ctx: Context, query: string, limit: number, namespace: string): Promise<any[]> {
+async function bm25(ctx: Context, query: string, limit: number, namespace: string, allowed: string[] | null): Promise<any[]> {
     const rows = await ctx.fns.procs.db.select({
         sql: `SELECT name, summary, signature, rel, paradedb.score(name) AS score
                 FROM functions
-               WHERE search_text @@@ paradedb.match('search_text', ?)${namespace ? " AND (namespace = ? OR namespace LIKE ?)" : ""}
+               WHERE search_text @@@ paradedb.match('search_text', ?)${namespace ? " AND (namespace = ? OR namespace LIKE ?)" : ""}${allowed ? " AND name = ANY(?::text[])" : ""}
                ORDER BY score DESC, name LIMIT ${limit}`,
-        params: namespace ? [query, namespace, namespace + ".%"] : [query],
+        params: [query, ...(namespace ? [namespace, namespace + ".%"] : []), ...(allowed ? [allowed] : [])],
     });
     return rows.map((row: any) => compact(row, Number(row.score), Number(row.score), null, "bm25"));
 }
 
-async function vectorOnly(ctx: Context, vector: number[], limit: number, namespace: string): Promise<any[]> {
+async function vectorOnly(ctx: Context, vector: number[], limit: number, namespace: string, allowed: string[] | null): Promise<any[]> {
     const rows = await ctx.fns.procs.db.select({
         sql: `SELECT name, summary, signature, rel, 1-(embedding <=> ?::public.halfvec) AS similarity
-                FROM functions WHERE embedding IS NOT NULL${namespace ? " AND (namespace = ? OR namespace LIKE ?)" : ""}
+                FROM functions WHERE embedding IS NOT NULL${namespace ? " AND (namespace = ? OR namespace LIKE ?)" : ""}${allowed ? " AND name = ANY(?::text[])" : ""}
                ORDER BY embedding <=> ?::public.halfvec LIMIT ${limit}`,
-        params: namespace ? [JSON.stringify(vector), namespace, namespace + ".%", JSON.stringify(vector)] : [JSON.stringify(vector), JSON.stringify(vector)],
+        params: [JSON.stringify(vector), ...(namespace ? [namespace, namespace + ".%"] : []), ...(allowed ? [allowed] : []), JSON.stringify(vector)],
     });
     return rows.map((row: any) => compact(row, Number(row.similarity), null, Number(row.similarity), "vector"));
 }
