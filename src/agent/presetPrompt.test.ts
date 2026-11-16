@@ -46,6 +46,8 @@ test("Standard discovers no plugin workflow until openspec is granted; plugin se
     ctx.state.registry.openspec = { run: () => {} };
     ctx.state.prompts.registry.set("fixturePlugin", { id: "fixturePlugin", requires: ["openspec.run"], order: 200, body: "Plugin section sentinel" });
     try {
+        // Standard grants plugins by default (agent-presets spec); start from an explicit plugin-free Standard.
+        await ctx.fns.agentPreset.update({ id: "standard", patch: { plugins: [] } });
         const standard = await fixture("standard");
         let prompt = await ctx.fns.agent.fullSystemPrompt({ agent: standard });
         expect(prompt).not.toContain("## Mounted plugins");
@@ -168,15 +170,24 @@ test("denying any declared capability never advertises its callable in assembled
 
 test("fixed-fixture prompt budgets preserve historical before measurements and native schemas", async () => {
     const before = await Bun.file(new URL("presetPrompt.before.fixture.json", import.meta.url)).json();
-    // Reviewed headroom preserves safety: Standard shrinks >=13%, Creator >=22%, Minimal >=16%.
-    const limits = { minimal: 2500, standard: 17500, creator: 25000 };
+    // Limits re-measured at 52706346 (minimal 2,214 / standard 19,254 / creator 23,700 chars) plus <=5% headroom.
+    // Standard grew past the old 17,500 limit when it gained plugins and native tools (023f4405, 0c103847).
+    // Every limit stays below the historical before size: Minimal shrinks >=23%, Creator >=23%, Standard >=0.4%.
+    const limits = { minimal: 2300, standard: 20200, creator: 24800 };
+    // Native agent tools added by add-p0-native-agent-tools; Minimal has no grant for them.
+    const addedNative = ["read_result", "request_input", "tool_describe", "tool_search"];
     for (const id of ["minimal", "standard", "creator"] as const) {
+        expect(limits[id]).toBeLessThan(before[id].promptChars);
         const agent = await fixture(id);
         const prompt = await ctx.fns.agent.fullSystemPrompt({ agent });
         expect(prompt.length).toBeLessThanOrEqual(limits[id]);
         expect(prompt).not.toContain("## Preset instructions");
         expect(prompt).not.toContain("## Per-agent instructions");
-        const native = ctx.fns.agent.wireTools({ agent });
+        const all = ctx.fns.agent.wireTools({ agent });
+        const toolName = (tool: any) => tool.function?.name ?? tool.name;
+        const added = all.filter(tool => addedNative.includes(toolName(tool)));
+        expect(added.map(toolName).sort()).toEqual(id === "minimal" ? [] : addedNative);
+        const native = all.filter(tool => !addedNative.includes(toolName(tool)));
         expect(native.length).toBe(before[id].nativeToolCount);
         // Wire schemas are a separate payload: shortening prose must not alter them.
         expect(JSON.stringify(native).length).toBe(before[id].nativeSchemaChars);

@@ -61,11 +61,12 @@ export default async function (ctx: Context, session: Session | null, _opts?: {}
             // Private tool-result payloads are data, never executable runtime files.
             // Check the absolute path too: a .mauzcode source root hides that segment
             // from rel0, and a symlink may hide the entire result-store path.
+            // Ignored scratch first: realpath on every file under .mauzcode/tmp (100k+ files) dominated boot.
+            if (isIgnoredPath(rel0)) continue;
             const absolute = resolve(root.dir, rel0);
             if ((absolute + '/').includes('/.mauzcode/results/')) continue;
             const canonical = await cachedRealpath(absolute);
             if ((canonical + '/').includes('/.mauzcode/results/')) continue;
-            if (isIgnoredPath(rel0)) continue;
             // A template's own placeholder, in the PATH. Provisioning fills
             // `{{project}}` into a new workspace's name — including in file names
             // — but a template mounted where it stands (the EHR's demo apps are

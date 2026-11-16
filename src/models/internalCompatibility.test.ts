@@ -7,6 +7,37 @@ import load from "../procs/boot/load";
 
 const baseline = await Bun.file(join(import.meta.dir, "fixtures/public-contract.baseline.json")).json();
 const normalize = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "").replace(/_session/g, "session");
+// A trailing member separator is not part of the contract.
+const normalizeParam = (text: string) => normalize(text).replace(/[;,]}/g, "}");
+const memberName = (member: ts.TypeElement) => member.name && ts.isIdentifier(member.name) ? member.name.text : member.name?.getText();
+const literalMembers = (parameter: string) => {
+    const sf = ts.createSourceFile("p.ts", `function f(${parameter}) {}`, ts.ScriptTarget.Latest, true);
+    const fn = sf.statements[0] as ts.FunctionDeclaration;
+    const type = fn.parameters[0]?.type;
+    return { sf, members: type && ts.isTypeLiteralNode(type) ? type.members : undefined };
+};
+/** Projects an actual parameter onto its baseline: drops object-literal members that are new and optional
+ * (additive options). Removed, renamed, retyped or newly required members stay visible as a mismatch. */
+const contractView = (actual: string, original: string) => {
+    const known = new Set((literalMembers(original).members ?? []).map(memberName));
+    const { sf, members } = literalMembers(actual);
+    if (!members) return normalizeParam(actual);
+    let text = sf.text;
+    for (const member of [...members].reverse()) {
+        if (!known.has(memberName(member)) && ts.isPropertySignature(member) && member.questionToken) text = text.slice(0, member.getFullStart()) + text.slice(member.end);
+    }
+    return normalizeParam(text.slice("function f(".length, text.lastIndexOf(") {}")));
+};
+
+test("contract view accepts only added optional options", () => {
+    const original = "opts: { id: string; refresh?: boolean }";
+    expect(contractView("opts: { id: string; refresh?: boolean; cacheOnly?: boolean }", original)).toBe(normalizeParam(original));
+    expect(contractView("opts: { id: string; refresh?: boolean; cacheOnly: boolean }", original)).not.toBe(normalizeParam(original));
+    expect(contractView("opts: { id: string; cacheOnly?: boolean }", original)).not.toBe(normalizeParam(original));
+    expect(contractView("opts: { id: string; refreshed?: boolean }", original)).not.toBe(normalizeParam(original));
+    expect(contractView("opts: { id?: string; refresh?: boolean }", original)).not.toBe(normalizeParam(original));
+    expect(contractView("opts: { id: number; refresh?: boolean }", original)).not.toBe(normalizeParam(original));
+});
 
 test("root model procedures are exactly the minimal facade plus providers, disabledProviders and api", async () => {
     const roots = [...new Bun.Glob("*.ts").scanSync(import.meta.dir)]
@@ -24,7 +55,9 @@ test("original public model signatures, async declarations, types and HTTP route
         expect(fn, name).toBeDefined();
         expect(!!fn.asteriskToken, name).toBe(contract.generator);
         expect(!!fn.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword), name).toBe(contract.async);
-        expect(fn.parameters.map(p => normalize(p.getText(sf))), name).toEqual(contract.parameters.map(p => normalize(name === "stream" ? p.replace("tools?: Record<string, unknown>[]", "tools?: types.models.ToolSpec[]") : p)));
+        const expected = contract.parameters.map(p => name === "stream" ? p.replace("tools?: Record<string, unknown>[]", "tools?: types.models.ToolSpec[]") : p);
+        // Additive optional options are compatible (e.g. listModels cacheOnly?, 87327e1d); the baseline is not rewritten.
+        expect(fn.parameters.map((p, i) => contractView(p.getText(sf), expected[i] ?? "")), name).toEqual(expected.map(normalizeParam));
         expect(fn.type ? normalize(fn.type.getText(sf)) : null, name).toBe(contract.returnType ? normalize(contract.returnType) : null);
     }
     for (const [name, source] of Object.entries({...baseline.types, ...baseline.routes}) as [string, string][]) {

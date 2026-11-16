@@ -15,7 +15,7 @@ async function fixture(options:{auth?:boolean;method?:number;password?:number;co
  });});
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
  const port=(server.address() as {port:number}).port;
- try {const result=await transport({} as never,null,{proxy:{host:'127.0.0.1',port,...(options.auth?{username:'user',password:'pass'}:{})},signal:options.signal});await Bun.sleep(5);expect(sockets.size).toBe(0);return {result,connections,requests};}
+ try {const result=await transport({} as never,null,{proxy:{host:'127.0.0.1',port,...(options.auth?{username:'user',password:'pass'}:{})},signal:options.signal});/* The server sees the client close asynchronously; under parallel load 5 ms was not always enough. */for(const until=Date.now()+1000;sockets.size&&Date.now()<until;)await Bun.sleep(5);expect(sockets.size).toBe(0);return {result,connections,requests};}
  finally {for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 }
 test('no-auth remote DNS CONNECT and fixed request',async()=>{const {result,connections}=await fixture();expect(result).toEqual({ok:true,query:'203.0.113.1',country:'Test'});expect(connections).toBe(1);});

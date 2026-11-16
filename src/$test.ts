@@ -69,14 +69,16 @@ export async function testCtx(opts?: { root?: string; workdir?: string; env?: Re
     if (shareable && G.__mauzcodeTestBoot) {
         ctx.state = copyState(G.__mauzcodeTestBoot);
     } else {
+        // Boot already hands route/ws/middleware/script/style entries to their loaders; a second
+        // procs.http.loadRoutes rescanned the tree and re-imported every route (~8 s) for an identical table.
         await loadFns(ctx, null, {});
-        await ctx.fns.procs.http.loadRoutes({});
         // Workspace declarations and .mauzcode overlays can also mount plugins even
         // when the environment roots above are disabled. Never run their migrations
         // on the test database. Rebuild from this harness's trusted src tree (not
         // IDs: an external migration could collide with a core migration ID).
         const coreSrc = resolve(import.meta.dir);
-        const entries = await ctx.fns.procs.project.scan({});
+        // Reuse boot's scan: every scan realpaths the whole .mauzcode overlay before ignoring scratch (~8 s here).
+        const entries: any[] = (ctx.state as any).procs.boot.entries;
         const coreMigrations = entries.filter(entry => entry.kind === "migration" && entry.rootDir === coreSrc);
         ctx.state.procs.migrate.list = [];
         await loadMigrations(ctx, null, { entries: coreMigrations });
