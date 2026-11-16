@@ -14,4 +14,4 @@
 ## 3. Verification
 
 - [x] 3.1 Add vitest tests: routing (not an assistant message), collapse/expand, single-line without disclosure, copy, stopped-by-user notice, alert only on latest
-- [ ] 3.2 Run frontend tests and typecheck; visually check light and dark themes on agent `ps`
+- [x] 3.2 Run frontend tests and typecheck; visually check light and dark themes on agent `ps`
