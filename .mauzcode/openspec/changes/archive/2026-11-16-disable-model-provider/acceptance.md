@@ -1,6 +1,6 @@
 # Acceptance evidence
 
-Worktree `~/wt/disable-model-provider`, branch `feat/disable-model-provider` (from `main` 9a8ee98a).
+Original implementation evidence was collected in worktree `~/wt/disable-model-provider`, branch `feat/disable-model-provider` (from `main` 9a8ee98a). The implementation is now committed on main as `87327e1d`.
 
 ## Checks run
 
@@ -16,4 +16,6 @@ Worktree `~/wt/disable-model-provider`, branch `feat/disable-model-provider` (fr
 
 - `models.listModels` facade gained the documented `cacheOnly` passthrough option (additive; the catalogue projection uses it for disabled providers).
 - All 29 tasks in tasks.md are complete; documentation added in docs/models-providers.md and docs/settings.md.
-- Not committed yet: commit/push require separate owner approval.
+- Archive readiness review: all 29 tasks and all eight capability deltas were checked against implementation and test sources; no blocker found. The latest complete fast-suite log confirms all 17 providerDisabled tests pass. That overall run still has 11 failures elsewhere; this is not a claim of a clean full-suite run.
+- Current strict OpenSpec validation passes without warnings; the long-requirement warnings above describe the historical implementation run.
+- The owner explicitly authorized sequential archival and commits. No push is included.

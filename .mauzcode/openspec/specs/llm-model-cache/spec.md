@@ -21,11 +21,15 @@ The models module SHALL store each connection's discovered model list in Postgre
 - **THEN** the provider is asked and the result is stored; on failure the manual model ids are returned
 
 ### Requirement: Hourly background refresh
-The models module SHALL refresh the cached lists of all enabled connections whose provider supports discovery every hour while the server runs, and SHALL allow disabling this with `MODELS_REFRESH=off`. Failures MUST be reported without secrets and MUST keep the previous cache.
+The models module SHALL refresh the cached lists of all enabled connections whose provider supports discovery and is not globally disabled every hour while the server runs, and SHALL allow disabling this with `MODELS_REFRESH=off`. Connections of disabled providers MUST be skipped without any provider request. Failures MUST be reported without secrets and MUST keep the previous cache.
 
 #### Scenario: Hourly refresh
 - **WHEN** an hour passes after start
-- **THEN** every enabled discoverable connection's cache is refreshed and failures are logged
+- **THEN** every enabled discoverable connection of an enabled provider has its cache refreshed and failures are logged
+
+#### Scenario: Disabled provider skipped
+- **WHEN** the hourly refresh runs while a provider is globally disabled
+- **THEN** its connections' caches are left untouched and no request is sent to that provider
 
 ### Requirement: Cached protocol and reasoning metadata
 The model cache SHALL keep, for each discovered model, a native shared protocol id when the provider reported one from the closed shared protocol set, and the reasoning metadata's supported levels, optional default, optional native wire values and optional thinking-disable flag when they are well-formed. Malformed values SHALL be dropped from the cached entry without dropping the model.

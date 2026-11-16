@@ -6,7 +6,12 @@ Organize model implementations by provider, transport, catalogue, connections an
 ## Requirements
 
 ### Requirement: Stable public model facade
-The system SHALL expose a minimal public root model facade consisting of exactly `models.call`, `models.stream`, `models.compact`, `models.listModels`, `models.setModelEnabled`, `models.refreshAll`, `models.list`, `models.get`, `models.create`, `models.update`, `models.remove`, `models.test`, `models.usage`, `models.action`, `models.resolveRoute`, `models.tokenPrice` and `models.displayNames`, plus the non-forwarding root procedures `models.providers` and `models.api`.
+The system SHALL expose exactly the public root model procedures enumerated in the facade inventory scenario, with no other root procedures. `models.providers` MUST keep its synchronous declaration-catalogue contract unchanged. `models.disabledProviders` MUST asynchronously read through to storage and return the normalized disabled set.
+
+#### Scenario: Public root facade inventory
+- **WHEN** the public root model catalogue is inspected
+- **THEN** its forwarding entries are exactly `models.call`, `models.stream`, `models.compact`, `models.listModels`, `models.setModelEnabled`, `models.refreshAll`, `models.list`, `models.get`, `models.create`, `models.update`, `models.remove`, `models.test`, `models.usage`, `models.action`, `models.resolveRoute`, `models.tokenPrice` and `models.displayNames`
+- **AND** its non-forwarding entries are exactly `models.providers`, `models.disabledProviders` and `models.api`
 
 #### Scenario: Existing consumer calls a moved procedure
 - **WHEN** a core or plugin consumer calls one of the minimal facade entries
@@ -15,7 +20,7 @@ The system SHALL expose a minimal public root model facade consisting of exactly
 
 #### Scenario: Removed forwarding procedure
 - **WHEN** the runtime function catalogue is inspected after the change
-- **THEN** no root model procedure other than the minimal facade, `models.providers` and `models.api` is present
+- **THEN** no root model procedure other than the minimal facade, `models.providers`, `models.disabledProviders` and `models.api` is present
 - **AND** no project caller references a removed root name
 
 #### Scenario: Live runtime after facade removal
@@ -23,6 +28,10 @@ The system SHALL expose a minimal public root model facade consisting of exactly
 - **THEN** the removed root forwarding procedures and the replaced provider-local custom protocol procedure are absent from the live runtime registry
 - **AND** custom discovery and testing reach the new shared protocol implementations
 - **AND** the remaining model procedure names match those discovered on a fresh boot
+
+#### Scenario: Provider catalogue contract unchanged
+- **WHEN** the runtime function catalogue and project callers are inspected after the change
+- **THEN** `models.providers` is still synchronous with no call-site changes, and enablement is read only through `models.disabledProviders`
 
 ### Requirement: Facade entries delegate unchanged
 Root forwarding procedures other than the facade SHALL NOT exist. Facade entries SHALL preserve their typed options, return contract and observable behavior and SHALL delegate without duplicating business logic or wrapping errors into a different contract.

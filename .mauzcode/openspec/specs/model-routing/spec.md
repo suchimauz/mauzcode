@@ -57,6 +57,11 @@ Resolving a route SHALL return the connection id, provider, account name, model 
 - **WHEN** a route names a disabled connection or a model disabled on its connection
 - **THEN** resolution fails with code `CONNECTION_DISABLED` or `MODEL_DISABLED_BY_USER` respectively, not retryable, and no provider request is sent
 
+#### Scenario: Disabled provider
+- **WHEN** a route names a globally disabled provider
+- **THEN** resolution fails with code `PROVIDER_DISABLED`, not retryable, and no provider request is sent
+- **AND** the provider check runs right after parsing the route, before the connection lookup and before connection resolution, so no credential refresh is attempted and the code wins over `CONNECTION_NOT_FOUND`, `CONNECTION_DISABLED` and `MODEL_DISABLED_BY_USER`
+
 #### Scenario: Catalogue-derived limit
 - **WHEN** a model without provider size is described by a public catalogue section of its provider
 - **THEN** the result carries that context window and output limit with source `catalog`
