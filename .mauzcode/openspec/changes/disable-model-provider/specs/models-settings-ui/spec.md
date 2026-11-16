@@ -1,15 +1,18 @@
 ## ADDED Requirements
 
 ### Requirement: Provider enable switch
-The Models tab SHALL group connection cards under a header per registered provider showing the provider mark, label and an accessible enable switch reflecting the provider catalogue's `enabled` state. Providers without connections SHALL also get a header row with the switch. Toggling the switch SHALL send the owner-only `setProviderEnabled` action and refresh the panel; failures SHALL be announced and the stored state shown. A hint SHALL explain that a disabled provider hides its models and that active sessions using them stop with an error.
-
-#### Scenario: Toggle a provider off
-- **WHEN** the owner turns off the `codex` provider switch
-- **THEN** one `setProviderEnabled` request is sent, the panel reloads and the `codex` header shows the disabled state
+The Models tab SHALL group connection cards under a header per registered provider showing the provider mark, label and an accessible enable switch reflecting the provider catalogue's `enabled` state. Providers without connections SHALL also get a header row with the switch. A hint SHALL explain that a disabled provider hides its models and that active sessions using them stop with an error.
 
 #### Scenario: Provider without connections
 - **WHEN** a registered provider has no stored connections
 - **THEN** its header row with logo, label and switch is still shown
+
+### Requirement: Provider switch toggling
+Toggling the provider switch SHALL send the owner-only `setProviderEnabled` action and refresh the panel; failures SHALL be announced and the stored state shown. When the value is fixed by an instance settings file, every switch SHALL be disabled with an accessible hint and no request sent.
+
+#### Scenario: Toggle a provider off
+- **WHEN** the owner turns off the `codex` provider switch
+- **THEN** one `setProviderEnabled` request is sent, the panel reloads and the `codex` header shows the disabled state
 
 #### Scenario: Toggle failure
 - **WHEN** the `setProviderEnabled` request fails

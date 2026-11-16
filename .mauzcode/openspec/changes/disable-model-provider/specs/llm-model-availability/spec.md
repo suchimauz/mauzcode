@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Global provider disabling
-The owner SHALL be able to disable and re-enable a registered model provider for the whole instance. The disabled set SHALL be stored durably as the declared global setting `models.disabledProviders`, a JSON array of provider id strings; writes MUST reject any other shape. Validation SHALL check shape only: ids of providers that are not currently registered SHALL be kept and ignored, so an unloaded plugin provider returns disabled. Concurrent toggles SHALL be serialized so no toggle is lost. A failed write MUST NOT prevent subsequent toggles from executing. Disablement is an admission check: operations admitted before the successful write may finish; checks reading the setting after it MUST block provider invocation. Existing streams are not cancelled. When the value is fixed by an instance settings file, toggles MUST be refused with code `SETTING_FIXED` and the value left unchanged. Disabling MUST be idempotent per provider and MUST NOT delete or modify the provider's connections, their enabled flags, their disabled-model sets or their secrets. Re-enabling SHALL fully restore selection and inference without any connection change.
+The owner SHALL be able to disable and re-enable a registered model provider for the whole instance. Disabling MUST be idempotent per provider and MUST NOT delete or modify the provider's connections, their enabled flags, their disabled-model sets or their secrets. Re-enabling SHALL fully restore selection and inference without any connection change.
 
 #### Scenario: Disable a provider
 - **WHEN** the owner disables provider `codex`
@@ -15,6 +15,9 @@ The owner SHALL be able to disable and re-enable a registered model provider for
 - **WHEN** the owner re-enables a disabled provider
 - **THEN** its id is removed from the set and its enabled connections' models are selectable and callable again
 
+### Requirement: Disabled provider set storage
+The disabled set SHALL be stored durably as the declared global setting `models.disabledProviders`, a JSON array of provider id strings; writes MUST reject any other shape. Validation SHALL check shape only: ids of providers that are not currently registered SHALL be kept and ignored, so an unloaded plugin provider returns disabled.
+
 #### Scenario: Invalid stored value
 - **WHEN** a write sets `models.disabledProviders` to a non-array or an array containing a non-string or blank entry
 - **THEN** the write is rejected with a validation error
@@ -24,11 +27,17 @@ The owner SHALL be able to disable and re-enable a registered model provider for
 - **WHEN** the setting is read, validated or written with another provider toggle
 - **THEN** no error is raised, `old-plugin` is kept, and it has no effect until a provider with that id is registered, which then starts disabled
 
+### Requirement: Provider disablement admission
+Disablement is an admission check: operations admitted before the successful write may finish; checks reading the setting after it MUST block provider invocation. Existing streams are not cancelled.
+
 #### Scenario: In-flight operation during disablement
 - **GIVEN** an operation has passed its provider availability check before the disable write succeeds
 - **WHEN** the owner disables that provider
 - **THEN** the admitted operation may finish, even if provider invocation starts later; existing streams are not cancelled
 - **AND** any availability check reading the setting after the successful write blocks provider invocation; the next inference request performs a fresh check
+
+### Requirement: Provider toggle serialization
+Concurrent toggles SHALL be serialized so no toggle is lost. A failed write MUST NOT prevent subsequent toggles from executing.
 
 #### Scenario: Failed toggle does not poison the queue
 - **GIVEN** a toggle write fails and reports that failure to its caller
@@ -38,6 +47,9 @@ The owner SHALL be able to disable and re-enable a registered model provider for
 #### Scenario: Concurrent toggles
 - **WHEN** the owner disables `codex` and `qwen` in two simultaneous requests
 - **THEN** both ids are in the stored set afterwards
+
+### Requirement: Provider toggle fixed by instance file
+When `models.disabledProviders` is fixed by an instance settings file, toggles MUST be refused with code `SETTING_FIXED` and the value left unchanged.
 
 #### Scenario: Setting fixed by an instance file
 - **GIVEN** `models.disabledProviders` is fixed by an instance settings file
