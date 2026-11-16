@@ -34,16 +34,18 @@ Children inherit an independent copy when no preset is selected. Selecting a chi
 
 Use `agentPreset.list({})` for menu order (`sort_order`, then `id`), and `get({ id })` for a row or `null`. `create({ preset })` requires a unique kebab-case `id` and nonempty `name`; other writable fields are `description`, `sort_order`, `allow`, `deny`, `plugins`, `exclude_sections` and `prompt`. Omitted arrays default to empty, text to empty, and sort order to zero. `update({ id, patch })` changes only supplied fields. Storage owns `builtin` and `updated_at`; they and `id` are not patchable. Unknown fields, malformed patterns, invalid plugin identifiers and non-string array entries fail validation. Writes do not require an additional confirmation when the calling agent is allowed to perform them.
 
-For example, a Creator can grant OpenSpec to future Standard agents:
+For example, a Creator can grant full OpenSpec access to future Standard agents without losing existing grants such as `nrepl`:
 
 ```ts
+const preset = await ctx.fns.agentPreset.get({ id: "standard" });
+if (!preset) throw new Error("Missing standard preset");
 await ctx.fns.agentPreset.update({
     id: "standard",
-    patch: { plugins: ["openspec"] },
+    patch: { plugins: [...new Set([...preset.plugins, "openspec"])] },
 });
 ```
 
-This replaces the plugin list; read the current row first when preserving other grants. `remove({ id })` returns whether a custom row was deleted. `reset({ id })` is built-in only. `resolve({ id?, parent? })` copies rules into a snapshot, using the configured default for root creation and copying the parent when both a parent and no explicit id are supplied. Unknown identifiers fail explicitly.
+`plugins` replaces the list, so merge the current grants rather than supplying only `openspec`. This changes no other editable fields and does not reset custom settings. The stored identifier is `standard`, not `standart`. The plugin grant covers every mounted OpenSpec function, subject to denies and inherited layers; it does not bypass action-specific approvals. Create a new Standard agent to use it: existing snapshots remain unchanged. `remove({ id })` returns whether a custom row was deleted. `reset({ id })` is built-in only. `resolve({ id?, parent? })` copies rules into a snapshot, using the configured default for root creation and copying the parent when both a parent and no explicit id are supplied. Unknown identifiers fail explicitly.
 
 ## Settings view
 

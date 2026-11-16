@@ -86,6 +86,54 @@ describe('preset management', () => {
         expect(kept.layers[0]!.allow).toEqual(['tools.read']);
     });
 
+    test('additive OpenSpec opt-in preserves customization and frozen snapshots', async () => {
+        const ctx = await testCtx();
+        await ctx.fns.agentPreset.ensureBuiltins({});
+        await ctx.fns.agentPreset.update({ id: 'standard', patch: {
+            plugins: ['nrepl'], prompt: 'Keep my instructions', description: 'Custom Standard',
+            sort_order: 7, deny: ['tools.bash'], exclude_sections: ['custom-section'],
+        } });
+        const before = (await ctx.fns.agentPreset.get({ id: 'standard' }))!;
+        const oldSnapshot = await ctx.fns.agentPreset.resolve({ id: 'standard' });
+        const frozen = JSON.stringify(oldSnapshot);
+        await ctx.fns.agentPreset.update({ id: 'standard', patch: {
+            plugins: [...new Set([...before.plugins, 'openspec'])],
+        } });
+        const after = (await ctx.fns.agentPreset.get({ id: 'standard' }))!;
+        expect(after).toEqual({ ...before, plugins: ['nrepl', 'openspec'], updated_at: after.updated_at });
+        const snapshot = await ctx.fns.agentPreset.resolve({ id: 'standard' });
+        // Core test contexts do not mount official plugins; use their declared source
+        // functions with deterministic origin metadata, without running the CLI.
+        const plugins = ctx.fns.plugins.list({});
+        const originalList = ctx.state.registry.plugins.list;
+        ctx.state.registry.plugins.list = (() => [
+            ...plugins.filter(plugin => !['openspec', 'browser'].includes(plugin.name)),
+            { name: 'openspec', namespaces: ['openspec'] },
+            { name: 'browser', namespaces: ['browser'] },
+        ]) as any;
+        try {
+            const functions = [...new Bun.Glob('*.ts').scanSync(`${import.meta.dir}/../../plugins/openspec/src/openspec`)]
+                .filter(file => !file.startsWith('$') && !file.endsWith('.test.ts'))
+                .map(file => file.slice(0, -3));
+            expect(functions).toContain('run');
+            for (const fn of functions) {
+                const name = `openspec.${fn}`;
+                expect(ctx.fns.agentPreset.allows({ snapshot, name })).toBe(true);
+                expect(ctx.fns.agentPreset.allows({ snapshot: oldSnapshot, name })).toBe(false);
+            }
+            expect(ctx.fns.agentPreset.allows({ snapshot, name: 'browser.navigate' })).toBe(false);
+            expect(ctx.fns.agentPreset.allows({ snapshot, name: 'tools.bash' })).toBe(false);
+        } finally {
+            ctx.state.registry.plugins.list = originalList;
+        }
+        expect(JSON.stringify(oldSnapshot)).toBe(frozen);
+        await ctx.fns.agentPreset.update({ id: 'standard', patch: {
+            plugins: [...new Set([...after.plugins, 'openspec'])],
+        } });
+        expect((await ctx.fns.agentPreset.get({ id: 'standard' }))?.plugins).toEqual(['nrepl', 'openspec']);
+        await ctx.fns.agentPreset.reset({ id: 'standard' });
+    });
+
     test('new management functions have strict runtime documentation', async () => {
         const ctx = await testCtx();
         await ctx.fns.agentPreset.ensureBuiltins({});
