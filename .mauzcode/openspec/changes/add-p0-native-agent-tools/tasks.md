@@ -29,7 +29,7 @@
 
 - [x] 5.1 Classify the four adapter functions in `coreCatalogue` beside the functions they wrap; verify preset tests that each tool is absent when its wrapped capability is denied
 - [x] 5.2 Verify tool schemas through OpenAI Chat/Responses, Anthropic and Gemini adapters (schema tests)
-- [ ] 5.3 Run `code.quality` and the full test suite; record the A/B baseline from design.md (eval-only vs native) and compare against its threshold
+- [x] 5.3 Run `code.quality` and the full test suite; record the A/B baseline from design.md (eval-only vs native) and compare against its threshold
 
 ## Workflow follow-up
 
