@@ -1,0 +1,77 @@
+import { useCallback, useEffect, useId, useState } from 'react';
+import { getAgentPresets, type AgentPresetsState, type AgentPresetView } from '../../lib/agentPresets';
+import { Button } from '../ui/Button';
+
+const formatTime = (ms: number) => new Date(ms).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+
+function RuleList({ label, items }: { label: string; items: string[] }) {
+  const id = useId();
+  return <div className="preset-rule">
+    <h4 id={id}>{label}</h4>
+    {items.length === 0
+      ? <p className="preset-none">none</p>
+      : <ul aria-labelledby={id}>{items.map((item, i) => <li key={`${i}:${item}`}><code>{item}</code>{item === '*' && <span className="preset-everything">everything</span>}</li>)}</ul>}
+  </div>;
+}
+
+function PresetCard({ preset, isDefault }: { preset: AgentPresetView; isDefault: boolean }) {
+  const headingId = useId();
+  return <section className="ssh-card preset-card" aria-labelledby={headingId}>
+    <div className="ssh-card-header">
+      <div className="ssh-card-title">
+        <div className="ssh-card-name">
+          <h3 id={headingId}>{preset.name}</h3>
+          <span className={`ssh-badge ${preset.builtin ? 'is-verified' : 'is-pending'}`}>{preset.builtin ? 'Built-in' : 'Custom'}</span>
+          {isDefault && <span className="ssh-badge preset-default">Default for new sessions</span>}
+        </div>
+        <p className="ssh-card-target">{preset.id}</p>
+      </div>
+    </div>
+    {preset.description && <p className="preset-description">{preset.description}</p>}
+    <div className="preset-rules">
+      <RuleList label="Allow" items={preset.allow} />
+      <RuleList label="Deny" items={preset.deny} />
+      <RuleList label="Plugins" items={preset.plugins} />
+      <RuleList label="Excluded prompt sections" items={preset.excludeSections} />
+    </div>
+    <div className="preset-rule">
+      <h4>Prompt</h4>
+      {preset.prompt ? <pre className="preset-prompt" tabIndex={0}>{preset.prompt}</pre> : <p className="preset-none">none</p>}
+    </div>
+    <p className="preset-meta">Sort order {preset.sortOrder} · Updated {formatTime(preset.updatedAt)}</p>
+  </section>;
+}
+
+/** Owner-only read-only view of stored agent presets and the default selection. */
+export function AgentPresetsPanel() {
+  const [data, setData] = useState<AgentPresetsState | null>(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setError(''); setData(null);
+    try { setData(await getAgentPresets(signal)); }
+    catch (cause) { if (!signal?.aborted) setError(cause instanceof Error ? cause.message : 'Could not load agent presets.'); }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  return <section className="settings-panel" aria-label="Agent presets">
+    <header className="settings-panel-header">
+      <h2>Agent presets</h2>
+      <p className="settings-note">Read-only. Preset changes apply only to new agents; existing agents keep their snapshot. Presets are a guardrail, not a sandbox.</p>
+    </header>
+    {error
+      ? <div className="settings-feedback is-error" role="alert">{error} <Button variant="ghost" onClick={() => { void load(); }}>Retry</Button></div>
+      : !data ? <p className="settings-loading" role="status">Loading agent presets…</p>
+      : <>
+        {data.defaultPresetMissing && <p className="settings-feedback is-error" role="alert">The default preset <code>{data.defaultPresetId}</code> does not exist. New sessions without an explicit preset cannot be created.</p>}
+        {data.presets.length === 0
+          ? <p className="settings-note" role="status">No agent presets are stored.</p>
+          : <div className="ssh-list">{data.presets.map(p => <PresetCard key={p.id} preset={p} isDefault={!data.defaultPresetMissing && p.id === data.defaultPresetId} />)}</div>}
+      </>}
+  </section>;
+}

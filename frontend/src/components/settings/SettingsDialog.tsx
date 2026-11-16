@@ -1,8 +1,9 @@
 // Geometry follows the dsh settings modal (DeepSeek Harness, MIT); see THIRD_PARTY_NOTICES.md.
 import { Dialog } from '@base-ui/react/dialog';
-import { Bell, Boxes, Network, RefreshCw, Server, X } from 'lucide-react';
+import { Bell, Boxes, Network, RefreshCw, Server, ShieldCheck, X } from 'lucide-react';
 import { ModelsPanel } from './ModelsPanel';
 import { SshInstancesPanel } from './SshInstancesPanel';
+import { AgentPresetsPanel } from './AgentPresetsPanel';
 import { PushSettingsPanel } from './PushSettingsPanel';
 import { UpdatesPanel } from './UpdatesPanel';
 import { PluginSettingsTab } from './PluginSettingsTab';
@@ -11,7 +12,7 @@ import { usePluginUi } from '../../extensions/pluginRuntime';
 import { SocksProxies } from '../../core-ui/socks-proxies';
 import './settings.css';
 
-export const SETTINGS_TABS = [{ id: 'models', label: 'Models', icon: Boxes }, { id: 'ssh-instances', label: 'SSH Instances', icon: Server }, { id: 'push-notifications', label: 'Notifications', icon: Bell }, { id: 'updates', label: 'Updates', icon: RefreshCw }, { id: 'socks-proxies', label: 'SOCKS5', icon: Network }] as const;
+export const SETTINGS_TABS = [{ id: 'models', label: 'Models', icon: Boxes }, { id: 'agent-presets', label: 'Agent presets', icon: ShieldCheck }, { id: 'ssh-instances', label: 'SSH Instances', icon: Server }, { id: 'push-notifications', label: 'Notifications', icon: Bell }, { id: 'updates', label: 'Updates', icon: RefreshCw }, { id: 'socks-proxies', label: 'SOCKS5', icon: Network }] as const;
 /** A built-in tab id, or `plugin:<plugin>/<tab id>` for a granted plugin settings tab. */
 export type SettingsTab = typeof SETTINGS_TABS[number]['id'] | `plugin:${string}`;
 /** Settings tab id of a plugin settings tab registry key (`<plugin>/<id>`). */
@@ -47,7 +48,7 @@ export function SettingsDialog({ open, tab, onTab, onOpenChange, theme = 'light'
         </nav>
         <div className="settings-content">
           <div className="settings-header" aria-hidden="true" />
-          <div className="settings-options">{tab === 'push-notifications' && <PushSettingsPanel />}{tab === 'models' && <ModelsPanel context={{ agentId: null, theme, readOnly: false }} />}{tab === 'ssh-instances' && <SshInstancesPanel onOpenConnections={() => onTab('models')} />}{tab === 'updates' && <UpdatesPanel />}{tab === 'socks-proxies' && <SocksProxies context={{ agentId: null, theme, readOnly: false }} />}{activePlugin && <PluginSettingsTab key={activePlugin.key} tab={activePlugin} context={context} />}{tab.startsWith('plugin:') && !activePlugin && <p className="settings-note" role="status">{loaded ? 'Этот раздел недоступен: плагин не загружен или его интерфейс не одобрен.' : 'Загрузка настроек плагина…'}</p>}</div>
+          <div className="settings-options">{tab === 'push-notifications' && <PushSettingsPanel />}{tab === 'models' && <ModelsPanel context={{ agentId: null, theme, readOnly: false }} />}{tab === 'agent-presets' && <AgentPresetsPanel />}{tab === 'ssh-instances' && <SshInstancesPanel onOpenConnections={() => onTab('models')} />}{tab === 'updates' && <UpdatesPanel />}{tab === 'socks-proxies' && <SocksProxies context={{ agentId: null, theme, readOnly: false }} />}{activePlugin && <PluginSettingsTab key={activePlugin.key} tab={activePlugin} context={context} />}{tab.startsWith('plugin:') && !activePlugin && <p className="settings-note" role="status">{loaded ? 'Этот раздел недоступен: плагин не загружен или его интерфейс не одобрен.' : 'Загрузка настроек плагина…'}</p>}</div>
         </div>
       </Dialog.Popup>
     </Dialog.Portal>

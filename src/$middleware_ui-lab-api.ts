@@ -13,6 +13,7 @@ export default async function(ctx: Context, session: Session | null, opts: {
     if (new URL(opts.req.url).pathname === '/ui-lab-api/new-session') return ctx.fns.frontendBridge.newSession({req:opts.req});
     if (new URL(opts.req.url).pathname === '/ui-lab-api/directories') return ctx.fns.frontendBridge.directories({req:opts.req});
     if (new URL(opts.req.url).pathname === '/ui-lab-api/ssh-instances') return ctx.fns.frontendBridge.sshInstances({req:opts.req});
+    if (new URL(opts.req.url).pathname === '/ui-lab-api/agent-presets') return ctx.fns.frontendBridge.agentPresets({req:opts.req});
     if (new URL(opts.req.url).pathname === '/ui-lab-api/plugins') return ctx.fns.frontendBridge.pluginsData({req:opts.req});
     if (new URL(opts.req.url).pathname === '/ui-lab-api/cron-tasks') return ctx.fns.frontendBridge.cronTasks({req:opts.req});
     if (new URL(opts.req.url).pathname === '/ui-lab-api/provider-icons') return ctx.fns.frontendBridge.providerIcons({req:opts.req});

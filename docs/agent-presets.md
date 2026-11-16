@@ -45,6 +45,12 @@ await ctx.fns.agentPreset.update({
 
 This replaces the plugin list; read the current row first when preserving other grants. `remove({ id })` returns whether a custom row was deleted. `reset({ id })` is built-in only. `resolve({ id?, parent? })` copies rules into a snapshot, using the configured default for root creation and copying the parent when both a parent and no explicit id are supplied. Unknown identifiers fail explicitly.
 
+## Settings view
+
+Settings → **Agent presets** is a read-only owner view of every stored preset in `list` order: name, id, description, Built-in/Custom badge, allow/deny/plugin/excluded-section lists (`none` when empty, `*` labelled as everything), prompt text, sort order and update time. The configured default carries a "Default for new sessions" marker; when that preset is missing the panel warns instead. It offers no write controls — edit presets through the Management API above.
+
+The panel reads `GET /ui-lab-api/agent-presets` (`frontendBridge.agentPresets`): owner-only (401 unauthenticated, 403 non-owner, 405 with `Allow: GET` otherwise), `Cache-Control: no-store`, `Vary: Cookie`. Response: `{ version: 1, presets: [{ id, name, description, sortOrder, builtin, allow, deny, plugins, excludeSections, prompt, updatedAt }], defaultPresetId, defaultPresetMissing }`. The new-session menu endpoint deliberately keeps exposing only `id`, `name`, `description` and `sortOrder`.
+
 ## Prompt size and exclusions
 
 Prompt brevity changes presentation, **not access rules or snapshots**. All presets use the same compact, API-free base; capability-specific sections are included only when every required runtime function is allowed by every snapshot layer. Standard should not inherit Creator-only runtime-management instructions simply because it can edit target-project files. MauzCode is the host, not necessarily the target project: follow the target's own stack and instructions.
