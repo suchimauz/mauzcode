@@ -67,7 +67,7 @@ export default function (ctx: Context, _session: Session | null, opts: {
         : /^longcat(?:-|$)/.test(base) ? longcat
         : /^step-\d/.test(base) ? stepfun
         : /^muse-spark(?:-|$)/.test(base) ? muse : null;
-    const byProvider: Record<string, string> = { codex: openai, openai, claude: anthropic, 'claude-code': anthropic, anthropic, 'anthropic-oauth': anthropic, xai: grok, kimi, 'kimi-coding': kimi, moonshot: kimi, 'zai-coding': zai, minimax, 'minimax-coding': minimax, opencode, google, gemini: google };
+    const byProvider: Record<string, string> = { codex: openai, openai, claude: anthropic, 'claude-code': anthropic, anthropic, 'anthropic-oauth': anthropic, xai: grok, kimi, 'kimi-coding': kimi, moonshot: kimi, 'zai-coding': zai, minimax, 'minimax-coding': minimax, qwen, opencode, google, gemini: google };
     const path = byId ?? (Object.hasOwn(byProvider, provider) ? byProvider[provider]! : null);
     const isZai = path === zai;
 

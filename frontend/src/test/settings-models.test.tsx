@@ -65,6 +65,36 @@ it('renders a schema form and creates a connection with a CSRF token, without re
   expect(create.body).toMatchObject({ provider: 'custom', accountName: 'Mine', config: { baseUrl: 'https://llm.example', protocol: 'openai-chat' }, secrets: { apiKey: 'sk-123' }, transport: { kind: 'socks', proxyId: 'p1' } });
 });
 
+it('places the single Add connection block before existing connections, collapsed and expanded', async () => {
+  const posts = mockApi([stored]);
+  const { container } = render(<ModelsPanel context={context} />);
+  const toggle = await screen.findByRole('button', { name: 'Add connection' });
+  const list = container.querySelector('.ssh-list')!;
+  expect(list).toBeTruthy();
+  expect(toggle.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const focusable = [...container.querySelectorAll('button, input, select, a[href]')];
+  expect(focusable.indexOf(toggle)).toBeLessThan(focusable.findIndex(el => list.contains(el)));
+  fireEvent.click(toggle);
+  const section = screen.getByRole('region', { name: 'Add connection' });
+  expect(screen.getAllByRole('region', { name: 'Add connection' })).toHaveLength(1);
+  expect(section.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const form = within(section).getByRole('form', { name: 'New Custom connection' });
+  fireEvent.change(within(form).getByLabelText('Account name'), { target: { value: 'Second' } });
+  fireEvent.change(within(form).getByLabelText('API base URL'), { target: { value: 'https://llm.example' } });
+  fireEvent.submit(form);
+  await waitFor(() => expect(posts.some(p => p.body.action === 'create')).toBe(true));
+});
+
+it('keeps the expanded first-connection form at the top with no duplicate when empty', async () => {
+  mockApi([]);
+  const { container } = render(<ModelsPanel context={context} />);
+  const section = await screen.findByRole('region', { name: 'Add connection' });
+  expect(container.querySelector('.ssh-add-toggle')).toBeNull();
+  expect(screen.getAllByRole('region', { name: 'Add connection' })).toHaveLength(1);
+  expect(container.querySelector('.ssh-list')).toBeNull();
+  expect(section.compareDocumentPosition(screen.getByRole('heading', { name: 'Models' })) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+});
+
 it('keeps a stored secret write-only: empty input omits it, clearing sends null', async () => {
   const posts = mockApi([stored]);
   render(<ModelsPanel context={context} />);
@@ -410,4 +440,33 @@ it('keeps context drafts across refresh, including for models that disappeared',
   expect(within(pending).getByLabelText('Context limit for qwen')).toHaveValue('32000');
   fireEvent.click(within(pending).getByRole('button', { name: 'Discard' }));
   expect(screen.queryByRole('group', { name: /Pending context edits/ })).toBeNull();
+});
+
+it('shows the Qwen account and plan, and numbered device-code steps', async () => {
+  const provider = { id: 'qwen', label: 'Qwen Subscription', fields: [], transports: ['direct'], actions: [] };
+  const conn = { ...stored, id: 'qw', provider: 'qwen', accountName: 'qwen', config: {}, secrets: {} };
+  mockApi([conn], [provider]);
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  const flow = { flowId: 'q1', kind: 'device-code', status: 'pending', verificationUri: 'https://chat.qwen.ai/authorize?user_code=QW-1234&client=cli', userCode: 'QW-1234', expiresAt: Date.now() + 60000 };
+  let current: any = null;
+  let loggedIn = true;
+  vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') !== 'GET') {
+      const body = JSON.parse(String(init.body));
+      if (body.action === 'action') {
+        if (body.name === 'loginStatus') return json({ result: { loggedIn, needsLogin: !loggedIn, expiresAt: null, account: loggedIn ? { email: 'me@example.com', plan: 'plus' } : null, flow: current } });
+        if (body.name === 'login') { loggedIn = false; current = flow; return json({ result: current }); }
+      }
+    }
+    return base(url, init);
+  });
+  render(<ModelsPanel context={context} />);
+  const region = await screen.findByRole('region', { name: 'Qwen Subscription login for qwen' });
+  await waitFor(() => expect(within(region).getByRole('status')).toHaveTextContent('Logged in'));
+  expect(within(region).getByText('me@example.com · plus plan')).toBeInTheDocument();
+  fireEvent.click(within(region).getByRole('button', { name: 'Log in again' }));
+  const steps = await within(region).findAllByRole('listitem');
+  expect(steps).toHaveLength(3);
+  expect(within(steps[0]!).getByRole('link')).toHaveAttribute('href', flow.verificationUri);
+  expect(within(steps[1]!).getByLabelText('One-time code')).toHaveTextContent('QW-1234');
 });

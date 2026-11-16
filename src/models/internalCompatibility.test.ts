@@ -50,8 +50,9 @@ test("original public model signatures, async declarations, types and HTTP route
             "ProviderDefinition.ts": "inference?:{systemPreamble?:string;priceVendor?:string;catalog?:{modelsDev?:string[];piAi?:string[];};};",
             "CallRequest.ts": "tools?:types.models.ToolSpec[];",
             "FailureInfo.ts": "resetAt?:number;",
+            // add-qwen-subscription-provider: Qwen refresh de-duplication, credential lock and observed quota state;
             // add-custom-session-affinity-header: cached installation salt and one-time warning.
-            "State.ts": "sessionAffinitySalt?:Promise<string|null>;sessionAffinityWarned?:boolean;",
+            "State.ts": "qwenRefresh?:Record<string,Promise<string>>;qwenLocks?:Record<string,Promise<void>>;qwenQuota?:Record<string,{resetAt?:number;observedAt:number;until:number}>;sessionAffinitySalt?:Promise<string|null>;sessionAffinityWarned?:boolean;",
             // fix-usage-window-classification: optional window identity/classification metadata.
             "UsageReport.ts": 'id?:string;period?:"fiveHour"|"weekly"|"monthly";scope?:"account"|"model"|"unknown";durationSeconds?:number;model?:string;observedAt?:number;',
         };
@@ -83,7 +84,7 @@ test("fresh discovery preserves callable providers, nested dynamic facades, miss
             compatMissing: (opts: Record<string, unknown>) => unknown;
         };
         expect(typeof fns.providers).toBe("function");
-        expect(fns.providers({}).map(p => p.id).sort()).toEqual(["claude", "codex", "compat-fixture", "custom", "minimax-coding", "zai-coding"]);
+        expect(fns.providers({}).map(p => p.id).sort()).toEqual(["claude", "codex", "compat-fixture", "custom", "minimax-coding", "qwen", "zai-coding"]);
         // Baseline declarations are immutable object literals. Importing creates
         // callbacks but never invokes login, network, validation or usage operations.
         const registrationShape = (value: unknown): unknown => {

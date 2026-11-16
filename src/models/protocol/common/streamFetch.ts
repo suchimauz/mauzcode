@@ -43,6 +43,11 @@ export default async function (
     if (opts.signal?.aborted) { await response.body?.cancel().catch(() => undefined); opts.signal.throwIfAborted(); }
     const status = response.status;
     if (response.ok && response.body) return response as Response & { body: ReadableStream<Uint8Array> };
+    // Retry-After as seconds or an HTTP date; malformed values give no hint.
+    const raw = response.headers.get("retry-after");
+    const seconds = raw !== null && /^\d+(\.\d+)?$/.test(raw.trim()) ? Number(raw.trim()) * 1000 : undefined;
+    const date = raw && raw.trim() && seconds === undefined ? Date.parse(raw) - Date.now() : undefined;
+    const retryAfterMs = seconds ?? (date !== undefined && Number.isFinite(date) ? Math.max(0, date) : undefined);
     if (opts.classifyFailure && response.body) {
         // Bounded read: at most 16 KiB of the failed body, JSON-parsed or null. The body text itself
         // never reaches a message — only the classifier's own fixed strings do.
@@ -73,17 +78,13 @@ export default async function (
             const info: types.models.FailureInfo = {
                 upstreamStatus: status, acceptance: "rejected", replaySafe: true,
                 code: classified.code, classification: classified.classification, retryable: classified.retryable,
-                ...(classified.retryAfterMs !== undefined ? { retryAfterMs: classified.retryAfterMs } : {}),
+                ...(classified.retryAfterMs !== undefined ? { retryAfterMs: classified.retryAfterMs } : retryAfterMs !== undefined ? { retryAfterMs } : {}),
                 ...(classified.resetAt !== undefined ? { resetAt: classified.resetAt } : {}),
             };
             throw ctx.fns.models.inference.failure({ message: classified.message, status: info.classification === "invalid_input" ? 400 : 502, info });
         }
     }
     await response.body?.cancel().catch(() => undefined);
-    const raw = response.headers.get("retry-after");
-    const seconds = raw !== null && /^\d+(\.\d+)?$/.test(raw.trim()) ? Number(raw) * 1000 : undefined;
-    const date = raw && seconds === undefined ? Date.parse(raw) - Date.now() : undefined;
-    const retryAfterMs = seconds ?? (date !== undefined && Number.isFinite(date) ? Math.max(0, date) : undefined);
     const base = { upstreamStatus: status, acceptance: "rejected" as const, replaySafe: true };
     const info: types.models.FailureInfo = !response.ok && (status === 401 || status === 403) ? { ...base, code: "AUTH", classification: "auth", retryable: false }
         : status === 429 ? { ...base, code: "THROTTLED", classification: "throttled", retryable: true, ...(retryAfterMs !== undefined ? { retryAfterMs } : {}) }

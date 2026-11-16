@@ -279,7 +279,7 @@ function ConnectionCard({ connection, provider, actions }: { connection: ModelCo
       <button type="button" className="ssh-card-tab" aria-expanded={open === 'models'} disabled={!connection.providerRegistered} onClick={() => { void showModels(); }}>Models</button>
       <button type="button" className="ssh-card-tab is-danger" aria-expanded={open === 'remove'} onClick={() => toggle('remove')}>Remove</button>
     </div>
-    {['codex', 'claude'].includes(connection.provider) && connection.providerRegistered && <ProviderLogin connection={connection} actions={actions} />}
+    {['codex', 'claude', 'qwen'].includes(connection.provider) && connection.providerRegistered && <ProviderLogin connection={connection} actions={actions} />}
     {open === 'edit' && provider && <div className="ssh-card-section"><ProviderForm key={connection.updatedAt} provider={provider} connection={connection} actions={actions} onDone={() => setOpen(null)} /></div>}
     {open === 'models' && <div className="ssh-card-section" aria-live="polite">{!models ? <p className="settings-loading" role="status">Loading models…</p> : <>
       {models.error && <p className="settings-note" role="status">Discovery failed: {models.error}</p>}
@@ -309,7 +309,7 @@ function ConnectionCard({ connection, provider, actions }: { connection: ModelCo
 }
 
 type LoginFlow = { flowId: string; kind: 'device-code' | 'authorization-code'; status: 'pending' | 'succeeded' | 'failed' | 'expired'; verificationUri?: string; authorizationUrl?: string; userCode?: string; callbackListening?: boolean; expiresAt: number; message?: string };
-type LoginStatus = { loggedIn: boolean; needsLogin: boolean; expiresAt: number | null; flow: LoginFlow | null };
+type LoginStatus = { loggedIn: boolean; needsLogin: boolean; expiresAt: number | null; account?: { name?: string; email?: string; plan?: string } | null; flow: LoginFlow | null };
 
 /** Native provider login; the browser authorization step opens separately from the connection transport. */
 function ProviderLogin({ connection, actions }: { connection: ModelConnectionView; actions: Actions }) {
@@ -362,8 +362,15 @@ function ProviderLogin({ connection, actions }: { connection: ModelConnectionVie
     : pending ? 'Waiting for authorization in the browser…'
     : flow?.status === 'failed' || flow?.status === 'expired' ? (flow.message ?? 'Login failed')
     : status.loggedIn ? 'Logged in' : status.needsLogin && status.expiresAt ? 'Login expired; log in again' : 'Not logged in';
+  const failed = flow?.status === 'failed' || flow?.status === 'expired';
+  const tone = pending ? 'is-pending' : failed ? 'is-error' : status?.loggedIn ? 'is-verified' : 'is-pending';
+  const account = status?.loggedIn ? status.account : null;
+  const who = account ? [account.email ?? account.name, account.plan && `${account.plan} plan`].filter(Boolean).join(' · ') : '';
   return <section className="ssh-card-section models-login" aria-label={`${providerLabel} login for ${connection.accountName}`}>
-    <p className="settings-note" role="status" aria-live="polite">{live}</p>
+    <div className="models-login-head">
+      <p className="models-login-state" role="status" aria-live="polite"><span className={`ssh-badge ${tone}`}><span aria-hidden="true" />{live}</span></p>
+      {who && <p className="models-login-account">{who}</p>}
+    </div>
     {pending && flow && <div className="models-login-code">
       {flow.kind === 'authorization-code' ? <>
         <p><a href={flow.authorizationUrl} target="_blank" rel="noopener noreferrer">Open {providerLabel} authorization</a></p>
@@ -374,8 +381,12 @@ function ProviderLogin({ connection, actions }: { connection: ModelConnectionVie
           <Button type="submit" disabled={actions.busy || !code.trim()}>Submit code</Button>
         </form>
       </> : <>
-        <p>Open <a href={flow.verificationUri} target="_blank" rel="noopener noreferrer">{flow.verificationUri}</a> and enter the code:</p>
-        <p><code aria-label="One-time code">{flow.userCode}</code> <Button variant="ghost" onClick={() => { void copy(); }}>{copied ? 'Copied' : 'Copy code'}</Button></p>
+        <ol className="models-login-steps">
+          <li>Open <a href={flow.verificationUri} target="_blank" rel="noopener noreferrer">{flow.verificationUri}</a></li>
+          <li>Check that the page shows this code and approve:
+            <span className="models-login-code-row"><code aria-label="One-time code">{flow.userCode}</code><Button variant="ghost" onClick={() => { void copy(); }}>{copied ? 'Copied' : 'Copy code'}</Button></span></li>
+          <li>Return here — login finishes automatically.</li>
+        </ol>
       </>}
       <p className="settings-field-hint">Expires {formatTime(flow.expiresAt)}</p>
     </div>}
@@ -432,8 +443,8 @@ export function ModelsPanel({ context }: { context: ExtensionContext }) {
     {loadError ? <div className="settings-feedback is-error" role="alert">{loadError.forbidden ? 'Только владелец может управлять моделями.' : loadError.text}{!loadError.forbidden && <Button variant="ghost" onClick={() => { void load(); }}>Повторить</Button>}</div>
       : !state || !actions ? <p className="settings-loading" role="status">Загрузка…</p>
       : <>
-        {state.connections.length > 0 && <div className="ssh-list">{state.connections.map(c => <ConnectionCard key={c.id} connection={c} provider={state.providers.find(p => p.id === c.provider)} actions={actions} />)}</div>}
         <AddConnection actions={actions} first={state.connections.length === 0} />
+        {state.connections.length > 0 && <div className="ssh-list">{state.connections.map(c => <ConnectionCard key={c.id} connection={c} provider={state.providers.find(p => p.id === c.provider)} actions={actions} />)}</div>}
       </>}
   </div>;
 }

@@ -39,7 +39,7 @@ MauzCode already has the pieces: `LoginFlow` with `kind: "device-code"`, the Cod
 - Undocumented, client-specific endpoints and a client id that belongs to Qwen Code → may break or be restricted to official clients; mitigated by constants in one file and clear `LOGIN_REQUIRED`/`UNSUPPORTED` errors.
 - Terms of service may limit third-party use of the `qwen-code-cli` client → owner decision; noted in the provider description and docs.
 - Refresh token rotation: if Qwen rotates refresh tokens, a lost CAS write could log the user out → store the new refresh token in the same CAS update as the access token, like Codex.
-- No usage endpoint → the Models UI shows no quota bars; quota appears only as failures.
+- No usage endpoint → usage shows the plan and, after a 402 `insufficient_quota` (Qwen Code's contract), a full weekly window until `quota.reset_at`; remaining credits are unknown.
 
 ## Migration Plan
 
@@ -47,5 +47,5 @@ None: new built-in provider, no schema migration. Rollback is removing the provi
 
 ## Open Questions
 
-- Exact quota/plan error shape from `api.qwen.ai` (qwen-code reads it via `subscriptionQuotaDisplay`) — to be confirmed with a live subscription during apply.
-- Whether `/models` needs a specific User-Agent — verify live; adjust Decision 5 only with the owner's approval.
+- Quota error shape: not observed live (Plus plan, quota not exhausted on 2026-11-16); the classifier follows Qwen Code's `402` + `error.code=insufficient_quota` + `error.quota.{member_type,reset_at}` contract. Live check: `/models` and streaming responses carry only `x-request-id`, `x-gateway-request-id` (and `x-model-list-version` on `/models`) — no rate-limit or remaining-quota headers; the stream's final chunk has only per-request token `usage`; guessed `/usage`, `/quota`, `/subscription` paths on api/auth.qwen.ai return 404.
+- User-Agent: verified live on 2026-11-16 — the neutral `MauzCode` UA works for login, userinfo, `/models` and streaming; no Qwen Code UA needed.

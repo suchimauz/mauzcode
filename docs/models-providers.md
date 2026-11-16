@@ -21,7 +21,7 @@ implementation namespace and is called by its full name, e.g.
 
 | Directory / runtime namespace | Responsibility |
 | --- | --- |
-| `models/provider/{claude,codex,custom}` | Provider protocol helpers and declaration operations |
+| `models/provider/{claude,codex,custom,zaiCoding,minimaxCoding,qwen}` | Provider protocol helpers and declaration operations |
 | `models/protocol` | Closed set of shared wire protocols and their registry (see below) |
 | `models/transport` | Destination validation, HTTP transport and SSE parsing |
 | `models/catalog` | Model discovery/cache, refresh and per-model availability |
@@ -445,6 +445,38 @@ rejected refresh or a backend 401 sets `needsLogin`, and `test` then reports
 `login-required`. Models come from `/backend-api/codex/models`, usage windows
 from `/backend-api/wham/usage`, and streaming and compaction from
 `/backend-api/codex/responses`.
+
+## Built-in Qwen subscription provider
+
+`$modelProvider_qwen.ts` ("Qwen Subscription") connects a chat.qwen.ai member plan
+for Qwen Code. It has no credential fields: create the connection, press **Log in**,
+open the `chat.qwen.ai/authorize?user_code=…&client=cli` link and approve the code.
+Helpers live in `models/provider/qwen` (namespace `models.provider.qwen`); every
+URL, the public client id `qwen-code-cli` and the scope are in `constants`.
+
+- **Login** (`login`): OAuth device authorization grant (RFC 8628) against
+  `https://auth.qwen.ai/api/oauth/*`, no PKCE, all requests through `conn.fetch`.
+  `authorization_pending` keeps polling, `slow_down` adds 5 s, 429/5xx/network back
+  off, `expires_in` ends the flow. After success `userinfo` is read best-effort: the
+  plan (`member_type`) shows in status and a default account name (`qwen`) becomes
+  the email.
+- **Tokens** (`auth`): one encrypted secret `models/<id>.qwen-auth`, CAS revisions,
+  refresh 30 s before expiry, single-flight per connection, rotated refresh token in
+  the same write; a rejected refresh means `LOGIN_REQUIRED`.
+- **Logout** (`logout`): under the per-connection `lock` it cancels the login flow and
+  deletes tokens, so a late poll response cannot restore them; then a best-effort
+  revoke with a 5 s timeout.
+- **Inference**: protocol route `openai-chat` at
+  `https://api.qwen.ai/compatible-mode/v1`; discovery from `/models` (context window,
+  image input noted in the description). A 401 invalidates the access token without
+  replay; `failure` maps 402/403 plan and 429 quota errors to `QUOTA_EXHAUSTED` and
+  other 429 to `RATE_LIMITED`. `protocol/common/streamFetch` adds a valid
+  `Retry-After` to classified failures when the classifier gives no hint.
+- Usage (`usage`, no network; Qwen has no usage endpoint): the plan from userinfo, and
+  after a 402 `insufficient_quota` a full `Weekly credits` window until
+  `quota.reset_at` (one hour when absent; process-local). The endpoints and client id are
+  unofficial Qwen Code values and may change; check Qwen's terms before use. The
+  discontinued free-tier flow, DashScope keys and `~/.qwen` files are not supported.
 
 ## Field schemas and transports
 
