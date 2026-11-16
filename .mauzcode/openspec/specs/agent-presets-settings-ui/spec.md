@@ -1,4 +1,9 @@
-## ADDED Requirements
+# agent-presets-settings-ui Specification
+
+## Purpose
+Read-only owner view of stored agent presets and the default preset in the React Settings dialog, backed by an owner-only uncached endpoint.
+
+## Requirements
 
 ### Requirement: Agent presets settings tab
 The Settings dialog SHALL include a core tab titled "Agent presets" alongside the existing core tabs. Opening the tab SHALL load presets from the owner preset endpoint.
