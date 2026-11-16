@@ -17,6 +17,25 @@ This file governs the **MauzCode product checkout**, not every project an agent 
 - Inspect source/dependencies with `code.slice` before unfamiliar runtime edits and `code.callers` before signature changes. Discover live schemas before calls. Before creating/changing extensions, read `runtime.docs.get({ name: "procs.dev.createFunction" })`; it works from external workspaces without locating this checkout. See [runtime authoring](docs/runtime-authoring.md) for grammar, placement, metadata, generated types and reload workflow.
 - Hot-reload changed functions with `procs.repl.load`; do not restart by default. Coordinate **one typecheck owner and one complete project check per settled batch**; preserve full diagnostics and invalidate them after edits. Validate function metadata without repeated project typechecks. Tests use isolated Postgres and mock LLMs, never working data/accounts. See [testing](docs/testing.md).
 
+## Commit messages and OpenSpec references
+
+- Use `type(scope): description` in English, with a short imperative description and a subject of at most 80 characters. Use a stable subsystem scope in lowercase kebab-case (`models`, `agent-preset`, `new-session`), not a change ID. Separate the subject, explanatory body and reference blocks with blank lines. Put implementation details and verification evidence in the body; never claim checks that were not run.
+- Use `spec(openspec):` for OpenSpec-only changes: proposals, designs, requirements, task lists/status, acceptance evidence and archiving. Use `docs(scope):` for ordinary documentation and contributor/agent instructions. Changes to the OpenSpec plugin's code are **not** `spec` merely because they concern OpenSpec.
+- Classify implementation commits by their main effect: `feat` for new behavior, `fix` for corrections, `refactor` for restructuring without behavior changes, `test` for test changes, `style` for presentation/formatting-only changes, and `chore` for maintenance. Updating OpenSpec tasks alongside code does not turn an implementation commit into `spec`. Use `chore(merge): merge <branch>` for merges and `revert(scope): <what is undone>` for reverts; retain the reverted commit reference in the body.
+- Keep commits focused. Before committing, review the staged diff, exclude unrelated changes and secrets, and verify the checks appropriate to the change. Obtain action-specific approval for committing, rewriting history and pushing; approval for one does not authorize the others. Never rewrite history or force-push as routine cleanup.
+- For work tied to OpenSpec, append the following reference block (no indentation):
+
+```text
+OpenSpec-Change: add-rtk-shell-integration
+OpenSpec-Spec: plugin-settings-sections, rtk-shell-integration
+OpenSpec-Tasks: 4.1-4.3, 5.1-5.4
+```
+
+- `OpenSpec-Change` is the change ID, not a path or archive date. `OpenSpec-Spec` lists capability IDs on one comma-separated line. `OpenSpec-Tasks` lists the actual task IDs/ranges touched by this commit, not a `tasks.md` path; use comma-separated ranges within each numbered section. Preserve lettered IDs such as `2.1a`. Use IDs and names valid at the time of the commit, including for archived changes.
+- Include one block per change, separated by a blank line, when a commit spans multiple changes; do not mix their task numbers. Do not repeat `OpenSpec-Spec` lines within a block or substitute `OpenSpec-Proposal`/`OpenSpec-Design` path trailers for these fields. Explanatory document links may remain in the body.
+- References describe scope, not completion: proposal/review commits reference the tasks they define or revise; implementation commits reference the tasks they implement; archive commits may reference the full archived task list. Explain removed or unperformed tasks in the body, not in the task-ID field. Verify references against the actual diff and OpenSpec documents rather than guessing from the subject.
+- Never invent a change or task mapping. If only a specification is relevant, use `OpenSpec-Spec` alone. If a change/spec is confirmed but no numbered task fits, omit `OpenSpec-Tasks`. If no OpenSpec connection exists, omit the block. Ask the person when an intended association is ambiguous.
+
 ## Non-negotiable host invariants
 
 - Postgres is runtime storage. Use async `procs.db.*`, not bare `Bun.sql`/`new SQL()` defaults. Inspect the live schema; never commit credentials or expose DB ports beyond loopback. Database restarts affect all agents and require user approval.
