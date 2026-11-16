@@ -8,7 +8,7 @@ The first A/B for native agent tools (archived `2026-11-17-add-p0-native-agent-t
 - Make the checks objective: compare the answer with an expected value computed by the benchmark, look at forms in the inputs table, and look at tool calls in the transcript, with no operator judgement.
 - Fix the large-result scenario: the answer requires quoting from a single large output that cannot be reduced by a shell pipeline. A run where no stored result was created is counted as "not exercised", not as a success.
 - Add planning and delegation scenarios that measure the eval route today and provide the baseline for the P1 native plan/delegation tools.
-- Re-run the benchmark, record the results, and decide on P1 with the threshold from the original design.
+- Re-run the benchmark, record the results, and decide on P1 with the threshold from the original design. If the threshold is met, create the change for the first P1 bundle (plan and delegation tools). Web tools (`web_search`, `web_read`) and background process tools (`exec_start`, `exec_read`) follow as separate changes, in that order.
 
 ## Capabilities
 
