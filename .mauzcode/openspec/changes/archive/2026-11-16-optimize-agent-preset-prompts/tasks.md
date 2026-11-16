@@ -35,6 +35,5 @@ See `docs/agent-prompt-optimization.md` for the reviewed relocation/shortening r
 
 ## Workflow follow-up
 
-- Global fast-suite/typecheck failures remain unresolved and documented. Do not claim a fully green repository or archive before review of these limitations.
-
-- Leave the change unarchived; do not commit or publish automatically.
+- The historical failures above were subsequently reviewed and repaired by `restore-project-checks-and-trace-regressions` (implementation commit `43ff99b7`). Its `followup-acceptance.md` records 3650 passing fast tests, 836 frontend tests, clean root/frontend typechecks and unchanged compiler-input hashes. The earlier 314 count remains historical and is not comparable causal evidence; the preserved baseline contains 330 diagnostics.
+- The owner explicitly authorized archiving both completed changes and committing their merged specs. The former archive hold is lifted; no push or deployment is authorized. Prompt savings limitations and historical evidence remain unchanged.
