@@ -26,7 +26,7 @@ Localization is an index build concern, not query rewriting. The original user p
 
 ## Retrieval
 
-1. Fetch BM25 and vector candidates independently (window 60).
+1. Fetch BM25 and vector candidates independently (window 60). A preset-scoped caller's allowed names are filtered inside these candidate queries, so denied matches never displace allowed ones.
 2. Keep raw BM25 and cosine evidence.
 3. Apply independently calibrated branch gates: a candidate can qualify through strong lexical **or** strong semantic evidence.
 4. Use Reciprocal Rank Fusion (`k=60`) only to order the eligible union; RRF is rank aggregation, not an absolute relevance score.

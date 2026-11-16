@@ -28,6 +28,12 @@ Patterns match the complete dotted runtime name. `*` matches any sequence, inclu
 
 Snapshots freeze **rules**, not installed functions. New core functions matching an existing `files.*` grant become available. `plugins: ["*"]` includes plugins installed later. Current registry origins and generation determine access; changing registration or origin invalidates cached decisions without rewriting a snapshot. New core namespaces are unavailable to Standard until classified in `coreCatalogue.ts`.
 
+### Native tools and `requires`
+
+A native tool (`$tool_<name>.md`) is advertised by `agent.wireTools` and executed by `tools.call` only when the preset allows its `fn` **and** every name in its optional `requires` list (`tools.permitted`). Adapters that wrap existing capabilities list them there, so the check covers the capability rather than just the adapter; a malformed `requires` denies the tool. Unknown and preset-denied tool calls return the same `unknown tool` error, listing only tools the agent may call. Trusted discovery filtering comes from `agentPreset.predicate`, shared by the eval boundary (`guardFns`), the system prompt and native adapters; it is never taken from model arguments.
+
+Native discovery tools: `tool_search` (`requires`: `runtime.docs.search`, `plugins.search`) returns compact `{ name, kind: function|workflow, summary, source }` entries for allowed functions and plugin workflows; `tool_describe` (`requires`: `runtime.docs.get`, `plugins.read`) returns one allowed function's docs, input schema without trusted parameters, and return type, or one plugin's workflow overview with its allowed functions. Exact function names win over plugin names; denied and missing names fail identically; neither tool returns source code or adds tools to the wire list.
+
 Children inherit an independent copy when no preset is selected. Selecting a child preset appends its layer after the parent's layers; every layer must allow the call. Thus Creator cannot widen a Standard parent's access. Both prompt additions and exclusions remain represented in the layers.
 
 ## Management API

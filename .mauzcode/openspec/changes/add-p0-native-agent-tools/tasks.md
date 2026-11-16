@@ -9,9 +9,9 @@
 
 ## 2. tool_search and tool_describe
 
-- [ ] 2.1 Add `tool_search` declaration (`requires`: `runtime.docs.search`, `plugins.search`) and adapter merging function and plugin workflow hits as `{ name, kind, summary, source }`; verify tests for ranking, limit, unknown-argument rejection and preset filtering
-- [ ] 2.2 Add `tool_describe` adapter (`requires`: `runtime.docs.get`, `plugins.read`) for function and plugin names with stripped trusted parameters; verify tests for plugin overview with only allowed functions, function-over-plugin precedence, identical errors for denied and nonexistent names, and no source
-- [ ] 2.3 Verify the wire tool list is unchanged after discovery calls (test) and document both tools in runtime docs
+- [x] 2.1 Add `tool_search` declaration (`requires`: `runtime.docs.search`, `plugins.search`) and adapter merging function and plugin workflow hits as `{ name, kind, summary, source }`; verify tests for ranking, limit, unknown-argument rejection and preset filtering
+- [x] 2.2 Add `tool_describe` adapter (`requires`: `runtime.docs.get`, `plugins.read`) for function and plugin names with stripped trusted parameters; verify tests for plugin overview with only allowed functions, function-over-plugin precedence, identical errors for denied and nonexistent names, and no source
+- [x] 2.3 Verify the wire tool list is unchanged after discovery calls (test) and document both tools in runtime docs
 
 ## 3. read_result
 
