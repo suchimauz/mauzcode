@@ -18,6 +18,7 @@ import './transcript-message.css';
 import { CommandRow } from './CommandRow';
 import { GoalRow } from './GoalRow';
 import { RetryRow } from './RetryRow';
+import { ErrorRow, isUserStopError } from './ErrorRow';
 import { commandMessage, isCommandEvent } from './commandEvents';
 
 /** Profile photos follow the sign-in HTTPS-only policy; never render supplied HTML. */
@@ -38,7 +39,7 @@ function HumanAuthor({ author }: { author: NonNullable<ChatEvent['author']> }) {
 }
 
 /** User bubble and message actions mirror dsh MessageItem/MessageActions. */
-export function TranscriptMessage({ event, agentId }: { event: ChatEvent; agentId: string }) {
+export function TranscriptMessage({ event, agentId, latestIdx }: { event: ChatEvent; agentId: string; /** Index of the newest transcript event; only that error row is announced. */ latestIdx?: number | null }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   if (choiceResultId(event)) return <QuestionHistory event={event} agentId={agentId} />;
@@ -52,6 +53,8 @@ export function TranscriptMessage({ event, agentId }: { event: ChatEvent; agentI
   if (event.type === 'thinking') return <ThinkingRow running={false} summary={event.publicSummary || ''} durationMs={event.durationMs} interrupted={event.thinkingStatus === 'interrupted'} />;
   if (event.type === 'goal_transition') return <GoalRow event={event} />;
   if (event.type === 'llm_retry') return <RetryRow event={event} />;
+  if (isUserStopError(event)) return <p className="transcript-notice" data-event-idx={event.idx}>Выполнение остановлено пользователем</p>;
+  if (event.type === 'error') return <ErrorRow event={event} latest={latestIdx === event.idx} />;
   if (event.type === 'tool_busy' || event.type === 'tool_aborted') return <ToolBusyRow event={event} agentId={agentId} />;
   if (event.type === 'stop') return <p className="transcript-notice">Выполнение остановлено</p>;
   if (event.type === 'planning_mode' || event.type === 'planning_proposal') return event.text ? <CommandRow event={{ ...event, commandName: 'plan' }} /> : null;
@@ -74,7 +77,7 @@ export function TranscriptMessage({ event, agentId }: { event: ChatEvent; agentI
       </div>
     </article>;
   }
-  return <article className={`message message--assistant ${event.type === 'error' ? 'message--error' : ''}`} data-event-idx={event.idx}>
+  return <article className="message message--assistant" data-event-idx={event.idx}>
     {event.type === 'assistant' && event.htmlSource === 'assistant-answer' && event.html
       ? <AssistantHtml html={event.html} />
       : <div className="markdown"><ChatMarkdown>{event.text || (event.html ? 'HTML-ответ недоступен без подтверждённого источника.' : '')}</ChatMarkdown></div>}

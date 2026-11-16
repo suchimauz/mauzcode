@@ -13,3 +13,14 @@
 .compaction-row-toggle:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .retry-row-body { margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
 .retry-row[data-retry-state="cancelled"] .compaction-row-label { opacity: .7; }
+/* Failed-run error row: same compact rhythm, theme error token in light and dark. */
+.error-row-head { display: flex; align-items: center; min-width: 0; gap: 4px; }
+.error-row-head .compaction-row-toggle { flex: 1 1 auto; color: var(--tool-error); }
+.error-row-title { flex: none; font-weight: 500; }
+.error-row-copy { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--text-tertiary); cursor: pointer; opacity: 0; }
+.error-row:is(:hover, :focus-within) .error-row-copy { opacity: 1; }
+.error-row-copy:hover { background: var(--hover); color: var(--text-secondary); }
+.error-row-copy:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; opacity: 1; }
+.error-row-copy-status { flex: none; color: var(--text-tertiary); font-size: 12px; }
+.error-row-body { color: var(--text-secondary); }
+@media (hover: none) { .error-row-copy { opacity: 1; } }

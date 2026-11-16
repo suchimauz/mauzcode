@@ -81,9 +81,9 @@ export function Transcript({ agentId, events, page, hasOlder, loadingOlder, load
       {turn.input && <Message event={turn.input} agentId={agentId} />}
       <WorkGroup turn={turn}>
         {processEntries(turn.events.filter(event => !choiceResultId(event))).map((entry, entryIndex, entries) => entry.kind === 'message'
-          ? <Message key={entry.event.idx} event={entry.event} agentId={agentId} />
+          ? <Message key={entry.event.idx} event={entry.event} agentId={agentId} latestIdx={events.at(-1)?.idx} />
           : <ProcessGroup key={entry.key} events={entry.events} live={!!page?.isRunning && turn.status === 'open' && turnIndex === turns.length - 1 && entryIndex === entries.length - 1}>
-            {entry.events.map(event => <Message key={event.idx} event={event} agentId={agentId} />)}
+            {entry.events.map(event => <Message key={event.idx} event={event} agentId={agentId} latestIdx={events.at(-1)?.idx} />)}
           </ProcessGroup>)}
         <QuestionHistoryList events={turn.events} agentId={agentId} />
       </WorkGroup>
