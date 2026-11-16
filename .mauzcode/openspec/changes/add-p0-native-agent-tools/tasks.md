@@ -21,9 +21,9 @@
 
 ## 4. request_input
 
-- [ ] 4.1 Add `request_input` declaration (`requires`: `input.request`) and adapter with trusted agent binding and kind/spec validation; verify tests for invalid spec, unavailable kind, rejected `agentId`, missing trusted context
-- [ ] 4.2 End the turn after a waiting `request_input` and skip remaining calls; verify run-loop tests for skipped calls and exactly-once early answer delivery
-- [ ] 4.3 Verify secret kinds return only references and that generic confirm does not satisfy protected approvals (tests); update chat-input prompt guidance
+- [x] 4.1 Add `request_input` declaration (`requires`: `input.request`) and adapter with trusted agent binding and kind/spec validation; verify tests for invalid spec, unavailable kind, rejected `agentId`, missing trusted context
+- [x] 4.2 End the turn after a waiting `request_input` and skip remaining calls; verify run-loop tests for skipped calls and exactly-once early answer delivery
+- [x] 4.3 Verify secret kinds return only references and that generic confirm does not satisfy protected approvals (tests); update chat-input prompt guidance
 
 ## 5. Presets, adapters and integration
 

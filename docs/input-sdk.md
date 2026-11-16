@@ -21,6 +21,10 @@ A registered kind may implement `deadline?: (ctx, { spec }) => number | undefine
 
 A waiting request ends the tool batch at its next safe boundary, including when an answer arrives early. It cannot interrupt JavaScript already running inside the eval: do not put writes or more work after the request. Do not poll or sleep. Terminal completion delivers a user message of the form `<input-result id="…" kind="…" state="…">`, with an outcome summary and safe JSON result. Cancellation and expiry are not approval.
 
+### Native `request_input` tool
+
+Agents whose preset allows `input.request` also get the native tool `request_input` (`tools.requestInput`, `requires: [input.request]`). It takes `kind`, `title`, `message?`, `spec?`, `waitForAnswer?` and `expiresAt?` only; the owner is the invoking agent from the trusted tool call, and `agentId`, session or owner arguments are rejected. Kinds are checked against `input.kinds` filtered by the agent's preset: unregistered and hidden kinds give the same error and list nothing. The kind's `prepare` validates the spec before any row is created. The result is `{ id, kind, state, waiting }`, never the answer. A waiting request goes through the same durable gate as the eval route, so the run loop skips later calls in that response and ends the turn; an early answer is delivered once on the next turn. Protected kinds such as `planning-review` still refuse generic creation, and a generic `confirm` never satisfies a protected approval. When the tool is present, the Chat inputs prompt section teaches it instead of the eval call.
+
 ### Queue and lifecycle
 
 - Postgres is authoritative. The queue is inline in `agents` (`next_run_at`, `run_state`, `last_processed_msg_idx`), not a separate jobs table.

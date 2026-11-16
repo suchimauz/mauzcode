@@ -8,8 +8,10 @@ export default async function (ctx: Context, _session: Session | null, opts: {
     const { agent } = opts;
     const allows = (agent.preset && ctx.fns.agentPreset.predicate({ snapshot: agent.preset })) || (() => true);
     // The native read tool replaces the eval recipe only when this agent can actually call it.
-    const nativeReadResult = typeof ctx.fns.agent?.wireTools === "function"
-        && ctx.fns.agent.wireTools({ agent }).some(tool => ctx.fns.tools.list({}).some(t => t.wireName === tool.name && t.fn === "tools.readResult"));
+    const nativeFns = new Set(typeof ctx.fns.agent?.wireTools === "function"
+        ? ctx.fns.agent.wireTools({ agent }).flatMap(tool => ctx.fns.tools.list({}).filter(t => t.wireName === tool.name).map(t => String(t.fn)))
+        : []);
+    const nativeReadResult = nativeFns.has("tools.readResult");
     const excluded = new Set(agent.preset?.layers.flatMap(layer => layer.excludeSections) ?? []);
     const sections = [...(ctx.state.prompts?.registry?.values() ?? [])] as { id: string; order: number; requires: string[]; body: string; generator?: string }[];
     const blocks = [await Bun.file(resolve(import.meta.dir, "SYSTEM_PROMPT_BASE.md")).text()];
@@ -21,7 +23,7 @@ export default async function (ctx: Context, _session: Session | null, opts: {
             switch (section.generator) {
                 case "tools.promptSection": body = ctx.fns.tools.promptSection({ protocol: "json", only: agent.tools, allows }); break;
                 case "markdown.promptSection": body = await ctx.fns.markdown.promptSection({ allows }); break;
-                case "input.promptSection": body = ctx.fns.input.promptSection({ allows }); break;
+                case "input.promptSection": body = ctx.fns.input.promptSection({ allows, native: nativeFns.has("tools.requestInput") }); break;
                 case "canvas.promptSection": body = await ctx.fns.canvas.promptSection({ allows }); break;
                 case "plugins.promptSection": body = ctx.fns.plugins.promptSection({ allows }); break;
                 default: {

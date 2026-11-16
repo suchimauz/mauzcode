@@ -52,3 +52,25 @@ describe('blocking question tool boundary', () => {
  expect(results[1].content).toContain('Not executed');
  });
 });
+
+describe('native request_input boundary', () => {
+ for (const early of [false,true]) test('waiting request_input skips later calls and ends the turn, early answer='+early,async()=>{
+  const h=harness([{text:'',usage:null,finishReason:'tool_calls',toolCalls:[{id:'ask',name:'request_input',args:{kind:'confirm',title:'Send?',waitForAnswer:true}},{id:'later',name:'bash',args:{command:'git push'}}]}]);
+  let opened=false; const dispatched:string[]=[];
+  // An early answer resolves the row, but `since` still sees the question created during this run.
+  h.ctx.fns.input.isWaiting=async({since}:any)=>opened && (since!=null || !early);
+  h.ctx.fns.tools.call=async({name}:any)=>{dispatched.push(name);if(name==='request_input')opened=true;return {output:'{"id":"in1","kind":"confirm","state":"open","waiting":true}',handlerExecuted:true};};
+  const result=await execute(h);
+  expect(dispatched).toEqual(['request_input']); expect(h.sampled).toBe(1);
+  expect(result).toHaveProperty('inputWaiting', true);
+  const results=h.rows.filter(r=>r.role==='tool'); expect(results).toHaveLength(2);
+  expect(results[1].content).toContain('Not executed');
+ });
+ test('non-waiting request_input does not block the run',async()=>{
+  const h=harness([{text:'',usage:null,finishReason:'tool_calls',toolCalls:[{id:'ask',name:'request_input',args:{kind:'confirm',title:'FYI'}},{id:'later',name:'read',args:{path:'x'}}]},done]);
+  const dispatched:string[]=[];
+  h.ctx.fns.tools.call=async({name}:any)=>{dispatched.push(name);return {output:'ok',handlerExecuted:true};};
+  await execute(h);
+  expect(dispatched).toEqual(['request_input','read']); expect(h.sampled).toBe(2);
+ });
+});
