@@ -470,3 +470,117 @@ it('shows the Qwen account and plan, and numbered device-code steps', async () =
   expect(within(steps[0]!).getByRole('link')).toHaveAttribute('href', flow.verificationUri);
   expect(within(steps[1]!).getByLabelText('One-time code')).toHaveTextContent('QW-1234');
 });
+
+it('groups connections under provider headers with a switch, including providers without connections', async () => {
+  mockApi([stored], [{ ...custom, enabled: true }, { ...acme, enabled: true }]);
+  render(<ModelsPanel context={context} />);
+  const customGroup = await screen.findByRole('region', { name: 'Custom provider' });
+  const acmeGroup = screen.getByRole('region', { name: 'Acme provider' });
+  expect(within(customGroup).getByRole('article', { name: 'Work' })).toBeInTheDocument();
+  // Acme has no connections but still gets a header row with a switch.
+  expect(within(acmeGroup).queryByRole('article')).toBeNull();
+  expect(within(acmeGroup).getByRole('switch', { name: 'Enable Acme provider' })).toBeChecked();
+  expect(within(customGroup).getByRole('switch', { name: 'Enable Custom provider' })).toBeChecked();
+});
+
+it('provider switch posts setProviderEnabled once and reloads the panel', async () => {
+  let disabled = false;
+  const posts = mockApi([stored], [{ ...custom, enabled: true }]);
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') === 'GET') return json({ providers: [{ ...custom, enabled: !disabled }], connections: [stored], proxies: [], instances: [], csrfToken: 'csrf' });
+    const body = JSON.parse(String(init.body));
+    if (body.action === 'setProviderEnabled') { posts.push({ body, headers: init.headers }); disabled = !body.enabled; return json({ providers: [{ ...custom, enabled: !disabled }] }); }
+    return base(url, init);
+  });
+  render(<ModelsPanel context={context} />);
+  const toggle = await screen.findByRole('switch', { name: 'Enable Custom provider' });
+  fireEvent.click(toggle);
+  await waitFor(() => expect(posts.filter(p => p.body.action === 'setProviderEnabled')).toHaveLength(1));
+  expect(posts.find(p => p.body.action === 'setProviderEnabled')!.body).toEqual({ action: 'setProviderEnabled', provider: 'custom', enabled: false });
+  expect(posts.find(p => p.body.action === 'setProviderEnabled')!.headers['X-CSRF-Token']).toBe('csrf');
+  // After reload the header shows the disabled state and the badge.
+  await waitFor(() => expect(screen.getByRole('switch', { name: 'Enable Custom provider' })).not.toBeChecked());
+  const group = screen.getByRole('region', { name: 'Custom provider' });
+  expect(within(group).getByText('Disabled')).toBeInTheDocument();
+});
+
+it('a failed provider toggle announces the error and keeps the stored state', async () => {
+  const posts = mockApi([stored], [{ ...custom, enabled: true }]);
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') !== 'GET' && JSON.parse(String(init.body)).action === 'setProviderEnabled')
+      return json({ error: 'Provider switch failed upstream' }, 422);
+    return base(url, init);
+  });
+  render(<ModelsPanel context={context} />);
+  fireEvent.click(await screen.findByRole('switch', { name: 'Enable Custom provider' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Provider switch failed upstream');
+  expect(screen.getByRole('switch', { name: 'Enable Custom provider' })).toBeChecked();
+  expect(posts.some(p => p.body.action === 'update')).toBe(false);
+});
+
+it('disabled provider: dimmed cards, blocked Test/Update models/Login, connection switch operable, hidden from Add connection', async () => {
+  const codex = { id: 'codex', label: 'Codex', fields: [], transports: ['direct'], actions: [{ name: 'login', label: 'Log in' }], enabled: false };
+  const conn = { ...stored, id: 'cx', provider: 'codex', accountName: 'sub', config: {}, secrets: {} };
+  const posts = mockApi([conn, stored], [codex, { ...custom, enabled: true }]);
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') !== 'GET' && JSON.parse(String(init.body)).action === 'models')
+      return json({ models: [{ id: 'gpt-6' }], source: 'provider', cachedAt: 1 });
+    return base(url, init);
+  });
+  const { container } = render(<ModelsPanel context={context} />);
+  const group = await screen.findByRole('region', { name: 'Codex provider' });
+  const card = within(group).getByRole('article', { name: 'sub' });
+  expect(card.className).toContain('is-provider-disabled');
+  expect(within(card).getByRole('button', { name: 'Test' })).toBeDisabled();
+  // Connection-level switch stays operable.
+  const connSwitch = within(card).getByRole('switch', { name: 'Enabled' });
+  expect(connSwitch).not.toBeDisabled();
+  fireEvent.click(connSwitch);
+  await waitFor(() => expect(posts.some(p => p.body.action === 'update' && p.body.id === 'cx')).toBe(true));
+  // Login button blocked and no loginStatus request sent for the disabled provider.
+  const login = within(card).getByRole('button', { name: 'Log in' });
+  expect(login).toBeDisabled();
+  expect(posts.some(p => p.body.action === 'action' && p.body.id === 'cx')).toBe(false);
+  // Update models blocked inside the Models section.
+  fireEvent.click(within(card).getByRole('button', { name: 'Models' }));
+  await waitFor(() => expect(within(card).getByRole('button', { name: 'Update models' })).toBeDisabled());
+  // Add connection offers only the enabled provider.
+  fireEvent.click(screen.getByRole('button', { name: 'Add connection' }));
+  const add = screen.getByRole('region', { name: 'Add connection' });
+  const select = within(add).getByLabelText('Provider');
+  expect(within(select).queryByRole('option', { name: 'Codex' })).toBeNull();
+  expect(within(select).getByRole('option', { name: 'Custom' })).toBeInTheDocument();
+  expect(container.querySelector('[data-model-provider="codex"]')).toBeTruthy();
+});
+
+it('all providers disabled: creation shows a note instead of an empty selector', async () => {
+  mockApi([], [{ ...custom, enabled: false }, { ...acme, enabled: false }]);
+  render(<ModelsPanel context={context} />);
+  expect(await screen.findByText(/All model providers are disabled/)).toBeInTheDocument();
+  expect(screen.queryByLabelText('Provider')).toBeNull();
+  expect(screen.getByRole('switch', { name: 'Enable Custom provider' })).not.toBeChecked();
+});
+
+it('enabledLocked renders every provider switch disabled with a file hint and sends no request', async () => {
+  const posts = mockApi([stored], [{ ...custom, enabled: true, enabledLocked: true }, { ...acme, enabled: false, enabledLocked: true }]);
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') !== 'GET' && JSON.parse(String(init.body)).action === 'setProviderEnabled') {
+      posts.push({ body: JSON.parse(String(init.body)), headers: init.headers });
+      return json({ error: 'should never be sent' }, 400);
+    }
+    return base(url, init);
+  });
+  render(<ModelsPanel context={context} />);
+  const customSwitch = await screen.findByRole('switch', { name: 'Enable Custom provider' });
+  const acmeSwitch = screen.getByRole('switch', { name: 'Enable Acme provider' });
+  expect(customSwitch).toBeDisabled();
+  expect(acmeSwitch).toBeDisabled();
+  const hintId = customSwitch.getAttribute('aria-describedby')!;
+  expect(document.getElementById(hintId)?.textContent).toContain('instance settings file');
+  fireEvent.click(customSwitch);
+  expect(posts.some(p => p.body.action === 'setProviderEnabled')).toBe(false);
+});

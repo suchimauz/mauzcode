@@ -26,4 +26,6 @@ export type State = {
     sessionAffinitySalt?: Promise<string | null>;
     /** True once a failure to read or create the session affinity salt has been logged. */
     sessionAffinityWarned?: boolean;
+    /** Tail of the serialized setProviderEnabled read-modify-write queue (models.api); rejection-recovered so a failed write cannot block later toggles. */
+    disabledProvidersQueue?: Promise<unknown>;
 };

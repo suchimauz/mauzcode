@@ -54,3 +54,22 @@ test('unavailable notices cover enabled connections only', () => {
   ];
   expect(unavailableGroups({ groups }).map(group => group.connectionId)).toEqual(['a']);
 });
+test('models of globally disabled providers are never offered and never appear as unavailable notices', () => {
+  // The backend catalogue flags every model of a disabled provider disabled and its group enabled:false, unavailable:false.
+  const settings = {
+    models: [
+      { provider: 'claude', model: 'claude/work:opus', connectionId: 'ok', disabled: false },
+      { provider: 'codex', model: 'codex/me:a', connectionId: 'dead', disabled: true },
+      { provider: 'codex', model: 'codex/me:b', connectionId: 'dead', disabled: true },
+    ],
+    groups: [
+      { connectionId: 'ok', provider: 'claude', accountName: 'work', enabled: true, unavailable: false },
+      { connectionId: 'dead', provider: 'codex', accountName: 'me', enabled: false, unavailable: false },
+    ],
+  };
+  expect(selectableModels(settings).map(option => option.model)).toEqual(['claude/work:opus']);
+  expect(unavailableGroups(settings)).toEqual([]);
+  // Even a stale catalogue entry not yet flagged disabled is hidden by its disabled group.
+  const stale = { ...settings, models: settings.models.map(m => ({ ...m, disabled: false })) };
+  expect(selectableModels(stale).map(option => option.model)).toEqual(['claude/work:opus']);
+});

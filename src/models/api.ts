@@ -1,7 +1,7 @@
 /**
  * Owner-only HTTP API for model providers and connections
  *
- * Backs GET/POST /models/api for the Models settings tab. GET returns the provider catalogue, secret-free connections, inert provider logos (`providerLogos` by provider id from frontendBridge.modelMark: brand marks, the generic plug for `custom`, null only when resolution fails), saved SOCKS proxies, trusted SSH instance names and a cookie-bound CSRF token. POST takes one JSON object `{ action, ... }` (action `models` returns every model with the shared display name in `label`, for all providers) with action `providers`, `list`, `get`, `create`, `update`, `remove`, `test`, `models` (cached list; `refresh: true` asks the provider and updates the cache), `usage`, `setModelEnabled` (`{ id, model, enabled }`, returns the updated connection), `setContextLimits` (`{ id, limits: { [model]: tokens | null } }`, atomic owner context-window override patch, returns `{ overrides, limits }`) or `action`; the `models` reply also carries `contextOverrides` (all stored overrides, including absent models) and `contextLimits` (effective limit, provider value, override and source per listed model); it requires same origin, a valid `x-csrf-token`, `application/json` and at most 64 KiB. Non-owners get 403, anonymous 401. Responses never contain secret values or references.
+ * Backs GET/POST /models/api for the Models settings tab. GET returns the provider catalogue as ProviderSettingsView[] (declaration metadata plus effective `enabled` from models.disabledProviders and `enabledLocked` when the setting is fixed by an instance file, computed per request), secret-free connections, inert provider logos (`providerLogos` by provider id from frontendBridge.modelMark: brand marks, the generic plug for `custom`, null only when resolution fails), saved SOCKS proxies, trusted SSH instance names and a cookie-bound CSRF token. POST takes one JSON object `{ action, ... }` (action `models` returns every model with the shared display name in `label`, for all providers) with action `providers` (same ProviderSettingsView[] as GET), `list`, `get`, `create`, `update`, `remove`, `test`, `models` (cached list; `refresh: true` asks the provider and updates the cache), `usage`, `setProviderEnabled` (`{ provider, enabled }`, registered provider id + boolean; serialized read-modify-write of the global models.disabledProviders setting, idempotent, connections untouched; returns `{ providers }`; a file-fixed setting fails 409 SETTING_FIXED with `fixedBy`), `setModelEnabled` (`{ id, model, enabled }`, returns the updated connection), `setContextLimits` (`{ id, limits: { [model]: tokens | null } }`, atomic owner context-window override patch, returns `{ overrides, limits }`) or `action`; the `models` reply also carries `contextOverrides` (all stored overrides, including absent models) and `contextLimits` (effective limit, provider value, override and source per listed model); it requires same origin, a valid `x-csrf-token`, `application/json` and at most 64 KiB. Non-owners get 403, anonymous 401. Responses never contain secret values or references.
  * @param opts.req Incoming GET or JSON POST request.
  */
 export default async function (
@@ -20,9 +20,15 @@ export default async function (
     if (!["GET", "POST"].includes(req.method)) return new Response(null, { status: 405, headers: { ...headers, Allow: "GET, POST" } });
     if (user.role !== "owner") return reply({ error: "Only owners can manage model connections" }, 403);
     const fail = (error: unknown) => {
-        const e = error as { status?: unknown; code?: unknown; field?: unknown } | null;
+        const e = error as { status?: unknown; code?: unknown; field?: unknown; fixedBy?: unknown } | null;
         const status = typeof e?.status === "number" && e.status >= 400 && e.status < 500 ? e.status : e?.code === "TRANSPORT" ? 400 : 422;
-        return reply({ error: ctx.fns.models.connections.safeMessage({ message: error, fallback: "Model connection request failed" }), ...(typeof e?.code === "string" ? { code: e.code } : {}), ...(typeof e?.field === "string" ? { field: e.field } : {}) }, status);
+        return reply({ error: ctx.fns.models.connections.safeMessage({ message: error, fallback: "Model connection request failed" }), ...(typeof e?.code === "string" ? { code: e.code } : {}), ...(typeof e?.field === "string" ? { field: e.field } : {}), ...(typeof e?.fixedBy === "string" ? { fixedBy: e.fixedBy } : {}) }, status);
+    };
+    // Effective enablement per request: the declaration catalogue stays synchronous; only this projection reads state.
+    const providerViews = async (): Promise<types.models.ProviderSettingsView[]> => {
+        const [disabled, files] = await Promise.all([ctx.fns.models.disabledProviders({}), ctx.fns.settings.files({})]);
+        const locked = !!files.values["models.disabledProviders"];
+        return ctx.fns.models.providers({}).map(p => ({ ...p, enabled: !disabled.has(p.id), enabledLocked: locked }));
     };
     if (req.method === "GET") {
         try {
@@ -32,7 +38,7 @@ export default async function (
                 ctx.fns.sshInstance.list({}).catch(() => []),
             ]);
             // Inert marks from the shared resolver: brand for known providers, the generic plug for custom.
-            const providers = ctx.fns.models.providers({});
+            const providers = await providerViews();
             const providerLogos = Object.fromEntries(await Promise.all(providers.map(async p => {
                 try { return [p.id, await ctx.fns.frontendBridge.modelMark({ provider: p.id })] as const; } catch { return [p.id, null] as const; }
             })));
@@ -63,7 +69,26 @@ export default async function (
     const optional = <T>(key: string): T | undefined => Object.hasOwn(data, key) ? data[key] as T : undefined;
     try {
         switch (data.action) {
-            case "providers": return reply({ providers: ctx.fns.models.providers({}) });
+            case "providers": return reply({ providers: await providerViews() });
+            case "setProviderEnabled": {
+                const provider = typeof data.provider === "string" ? data.provider.trim() : "";
+                if (!provider || !Object.hasOwn(ctx.state.models?.providers ?? {}, provider)) return reply({ error: "Unknown provider", field: "provider" }, 400);
+                if (typeof data.enabled !== "boolean") return reply({ error: "enabled must be true or false", field: "enabled" }, 400);
+                const enabled = data.enabled;
+                // Single-process mutex in ctx.state.models: serialize read-modify-write so concurrent toggles are not lost.
+                const st = (ctx.state.models ??= {});
+                const write = async () => {
+                    const disabled = await ctx.fns.models.disabledProviders({});
+                    if (enabled) disabled.delete(provider); else disabled.add(provider);
+                    await ctx.fns.settings.set({ module: "models", scopeType: "global", key: "disabledProviders", value: [...disabled] });
+                };
+                const prev = st.disabledProvidersQueue ?? Promise.resolve();
+                const run = prev.then(write, write);
+                // Recover the stored tail so a rejected write cannot poison later toggles; the caller still gets the original rejection.
+                st.disabledProvidersQueue = run.catch(() => undefined);
+                await run;
+                return reply({ providers: await providerViews() });
+            }
             case "list": return reply({ connections: await ctx.fns.models.connections.list({ ...(typeof data.provider === "string" ? { provider: data.provider } : {}) }) });
             case "get": return reply({ connection: await ctx.fns.models.connections.get({ id }) });
             case "create": {

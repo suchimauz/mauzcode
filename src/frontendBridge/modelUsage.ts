@@ -1,7 +1,7 @@
 /**
  * Aggregate usage of every enabled model connection with threshold levels
  *
- * Use for quota and usage displays. Lists enabled connections in creation order, queries models.usage for each in parallel and classifies every window as normal, warning, critical or alert using models.usageWarnPercent, models.usageCriticalPercent and models.usageAlertPercent (defaults 30, 60, 75; a value at or above a threshold reaches its level). Status-only and balance-only connections are reported without windows. A connection whose usage request fails is reported unavailable without hiding the others.
+ * Use for quota and usage displays. Lists enabled connections of enabled providers in creation order (connections of globally disabled providers are omitted like disabled ones, without any usage request), queries models.usage for each in parallel and classifies every window as normal, warning, critical or alert using models.usageWarnPercent, models.usageCriticalPercent and models.usageAlertPercent (defaults 30, 60, 75; a value at or above a threshold reaches its level). Status-only and balance-only connections are reported without windows. A connection whose usage request fails is reported unavailable without hiding the others.
  * @param opts.refresh Bypass the per-connection usage cache (provider `usageRefreshMs`, 60 s by default). @default false
  */
 export default async function (
@@ -17,7 +17,8 @@ export default async function (
     const level = (v: number | undefined): types.frontendBridge.UsageLevel => v === undefined ? "normal" : v >= alert ? "alert" : v >= critical ? "critical" : v >= warn ? "warning" : "normal";
     const rank: Record<types.frontendBridge.UsageLevel, number> = { normal: 0, warning: 1, critical: 2, alert: 3 };
     const providers = ctx.fns.models.providers({});
-    const connections = (await ctx.fns.models.list({})).filter(c => c.enabled);
+    const disabledProviders = await ctx.fns.models.disabledProviders({});
+    const connections = (await ctx.fns.models.list({})).filter(c => c.enabled && !disabledProviders.has(c.provider));
     const reports = await Promise.allSettled(connections.map(c => ctx.fns.models.usage({ id: c.id, refresh: opts.refresh === true })));
     const now = Date.now();
     return { updatedAt: now, thresholds: { warn, critical, alert }, connections: connections.map((c, i) => {

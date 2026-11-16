@@ -21,8 +21,8 @@ export type ExtensionCanvasLauncher = { id: string; title: string; description?:
   /** One-step launcher: the Start page calls `open` directly and selects the returned server Canvas item, with no local tab. */
   | { open: (context: ExtensionContext) => Promise<{ id: number }>; component?: never }
 );
-/** Secret-free provider catalogue entry served by GET /models/api. */
-export type ModelProviderView = Readonly<{ id: string; label: string; description?: string; icon?: string; fields: readonly ModelFieldSpec[]; transports: readonly ModelTransportSpec['kind'][]; actions: readonly { name: string; label: string }[] }>;
+/** Secret-free provider catalogue entry served by GET /models/api, with effective enablement computed per request. */
+export type ModelProviderView = Readonly<{ id: string; label: string; description?: string; icon?: string; fields: readonly ModelFieldSpec[]; transports: readonly ModelTransportSpec['kind'][]; actions: readonly { name: string; label: string }[]; /** False when the provider is globally disabled via models.disabledProviders. */ enabled?: boolean; /** True when models.disabledProviders is fixed by an instance settings file; the switch is read-only. */ enabledLocked?: boolean }>;
 export type ModelFieldSpec = { key: string; label: string; required?: boolean; help?: string; placeholder?: string } & (
   | { type: 'text' | 'url'; default?: string }
   | { type: 'select'; default?: string; options: readonly { value: string; label: string }[] }

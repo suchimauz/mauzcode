@@ -1,7 +1,7 @@
 /**
- * Refresh the cached model list of every enabled connection whose provider supports discovery
+ * Refresh the cached model list of every enabled connection whose provider supports discovery and is not globally disabled
  *
- * Use as the hourly background job of the models module (started by models/$start) or to refresh all caches at once. Runs connections sequentially through models.listModels with refresh; a failed discovery keeps that connection's previous cache. Returns per-connection counts and safe errors, never secrets.
+ * Use as the hourly background job of the models module (started by models/$start) or to refresh all caches at once. Reads models.disabledProviders once per run and skips connections of disabled providers without any provider request. Runs connections sequentially through models.listModels with refresh; a failed discovery keeps that connection's previous cache. Returns per-connection counts and safe errors, never secrets.
  */
 export default async function (
     ctx: Context,
@@ -9,7 +9,8 @@ export default async function (
     opts: {},
 ): Promise<{ refreshed: number; failed: { id: string; error: string }[] }> {
     const providers = ctx.state.models?.providers ?? {};
-        const connections = (await ctx.fns.models.connections.list({})).filter(c => c.enabled && Object.hasOwn(providers, c.provider) && !!providers[c.provider]!.definition.listModels);
+        const disabled = await ctx.fns.models.disabledProviders({});
+        const connections = (await ctx.fns.models.connections.list({})).filter(c => c.enabled && !disabled.has(c.provider) && Object.hasOwn(providers, c.provider) && !!providers[c.provider]!.definition.listModels);
         let refreshed = 0;
         const failed: { id: string; error: string }[] = [];
         for (const c of connections) {

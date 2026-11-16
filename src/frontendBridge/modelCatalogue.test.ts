@@ -3,10 +3,11 @@ import catalogue from './modelCatalogue';
 import effort from './modelEffort';
 
 const connection = (over: any) => ({ id: 'c1', provider: 'claude', providerRegistered: true, accountName: 'work', enabled: true, disabledModels: [], ...over });
-const fixture = (lists: Record<string, any>) => ({ fns: { models: {
+const fixture = (lists: Record<string, any>, disabled: string[] = []) => ({ fns: { models: {
     // Stub naming: catalogue labels win, everything else gets a visible resolver marker.
     displayNames: async ({ routes, labels }: any) => Object.fromEntries(routes.map((r: string) => [r, labels?.[r] ?? 'Named ' + r.slice(r.indexOf(':') + 1)])),
     providers: () => [{ id: 'claude' }, { id: 'codex' }, { id: 'custom' }],
+    disabledProviders: async () => new Set(disabled),
     list: async () => [
         connection({}),
         connection({ id: 'c2', provider: 'codex', accountName: 'me', disabledModels: ['gpt-off'] }),
@@ -106,4 +107,31 @@ test('display names come from models.displayNames with catalogue labels; a resol
     ctx.fns.models.displayNames = async () => { throw new Error('offline'); };
     const raw = await catalogue(ctx, null, {});
     expect(raw.models.filter(m => m.provider === 'claude').map(m => m.label)).toEqual(['Opus 5', 'claude-opus-4-5']);
+});
+
+test('a globally disabled provider: models flagged disabled, groups not enabled and not unavailable, cache-only reads', async () => {
+    const ctx = fixture({
+        c1: { models: [{ id: 'claude-opus-5' }], source: 'provider', cachedAt: 1 },
+        c2: { models: [{ id: 'gpt-5:mini' }], source: 'provider', cachedAt: 1 },
+        c3: { models: [{ id: 'llama' }], source: 'manual', cachedAt: null },
+        c5: new Error('network down'),
+    }, ['codex']);
+    const calls: any[] = [];
+    const listModels = ctx.fns.models.listModels;
+    ctx.fns.models.listModels = async (o: any) => { calls.push(o); return listModels(o); };
+    const result = await catalogue(ctx, null, {});
+    // codex groups (c2, c5) are disabled, never unavailable notices; the throwing catalogue is not even asked.
+    expect(result.groups.map(g => [g.connectionId, g.enabled, g.unavailable, g.error ?? null])).toEqual([
+        ['c1', true, false, null],
+        ['c2', false, false, null],
+        ['c3', false, false, null],
+        ['c4', true, true, 'Provider gone is not registered'],
+        ['c5', false, false, null],
+    ]);
+    expect(result.models.filter(m => m.provider === 'codex').every(m => m.disabled)).toBe(true);
+    expect(result.models.find(m => m.provider === 'claude')!.disabled).toBe(false);
+    // Every catalogue call for a disabled provider is cacheOnly; none may hit the provider list.
+    expect(calls.filter(o => o.id === 'c2' || o.id === 'c5').every(o => o.cacheOnly === true)).toBe(true);
+    expect(calls.some(o => o.id === 'c5' && !o.cacheOnly)).toBe(false);
+    expect(calls.find(o => o.id === 'c1')!.cacheOnly).toBeUndefined();
 });

@@ -43,6 +43,9 @@ export const createConnection = (csrf: string, provider: string, input: Connecti
 export const updateConnection = (csrf: string, id: string, input: Partial<ConnectionInput>) =>
   post<{ connection: ModelConnectionView }>(csrf, { action: 'update', id, ...input }).then(r => r.connection);
 export const setConnectionEnabled = (csrf: string, id: string, enabled: boolean) => updateConnection(csrf, id, { enabled });
+/** Global provider switch: serialized read-modify-write of models.disabledProviders; returns the updated provider catalogue with enabled/enabledLocked. */
+export const setProviderEnabled = (csrf: string, provider: string, enabled: boolean) =>
+  post<{ providers: ModelProviderView[] }>(csrf, { action: 'setProviderEnabled', provider, enabled }).then(r => r.providers);
 /** The backend rejects removal without explicit `confirmed: true`. */
 export const removeConnection = (csrf: string, id: string) => post<{ removed: string }>(csrf, { action: 'remove', id, confirmed: true });
 export const testConnection = (csrf: string, id: string) => post<{ result: ModelTestResult }>(csrf, { action: 'test', id }).then(r => r.result);

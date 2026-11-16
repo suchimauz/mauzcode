@@ -8,12 +8,12 @@ import load from "../procs/boot/load";
 const baseline = await Bun.file(join(import.meta.dir, "fixtures/public-contract.baseline.json")).json();
 const normalize = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "").replace(/_session/g, "session");
 
-test("root model procedures are exactly the minimal facade plus providers and api", async () => {
+test("root model procedures are exactly the minimal facade plus providers, disabledProviders and api", async () => {
     const roots = [...new Bun.Glob("*.ts").scanSync(import.meta.dir)]
         .filter(file => !file.endsWith(".test.ts") && !file.startsWith("$") && /^[a-z]/.test(file))
         .map(file => file.slice(0, -3)).sort();
-    expect(roots).toEqual([...Object.keys(baseline.procedures), "displayNames", "resolveRoute", "setContextLimits", "tokenPrice"].sort());
-    expect(roots).toEqual(["action", "api", "call", "compact", "countTokens", "create", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setContextLimits", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
+    expect(roots).toEqual([...Object.keys(baseline.procedures), "disabledProviders", "displayNames", "resolveRoute", "setContextLimits", "tokenPrice"].sort());
+    expect(roots).toEqual(["action", "api", "call", "compact", "countTokens", "create", "disabledProviders", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setContextLimits", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
 });
 
 test("original public model signatures, async declarations, types and HTTP route contracts survive", async () => {
@@ -52,7 +52,7 @@ test("original public model signatures, async declarations, types and HTTP route
             "FailureInfo.ts": "resetAt?:number;",
             // add-qwen-subscription-provider: Qwen refresh de-duplication, credential lock and observed quota state;
             // add-custom-session-affinity-header: cached installation salt and one-time warning.
-            "State.ts": "qwenRefresh?:Record<string,Promise<string>>;qwenLocks?:Record<string,Promise<void>>;qwenQuota?:Record<string,{resetAt?:number;observedAt:number;until:number}>;sessionAffinitySalt?:Promise<string|null>;sessionAffinityWarned?:boolean;",
+            "State.ts": "qwenRefresh?:Record<string,Promise<string>>;qwenLocks?:Record<string,Promise<void>>;qwenQuota?:Record<string,{resetAt?:number;observedAt:number;until:number}>;sessionAffinitySalt?:Promise<string|null>;sessionAffinityWarned?:boolean;disabledProvidersQueue?:Promise<unknown>;",
             // fix-usage-window-classification: optional window identity/classification metadata.
             "UsageReport.ts": 'id?:string;period?:"fiveHour"|"weekly"|"monthly";scope?:"account"|"model"|"unknown";durationSeconds?:number;model?:string;observedAt?:number;',
         };
