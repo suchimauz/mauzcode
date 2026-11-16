@@ -7,7 +7,7 @@ import { join, basename } from "node:path";
 // One throwaway project on disk and ONE ctx for the whole file (booting a ctx on a custom root costs ~0.5 s;
 // the index itself ~50 ms). Each test replaces the project's files and re-indexes it from empty, so tests
 // stay independent while paying the boot once.
-let shared: { ctx: any; dir: string; root: string };
+let shared: { ctx: Awaited<ReturnType<typeof testCtx>>; dir: string; root: string };
 beforeAll(async () => {
     const dir = mkdtempSync(join(tmpdir(), "code-coverage-"));
     mkdirSync(join(dir, "src"), { recursive: true });

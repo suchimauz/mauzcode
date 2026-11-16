@@ -1,12 +1,15 @@
 // Centralised test context — boots the REAL procs registry (full ctx.fns via
-// the injecting Proxy, :memory: db, migrations applied), then stubs the slow /
+// the injecting Proxy, isolated test Postgres, migrations applied), then stubs the slow /
 // non-deterministic fns the way tests expect. `.entry.ts` is skipped by the
 // scanner, so this file never registers as a fn.
 //
 // Usage:
 //   import { mkTestCtx } from '../_testCtx.entry';
-//   const ctx = await mkTestCtx();                       // :memory: db
-//   const agent = ctx.fns.agent.start({ model: 'mock:echo' });
+//   const ctx = await mkTestCtx(); // migrated per-process test database
+// For mock model routes, use mkModelsTestCtx from agent/modelsTestCtx.entry:
+//   const ctx = await mkModelsTestCtx();
+//   const agent = await ctx.fns.agent.start({ model: 'mock/default:test' });
+//   agent.scratchpad.mockLLM = { echoUser: true };
 //
 // Stubs (override per-test by assigning into ctx.state.registry.<mod>.<fn>,
 // signatures are raw `(ctx, session, opts)`):

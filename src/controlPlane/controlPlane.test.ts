@@ -11,6 +11,7 @@ let proc: ReturnType<typeof Bun.spawn> | null = null;
 beforeAll(async () => {
     if (!available) return;
     proc = Bun.spawn(["bun", `${CP}/scripts/e2e-server.ts`, "http://mauzcode.test"], { stdout: "pipe", stderr: "inherit", cwd: CP });
+    if (!proc.stdout || typeof proc.stdout === 'number') throw new Error('Expected piped server stdout');
     const reader = proc.stdout.getReader();
     let buf = "";
     while (!buf.includes("\n")) { const { value, done } = await reader.read(); if (done) break; buf += new TextDecoder().decode(value); }

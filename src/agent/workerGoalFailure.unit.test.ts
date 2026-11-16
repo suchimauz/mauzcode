@@ -59,7 +59,7 @@ async function scenario(kind: string, retries = 0) {
                 if(kind==='capture-blocked')return {goalAdmissionBlocked:true};
                 if(kind.startsWith('grant-')) {
                     if(kind!=='grant-unknown')onGoalFinalCheckpoint(Object.freeze({sourceAgentId:agent.id,sourceRunToken:token,goalId:'g',capabilityId:'cap',checkpointId:'exact-final',sequence:9,drained:true}));
-                    if(kind==='grant-retry'||kind==='grant-unknown')throw Object.assign(new Error('network'),{failure:{kind:'transient',retryable:true,message:'network'}});
+                    if(kind==='grant-retry'||kind==='grant-unknown')throw Object.assign(new Error('network'),{failure:{code:'TRANSPORT',classification:'transport',acceptance:'none',retryable:true,replaySafe:true} satisfies types.models.FailureInfo});
                     return {consumedUserIdx:6};
                 }
                 if (!['absent', 'setup'].includes(kind)) onGoalBinding(Object.freeze({ goalId: 'captured-goal', runToken: kind === 'wrong-token' ? 'wrong' : token }));
@@ -69,7 +69,7 @@ async function scenario(kind: string, retries = 0) {
                 if (kind === 'success') return {};
                 if (kind === 'abort') throw new DOMException('aborted', 'AbortError');
                 const error: any = new Error('UsageLimitExceeded is merely text');
-                error.failure = { kind: kind === 'quota' ? 'usage_limit' : kind === 'transient' ? 'transient' : 'fatal', retryable: kind === 'transient', message: error.message };
+                error.failure = { code: kind === 'quota' ? 'QUOTA_EXHAUSTED' : kind === 'transient' ? 'TRANSPORT' : 'PROVIDER_ERROR', classification: kind === 'quota' ? 'quota' : kind === 'transient' ? 'transport' : 'provider', acceptance: 'rejected', retryable: kind === 'transient', replaySafe: true } satisfies types.models.FailureInfo;
                 throw Object.freeze(error);
             },
         },

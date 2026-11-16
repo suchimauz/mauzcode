@@ -82,8 +82,8 @@ describe('tools.call handler invocation accounting', () => {
     });
     test('terminal envelope preserves content and scrubs NUL', async () => {
         const s = setup();
-        const content = [{ type: 'text', text: 'body' }];
-        const terminal = { type: 'html', html: '<p>done</p>', text: 'done' };
+        const content = [{ type: 'text' as const, text: 'body' }];
+        const terminal = { type: 'html' as const, html: '<p>done</p>', text: 'done' };
         s.ctx.fns.sample.handler = () => ({ output: 'a\u0000b', content, terminal });
         expect(await s.invoke()).toEqual({ output: 'a\uFFFDb', content, terminal, isError: false, handlerExecuted: true });
     });

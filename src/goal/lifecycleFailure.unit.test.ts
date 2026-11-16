@@ -35,7 +35,7 @@ test('accounting budget status cannot mask provider usage limit',async()=>{
     expect(await failure(f.ctx,null,{...args,reason:'usage_limit'})).toEqual({changed:true,reason:'usage_limit',status:'usage_limited',revision:3});
     expect(f.trace[0]).toContain('FOR UPDATE');
     expect(f.trace[1]).toContain('AND goal_id = ?::uuid');
-    expect(f.writes[1].params.slice(0,8)).toEqual(['a','g','set',2,3,'budget_limited','usage_limited','run']);
+    expect(f.writes[1]!.params.slice(0,8)).toEqual(['a','g','set',2,3,'budget_limited','usage_limited','run']);
 });
 for (const variant of [{terminal:false},{codexPlanMode:true},{reason:'interrupted' as const}]) test(`ineligible ${JSON.stringify(variant)} skips all SQL`,async()=>{
     const f=fixture(); const result=await failure(f.ctx,null,{...args,...variant});

@@ -41,7 +41,7 @@ export default async function (
     if(!req.headers.get('content-type')?.startsWith('application/json'))return response({error:'JSON required'},415);
     const reader=req.body?.getReader(); if(!reader)return response({error:'Body required'},400);
     let text='';let size=0;const decoder=new TextDecoder();while(true){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>8192){await reader.cancel();return response({error:'Body too large'},413);}text+=decoder.decode(part.value,{stream:true});}text+=decoder.decode();
-    let data:{subscription?:{endpoint:string;keys:{p256dh:string;auth:string}};endpoint?:string;userAgent?:string};try{data=JSON.parse(text);}catch{return response({error:'Invalid JSON'},400);}
+    let data:{subscription?:{endpoint:string;keys:{p256dh:string;auth:string}};endpoint?:string;subscriptionId?:string;userAgent?:string};try{data=JSON.parse(text);}catch{return response({error:'Invalid JSON'},400);}
     if(!data||typeof data!=='object'||Object.keys(data).some(k=>!((opts.action==='subscribe'&&(k==='subscription'||k==='userAgent'))||(opts.action==='unsubscribe'&&(k==='endpoint'||k==='subscriptionId')))))return response({error:'Invalid request'},400);
     // Optional coarse browser label from the opt-in gesture only; bounded, never trusted as identity.
     const userAgent=opts.action==='subscribe'&&typeof data.userAgent==='string'&&data.userAgent.length>0&&data.userAgent.length<=512?data.userAgent:null;

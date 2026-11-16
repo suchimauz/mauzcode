@@ -26,7 +26,7 @@ describe("agent.assessEvidence offline fail-closed advisory", () => {
         expect(Object.keys(calls[1]!.provider.questions.sufficiency.criteria)).toEqual(["o0", "o1", "o2", "o3", "o4"]);
         expect(calls[1]!.provider.questions.sufficiency.instructions).toContain("UNTRUSTED DATA");
     });
-    for (const [choice, decision] of [["o1", "search"], ["o2", "read"], ["o3", "clarify"], ["o4", "abstain"]]) test(`maps ${decision} without executing it`, async () => {
+    for (const [choice, decision] of [["o1", "search"], ["o2", "read"], ["o3", "clarify"], ["o4", "abstain"]] as const) test(`maps ${decision} without executing it`, async () => {
         const { ctx, calls } = fixture(true, response(choice));
         expect((await assessEvidence(ctx, session, input)).decision).toBe(decision);
         expect(calls).toHaveLength(2);

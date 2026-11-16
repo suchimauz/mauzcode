@@ -106,7 +106,7 @@ test('Raylane image-heavy retained context no longer falsely exceeds the hard st
  f.agent.autoCompactWindowPercent=70;
  f.ctx.fns.compaction.contextWindow=()=>272000;
  const images=Array.from({length:7},(_,i)=>({role:'tool',content:[{type:'text',text:`Screenshot ${i}`},{type:'image',mimeType:'image/png',data:'a'.repeat(i===6?345820:150000)}],idx:i}));
- f.ctx.fns.agent.getSleepGeneration=()=>({sourceOffset:0,tailStart:0,activatedAt:3,model:f.agent.model,contextMessages:[{role:'user',message_type:'codex_compaction',content:'x'.repeat(41000)}]});
+ f.ctx.fns.agent.getSleepGeneration=()=>({sourceOffset:0,tailStart:0,activatedAt:3,model:f.agent.model,contextMessages:[{role:'user',content:'x'.repeat(41000)}]});
  f.ctx.fns.session.getMessages=()=>images;
  // The provider count precedes the checkpoint, so this must also work when
  // only the fallback estimator is valid. No actual summary is performed.

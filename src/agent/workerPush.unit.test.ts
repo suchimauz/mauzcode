@@ -32,7 +32,9 @@ async function scenario(kind:string, retryCount=0, stale=false) {
  parkOnUsageLimit:async()=>{if(kind==='park-failed')throw new Error('test park failure');wake=true;},run:async()=>{
  if(kind==='success')return {};
  if(kind==='abort')throw new DOMException('aborted','AbortError');
- const e:any=new Error('fixed test failure');e.failure={kind:['usage_limit','park-failed'].includes(kind)?'usage_limit':kind==='transient'?'transient':'fatal',retryable:kind==='transient',message:'fixed test failure'};throw e;
+ const quota=['usage_limit','park-failed'].includes(kind);
+ const failure: types.models.FailureInfo={code:quota?'QUOTA_EXHAUSTED':kind==='transient'?'TRANSPORT':'PROVIDER_ERROR',classification:quota?'quota':kind==='transient'?'transport':'provider',acceptance:'rejected',retryable:kind==='transient',replaySafe:true};
+ throw Object.assign(new Error('fixed test failure'),{failure});
  }},webPush:{recallStaleError:noop,notifyError:sent,recordFailure:(o:any)=>record(ctx,null,o)}};
  await worker(ctx,null,{});return sent;
 }

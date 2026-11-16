@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { Window } from 'happy-dom';
+import { BrowserWindow, Window } from 'happy-dom';
 const source = await Bun.file(new URL('./$script_canvas.js', import.meta.url)).text();
 function fixture() {
     const w = new Window({ url: 'http://localhost/canvas/a/item/7/document' });
@@ -22,7 +22,9 @@ test('document bridge ignores messages from unrelated windows', async () => {
 test('sandbox state from the pinned frame uses only its item endpoint', async () => {
     const {w,requests} = fixture();
     const frame = w.document.querySelector('iframe')!;
-    w.dispatchEvent(new w.MessageEvent('message', {data:{mauzCodeCanvas:1,type:'state',state:{n:1}},source:frame.contentWindow}));
+    const sourceWindow = frame.contentWindow;
+    if (!(sourceWindow instanceof BrowserWindow)) throw new Error('Expected same-origin fixture frame');
+    w.dispatchEvent(new w.MessageEvent('message', {data:{mauzCodeCanvas:1,type:'state',state:{n:1}},source:sourceWindow}));
     await new Promise(resolve=>setTimeout(resolve,0));
     expect(requests[0]).toEqual({url:'/canvas/a/item/7',body:JSON.stringify({state:{n:1}}),headers:{'content-type':'application/json','x-csrf-token':'document-token'}});
     await w.happyDOM.close();

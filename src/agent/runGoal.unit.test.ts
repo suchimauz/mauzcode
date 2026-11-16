@@ -19,10 +19,10 @@ function harness(turns:any[],status='active'){
  }}};
  return {calls,messages,agent,state,ctx,execute:(extra:any={})=>run(ctx,null,{agent,userText:'question',...extra})};
 }
-test('ordinary final checkpoints but cannot continue without native goal tool',async()=>{const h=harness([{text:'answer',usage:{prompt_tokens:4}}]);const result=await h.execute();expect(result.goalContinuation).toBeUndefined();expect(h.calls.map(c=>c[0])).toEqual(['capture','usage','flush','flush']);expect(h.calls[1][1].format).toBe('common-stream');});
-test('terminal HTML includes pre-tool and final checkpoints without budget steering',async()=>{const h=harness([{toolCalls:[{id:'t',name:'respondHtml',args:{}}],usage:{}}]);const result=await h.execute();expect(result.terminal).toBe(true);expect(result.goalContinuation).toBeUndefined();expect(h.calls.filter(c=>c[0]==='flush').length).toBe(3);expect(h.calls.some(c=>c[0]==='steer')).toBe(false);});
+test('ordinary final checkpoints but cannot continue without native goal tool',async()=>{const h=harness([{text:'answer',usage:{prompt_tokens:4}}]);const result=await h.execute();expect(result).not.toHaveProperty('goalContinuation');expect(h.calls.map(c=>c[0])).toEqual(['capture','usage','flush','flush']);expect(h.calls[1][1].format).toBe('common-stream');});
+test('terminal HTML includes pre-tool and final checkpoints without budget steering',async()=>{const h=harness([{toolCalls:[{id:'t',name:'respondHtml',args:{}}],usage:{}}]);const result=await h.execute();expect(result).toHaveProperty('terminal',true);expect(result).not.toHaveProperty('goalContinuation');expect(h.calls.filter(c=>c[0]==='flush').length).toBe(3);expect(h.calls.some(c=>c[0]==='steer')).toBe(false);});
 test('failed request records unsupported before finally and preserves original failure',async()=>{const h=harness([new Error('provider exploded')]);await expect(h.execute()).rejects.toThrow('provider exploded');expect(h.calls.map(c=>c[0])).toEqual(['capture','usage','flush']);expect(h.calls[1][1].format).toBe('unsupported');expect(h.state.pendingRequests.size).toBe(0);expect(h.agent.abortController).toBeNull();});
-test('disabled feature leaves ordinary return and provider path unchanged',async()=>{const h=harness([{text:'answer'}]);h.ctx.fns.goal.runBindingCapture=async()=>({kind:'disabled',allowContinuation:false});h.ctx.fns.models.stream=async()=>({text:'answer'});const result=await h.execute();expect(result.goalContinuation).toBeUndefined();expect(h.calls).toEqual([]);});
+test('disabled feature leaves ordinary return and provider path unchanged',async()=>{const h=harness([{text:'answer'}]);h.ctx.fns.goal.runBindingCapture=async()=>({kind:'disabled',allowContinuation:false});h.ctx.fns.models.stream=async()=>({text:'answer'});const result=await h.execute();expect(result).not.toHaveProperty('goalContinuation');expect(h.calls).toEqual([]);});
 test('worker binding hook precedes execution, is frozen and survives thrown provider errors',async()=>{
  const error=Object.freeze(new Error('provider exploded'));const h=harness([error]);h.state.binding.sourceAgentId='a';
  const bindings:any[]=[];const stream=h.ctx.fns.models.stream;h.ctx.fns.models.stream=async()=>{expect(bindings).toHaveLength(1);return stream();};
@@ -43,7 +43,7 @@ for(const mode of ['setup','descendant','authority','disabled'])test(`worker bin
 for(const kind of ['disabled','excluded','absent','blocked'])test(`required descendant rejects ${kind} capture without model`,async()=>{
  const h=harness([]);let models=0;h.ctx.fns.goal.runBindingCapture=async(o:any)=>{expect(Object.isFrozen(o.authority)).toBe(true);return {kind,allowContinuation:false};};h.ctx.fns.models.stream=async()=>{models++;return {};};
  const result=await run(h.ctx,null,{agent:h.agent,userText:'question',goalAuthority:{sourceAgentId:'a'} as any});
- expect(result.goalAdmissionBlocked).toBe(true);expect(models).toBe(0);
+ expect(result).toHaveProperty('goalAdmissionBlocked',true);expect(models).toBe(0);
 });
 for(const status of ['active','budget_limited'])test(`descendant ${status} controls tools independently of continuation`,async()=>{
  const h=harness([{toolCalls:[{id:'t',name:'respondHtml',args:{}}],usage:{}}],status);let tools=0,scopes=0;
@@ -53,7 +53,7 @@ for(const status of ['active','budget_limited'])test(`descendant ${status} contr
  const call=h.ctx.fns.tools.call;h.ctx.fns.tools.call=async(o:any)=>{tools++;return call(o);};
  h.ctx.fns.goal.delegationScope=async({binding,fn}:any)=>{expect(binding).toBe(h.state.binding);scopes++;return fn();};
  const result=await run(h.ctx,null,{agent:h.agent,userText:'question',goalAuthority:h.state.binding.authority});
- expect(tools).toBe(status==='active'?1:0);expect(scopes).toBe(tools);expect(result.goalContinuation).toBeUndefined();
+ expect(tools).toBe(status==='active'?1:0);expect(scopes).toBe(tools);expect(result).not.toHaveProperty('goalContinuation');
 });
 test('trusted callback exposes only final drained immutable receipt',async()=>{const h=harness([{text:'answer',usage:{prompt_tokens:4}}]);const proofs:any[]=[];await h.execute({onGoalFinalCheckpoint:(p:any)=>proofs.push(p)});expect(proofs).toHaveLength(1);expect(Object.isFrozen(proofs[0])).toBe(true);expect(proofs[0].sourceRunToken).toBe('token');expect(proofs[0].checkpointId).toBe('receipt-'+h.calls.filter(c=>c[0]==='flush').length);expect(proofs[0].drained).toBe(true);});
 test('failed turn with unknown usage never supplies final receipt',async()=>{const h=harness([new Error('provider failed')]);const proofs:any[]=[];await expect(h.execute({onGoalFinalCheckpoint:(p:any)=>proofs.push(p)})).rejects.toThrow();expect(proofs).toEqual([]);});
@@ -88,7 +88,7 @@ test('capture read failure stops root before a successful second read or dispatc
  h.ctx.fns.goal.runBindingCapture=async()=>({kind:'blocked',reason:'transient read failure'});
  h.ctx.fns.goal.read=async()=>{reads++;return {enabled:true,goal:{goalId:'g',status:'active'}}};
  h.ctx.fns.models.stream=async()=>{dispatches++;return {text:'bad'}};
- expect((await h.execute()).goalAdmissionBlocked).toBe(true);expect(reads).toBe(0);expect(dispatches).toBe(0);
+ expect(await h.execute()).toHaveProperty('goalAdmissionBlocked',true);expect(reads).toBe(0);expect(dispatches).toBe(0);
 });
 for(const status of ['paused','complete','budget_limited'])test(`confirmed ${status} allows ordinary chat without accounting`,async()=>{
  const h=harness([]);h.agent.currentJobId='token';let dispatches=0;
@@ -145,25 +145,25 @@ for (const rogueTools of [false,true]) test(`successful native completion permit
  h.ctx.fns.goal.runCheckpointFlush=async()=>({...await flush(),status:completed?'complete':'active',allowContinuation:!completed});
  const result=await h.execute();
  expect(executed).toEqual(['update_goal']);expect(h.calls.filter(c=>c[0]==='usage')).toHaveLength(2);
- expect(result.text).toBe('Completed the requested fix.');expect(result.goalContinuation).toBeUndefined();
+ expect(result).toHaveProperty('text','Completed the requested fix.');expect(result).not.toHaveProperty('goalContinuation');
  expect(h.messages.filter(m=>m.role==='assistant' && m.content)).toEqual([expect.objectContaining({content:'Completed the requested fix.'})]);
 });
 for(const status of ['paused','blocked','budget_limited']) test(`${status} stops without tools, continuation or duplicate boundary prose`,async()=>{
  const h=harness([{text:'should not be delivered',toolCalls:[{id:'work',name:'bash',args:{}}],usage:{}}],status);
  let tools=0;h.ctx.fns.tools.call=async()=>{tools++;};const result=await h.execute();
- expect(tools).toBe(0);expect(result.text).toBe('');expect(result.goalContinuation).toBeUndefined();expect(h.messages).toHaveLength(0);
+ expect(tools).toBe(0);expect(result).toHaveProperty('text','');expect(result).not.toHaveProperty('goalContinuation');expect(h.messages).toHaveLength(0);
 });
 test('accounting failure remains observable and fail closed',async()=>{
  const h=harness([{toolCalls:[{id:'work',name:'bash',args:{}}],usage:{}}]);let tools=0;const errors:string[]=[];
  h.ctx.fns.goal.runCheckpointFlush=async()=>({kind:'blocked',allowContinuation:false});
  h.ctx.fns.tools.call=async()=>{tools++;};h.ctx.fns.session.appendErrorEvent=async({error}:any)=>{errors.push(error);};
- const result=await h.execute();expect(tools).toBe(0);expect(errors).toHaveLength(1);expect(result.text).toContain('accounting');expect(result.goalContinuation).toBeUndefined();
+ const result=await h.execute();expect(tools).toBe(0);expect(errors).toHaveLength(1);expect(result).toHaveProperty('text',expect.stringContaining('accounting'));expect(result).not.toHaveProperty('goalContinuation');
 });
 for(const mode of ['budget','accounting','report-error']) test(`completion receipt does not bypass ${mode}`,async()=>{
  const h=harness([{toolCalls:[{id:'done',name:'update_goal',args:{}}],usage:{}},new Error('receipt failed')]);h.agent.currentJobId='token';let completed=false;
  h.ctx.fns.goal.read=async()=>({enabled:true,goal:{goalId:'g',status:completed?'complete':'active',revision:1,tokenBudget:mode==='budget'?10:null,tokensUsed:10}});
  h.ctx.fns.goal.toolScope=async(o:any)=>{const r=await o.fn();completed=true;await o.onMutation({goalId:'g',status:'complete',revision:8});return r;};
  const flush=h.ctx.fns.goal.runCheckpointFlush;h.ctx.fns.goal.runCheckpointFlush=async()=>completed&&mode==='accounting'?{kind:'blocked',allowContinuation:false}:{...await flush(),status:completed?'complete':'active',allowContinuation:!completed};
- if(mode==='report-error')await expect(h.execute()).rejects.toThrow('receipt failed');else {const result=await h.execute();expect(result.goalContinuation).toBeUndefined();}
+ if(mode==='report-error')await expect(h.execute()).rejects.toThrow('receipt failed');else {const result=await h.execute();expect(result).not.toHaveProperty('goalContinuation');}
  expect(h.calls.filter(c=>c[0]==='usage')).toHaveLength(mode==='report-error'?2:1);
 });

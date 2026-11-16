@@ -13,18 +13,18 @@ async function setup() {
 describe("instance settings files ($settings_<module>.json)", () => {
     test("a file value wins over db and env, and set() refuses it", async () => {
         const { ctx, dir } = await setup();
-        await ctx.fns.settings.set({ module: "llm", scopeType: "global", key: "lmstudioBaseUrl", value: "http://db" });
-        ctx.env.LMSTUDIO_URL = "http://env";
-        await writeFile(join(dir, "$settings_llm.json"), JSON.stringify({ lmstudioBaseUrl: "http://file" }));
+        await ctx.fns.settings.set({ module: "decision", scopeType: "global", key: "openaiEndpoint", value: "http://db" });
+        ctx.env.DECISION_OPENAI_ENDPOINT = "http://env";
+        await writeFile(join(dir, "$settings_decision.json"), JSON.stringify({ openaiEndpoint: "http://file" }));
         await ctx.fns.settings.files({ force: true });
-        expect(await ctx.fns.settings.get({ module: "llm", scopeType: "global", key: "lmstudioBaseUrl" })).toBe("http://file");
-        const item = (await ctx.fns.settings.declared({})).find((i: any) => i.module === "llm" && i.key === "lmstudioBaseUrl");
+        expect(await ctx.fns.settings.get({ module: "decision", scopeType: "global", key: "openaiEndpoint" })).toBe("http://file");
+        const item = (await ctx.fns.settings.declared({})).find((i: any) => i.module === "decision" && i.key === "openaiEndpoint");
         expect(item.source).toBe("file");
-        expect(item.path).toBe(join(dir, "$settings_llm.json"));
-        await expect(ctx.fns.settings.set({ module: "llm", scopeType: "global", key: "lmstudioBaseUrl", value: "x" })).rejects.toThrow(/fixed by/);
+        expect(item.path).toBe(join(dir, "$settings_decision.json"));
+        await expect(ctx.fns.settings.set({ module: "decision", scopeType: "global", key: "openaiEndpoint", value: "x" })).rejects.toThrow(/fixed by/);
         // personal and other scopes are not affected by instance files
-        await ctx.fns.settings.set({ module: "llm", scopeType: "user", scopeId: "u1", key: "defaultModel", value: "mine" });
-        expect(await ctx.fns.settings.get({ module: "llm", scopeType: "user", scopeId: "u1", key: "defaultModel" })).toBe("mine");
+        await ctx.fns.settings.set({ module: "decision", scopeType: "user", scopeId: "u1", key: "openaiEndpoint", value: "mine" });
+        expect(await ctx.fns.settings.get({ module: "decision", scopeType: "user", scopeId: "u1", key: "openaiEndpoint" })).toBe("mine");
     });
 
     test("undeclared keys warn, wrong types and secrets are rejected", async () => {

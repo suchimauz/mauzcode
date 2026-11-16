@@ -9,13 +9,13 @@ test("default overview separates management, preserving saved layouts and hidden
     const ctx: any = { state: { nav: { widgets: Object.fromEntries(["projects", "chats", "pages"].map(id => [id, { id, module: "nav", sizes: ["tall", "wide"] }])) } }, fns: { nav: { effectiveLayout: async () => ({ source, layout }) } } };
     const result = await tabs(ctx, null, {});
     expect(result.tabs.map(t => t.title)).toEqual(["Обзор", "Возможности", "Управление"]);
-    expect(result.tabs[0].widgets.at(-1)?.config).toEqual({ section: "daily" });
-    expect(result.tabs[2].widgets[0].config?.section).toBe("management");
+    expect(result.tabs[0]!.widgets.at(-1)?.config).toEqual({ section: "daily" });
+    expect(result.tabs[2]!.widgets[0]!.config?.section).toBe("management");
     for (source of ["user", "instance"]) {
         layout = { tabs: [{ id: "home", title: "Personal" }] };
         const saved = await tabs(ctx, null, {});
         expect(saved.tabs.map(t => t.id)).toEqual(["home"]);
-        expect(saved.tabs[0].widgets.at(-1)?.config).toBeUndefined();
+        expect(saved.tabs[0]!.widgets.at(-1)?.config).toBeUndefined();
     }
     layout = { tabs: [{ id: "management" }], hidden: ["management"] };
     expect((await tabs(ctx, null, {})).tabs.some(t => t.id === "management")).toBe(false);
@@ -39,11 +39,11 @@ test("project and chat data retain exact host project names and pin ownership", 
     const projectList = [{ id: "p", title: "Personal project", dir: "/work/repo", host: "remote", icon: "<svg/>" }, { id: "q", title: "/work/repo", dir: "/work/repo", host: "" }];
     const ctx: any = { fns: { projects: { list: async () => projectList }, agent: { teamActivity: async () => ({}) }, chat: { icon: ({ icon }: any) => icon ? "SAFE_ICON" : "MODEL" }, procs: { ui: { escape: ({ text }: any) => Bun.escapeHTML(text) } } } };
     const projectRows = (await projects.render(ctx)).items!;
-    expect(projectRows[1].label).toBe("repo");
-    expect(projectRows[1].detail).toBeUndefined();
-    expect(projectRows[0].label).toBe("Personal project");
+    expect(projectRows[1]!.label).toBe("repo");
+    expect(projectRows[1]!.detail).toBeUndefined();
+    expect(projectRows[0]!.label).toBe("Personal project");
     const items = await chatItems(ctx, null, { agents: [{ id: "abc", title: "Chat", model: "model", workspaceDir: "/work/repo", workspaceHost: "remote" }] });
-    expect(items[0].detail).toBe("Personal project");
-    expect(items[0].pin).toBe("agent:abc");
-    expect(items[0].label).toBe("Chat");
+    expect(items[0]!.detail).toBe("Personal project");
+    expect(items[0]!.pin).toBe("agent:abc");
+    expect(items[0]!.label).toBe("Chat");
 });

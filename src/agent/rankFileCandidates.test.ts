@@ -17,7 +17,7 @@ function harness(config: { enabled?: boolean; answers?: any; hang?: boolean; err
 describe('rankFileCandidates advisory privacy and fail-open contract', () => {
     test('one batch, stable ties, exact paths retained, directory prefixes never sent', async () => {
         const h = harness(); const out = await h.run();
-        expect(out.fallback).toBe(false); expect(out.candidates).toEqual([candidates[1], candidates[2], candidates[0]]);
+        expect(out.fallback).toBe(false); expect(out.candidates).toEqual([candidates[1]!, candidates[2]!, candidates[0]!]);
         expect(out.scores?.map(s => s.score)).toEqual([0.9, 0.9, 0.2]);
         expect(h.calls).toHaveLength(1); expect(h.calls[0].timeoutMs).toBe(2800); expect(h.calls[0].retries).toBe(0);
         expect(Object.keys(h.calls[0].questions)).toEqual(['c0', 'c1', 'c2']);
@@ -36,7 +36,7 @@ describe('rankFileCandidates advisory privacy and fail-open contract', () => {
     test('invalid/repeated paths, metadata lengths and unsupported inputs fail unchanged', async () => {
         for (const opts of [
             { task: 'x'.repeat(4001), candidates }, { task: '', candidates },
-            { task: 'x', candidates: [candidates[0], candidates[0]] },
+            { task: 'x', candidates: [candidates[0]!, candidates[0]!] },
             ...['https://host/a', '//host/a', '\\\\host\\a', 'a\n', 'x'.repeat(1025), ''].map(path => ({ task: 'x', candidates: [{ path }] })),
             { task: 'x', candidates: [{ path: 'a', description: 'x'.repeat(1001) }] },
             { task: 'x', candidates: Array.from({ length: 21 }, (_, i) => ({ path: String(i) })) },

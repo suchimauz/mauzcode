@@ -41,7 +41,7 @@ describe('reviewActionRisk advisory invariants', () => {
   test('invalid or low confidence cannot claim low risk', async () => {const {ctx}=setup(true,answer); const r=await review(ctx,null,base); expect(r.risk).toBe('unknown'); expect(r.effectiveRequirement).toBe('human-review');});
  }
  test('medium/high raise caution and usage is returned', async () => {
-  for(const risk of ['medium','high']) {const {ctx}=setup(true,{type:'choice',choice:risk,confidence:1,probabilities:{low:0,medium:risk==='medium'?1:0,high:risk==='high'?1:0,unknown:0}}); const r=await review(ctx,null,base); expect(r.risk).toBe(risk); expect(r.humanReviewRecommended).toBe(true); expect(r.usage?.inputTokens).toBe(10); expect(r.latencyMs).toBeGreaterThanOrEqual(0);}
+  for(const risk of ['medium','high'] as const) {const {ctx}=setup(true,{type:'choice',choice:risk,confidence:1,probabilities:{low:0,medium:risk==='medium'?1:0,high:risk==='high'?1:0,unknown:0}}); const r=await review(ctx,null,base); expect(r.risk).toBe(risk); expect(r.humanReviewRecommended).toBe(true); expect(r.usage?.inputTokens).toBe(10); expect(r.latencyMs).toBeGreaterThanOrEqual(0);}
  });
  test('reject bounded payload violations before provider', async () => {
   for(const patch of [{actionText:'x'.repeat(4001)},{actionText:''},{sideEffects:Array(17).fill('effect')},{sideEffects:['x'.repeat(241)]},{policyConstraints:['']},{policyConstraints:Array(17).fill('rule')},{policyDecision:'permit'}]) {

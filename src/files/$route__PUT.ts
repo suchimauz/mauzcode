@@ -8,12 +8,12 @@ export default async function (ctx: Context, _session: Session | null, opts: { /
     if(host&&!(await ctx.fns.remote.servers({})).some(s=>s.name===host)) return new Response('Unknown host',{status:400});
     if(await ctx.fns.files.isPrivateResult({path,host})) return new Response('File unavailable',{status:404});
     const body=await opts.req.json().catch(()=>null);
-    if(typeof body?.content!=='string'||body.content.length>1024*1024||typeof body.expectedContent!=='string') return new Response('Invalid text content',{status:400});
+    if(!body||typeof body!=='object'||Array.isArray(body)||!('content' in body)||typeof body.content!=='string'||body.content.length>1024*1024||!('expectedContent' in body)||typeof body.expectedContent!=='string') return new Response('Invalid text content',{status:400});
     try {
         const response=await ctx.fns.files.browserData({path,host});
         if(!response.ok) return response;
         const data=await response.json();
-        if(typeof data.content!=='string') return new Response('File is not editable text',{status:400});
+        if(!data||typeof data!=='object'||Array.isArray(data)||!('content' in data)||typeof data.content!=='string') return new Response('File is not editable text',{status:400});
         if(data.content!==body.expectedContent) return new Response('File changed on disk; reload before saving',{status:409});
         // The comparison above is a fast path; the authoritative one runs inside the commit lock.
         await ctx.fns.files.write({path,host,content:body.content,expectedContent:body.expectedContent});

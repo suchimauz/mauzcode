@@ -14,7 +14,7 @@ describe('selected credential import',()=>{
   const consume=mock(async()=>{});
   await readSelected({fns:{sshAccount:{requireOwner},sshInstance:{connection}}} as any,session,{...slot,consume});
   expect(requireOwner).toHaveBeenCalledTimes(1);expect(connection).toHaveBeenCalledWith({name:slot.instance});expect(consume).toHaveBeenCalledWith(tokens);
-  const command=(spawn.mock.calls[0][0] as string[]).at(-1)!;
+  const command=(spawn.mock.calls[0]![0] as string[]).at(-1)!;
   expect(command).toContain('sys.argv[1]');expect(command.endsWith(" 'another_slot'")).toBe(true);
  });
  test('rejects traversal and shell syntax before connection lookup',async()=>{
@@ -30,7 +30,7 @@ describe('selected credential import',()=>{
   const events:string[]=[];const migrate=mock(async()=>{events.push('save')});const read=mock(async(opts:any)=>{await opts.consume(tokens)});const requireOwner=mock(async()=>{});
   const ctx={fns:{sshAccount:{requireOwner},codexAccount:{binding:async()=>({name:'key'})},codexTunnel:{scopedService:async()=>({exclusive:(fn:any)=>fn(),runtime:{migrate}}),encryptedStore:()=>({read:async()=>null}),readSelected:read,identity:()=>{},openProduction:async()=>({port:1,signal:undefined,close:async()=>{}})},codexSocksIsolated:{request:async()=>{events.push('probe');return new Response('{}')}}}} as any;
   expect(await importSelected(ctx,session,{...slot,confirmedUnused:true})).toEqual({ok:true,...slot,mode:'socks'});
-  expect(read.mock.calls[0][0]).toMatchObject(slot);expect(requireOwner).toHaveBeenCalledTimes(1);expect(events).toEqual(['probe','save']);expect(migrate).toHaveBeenCalledWith({...slot,provider:'codex'},tokens);
+  expect(read.mock.calls[0]![0]).toMatchObject(slot);expect(requireOwner).toHaveBeenCalledTimes(1);expect(events).toEqual(['probe','save']);expect(migrate).toHaveBeenCalledWith({...slot,provider:'codex'},tokens);
  });
  test('import rejects missing owner, confirmation and invalid selection before services',async()=>{
   const ctx={fns:{sshAccount:{requireOwner:async()=>{}}}} as any;

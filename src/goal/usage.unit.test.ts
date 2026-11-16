@@ -58,7 +58,7 @@ describe('pure immutable usage accumulator',()=>{
    const missing=await normalize(ctx,null,{binding,format,usage:{}});
    const incomplete=await add(missing);expect(await add(missing,incomplete)).toBe(incomplete);
    const after=await add(await norm(raw,{requestId:'r2'}),incomplete);
-   expect(after.quality).toBe('partial');expect(after.inputTokens).toBe('100');expect(after.cachedInputTokens).toBe('80');expect(after.outputTokens).toBe('20');expect(after.requests.r1.inputTokens).toBeNull();
+   expect(after.quality).toBe('partial');expect(after.inputTokens).toBe('100');expect(after.cachedInputTokens).toBe('80');expect(after.outputTokens).toBe('20');expect(after.requests.r1!.inputTokens).toBeNull();
    await expect(add(await norm(),incomplete)).rejects.toThrow('Conflicting');
   }
  });

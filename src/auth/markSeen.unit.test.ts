@@ -39,6 +39,6 @@ test('read endpoint validates bounded bodies and preserves legacy empty-body res
     const call = (body: string, id = 'a') => readReceipt(ctx, null, { req: new Request('http://localhost/read', { method: 'POST', body }), params: { id } });
     expect(await (await call('{"throughTs":100}')).json()).toEqual({ version: 1, ok: true, agentId: 'a', seenAt: 100 });
     for (const body of ['{', '{}', 'null', '[]', '{"throughTs":"100"}', '{"throughTs":-1}', '{"throughTs":1e999}']) expect((await call(body)).status).toBe(400);
-    expect((await (await call('')).json()).seenAt).toBe(200);
+    expect((await (await call('')).json() as {seenAt: number}).seenAt).toBe(200);
     expect((await call('', 'missing')).status).toBe(404);
 });

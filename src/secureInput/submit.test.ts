@@ -17,7 +17,7 @@ test('owner metadata is allowlisted; other users see nothing; HTTP/CSRF/exact id
  const {ctx,session,events,request}=fixture();
  const waiting=prompt(ctx,session,{title:'Private title',maxlength:12});
  const id=ctx.state.secureInput.prompts.keys().next().value;
- const visible=await (await current(ctx,session,{req:new Request('http://localhost')})).json();
+ const visible=await (await current(ctx,session,{req:new Request('http://localhost')})).json() as {prompt: {id: string; resolve?: never; ownerId?: never}};
  expect(visible.prompt.id).toBe(id); expect(visible.prompt.resolve).toBeUndefined(); expect(visible.prompt.ownerId).toBeUndefined();
  expect(await (await current(ctx,session,{req:new Request('http://localhost',{headers:{'x-test-user':'other'}})})).json()).toEqual({prompt:null});
  expect((await submit(ctx,session,{})).status).toBe(403);

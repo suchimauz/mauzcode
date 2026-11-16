@@ -20,7 +20,7 @@ function fixture(fail='') {
  ctx.fns.session.updateScratchpad=call('scratchpad');ctx.fns.session.plan=call('plan');ctx.fns.session.appendMessage=async(o:any)=>{expect(o.message.message_type).toBe('delegation_task');return call('message')();};
  ctx.fns.session.appendEvent=async(o:any)=>{expect(o.deferPublication).toBe(true);return call('event')();};
  ctx.fns.procs.db.run=call('schedule');ctx.fns.agent.renderEventHtml=async()=>'';
- for(const [ns,key] of [['session','syncAgentState'],['events','emitAgentsChanged'],['events','refreshAgentMeta'],['agent','wakeWorker']])ctx.fns[ns][key]=async()=>{expect(active).toBe(false);calls.push(key);};
+ for(const [ns,key] of [['session','syncAgentState'],['events','emitAgentsChanged'],['events','refreshAgentMeta'],['agent','wakeWorker']] as const)ctx.fns[ns][key]=async()=>{expect(active).toBe(false);calls.push(key);};
  return {ctx,calls,rows};
 }
 const args:any={parent:{id:'root'},prompt:'task @someone',scratchpad:{}};

@@ -18,7 +18,7 @@ test('fixed endpoints return private JSON only and bounded failure messages',asy
 });
 test('navigation preserves native project identity/archive and uses native titles plus actual reply times',async()=>{
  const ctx={fns:{frontendBridge:{modelCatalogue:async()=>({groups:[],models:[]}),modelEffort:()=>({requested:'auto',applied:'auto',supported:[],defaultEffort:'auto',mode:'none',downgraded:false}),iconData:async()=>null},projects:{list:async()=>[{id:'p',title:'Project',dir:'/a',host:'remote'}],chats:async({archived}:any)=>[{id:archived?'old':'a',title:'a',model:'m',archived:!!archived,runState:'idle',hasUnread:true}]},session:{list:async()=>[{id:'a',title:'Real title'}]},procs:{db:{select:async({sql}:any)=>sql.startsWith('SELECT m.')?[{agent_id:'a',ts:'12345'}]:[]}}}} as any;
- const data=await navigation(ctx,session,{});expect(data.projects[0].host).toBe('remote');expect(data.projects[0].chats[0]).toMatchObject({title:'Real title',lastReplyAt:12345,hasUnread:true});expect(data.projects[0].chats[1]).toMatchObject({archived:true,lastReplyAt:null});
+ const data=await navigation(ctx,session,{});expect(data.projects[0]!.host).toBe('remote');expect(data.projects[0]!.chats[0]).toMatchObject({title:'Real title',lastReplyAt:12345,hasUnread:true});expect(data.projects[0]!.chats[1]).toMatchObject({archived:true,lastReplyAt:null});
  await expect(navigation(ctx,null,{})).rejects.toThrow('Unauthorized');
 });
 test('search uses native tabs/providers, strips actions/SVG and unsafe links',async()=>{
@@ -34,7 +34,7 @@ test('navigation projects personal native pins for project and unassigned chats'
   return [];
  }}}}};
  const data=await navigation(ctx,session,{});
- expect(data.projects[0].chats[0]).toMatchObject({pinned:true,pinnedAt:100});
- expect(data.projects[1].chats[0]).toMatchObject({id:'b',archived:true,pinned:true,pinnedAt:200});
- expect(data.projects[1].chats[1]).toMatchObject({id:'c',pinned:false,pinnedAt:null});
+ expect(data.projects[0]!.chats[0]).toMatchObject({pinned:true,pinnedAt:100});
+ expect(data.projects[1]!.chats[0]).toMatchObject({id:'b',archived:true,pinned:true,pinnedAt:200});
+ expect(data.projects[1]!.chats[1]).toMatchObject({id:'c',pinned:false,pinnedAt:null});
 });

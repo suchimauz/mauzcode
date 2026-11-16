@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import run from './run';
+import requireModel from './requireModel';
 
 function harness(turns: any[]) {
     const rows: any[] = [{ idx: 0, role: 'user', content: 'go' }];
     const errors: string[] = [];
-    const agent: any = { id: 'guard-test', model: 'mock:test', messages: rows.slice(), scratchpad: {}, events: [] };
+    const agent: any = { id: 'guard-test', model: 'mock/default:test', messages: rows.slice(), scratchpad: {}, events: [] };
     let sampled = 0;
     let calls = 0;
     let stops = 0;
@@ -22,7 +23,7 @@ function harness(turns: any[]) {
             updateMessageContent: async ({ idx, content }: any) => { rows[idx].content = content; },
         },
         procs: { events: { emit: noop }, db: { run:async()=>({changes:1}), select: async ({ sql }: any) => sql.includes('MAX(idx)') ? [{ i: 0 }] : [{ stopped_at: null }] } },
-        agent: { cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], retryWait:async()=>{}, retryClear:async()=>{}, recordRunLifecycle: async () => {}, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
+        agent: { requireModel: (o: Parameters<typeof requireModel>[2]) => requireModel(ctx, null, o), cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], retryWait:async()=>{}, retryClear:async()=>{}, recordRunLifecycle: async () => {}, statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
             stop: async () => { stops++; }, stashResult: async ({ output }: any) => ({ content: output }) },
         events: { emitAgentsChanged: noop, refreshAgentMeta: noop },
         markdown: { render: async ({ source }: any) => source },
@@ -46,7 +47,7 @@ describe('blocking question tool boundary', () => {
  h.ctx.fns.tools.call=async()=>{dispatched++;opened=true;return {output:'question card created',handlerExecuted:true};};
  const result=await execute(h);
  expect(dispatched).toBe(1); expect(h.sampled).toBe(1);
- expect(result.inputWaiting).toBe(true);
+ expect(result).toHaveProperty('inputWaiting', true);
  const results=h.rows.filter(r=>r.role==='tool'); expect(results.length).toBe(2);
  expect(results[1].content).toContain('Not executed');
  });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkTestCtx } from "../_testCtx.entry";
+import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
 
 // The sidecar is a hidden full-transcript fork driven by agent.run; its
 // answer is a single eval tool call to agent.setObservedGoals. Tests drive the
@@ -8,11 +8,6 @@ import { mkTestCtx } from "../_testCtx.entry";
 // repl.eval to a constant, so the stub here performs the one call the sidecar
 // is supposed to make, with the sidecar's own session (as the real eval would).
 function mockSidecarModel(ctx: any, turns: any[]) {
-    // Block 5 owns the agent.run mock migration; context budgets already use models.
-    ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
-        expect(opts).toEqual({ route: 'mock:test' });
-        return { connectionId: 'test', model: 'test', route: opts.route, nativeCompaction: false, contextWindow: 200000 };
-    };
     ctx.state.registry.repl.eval = async (c: any, _s: any, o: { code: string; agent?: any }) => {
         const m = /setObservedGoals\(\{ goals: (\[.*\]) \}\)/s.exec(o.code);
         if (!m) return "ok";
@@ -40,7 +35,7 @@ function mockSidecarModel(ctx: any, turns: any[]) {
 describe("agent.updateGoalSidecar", () => {
     test('sidecar inherits the creation snapshot even after its definition changes', async () => {
         const ctx = await mkTestCtx();
-        const parent = await ctx.fns.agent.start({ model: 'mock:test', preset: await ctx.fns.agentPreset.resolve({ id: 'minimal' }) });
+        const parent = await ctx.fns.agent.start({ model: 'mock/default:test', preset: await ctx.fns.agentPreset.resolve({ id: 'minimal' }) });
         await ctx.fns.agentPreset.update({ id: 'minimal', patch: { allow: ['*'] } });
         let observed;
         ctx.state.registry.agent.run = async (_c: Context, _s: Session | null, opts: { agent: types.agent.Agent }) => { observed = opts.agent.preset; };
@@ -50,7 +45,7 @@ describe("agent.updateGoalSidecar", () => {
     });
     test("forks a hidden observer that reports goals through agent.setObservedGoals", async () => {
         const ctx: any = await mkTestCtx();
-        const parent = await ctx.fns.agent.start({ model: "mock:test", title: "Main" });
+        const parent = await ctx.fns.agent.start({ model: "mock/default:test", title: "Main" });
         const appended = await ctx.fns.session.appendUserMessage({ id: parent.id, text: "Хочу сделать goal-aware agent" });
         await ctx.fns.session.syncAgentState({ agent: parent });
         const goals = [{ id: "goal-aware", statement: "Сделать агента goal-aware", verification: "После нового сообщения агент сохраняет цель и показывает проверяемый критерий в Observed goals", status: "active", sourceMessageIdx: appended.idx }];
@@ -78,7 +73,7 @@ describe("agent.updateGoalSidecar", () => {
 
     test("marks an error and keeps the previous preview when the sidecar answers in prose", async () => {
         const ctx: any = await mkTestCtx();
-        const parent = await ctx.fns.agent.start({ model: "mock:test", title: "Main" });
+        const parent = await ctx.fns.agent.start({ model: "mock/default:test", title: "Main" });
         const first = await ctx.fns.session.appendUserMessage({ id: parent.id, text: "первое" });
         await ctx.fns.session.syncAgentState({ agent: parent });
         parent.scratchpad.goalSidecar = { goals: [{ id: "old", statement: "Старая цель", verification: "x", status: "active", sourceMessageIdx: first.idx }], status: "ready", sourceMessageIdx: first.idx, sidecarId: "zz" };
@@ -99,7 +94,7 @@ describe("agent.updateGoalSidecar", () => {
 
     test("setObservedGoals refuses a stale writer for an older message", async () => {
         const ctx: any = await mkTestCtx();
-        const parent = await ctx.fns.agent.start({ model: "mock:test", title: "Main" });
+        const parent = await ctx.fns.agent.start({ model: "mock/default:test", title: "Main" });
         parent.scratchpad.goalSidecar = { goals: [{ id: "new", statement: "Новая", verification: "x", status: "active", sourceMessageIdx: 5 }], status: "ready", sourceMessageIdx: 5 };
         await ctx.fns.session.save({ agent: parent });
         const stale = await ctx.fns.session.fork({ id: parent.id, visibility: "hidden" });
@@ -114,7 +109,7 @@ describe("agent.updateGoalSidecar", () => {
 
     test("setObservedGoals refuses callers that are not a goal sidecar of the parent", async () => {
         const ctx: any = await mkTestCtx();
-        const parent = await ctx.fns.agent.start({ model: "mock:test", title: "Main" });
+        const parent = await ctx.fns.agent.start({ model: "mock/default:test", title: "Main" });
         const other = await ctx.fns.session.fork({ id: parent.id, visibility: "hidden" });
         const sctx: any = Object.create(ctx); sctx.session = ctx.fns.session.forAgent({ agent: other });
         await expect(sctx.fns.agent.setObservedGoals({ goals: [{ statement: "X" }] })).rejects.toThrow(/own parent/);
@@ -124,14 +119,14 @@ describe("agent.updateGoalSidecar", () => {
 
     test("a ready result written by this sidecar survives a failing follow-up turn", async () => {
         const ctx: any = await mkTestCtx();
-        const parent = await ctx.fns.agent.start({ model: "mock:test", title: "Main" });
+        const parent = await ctx.fns.agent.start({ model: "mock/default:test", title: "Main" });
         const appended = await ctx.fns.session.appendUserMessage({ id: parent.id, text: "цель" });
         await ctx.fns.session.syncAgentState({ agent: parent });
         const goals = [{ id: "g", statement: "Цель", verification: "v", status: "active", sourceMessageIdx: appended.idx }];
         mockSidecarModel(ctx, [{ toolCalls: [{ name: "eval", args: { code: `await ctx.fns.agent.setObservedGoals({ goals: ${JSON.stringify(goals)} })` } }] }]);
         // The second provider turn (after the tool result) blows up.
-        const stream = ctx.state.registry.llm.stream; let calls = 0;
-        ctx.state.registry.llm.stream = async (c: any, s: any, o: any) => { if (++calls === 2) throw new Error("provider down"); return stream(c, s, o); };
+        const stream = ctx.state.registry.models.stream; let calls = 0;
+        ctx.state.registry.models.stream = async (c: any, s: any, o: any) => { if (++calls === 2) throw new Error("provider down"); return stream(c, s, o); };
         const result = await ctx.fns.agent.updateGoalSidecar({ agent: parent, messageIdx: appended.idx, userMessage: "цель" });
         expect(result.goals).toEqual(goals);
         expect(parent.scratchpad.goalSidecar.status).toBe("ready");

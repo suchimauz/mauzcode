@@ -56,6 +56,7 @@ describe('malformed argument guard without external services', () => {
         expect(h.sampled).toBe(3);
         expect(h.calls).toBe(0);
         expect(h.stops).toBe(0);
+        if (!('text' in result)) throw new Error('Expected a completed turn');
         expect(result.text).toContain('check the model gateway');
         expect(h.rows.at(-1).content).toBe(result.text);
     });
@@ -63,7 +64,7 @@ describe('malformed argument guard without external services', () => {
         const valid = { text: '', usage: null, finishReason: 'tool_calls', toolCalls: [{ id: 'ok', name: 'read', args: { path: 'a.ts' } }] };
         const h = harness([bad(), bad(), valid, bad(), bad(), done]);
         const result = await execute(h);
-        expect(result.text).toBe('done');
+        expect(result).toHaveProperty('text', 'done');
         expect(h.sampled).toBe(6);
         expect(h.calls).toBe(1);
     });

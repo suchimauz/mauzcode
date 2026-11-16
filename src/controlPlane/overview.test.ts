@@ -17,12 +17,12 @@ test('overview requires authentication before config or discovery', async () => 
 test('directory preserves authenticated member read access without revealing credentials or arbitrary metadata', async () => {
   const f = fixture(); const response = await overview(f.ctx, session, { req });
   expect(response.headers.get('cache-control')).toBe('no-store');
-  const body = await response.json();
-  expect(body.instances[0].url).toBeNull();
-  expect(body.instances[1].url).toBe('https://example.com/app');
-  expect(body.instances[0].users).toBe(2);
+  const body = await response.json() as {instances: Array<{url: string | null; users: number; metadata?: never}>};
+  expect(body.instances[0]!.url).toBeNull();
+  expect(body.instances[1]!.url).toBe('https://example.com/app');
+  expect(body.instances[0]!.users).toBe(2);
   expect(JSON.stringify(body)).not.toContain('PRIVATE');
-  expect(body.instances[0].metadata).toBeUndefined();
+  expect(body.instances[0]!.metadata).toBeUndefined();
 });
 test('disconnected directory never calls discovery', async () => {
   const f = fixture(false);

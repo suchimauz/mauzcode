@@ -18,10 +18,10 @@ test('legacy browser routes redirect with their filters',async()=>{
 });
 test('functions JSON preserves complete docs, ranking and namespaces',async()=>{
   const response=await functions(ctx,session,req('/functions?q=read&namespace=sample'));
-  const data=await response.json();expect(data.docs[0]).toEqual({...meta,ranking:{name:meta.name,bm25:3}});expect(data.namespaces).toEqual(['sample']);expect(response.headers.get('vary')).toBe('Accept');
-  expect((await (await functions(ctx,session,req('/functions?namespace=other'))).json()).docs).toEqual([]);
+  const data=await response.json() as {docs: Array<typeof meta & {ranking: {name: string; bm25: number}}>; namespaces: string[]};expect(data.docs[0]).toEqual({...meta,ranking:{name:meta.name,bm25:3}});expect(data.namespaces).toEqual(['sample']);expect(response.headers.get('vary')).toBe('Accept');
+  expect((await (await functions(ctx,session,req('/functions?namespace=other'))).json() as {docs: unknown[]}).docs).toEqual([]);
 });
 test('transcript JSON keeps BM25 snippets and optional agent filter',async()=>{
-  const data=await (await search(ctx,session,req('/search?q=hello&agent=a'))).json();expect(data.hits[0].snippet).toBe('<b>hello</b>');expect(calls).toContainEqual({q:'hello',agentId:'a',limit:30});
-  expect((await (await search(ctx,session,req('/search'))).json()).hits).toEqual([]);
+  const data=await (await search(ctx,session,req('/search?q=hello&agent=a'))).json() as {hits: Array<{snippet: string}>};expect(data.hits[0]!.snippet).toBe('<b>hello</b>');expect(calls).toContainEqual({q:'hello',agentId:'a',limit:30});
+  expect((await (await search(ctx,session,req('/search'))).json() as {hits: unknown[]}).hits).toEqual([]);
 });

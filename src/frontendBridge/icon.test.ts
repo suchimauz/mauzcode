@@ -2,8 +2,8 @@ import { test, expect } from 'bun:test';
 import iconData from './iconData';
 import modelLogo from '../ui/modelLogo';
 import modelMark from './modelMark';
-const ctx: any = { fns: { procs: { ui: { escape: ({text}: {text:string}) => text } }, ui: { modelLogo: (opts: any) => modelLogo(ctx, null, opts) },
- frontendBridge: { modelMark: (opts: any) => modelMark(ctx, null, opts), declaredIcon: async ({icon}: any) => ({src:'data:image/svg+xml,'+icon,custom:false}) } } };
+const ctx: any = { fns: { models: { providers: () => [] }, procs: { ui: { escape: ({text}: {text:string}) => text } }, ui: { modelLogo: (opts: any) => modelLogo(ctx, null, opts) },
+ frontendBridge: { modelMark: (opts: any) => modelMark(ctx, null, opts), declaredIcon: async ({icon}: any) => icon ? ({src:'data:image/svg+xml,'+icon,custom:false}) : null } } };
 test('custom SVG wins over provider and stays an inert image URL', async () => {
  const svg='<svg viewBox="0 0 24 24"><path fill="red" d="M1 1"/></svg>';
  const result=await iconData(ctx as any,null,{icon:svg,model:'openai:gpt-4'});

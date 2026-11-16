@@ -9,7 +9,7 @@ test('context route keeps budget compatible and exposes only aggregate details',
     } } };
     const opts = { req: new Request('http://localhost/api/v1/agents/test/context'), params: { id: 'test' } };
     const response = await route(ctx, null, opts);
-    const body = await response.json();
+    const body = await response.json() as {budget: {estimatedTokens: number}; details: {breakdown: {messages: number}}};
     expect(calls).toBe(1);
     expect(body.budget).toEqual({ estimatedTokens: 20 });
     expect(body.details.breakdown.messages).toBe(5);

@@ -6,6 +6,7 @@ import portable from '../compaction/portable';
 import estimate from '../compaction/estimateTokens';
 import normalize from './normalizeSleepContext';
 import generation from './getSleepGeneration';
+import requireModel from './requireModel';
 
 function fixture() {
  const messages:any[]=[{role:'user',content:'old '.repeat(300000)},{role:'user',content:'tail'}];
@@ -18,7 +19,7 @@ function fixture() {
   planning:{prompt:async()=> 'Current mode: execute'},
   procs:{db:{select:async({sql}:any)=>sql.includes('FROM agents')?[{model:'test:model',sleep_context:sleep}]:[{payload:JSON.stringify({usage:{prompt_tokens:200000}}),ts:10}]},log:{warn:()=>{throw Error('preview must not log repair');}}},
   session:{getMessages:async({id}:any)=>id==='root'?messages:checkpoint,repairToolPairs:({messages}:any)=>({messages:structuredClone(messages),repaired:[]}),load:()=>{throw Error('unexpected load');}},
-  agent:{contextTokens:async({fallbackTokens}:any)=>({tokens:fallbackTokens,source:'estimate',reportedTokens:null,deltaTokens:null,reportedAt:null}),normalizeSleepContext:(o:any)=>normalize(ctx,null,o),getSleepGeneration:(o:any)=>generation(ctx,null,o),fullSystemPrompt:async()=> 'bootstrap '.repeat(100),selectJevContext:async({messages,cachedOnly}:any)=>{expect(cachedOnly).toBe(true);return messages;},buildLlmRequest:(o:any)=>{expect(o.preview).toBe(true);expect(o.agent.model).toBe('test:model');return build(ctx,null,o);},wireTools:()=>tools},
+  agent:{requireModel:(o:Parameters<typeof requireModel>[2])=>requireModel(ctx,null,o),contextTokens:async({fallbackTokens}:any)=>({tokens:fallbackTokens,source:'estimate',reportedTokens:null,deltaTokens:null,reportedAt:null}),normalizeSleepContext:(o:any)=>normalize(ctx,null,o),getSleepGeneration:(o:any)=>generation(ctx,null,o),fullSystemPrompt:async()=> 'bootstrap '.repeat(100),selectJevContext:async({messages,cachedOnly}:any)=>{expect(cachedOnly).toBe(true);return messages;},buildLlmRequest:(o:any)=>{expect(o.preview).toBe(true);expect(o.agent.model).toBe('test:model');return build(ctx,null,o);},wireTools:()=>tools},
   auth:{attributeMessages:async({messages}:any)=>({messages,applied:false})},
   attachments:{resolveContent:async({messages}:any)=>structuredClone(messages)},
   models:{resolveRoute:async()=>({provider:'test',api:'test'}),call:()=>{throw Error('no generation');},stream:()=>{throw Error('no generation');}},

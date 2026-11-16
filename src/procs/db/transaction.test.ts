@@ -104,7 +104,9 @@ test("transaction: concurrent commit/rollback and outside query use separate con
         expect(new Set([...pids, outside]).size).toBe(3);
         expect(await parallel.fns.procs.db.conn({})).toBe(pool);
         release.resolve();
-        expect(pids).toContain(await a);
+        const committedPid = await a;
+        if (typeof committedPid !== 'number') throw new Error('Expected transaction backend PID');
+        expect(pids).toContain(committedPid);
         expect(await b).toBe("concurrent rollback");
     } finally {
         release.resolve();

@@ -12,5 +12,5 @@ function fixture(waiting=true,stoppedAt:number|null=null){
  return {send,writes,rows};
 }
 test('queue GET exposes authoritative durable input wait',async()=>{expect(await (await fixture().send('GET')).json()).toEqual({waitingForInput:true,items:[]});});
-test('queue POST during input wait retains bytes idempotently without scheduling',async()=>{const f=fixture();const first=await (await f.send()).json();expect(first).toMatchObject({ok:true,version:1});expect(await (await f.send()).json()).toMatchObject({queueId:first.queueId,duplicate:true});expect(f.rows).toHaveLength(1);expect(f.writes.filter(s=>s.startsWith('UPDATE agents'))).toHaveLength(0);});
+test('queue POST during input wait retains bytes idempotently without scheduling',async()=>{const f=fixture();const first=await (await f.send()).json() as {queueId: string; ok: boolean; version: number};expect(first).toMatchObject({ok:true,version:1});expect(await (await f.send()).json()).toMatchObject({queueId:first.queueId,duplicate:true});expect(f.rows).toHaveLength(1);expect(f.writes.filter(s=>s.startsWith('UPDATE agents'))).toHaveLength(0);});
 test('queue POST preserves Stop even without an input gate',async()=>{const f=fixture(false,123);expect((await f.send()).status).toBe(200);expect(f.writes.filter(s=>s.startsWith('UPDATE agents'))).toHaveLength(0);});

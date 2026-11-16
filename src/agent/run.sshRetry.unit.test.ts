@@ -127,12 +127,12 @@ describe('bounded models inference retry at the agent sampling boundary', () => 
         await h.execute();
         expect(h.calls).toBe(1);
         expect(h.sampled).toBe(3);
-        expect(h.snapshots[2].filter(r => r.role === 'tool')).toMatchObject([{ tool_call_id: 'saved-tool', content: 'saved result' }]);
+        expect(h.snapshots[2]!.filter(r => r.role === 'tool')).toMatchObject([{ tool_call_id: 'saved-tool', content: 'saved result' }]);
         expect(h.rows.filter(r => r.role === 'tool')).toHaveLength(1);
     });
     test('successful tool cycles reset the durable retry attempt', async () => {
         const h = harness([interrupted(), tool, interrupted(), done]);
-        expect((await h.execute()).text).toBe('done');
+        expect(await h.execute()).toHaveProperty('text', 'done');
         expect(h.calls).toBe(1);
         expect(h.sampled).toBe(4);
         expect(h.delays).toEqual([1000, 1000]);
@@ -179,7 +179,7 @@ describe('bounded models inference retry at the agent sampling boundary', () => 
         })),
     ]) test(`common policy retries ${error.message}`, async () => {
         const h = harness([error, done]);
-        expect((await h.execute()).text).toBe('done');
+        expect(await h.execute()).toHaveProperty('text', 'done');
         expect(h.sampled).toBe(2);
         expect(h.delays).toEqual([1000]);
         expect(h.errors).toEqual([]);

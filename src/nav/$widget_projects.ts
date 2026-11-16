@@ -11,12 +11,11 @@ export default {
             label: project.title && !project.title.startsWith("/") ? project.title : project.dir.split("/").filter(Boolean).at(-1) || "/",
             href: `/projects/view?projectId=${encodeURIComponent(project.id)}`,
             icon: "ph-folder-open",
-            ...(project.icon ? { avatar: project.icon } : {}),
             detail: project.host || undefined,
             unread: !!project.unreadCount,
             unreadCount: project.unreadCount,
             hint: project.runningCount ? `${project.runningCount} в работе` : undefined,
         }));
-        return { items, sections: [{ items: [{ id: "projects:archive", label: "Архив проектов", href: "/projects/archive", icon: "ph-archive" }] }] };
+        return { items, sections: [{ title: "", items: [{ id: "projects:archive", label: "Архив проектов", href: "/projects/archive", icon: "ph-archive" }] }] };
     },
 } satisfies types.nav.Widget;

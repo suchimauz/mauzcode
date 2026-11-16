@@ -27,7 +27,7 @@ function fixture() {
 }
 
 
-const independent = ['jevContextEnabled', 'jevAgentRoutingEnabled', 'jevModelRoutingEnabled', 'jevEvidenceEnabled', 'jevFileRankingEnabled', 'jevResultReviewEnabled', 'jevRiskReviewEnabled'];
+const independent = ['jevContextEnabled', 'jevAgentRoutingEnabled', 'jevModelRoutingEnabled', 'jevEvidenceEnabled', 'jevFileRankingEnabled', 'jevResultReviewEnabled', 'jevRiskReviewEnabled'] as const;
 
 test('compaction opt-in defaults false on legacy load and new save', async () => {
     const { ctx, live, row } = fixture();

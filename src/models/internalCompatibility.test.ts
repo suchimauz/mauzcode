@@ -38,7 +38,7 @@ test("original public model signatures, async declarations, types and HTTP route
         // usageRefreshMs is an intentional optional SDK addition (provider-paced usage cache).
         if (name === "ProviderDefinition.ts") actual = actual.replace("usageRefreshMs?:number;", "");
         // extend-models-sdk-for-anthropic-routes: optional native reasoning block capture.
-        if (name === "StreamResult.ts") actual = actual.replace("reasoningBlocks?:{type:\\\"thinking\\\"|\\\"redacted_thinking\\\";thinking?:string;signature?:string;data?:string;}[];", "");
+        if (name === "StreamResult.ts") actual = actual.replace('reasoningBlocks?:{type:"thinking"|"redacted_thinking";thinking?:string;signature?:string;data?:string}[];', "");
         // add-zai-coding-provider: the route request also carries the SDK-resolved reasoning.
         if (name === "ProviderDefinition.ts") actual = actual.replace("route?:(ctx:Context,conn:types.models.ResolvedConnection,req:{model:string;info:types.models.ModelInfo|null;sessionId:string;reasoning?:types.models.ReasoningResolution})=>Promise<types.models.ProtocolRoute>;", "");
         // extend-models-sdk-for-anthropic-routes: optional provider failure classifier and exact token counting.
@@ -50,6 +50,8 @@ test("original public model signatures, async declarations, types and HTTP route
             "ProviderDefinition.ts": "inference?:{systemPreamble?:string;priceVendor?:string;catalog?:{modelsDev?:string[];piAi?:string[];};};",
             "CallRequest.ts": "tools?:types.models.ToolSpec[];",
             "FailureInfo.ts": "resetAt?:number;",
+            // add-custom-session-affinity-header: cached installation salt and one-time warning.
+            "State.ts": "sessionAffinitySalt?:Promise<string|null>;sessionAffinityWarned?:boolean;",
             // fix-usage-window-classification: optional window identity/classification metadata.
             "UsageReport.ts": 'id?:string;period?:"fiveHour"|"weekly"|"monthly";scope?:"account"|"model"|"unknown";durationSeconds?:number;model?:string;observedAt?:number;',
         };
@@ -107,7 +109,13 @@ test("fresh discovery preserves callable providers, nested dynamic facades, miss
             // Claude intentionally paces its usage endpoint (usageRefreshMs); other baseline providers keep the default.
             expect(current.usageRefreshMs).toBe(original.id === "claude" ? 180000 : undefined);
             const pacePatch = { usageRefreshMs: undefined };
-            expect(registrationShape({ ...current, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch, ...pacePatch }), file).toEqual(registrationShape({ ...original, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch }));
+            // add-custom-session-affinity-header adds exactly one opt-out field.
+            const affinityFields = current.fields.filter(field => field.key === 'sessionAffinity');
+            if (original.id === 'custom') {
+                expect(affinityFields).toEqual([{ key: 'sessionAffinity', label: 'Send x-session-affinity header', type: 'boolean', default: true, help: 'Sends an x-session-affinity header with a stable, opaque per-conversation identifier on inference requests so the endpoint can keep a conversation on one backend and its prompt cache warm. It reveals no agent id but lets the endpoint group requests of one conversation. Turn off to stop sending it.' }]);
+            } else expect(affinityFields).toEqual([]);
+            const fieldsPatch = original.id === 'custom' ? { fields: current.fields.filter(field => field.key !== 'sessionAffinity') } : {};
+            expect(registrationShape({ ...current, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch, ...pacePatch, ...fieldsPatch }), file).toEqual(registrationShape({ ...original, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch, ...pacePatch }));
         }
         // Inspect real public facades and declaration bodies as they migrate. Every
         // nested implementation dispatch must exist in the freshly booted registry.

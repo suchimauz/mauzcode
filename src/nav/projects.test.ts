@@ -16,7 +16,7 @@ test("projects menu uses active native project rows and always exposes archive",
     } }, procs: { ui: { escape: ({ text }: { text: string }) => Bun.escapeHTML(text) } } } };
     const output = await projects.render(ctx);
     expect(calls).toBe(1);
-    expect(output.html).toBeUndefined();
+    expect(output).not.toHaveProperty('html');
     expect(output.items?.map(i => i.id)).toEqual(["project:virtual:/a?b", "project:empty"]);
     expect(output.items?.[0]).toMatchObject({ href: "/projects/view?projectId=virtual%3A%2Fa%3Fb", icon: "ph-folder-open", unread: true, hint: "2 в работе", detail: "server" });
     expect(output.sections?.[0]?.items?.[0]).toMatchObject({ href: "/projects/archive", label: "Архив проектов" });
@@ -52,7 +52,7 @@ test("new agent opens native creation without preselecting a project", async () 
         ui: { popup: (opts: object) => { popupArgs = opts; return "popup trigger"; } },
     } };
     const output = await chats.render(ctx, null, { size: "tall", config: {} });
-    expect(output.html).toBeUndefined();
+    expect(output).not.toHaveProperty('html');
     expect(popupArgs).toBeUndefined();
     expect(output.items).toEqual([{ id: "new-chat", label: "Новый чат", href: "/?newSession=1", icon: "ph-plus-circle" }]);
 });

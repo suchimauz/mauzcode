@@ -32,11 +32,11 @@ beforeAll(async () => {
     if (req.method === 'GET' && path === '/auth/users') return json({ meId: 'fixture-owner', csrfToken: 'fixture-csrf', google: null, users: [{ id: 'fixture-owner', name: 'Fixture Owner', email: 'owner@example.invalid', role: 'owner', disabledAt: null, hasPassword: false, providers: [] }] });
     if (req.method === 'GET' && path === '/canvas/fixture/state') return json({ csrfToken: 'fixture-csrf', items: [1, 2].map(id => ({ id, title: `Fixture ${id}`, icon: 'file-text', active: id === activeItemId, kind: 'file', args: { path: `/fixture/${id}.txt` } })) });
     if (req.method === 'POST' && path === '/canvas/fixture') {
-      const body = await req.json();
+      const body = await req.json() as {activeItemId: number};
       if ([1, 2].includes(body.activeItemId) && Object.keys(body).length === 1) { activeItemId = body.activeItemId; return json({ activeItemId }); }
     }
     if (req.method === 'POST' && /^\/canvas\/fixture\/item\/[12]$/.test(path)) {
-      const body = await req.json();
+      const body = await req.json() as {fileAction: string; content: string};
       if (body.fileAction === 'read') return json({ path, content: path.endsWith('/1') ? content : 'second file' });
       if (body.fileAction === 'save' && path.endsWith('/1')) {
         saves.push({ body, csrf: req.headers.get('x-csrf-token') }); content = body.content;

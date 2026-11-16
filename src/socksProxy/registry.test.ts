@@ -10,6 +10,15 @@ test('registry stable UUID, duplicate labels, safe listing and optimistic revisi
  await c.fns.socksProxy.remove({id:a.id,revision:2});await c.fns.socksProxy.remove({id:a.id,revision:2});
  expect(await c.fns.socksProxy.list({})).toEqual([{...b,users:[]}]);
 });
+test('current model connections are listed and prevent proxy deletion even when disabled',async()=>{
+ const c=await setup();const proxy=await c.fns.socksProxy.create(base);const id=crypto.randomUUID();
+ await c.fns.procs.db.run({sql:"INSERT INTO llm_connections(id,provider,account_name,config,secrets,transport,enabled,created_at,updated_at) VALUES (?,?,?,'{}','{}',?::jsonb,false,?,?)",params:[id,'custom','bound-account',JSON.stringify({kind:'socks',proxyId:proxy.id}),Date.now(),Date.now()]});
+ expect((await c.fns.socksProxy.list({})).find((p: {id: string; users: Array<{provider: string; account: string}>})=>p.id===proxy.id)?.users).toEqual([{provider:'custom',account:'bound-account'}]);
+ await expect(c.fns.socksProxy.remove({id:proxy.id,revision:proxy.revision})).rejects.toMatchObject({code:'PROXY_IN_USE',status:409});
+ await c.fns.procs.db.run({sql:'UPDATE llm_connections SET transport=?::jsonb WHERE id=?',params:[JSON.stringify({kind:'direct'}),id]});
+ expect((await c.fns.socksProxy.list({})).find((p: {id: string; users: Array<{provider: string; account: string}>})=>p.id===proxy.id)?.users).toEqual([]);
+ await expect(c.fns.socksProxy.remove({id:proxy.id,revision:proxy.revision})).resolves.toEqual({ok:true});
+});
 test('encrypted pair preserve replace disable and deletion; list never leaks',async()=>{
  const c=await setup();let a=await c.fns.socksProxy.create({...base,auth:true,username:'user',password:' secret '});
  const [raw]=await c.fns.procs.db.select({sql:'SELECT value_enc FROM local_secrets WHERE namespace=? AND name=?',params:['socksProxy',a.id]});expect(raw.value_enc).not.toContain(' secret ');

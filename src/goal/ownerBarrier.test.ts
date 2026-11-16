@@ -4,7 +4,7 @@ import apply from './externalApply';
 
 function fixture(){
  const state:any={binding:{sourceAgentId:'a',rootAgentId:'a',runToken:'t',goalId:'g',objective:'old'},revision:2,sealed:false,pendingRequests:new Set(),tail:Promise.resolve()};
- const goal:any={goalId:'g',revision:2,objective:'old',status:'active',usage:{input:'7'}};
+ const goal:any={goalId:'g',revision:2,objective:'old',status:'active',tokensUsed:7};
  const ctx:any={state:{},fns:{goal:{},procs:{db:{}}}};
  ctx.fns.goal.ownerBarrier=(o:any)=>barrier(ctx,null,o);
  ctx.fns.goal.enabled=async()=>true;
@@ -59,7 +59,7 @@ test('mutation holds barrier across asynchronous accounting and seals only after
  const pending=apply(ctx,null,opts);await arrived;
  expect(state.sealed).toBe(false);
  expect(await ctx.fns.goal.ownerBarrier({agentId:'a',runToken:'t',action:'acquire'})).toBeNull();
- release();const result=await pending;expect(state.sealed).toBe(true);expect(state.binding.objective).toBe('old');expect(result.goal?.objective).toBe('new');expect(result.goal?.usage).toEqual({input:'7'});
+ release();const result=await pending;expect(state.sealed).toBe(true);expect(state.binding.objective).toBe('old');expect(result.goal?.objective).toBe('new');expect(result.goal?.tokensUsed).toBe(7);
  expect(await ctx.fns.goal.ownerBarrier({agentId:'a',runToken:'t',action:'acquire'})).not.toBeNull();
 });
 test('failed CAS releases reservation without sealing old binding',async()=>{

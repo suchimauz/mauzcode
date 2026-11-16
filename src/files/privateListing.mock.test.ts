@@ -11,10 +11,10 @@ for (const host of [undefined,'remote-test']) {
    stat:async()=>({isDir:true}),list:async()=>[{name:'visible',isDir:false},{name:'hidden-alias',isDir:true}],
   }}};
   const response=await browserData(ctx,null,{path:'/workspace',host});
-  expect((await response.json()).entries).toEqual([{name:'visible',isDir:false}]);
+  expect((await response.json() as {entries: Array<{name: string; isDir: boolean}>}).entries).toEqual([{name:'visible',isDir:false}]);
   expect(calls).toContain('/workspace/hidden-alias');
   const canvas=await canvasRoute(ctx,null,{req:new Request('http://localhost/canvas/a/item/1',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':'test'},body:JSON.stringify({fileAction:'read'})}),params:{id:'a',itemId:'1'}});
   expect(canvas.status).toBe(200);
-  expect((await canvas.json()).entries).toEqual([{name:'visible',isDir:false}]);
+  expect((await canvas.json() as {entries: Array<{name: string; isDir: boolean}>}).entries).toEqual([{name:'visible',isDir:false}]);
  });
 }

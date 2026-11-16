@@ -156,7 +156,7 @@ test('lifecycle projection allowlists display fields without leaking arbitrary p
     expect(body.events[3].lifecycle).toEqual({watchId:'w',watchStatus:'ready',resultId:'stored',dataPreview:'{"ok":true}'});
     expect(body.events.some((event:any) => event.type === 'input')).toBe(false);
     expect(body.events[4].html).toBe('<p>saved respondHtml</p>');
-    expect(events[5].html).toBe('<p>saved respondHtml</p>');
+    expect(events[5]!.html).toBe('<p>saved respondHtml</p>');
     expect(body.events[4].htmlSource).toBeNull();
     expect(body.events[5].htmlSource).toBe('assistant-answer');
     expect(body.events[6].htmlSource).toBeNull();

@@ -12,9 +12,9 @@ test('compact lifecycle remains chronological and carries revision and summary, 
     session: { getMaxEventIdx: async () => 3, getEvents: async () => events },
   } };
   const response = await route(ctx, null, { req: new Request('http://localhost/api/v1/agents/fixture/events'), params: { id: 'fixture' } });
-  const body = await response.json();
-  expect(body.events.map((event: any) => event.type)).toEqual(events.map(event => event.type));
+  const body = await response.json() as {events: Array<{type: string; text?: string}>; isRunning: boolean};
+  expect(body.events.map((event) => event.type)).toEqual(events.map(event => event.type));
   expect(body.events[1]).toMatchObject({ revision: 2, summary: 'Handoff', tokensBefore: 3000, tokensAfter: 500, keptMessages: 4, messageIdx: null });
-  expect(body.events[2].text).toBe('Provider unavailable');
+  expect(body.events[2]!.text).toBe('Provider unavailable');
   expect(body.isRunning).toBe(false);
 });

@@ -29,8 +29,8 @@ describe("ui.previewFile native Canvas", () => {
         for (const host of [undefined, "ssh-host"]) {
             const f = fixture("ssh-host");
             await previewFile(f.ctx, null, { path: "docs/readme.md", host, mode: "preview" });
-            expect(f.calls[0].args.host).toBe(host);
-            expect(f.calls[2].args).toEqual({ kind: "file", args: { path: "/workspace/docs/readme.md", host: "ssh-host", mode: "preview" }, title: "ssh-host:/workspace/docs/readme.md" });
+            expect(f.calls[0]!.args.host).toBe(host);
+            expect(f.calls[2]!.args).toEqual({ kind: "file", args: { path: "/workspace/docs/readme.md", host: "ssh-host", mode: "preview" }, title: "ssh-host:/workspace/docs/readme.md" });
         }
     });
     test("rejects private results before showing any Canvas tab", async () => {

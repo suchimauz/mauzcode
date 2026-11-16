@@ -29,7 +29,7 @@ test('Live HMR bridge receives Vite connected message and closes cleanly',async(
  const source=await (await fetch('http://127.0.0.1:5174/ui-lab/@vite/client')).text();
  const token=/const wsToken = "([^"]+)"/.exec(source)?.[1];
  expect(token).toBeTruthy();
- const server=Bun.serve({hostname:'127.0.0.1',port:5197,async fetch(req,server){
+ const server=Bun.serve<{state: Exclude<Awaited<ReturnType<typeof endpoint.upgrade>>, Response>; url: string}>({hostname:'127.0.0.1',port:5197,async fetch(req,server){
  const state=await endpoint.upgrade(ctx as any,session,{req});if(state instanceof Response)return state;
  if(server.upgrade(req,{data:{state,url:req.url}}))return;
  return new Response('upgrade failed',{status:400});

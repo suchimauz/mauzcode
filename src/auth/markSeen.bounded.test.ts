@@ -35,10 +35,10 @@ test('mobile read route supports optional bounded JSON, legacy empty bodies, val
     await ctx.fns.session.appendEvent({ id: a.id, event: { type: 'assistant', text: 'reply' } });
     await ctx.fns.procs.db.run({ sql: 'UPDATE events SET ts = 200 WHERE agent_id = ?', params: [a.id] });
     const call = (body: string, id = a.id) => readReceipt(ctx, null, { req: new Request('http://localhost/read', { method: 'POST', body }), params: { id } });
-    expect((await (await call('{"throughTs":100}')).json()).seenAt).toBe(100);
+    expect((await (await call('{"throughTs":100}')).json() as {seenAt: number}).seenAt).toBe(100);
     for (const body of ['{', '{}', 'null', '[]', '{"throughTs":"100"}', '{"throughTs":-1}', '{"throughTs":1e999}']) {
         expect((await call(body)).status).toBe(400);
     }
-    expect((await (await call('')).json()).seenAt).toBe(200);
+    expect((await (await call('')).json() as {seenAt: number}).seenAt).toBe(200);
     expect((await call('', 'missing-agent')).status).toBe(404);
 });

@@ -14,5 +14,5 @@ export default function (
     },
 ): void {
     const t=opts.t;
-    let claims:any;try{claims=JSON.parse(Buffer.from(t.access.split('.')[1],'base64url').toString())}catch{throw Error('Invalid access identity')};if(!t.accountId||claims?.['https://api.openai.com/auth']?.chatgpt_account_id!==t.accountId)throw Error('Account identity mismatch');
+    let claims:any;try{const payload=t.access.split('.')[1];if(!payload)throw Error('Missing identity payload');claims=JSON.parse(Buffer.from(payload,'base64url').toString())}catch{throw Error('Invalid access identity')};if(!t.accountId||claims?.['https://api.openai.com/auth']?.chatgpt_account_id!==t.accountId)throw Error('Account identity mismatch');
 }

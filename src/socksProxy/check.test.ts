@@ -7,7 +7,7 @@ async function fixture(options:{auth?:boolean;method?:number;password?:number;co
  const sockets=new Set<Socket>();let connections=0;const requests:Buffer[]=[];
  const server=createServer(socket=>{connections++;sockets.add(socket);socket.on('close',()=>sockets.delete(socket));socket.on('error',()=>{});let step=0;let pending=Buffer.alloc(0);
  const send=async(b:Buffer)=>{if(options.fragment){for(const byte of b){socket.write(Buffer.from([byte]));await Bun.sleep(1);}}else socket.write(b);};
- socket.on('data',async b=>{pending=Buffer.concat([pending,b]);if(options.stall)return;if(options.overflow){socket.write(Buffer.alloc(1025));return;}
+ socket.on('data',async chunk=>{const b=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);pending=Buffer.concat([pending,b]);if(options.stall)return;if(options.overflow){socket.write(Buffer.alloc(1025));return;}
  if(step===0){if(pending.length<3)return;expect([...pending.subarray(0,3)]).toEqual([5,1,options.auth?2:0]);pending=pending.subarray(3);step=options.auth?1:2;await send(Buffer.from([5,options.method??(options.auth?2:0)]));return;}
  if(step===1){requests.push(pending);pending=Buffer.alloc(0);step=2;await send(Buffer.from([1,options.password??0]));return;}
  if(step===2){if(pending.length<17)return;expect([...pending.subarray(0,5)]).toEqual([5,1,0,3,10]);expect(pending.subarray(5,15).toString()).toBe('ip-api.com');expect(pending.readUInt16BE(15)).toBe(80);pending=pending.subarray(17);step=3;await send(Buffer.from([5,options.connect??0,0,1,127,0,0,1,0,80]));return;}

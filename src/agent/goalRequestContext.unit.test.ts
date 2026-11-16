@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { makeCtx } from '../$main';
+import requireModel from './requireModel';
 const build = (await import('./buildLlmRequest')).default;
 const prompt = (await import('../goal/promptContext')).default;
 
@@ -11,7 +12,7 @@ function fixture() {
     const inherited = [{ role: 'user', idx: 2, message_type: 'goal_continuation', content: 'inherited same idx' }];
     const projections: any[] = [];
     ctx.state.registry = {
-        agent: { buildLlmRequest: build, fullSystemPrompt: async () => 'stable bootstrap', selectJevContext: async (_c: any, _s: any, o: any) => o.messages },
+        agent: { requireModel, buildLlmRequest: build, fullSystemPrompt: async () => 'stable bootstrap', selectJevContext: async (_c: any, _s: any, o: any) => o.messages },
         planning: { prompt: async () => '' },
         goal: { read: async () => ({ enabled, goal }), promptContext: prompt },
         session: { getFullMessages: async (_c: any, _s: any, o: any) => o.id === 'parent' ? inherited : [...inherited, ...own], getMessages: async () => own, repairToolPairs: (_c: any, _s: any, o: any) => ({ messages: o.messages, repaired: [] }) },

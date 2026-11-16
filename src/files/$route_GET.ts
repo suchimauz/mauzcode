@@ -18,5 +18,5 @@ export default async function (ctx: Context, _session: Session | null, opts: { /
         catch { return new Response('File unavailable',{status:404}); }
     }
     url.pathname='/ui-lab/';
-    return ctx.fns.frontendBridge.proxy({req:new Request(url,{method:opts.req.method,headers:opts.req.headers})});
+    return await ctx.fns.frontendBridge.proxy({req:new Request(url.toString(),{method:opts.req.method,headers:opts.req.headers})}) ?? new Response('UI route unavailable',{status:502});
 }

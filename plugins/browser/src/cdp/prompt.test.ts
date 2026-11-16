@@ -9,7 +9,9 @@ test("bound metadata is refreshed on every request independent of transcript com
     let state = "active";
     let calls = 0;
     const rows: string[] = [];
-    const ctx = { fns: {
+    const ctx = { state: { prompts: { registry: new Map([
+        ['tools', { id: 'tools', order: 1, requires: [], body: '', generator: 'tools.promptSection' }],
+    ]) } }, fns: {
         tools: { promptSection: () => "tools" },
         markdown: { promptSection: async () => "" },
         plugins: { list: () => [], siteHint: async () => "" },
@@ -39,5 +41,7 @@ test("bound metadata is refreshed on every request independent of transcript com
     expect(rows.at(-1)).toContain('"state":"closed"');
     expect(calls).toBe(3);
     // and the cached prefix never carries the page
-    expect(await fullSystemPrompt(ctx, null, {agent})).not.toContain("example.test");
+    const prefix = await fullSystemPrompt(ctx, null, {agent});
+    expect(prefix).toContain("tools");
+    expect(prefix).not.toContain("example.test");
 });

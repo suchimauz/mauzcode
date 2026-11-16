@@ -15,6 +15,6 @@ test('turn start comes from durable claim, never from latest activity or a queue
             session: { getMaxEventIdx: async () => 0, getEvents: async () => [] },
         } };
         const response = await route(ctx, null, { req: new Request('http://localhost/api/v1/agents/fixture/events'), params: { id: 'fixture' } });
-        expect((await response.json()).turnStartedAt).toBe(expected);
+        expect((await response.json() as {turnStartedAt: number | null}).turnStartedAt).toBe(expected);
     }
 });

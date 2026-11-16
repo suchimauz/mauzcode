@@ -9,7 +9,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
     if (!["fast", "it", "live", "all"].includes(q)) return Response.json({ error: "invalid kind: " + q }, { status: 400 });
     const body = (opts.req.headers.get("content-type") ?? "").includes("json") ? await opts.req.json().catch(() => null) : null;
     if (!body || typeof body !== 'object' || Array.isArray(body)) return Response.json({ error: 'Expected a JSON object' }, { status: 400 });
-    const files = body.files;
+    const files = 'files' in body ? body.files : undefined;
     if (files !== undefined && (!Array.isArray(files) || !files.length || files.some((f: unknown) => typeof f !== "string")))
         return Response.json({ error: "files must be a non-empty list of test file paths" }, { status: 400 });
     try {

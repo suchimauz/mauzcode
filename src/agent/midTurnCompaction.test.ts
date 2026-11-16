@@ -2,8 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
 
 async function owned(ctx: any) {
-    // buildLlmRequest is migrated in block 5; isolate its legacy preamble lookup.
-    ctx.state.registry.llm.resolveEndpoint = () => ({ provider: 'test', modelId: 'test' });
+    // Isolate route resolution through the current provider-neutral facade.
     ctx.state.registry.models.resolveRoute = (_c: unknown, _s: unknown, opts: { route: string }) => {
         expect(opts).toEqual({ route: 'custom/work:test' });
         return { connectionId: 'connection', model: 'test', route: opts.route, nativeCompaction: false, contextWindow: 200000 };

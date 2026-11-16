@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import details from './contextDetails';
 import budget from './contextBudget';
+import requireModel from './requireModel';
 
 test('durable usage sums real counters and never invents cache or timing', async () => {
     const ctx: any = { fns: { procs: { db: { select: async () => [ { payload: JSON.stringify({ usage: { prompt_tokens: 100, completion_tokens: 20 } }) }, { payload: JSON.stringify({ usage: { prompt_tokens: 200, completion_tokens: 40 } }) } ] } } } };
@@ -18,7 +19,7 @@ test('budget builds one preview, partitions system messages and leaves default s
     const ctx: any = { state: { agent: { test: { model: 'mock' } } }, fns: {
         procs: { db: { select: async ({ sql }: any) => sql.includes('FROM agents') ? [{ model: 'mock', sleep_context: null }] : [] } },
         session: { getMessages: async () => [] },
-        agent: { buildLlmRequest: async () => { previews++; return { messages: [{ role: 'system', content: 'abc' }, { role: 'user', content: 'hello' }], instructions: 'x', context: { mode: 'full', fallback: null, revision: null } }; }, wireTools: () => [], contextTokens: async ({ fallbackTokens }: any) => ({ tokens: fallbackTokens, source: 'estimate' }) },
+        agent: { requireModel: (o: Parameters<typeof requireModel>[2]) => requireModel(ctx, null, o), buildLlmRequest: async () => { previews++; return { messages: [{ role: 'system', content: 'abc' }, { role: 'user', content: 'hello' }], instructions: 'x', context: { mode: 'full', fallback: null, revision: null } }; }, wireTools: () => [], contextTokens: async ({ fallbackTokens }: any) => ({ tokens: fallbackTokens, source: 'estimate' }) },
         models: { resolveRoute: async () => ({ api: 'mock' }) },
         compaction: { calibration: async () => ({ factor: 1, samples: 0, source: 'heuristic' }), contextWindow: async () => 1000, estimateTokens: async ({ messages }: any) => messages.reduce((s: number, m: any) => s + m.content.length, 0) },
     } };

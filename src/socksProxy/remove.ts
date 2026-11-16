@@ -21,7 +21,7 @@ export default async function (
         const row = (await ctx.fns.procs.db.select({sql:'SELECT * FROM socks_proxies WHERE id=? FOR UPDATE',params:[opts.id]}))[0];
         if (!row) return {ok:true as const};
         if (row.revision !== opts.revision) throw Object.assign(new Error('Proxy changed'),{status:409,code:'PROXY_CHANGED'});
-        const users = await ctx.fns.procs.db.select({sql:'SELECT provider,account FROM llm_account_proxies WHERE proxy_id=? ORDER BY provider,account',params:[opts.id]});
+        const users = await ctx.fns.procs.db.select({sql:"SELECT provider,account_name AS account FROM llm_connections WHERE transport->>'kind'='socks' AND transport->>'proxyId'=? ORDER BY provider,account_name",params:[opts.id]});
         if (users.length) throw Object.assign(new Error('Proxy is used by '+users.map(u=>`${u.provider}/${u.account}`).join(', ')),{status:409,code:'PROXY_IN_USE',users});
         if (row.credential_ref) {
             if (row.credential_ref !== 'secret://socksProxy/'+row.id) throw new Error('Invalid credential ownership');

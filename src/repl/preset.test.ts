@@ -32,7 +32,7 @@ test("allowed function uses unguarded internal context", async () => {
 
 test("runtime and plugin discovery hide unavailable functions", async () => {
     expect(await run('console.log(await ctx.fns.plugins.search({query: "openspec", mode: "lexical"}))')).toBe('[]');
-    expect(await run('console.log(await ctx.fns.plugins.functions({name: "openspec"}))')).toBe('[]');
+    await expect(run('await ctx.fns.plugins.functions({name: "openspec"})')).rejects.toThrow('not found');
     await expect(run('await ctx.fns.plugins.read({name: "openspec"})')).rejects.toThrow('not found');
     await expect(run('await ctx.fns.runtime.docs.get({name: "procs.dev.genTypes"})')).rejects.toThrow('no such available');
     expect(await run('console.log(await ctx.fns.runtime.docs.search({query: "procs.dev", mode: "lexical"}))')).toBe('[]');

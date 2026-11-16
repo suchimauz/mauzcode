@@ -4,6 +4,13 @@ import {tmpdir} from 'node:os';
 import directories from './directories';
 import middleware from '../$middleware_ui-lab-api';
 import projectAction from '../projects/$route_action_POST';
+type DirectoryList = { entries: Array<{name: string}>; path: string; parentPath: string | null; canCreate: boolean; csrfToken: string };
+async function listing(response: Response): Promise<DirectoryList> {
+ expect(response.status).toBe(200);
+ const body = await response.json() as DirectoryList;
+ expect(Array.isArray(body.entries)).toBe(true);
+ return body;
+}
 let root:string;
 const session={user:{id:'viewer'}} as any;
 const ctx={fns:{projects:{principal:async()=> 'user:viewer'},auth:{verifyCsrf:async({token}:any)=>token==='valid',csrfToken:async()=> 'valid'}}} as any;
@@ -12,9 +19,9 @@ const post=(data:unknown,token='valid')=>req(root,{method:'POST',headers:{'conte
 beforeAll(async()=>{root=await mkdtemp(tmpdir()+'/ui-directories-');await mkdir(root+'/visible');await mkdir(root+'/.hidden');await writeFile(root+'/file','content');await symlink(root+'/visible',root+'/linked');await symlink(root+'/absent',root+'/broken');});
 afterAll(async()=>{await rm(root,{recursive:true,force:true});});
 test('requires signed-in user before any filesystem operation',async()=>{expect((await directories(ctx,null,{req:req(root)})).status).toBe(401);});
-test('lists only directories including valid symlinks; hides dot dirs',async()=>{const r=await directories(ctx,session,{req:req(root)});expect(r.headers.get('cache-control')).toBe('no-store');const d=await r.json();expect(d.entries.map((x:any)=>x.name)).toEqual(['linked','visible']);expect(d.path).toBe(root);expect(d.canCreate).toBe(true);expect(d.csrfToken).toBe('valid');});
-test('showHidden reveals dot directories',async()=>{const r=await directories(ctx,session,{req:new Request(req(root).url+'&showHidden=true')});expect((await r.json()).entries.map((x:any)=>x.name)).toContain('.hidden');});
-test('root has no parent',async()=>{expect((await (await directories(ctx,session,{req:req('/')})).json()).parentPath).toBe(null);});
+test('lists only directories including valid symlinks; hides dot dirs',async()=>{const r=await directories(ctx,session,{req:req(root)});expect(r.headers.get('cache-control')).toBe('no-store');const d=await listing(r);expect(d.entries.map(x=>x.name)).toEqual(['linked','visible']);expect(d.path).toBe(root);expect(d.canCreate).toBe(true);expect(d.csrfToken).toBe('valid');});
+test('showHidden reveals dot directories',async()=>{const r=await directories(ctx,session,{req:new Request(req(root).url+'&showHidden=true')});expect((await listing(r)).entries.map(x=>x.name)).toContain('.hidden');});
+test('root has no parent',async()=>{expect((await listing(await directories(ctx,session,{req:req('/')}))).parentPath).toBe(null);});
 test('rejects relative paths, malformed boolean and missing paths',async()=>{expect((await directories(ctx,session,{req:req('relative')})).status).toBe(400);expect((await directories(ctx,session,{req:new Request(req(root).url+'&showHidden=invalid')})).status).toBe(400);expect((await directories(ctx,session,{req:req(root+'/missing')})).status).toBe(404);});
 test('mkdir verifies CSRF and rejects path traversal',async()=>{expect((await directories(ctx,session,{req:post({path:root,name:'forbidden'},'bad')})).status).toBe(403);for(const name of ['..','.','a/b','a\\b',''])expect((await directories(ctx,session,{req:post({path:root,name})})).status).toBe(400);});
 test('mkdir creates only explicitly named child, conflicts do not overwrite',async()=>{const r=await directories(ctx,session,{req:post({path:root,name:'new'})});expect(r.status).toBe(201);expect(await r.json()).toEqual({path:root+'/new'});expect((await directories(ctx,session,{req:post({path:root,name:'new'})})).status).toBe(409);});

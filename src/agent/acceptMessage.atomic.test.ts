@@ -33,7 +33,7 @@ for(const race of [false,true]) test(`archived acceptance rejects ${race?'under 
 });
 test('input gate durably queues exact files without uploads or resume; retries remain queued after gate closes',async()=>{
  const f=fixture();f.wait(true);
- const result=await (await f.send('hello','wait-key',true)).json();
+ const result=await (await f.send('hello','wait-key',true)).json() as {queueId: string; ok: boolean; queued: boolean; version: number};
  expect(result).toMatchObject({ok:true,queued:true,version:1});expect(f.queued).toHaveLength(1);
  expect(f.queued[0].files[0]).toMatchObject({name:'a.txt',data:'YWJj'});
  expect(f.saves()).toBe(0);expect(f.wakes()).toBe(0);expect(f.state().scheduled).toBe(0);expect(f.state().messages).toHaveLength(0);expect(f.state().scratchpad.plan.pausedAt).toBe(100);

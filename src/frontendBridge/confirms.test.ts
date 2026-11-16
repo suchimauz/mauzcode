@@ -1,6 +1,13 @@
 import {test,expect} from 'bun:test';
 import handler from './confirms';
 import middleware from '../$middleware_ui-lab-api';
+type ConfirmList = { inputs: Array<{ spec: { details: string; confirmLabel: string; declineLabel: string; danger: boolean }; result: { confirmed: boolean; comment?: string } | null }> };
+async function list(response: Response): Promise<ConfirmList> {
+ expect(response.status).toBe(200);
+ const body = await response.json() as ConfirmList;
+ expect(Array.isArray(body.inputs)).toBe(true);
+ return body;
+}
 function fixture(){
  const writes:any[]=[];
  const input:any={id:'c1',agentId:'a',kind:'confirm',state:'open',title:'Send?',message:'Msg',spec:{details:'**x**',confirmLabel:'Да',declineLabel:'Нет',danger:false,_agentWait:true,token:'hidden'},result:null,createdAt:1,updatedAt:2,error:'hidden',answeredBy:'hidden'};
@@ -9,8 +16,8 @@ function fixture(){
  const call=(data?:any,over:any={})=>handler(ctx,over.session===undefined?session:over.session,{req:new Request('http://localhost/ui-lab-api/confirms?agentId=a',{method:data===undefined?'GET':'POST',headers:{'content-type':'application/json','x-csrf-token':over.token??'token',...over.headers},...(data===undefined?{}:{body:JSON.stringify(data)})})});
  return {ctx,input,writes,call};
 }
-test('GET projects only whitelisted confirm fields',async()=>{const f=fixture();const out=await (await f.call()).json();expect(out.inputs[0].spec).toEqual({details:'**x**',confirmLabel:'Да',declineLabel:'Нет',danger:false});expect(JSON.stringify(out)).not.toContain('hidden');f.input.kind='secret';expect((await (await f.call()).json()).inputs).toEqual([]);});
-test('POST delivers native decision and trimmed comment once',async()=>{const f=fixture();expect((await f.call({id:'c1',decision:'no',comment:' later '})).status).toBe(200);expect(f.writes).toEqual([{id:'c1',values:{decision:'no',comment:'later'},actor:'owner'}]);expect((await f.call({id:'c1',decision:'yes'})).status).toBe(409);expect((await (await f.call()).json()).inputs[0].result).toEqual({confirmed:false,comment:'later'});});
+test('GET projects only whitelisted confirm fields',async()=>{const f=fixture();const out=await list(await f.call());expect(out.inputs[0]!.spec).toEqual({details:'**x**',confirmLabel:'Да',declineLabel:'Нет',danger:false});expect(JSON.stringify(out)).not.toContain('hidden');f.input.kind='secret';expect((await list(await f.call())).inputs).toEqual([]);});
+test('POST delivers native decision and trimmed comment once',async()=>{const f=fixture();expect((await f.call({id:'c1',decision:'no',comment:' later '})).status).toBe(200);expect(f.writes).toEqual([{id:'c1',values:{decision:'no',comment:'later'},actor:'owner'}]);expect((await f.call({id:'c1',decision:'yes'})).status).toBe(409);expect((await list(await f.call())).inputs[0]!.result).toEqual({confirmed:false,comment:'later'});});
 test('rejects invalid payloads, auth, other kinds',async()=>{
  for(const d of [{id:'c1'},{id:'c1',decision:'maybe'},{id:'c1',decision:'yes',extra:1},{id:'c1',decision:'yes',comment:5}]){const f=fixture();expect((await f.call(d)).status).toBe(400);expect(f.writes).toHaveLength(0);}
  for(const o of [{token:'bad'},{session:{user:{id:'g',role:'member'}}},{headers:{origin:'http://evil.example'}}]){const f=fixture();expect((await f.call({id:'c1',decision:'yes'},o)).status).toBe(403);}

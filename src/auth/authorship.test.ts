@@ -73,10 +73,14 @@ test("structured user events retain exact author attribution without legacy HTML
 
 test("buildLlmRequest sends the prefix and the one-line explanation to the model", async () => {
     const ctx = await mkTestCtx();
+    const resolveRoute = ctx.state.registry.models.resolveRoute;
+    ctx.state.registry.models.resolveRoute = (c: Context, s: Session | null, o: {route: string}) => o.route === 'mock/default:echo'
+        ? { provider: 'mock', connectionId: 'mock/default', model: 'echo', route: o.route }
+        : resolveRoute(c, s, o);
     const nik = await ctx.fns.auth.createUser({ name: "Nikolai Ryzhikov", email: "niquola@health-samurai.io", password: "password-123" });
     const anna = await ctx.fns.auth.createUser({ name: "Anna K", email: "anna@health-samurai.io", password: "password-456" });
     const rn = await asUser(ctx, nik), ra = await asUser(ctx, anna);
-    const agent = await rn.fns.agent.start({ model: "mock:echo" });
+    const agent = await rn.fns.agent.start({ model: "mock/default:echo" });
     await rn.fns.session.save({ agent });
     await ra.fns.session.appendUserMessage({ id: agent.id, text: "status?" });
     const loaded = await ctx.fns.session.load({ id: agent.id });

@@ -21,7 +21,7 @@ test('explicit Stop pauses active and audits revision',async()=>{
     const {ctx,writes}=fixture();
     expect(await pause(ctx,null,{agentId:'a'})).toEqual({paused:true,reason:'user_stop',revision:3});
     expect(writes).toHaveLength(2);
-    expect(writes[0].params.slice(0,2)).toEqual(['paused',3]);
+    expect(writes[0]!.params.slice(0,2)).toEqual(['paused',3]);
 });
 for(const status of ['paused','blocked','usage_limited','budget_limited','complete']) test(`Stop preserves ${status}`,async()=>{
     const {ctx,writes}=fixture(status);

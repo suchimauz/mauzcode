@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import run from './run';
+import requireModel from './requireModel';
 
 // Entirely in-memory: no runtime bootstrap, shared DB, or real Knowledge writes.
 function harness(turns: any[], scratchpad: any = { knowledgeTrackingEnabled: true }) {
     const rows: any[] = [];
     const launches: any[] = [];
-    const agent: any = { id: 'mock', scratchpad, messages: [], events: [] };
+    const agent: any = { id: 'mock', model: 'mock/default:test', scratchpad, messages: [], events: [] };
     const appendMessage = async ({ message }: any) => { const row = { ...message, idx: rows.length }; rows.push(row); return row; };
     const noop = async () => {};
     const ctx: any = { fns: {
@@ -14,7 +15,7 @@ function harness(turns: any[], scratchpad: any = { knowledgeTrackingEnabled: tru
         session: { forAgent: () => ({}), appendUserMessage: ({ text }: any) => appendMessage({ message: { role: 'user', content: text } }), appendMessage,
             syncAgentState: async () => { agent.messages = rows.map(r => ({ ...r })); }, appendAssistantEvent: async () => ({idx: 0}), appendErrorEvent: noop, appendToolCallEvent: noop,
             updateMessageContent: async ({ idx, content }: any) => { rows[idx].content = content; }, recordContextUsage: noop },
-        agent: { buildLlmRequest:async()=>({instructions:'',messages:[]}),wireTools:()=>[],cacheRoot:async()=>agent.id, recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => ({ scheduled: false }), autoCompactIfNeeded: async () => ({ status: 'not_needed' }), statusLineForTurn: async () => '', stashResult: async ({ output }: any) => ({ content: output }), sanitizeHtmlBody: ({ html }: any) => html },
+        agent: { requireModel: (o: Parameters<typeof requireModel>[2]) => requireModel(ctx, null, o), buildLlmRequest:async()=>({instructions:'',messages:[]}),wireTools:()=>[],cacheRoot:async()=>agent.id, recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => ({ scheduled: false }), autoCompactIfNeeded: async () => ({ status: 'not_needed' }), statusLineForTurn: async () => '', stashResult: async ({ output }: any) => ({ content: output }), sanitizeHtmlBody: ({ html }: any) => html },
         procs: { events: { emit: () => {} }, db: { select: async () => [{ i: Math.max(-1, ...rows.filter(r => r.role === 'user').map(r => r.idx)) }], run: async () => ({ changes: 1, rows: [] }) } },
         models: { resolveRoute: async () => ({ provider: 'fixture' }), classifyError: () => ({ kind: 'fatal', retryable: false }), stream: async () => { const turn = turns.shift(); if (turn instanceof Error) throw turn; return turn ?? { text: 'done' }; } },
         markdown: { render: async ({ source }: any) => source },
@@ -47,7 +48,7 @@ describe('Knowledge completed-turn hook (isolated)', () => {
         const h = harness([{ toolCalls: [{ id: 't', name: 'respondHtml', args: {} }, { id: 'u', name: 'read', args: {} }] }]);
         h.rows.push({ idx: 0, role: 'user', content: 'queued' });
         const result = await h.execute(true);
-        expect(result.terminal).toBe(true);
+        expect(result).toHaveProperty('terminal', true);
         expect(h.launches).toHaveLength(1);
         expect(h.launches[0].messageIdx).toBe(4);
         expect(h.launches[0].rows.slice(2).map((r: any) => r.content)).toEqual(['tool persisted', 'tool persisted', 'final']);
@@ -75,7 +76,7 @@ describe('Knowledge completed-turn hook (isolated)', () => {
     test('extraction is not awaited and sync/async plugin failures do not fail the turn', async () => {
         for (const impl of [() => { throw new Error('sync'); }, async () => { throw new Error('async'); }, () => new Promise(() => {})]) {
             const h = harness([{ text: 'answer' }]); h.ctx.fns.knowledge.updateSidecar = impl;
-            expect((await h.execute()).text).toBe('answer'); await Promise.resolve();
+            expect(await h.execute()).toHaveProperty('text', 'answer'); await Promise.resolve();
         }
     });
 });

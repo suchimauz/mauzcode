@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import run from "./run";
+import requireModel from './requireModel';
 import acceptMessage from "./acceptMessage";
 
 function harness() {
     const rows: any[] = [{ idx: 0, role: "user", content: "first" }];
     const events: any[] = [];
-    const agent: any = { id: "a", model: "mock:test", title: "a", workspaceDir: process.cwd(), systemPrompt: "", messages: [...rows], events, scratchpad: {}, isStreaming: true, abortController: null, samplingAbortController: null };
+    const agent: any = { id: "a", model: "mock/default:test", title: "a", workspaceDir: process.cwd(), systemPrompt: "", messages: [...rows], events, scratchpad: {}, isStreaming: true, abortController: null, samplingAbortController: null };
     let streamCalls = 0;
     const ctx: any = { state: { agent: { a: agent } }, fns: {
         auth: { actorId: async () => null },
@@ -31,7 +32,7 @@ function harness() {
         settings: { getNumber: async () => 0 }, attachments: { saveUploads: async () => [], commitUploads: async () => {}, resolveContent: async ({ messages }: any) => messages },
         input: { isWaiting: async () => false },
         goal: { delegationScope: async ({ fn }: any) => fn(), runBindingCapture: async () => ({ kind: 'disabled', allowContinuation: false }) }, planning: { read: async () => ({ mode: 'execute' }) },
-        agent: { recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => ({ scheduled: false }), sanitizeHtmlBody: ({ html }: any) => html, promoteQueuedTurn: async () => null, autoCompactIfNeeded: async () => ({ status: 'disabled', overBudget: false }), wakeWaiters: async () => {}, renderEventHtml: async () => "", wakeWorker: () => {}, statusLineForTurn: async () => "", buildLlmRequest: async () => ({ instructions: "", messages: agent.messages }), functionRag: async () => null, fullSystemPrompt: async () => "", cacheRoot: async () => "a", wireTools: () => [], stashResult: async ({ output }: any) => ({ content: output }) },
+        agent: { requireModel: (o: Parameters<typeof requireModel>[2]) => requireModel(ctx, null, o), recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => ({ scheduled: false }), sanitizeHtmlBody: ({ html }: any) => html, promoteQueuedTurn: async () => null, autoCompactIfNeeded: async () => ({ status: 'disabled', overBudget: false }), wakeWaiters: async () => {}, renderEventHtml: async () => "", wakeWorker: () => {}, statusLineForTurn: async () => "", buildLlmRequest: async () => ({ instructions: "", messages: agent.messages }), functionRag: async () => null, fullSystemPrompt: async () => "", cacheRoot: async () => "a", wireTools: () => [], stashResult: async ({ output }: any) => ({ content: output }) },
         models: { resolveRoute:async()=>({connectionId:'test',model:'test',provider:'mock'}),stream: async ({ signal }: any) => { streamCalls++; if (streamCalls === 1) return await new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), { once: true })); return { text: "steered answer", usage: {}, finishReason: "stop", toolCalls: [] }; } },
         markdown: { render: async ({ source }: any) => source }, tools: { runs: () => [], call: async () => ({ output: "" }) }, events: { refreshAgentMeta: () => {} },
     } };
@@ -49,6 +50,6 @@ describe("instant steering", () => {
         expect(h.streamCalls).toBe(2);
         expect(h.rows.some(row => row.role === "user" && row.content === "change direction")).toBe(true);
         expect(h.rows.some(row => row.role === "assistant" && row.content === "steered answer")).toBe(true);
-        expect(result.consumedUserIdx).toBe(1);
+        expect(result).toHaveProperty('consumedUserIdx', 1);
     });
 });

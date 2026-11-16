@@ -13,7 +13,7 @@ test('transcript message identities survive projection; UI notices stay unlinked
         session: { getMaxEventIdx: async () => 3, getEvents: async () => events },
     } };
     const response = await route(ctx, null, { req: new Request('http://localhost/api/v1/agents/fixture/events'), params: { id: 'fixture' } });
-    const body = await response.json();
+    const body = await response.json() as {events: Array<{messageIdx: number | null}>; runs: unknown[]};
     expect(body.events.map((event: { messageIdx: number | null }) => event.messageIdx)).toEqual([0, 1, 1, null]);
     expect(body.runs).toEqual([{ id: 'r1', startIdx: 1, endIdx: 3, startedAt: 100, endedAt: 900, status: 'completed', answerIdx: 1, hasInterleavedInput: true }]);
 });
@@ -33,11 +33,11 @@ test('projects peer provenance with stable authors without turning peers and ser
         session: { getMaxEventIdx: async () => 3, getEvents: async () => events },
     } };
     const response = await route(ctx, null, { req: new Request('http://localhost/events'), params: { id: 'fixture' } });
-    const body = await response.json();
+    const body = await response.json() as {events: Array<{navigationEligible: boolean; agentMessage?: typeof incoming; outgoingAgentMessage?: typeof outgoing; author?: {hue: number}; peerAuthor?: {hue: number}}>};
     expect(body.events.map((event: { navigationEligible: boolean }) => event.navigationEligible)).toEqual([true, false, false, false]);
-    expect(body.events[1].agentMessage).toEqual(incoming);
-    expect(body.events[2].outgoingAgentMessage.body).toBe('Please inspect');
-    expect(body.events[2].peerAuthor).toEqual(body.events[1].author);
-    expect(body.events[1].author.hue).toBe(211);
+    expect(body.events[1]!.agentMessage).toEqual(incoming);
+    expect(body.events[2]!.outgoingAgentMessage!.body).toBe('Please inspect');
+    expect(body.events[2]!.peerAuthor).toEqual(body.events[1]!.author);
+    expect(body.events[1]!.author!.hue).toBe(211);
 });
 

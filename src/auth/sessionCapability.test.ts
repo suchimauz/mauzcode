@@ -12,7 +12,7 @@ for (const [mode, who, allowed, status] of [
 ] as const) test(`session native capability: ${mode}`, async () => {
  const ctx:any={fns:{auth:{currentUser:async()=>who,listUsers:async()=>[]}}};
  const response=await sessionRoute(ctx,null,{req:new Request('http://localhost/auth/session'),params:{}});
- const body=await response.json();
+ const body=await response.json() as {canManage: boolean};
  expect(response.status).toBe(status);
  expect(body.canManage).toBe(allowed);
  expect(typeof body.canManage).toBe('boolean');

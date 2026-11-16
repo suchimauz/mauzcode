@@ -25,7 +25,7 @@ test('full mode never fetches a checkpoint',async()=>{
  const r=await f.call();expect(r.messages).toBe(f.history);expect(r.fallback).toBeNull();expect(f.reads).toEqual([]);
 });
 test('every fallback returns complete history, never a partial checkpoint',async()=>{
- for(const reason of ['missing_generation','missing_checkpoint','incompatible_checkpoint','invalid_boundary']) {
+ for(const reason of ['missing_generation','missing_checkpoint','incompatible_checkpoint','invalid_boundary'] as const) {
   const f=fixture();
   if(reason==='missing_generation')f.sleep.activeRevision=99;
   if(reason==='missing_checkpoint')f.gen.contextMessages=[];

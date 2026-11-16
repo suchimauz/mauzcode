@@ -2,20 +2,34 @@
 // nobody has to remember the grammar in the other direction.
 import { test, expect } from "bun:test";
 import { mkdtempSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { testCtx } from "../../$test";
 
 const ctx = await testCtx();
+// mauzcode: route authoring tests must not reload the host registry. reload walks
+// prototypes to the root ctx, so WORKDIR (or a fork's state.root) alone cannot
+// isolate its genTypes write. Stub this boundary on this file's private registry.
+let reloads = 0;
+ctx.state.registry.procs.modules.reload = async () => { reloads++; return []; };
+const declarations = join(ctx.fns.procs.project.projectRoot({}), "src/ctx_ns.d.ts");
+const declarationHash = async () => createHash("sha256").update(new Uint8Array(await Bun.file(declarations).arrayBuffer())).digest("hex");
 
 function project() {
     const dir = mkdtempSync(join(tmpdir(), "route-"));
     mkdirSync(join(dir, "src"), { recursive: true });
-    return { dir, run: ctx.fns.procs.env.fork({ mode: "test", env: { ...ctx.env, WORKDIR: dir } }) };
+    const run = ctx.fns.procs.env.fork({ mode: "test", env: { ...ctx.env, WORKDIR: dir } });
+    run.state.root = dir;
+    return { dir, run };
 }
 
 test("a url becomes the folders it is, with :params as $folders", async () => {
     const { dir, run } = project();
+    const before = await declarationHash();
+    const callsBefore = reloads;
+    expect(run.fns.procs.project.projectRoot({})).toBe(dir);
+    expect(run.fns.procs.project.workdir({})).toBe(dir);
     const made = await run.fns.procs.dev.route({ url: "/ehr/patient/:id/cardio/summary" });
 
     expect(made.file).toBe("src/ehr/patient/$id/cardio/summary/$route__GET.ts");
@@ -27,6 +41,8 @@ test("a url becomes the folders it is, with :params as $folders", async () => {
     const posted = await run.fns.procs.dev.route({ url: "/ehr/patient/:id/cardio/summary", method: "post" });
     expect(posted.file).toBe("src/ehr/patient/$id/cardio/summary/$route__POST.ts");
     expect(await Bun.file(join(dir, posted.file)).text()).toContain("answer with the fragment you changed");
+    expect(reloads - callsBefore).toBe(2);
+    expect(await declarationHash()).toBe(before);
 });
 
 test("it refuses what it cannot write, and what already answers", async () => {

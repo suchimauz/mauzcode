@@ -72,8 +72,8 @@ test('unsubscribe delete is owner and browser-session scoped',async()=>{
  expect((h.run.mock.calls[0] as any)[0].params).toEqual([h.sub.endpoint,'u1','binding']);
 });
 test('config exposes device hashes and public key only',async()=>{
- const h=routeHarness();const r=await handle(h.ctx,{user:{id:'u1'}},{req:h.req({}),action:'config'});const data=await r.json();
- expect(data.devices[0].endpointHash).toHaveLength(64);expect(data.devices[0].current).toBe(true);expect(data.devices[0].userAgent).toBe('Mozilla/5.0 (iPhone) Safari');expect(typeof data.devices[0].createdAt).toBe('number');expect(data.preferences).toBeUndefined();
+ const h=routeHarness();const r=await handle(h.ctx,{user:{id:'u1'}},{req:h.req({}),action:'config'});const data=await r.json() as {devices: Array<{endpointHash: string; current: boolean; userAgent: string; createdAt: number}>; preferences?: never};
+ expect(data.devices[0]!.endpointHash).toHaveLength(64);expect(data.devices[0]!.current).toBe(true);expect(data.devices[0]!.userAgent).toBe('Mozilla/5.0 (iPhone) Safari');expect(typeof data.devices[0]!.createdAt).toBe('number');expect(data.preferences).toBeUndefined();
  expect(JSON.stringify(data)).not.toContain('PRIVATE');expect(JSON.stringify(data)).not.toContain(h.sub.endpoint);
 });
 test('unsubscribe by subscription id is owner scoped across sessions',async()=>{

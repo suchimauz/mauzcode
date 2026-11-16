@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import claude from '../models/$modelProvider_claude';
 
 import buildRaw from "./buildLlmRequest";
+import requireModel from "./requireModel";
+import { makeCtx } from "../$main";
 
 // Drop the request-only planning guidance tail (no planning_context row in these fixtures).
 const build = async (...a: Parameters<typeof buildRaw>) => { const r = await buildRaw(...a); return { ...r, messages: r.messages.filter((m: any) => m.content !== "planning") }; };
@@ -9,6 +11,7 @@ const build = async (...a: Parameters<typeof buildRaw>) => { const r = await bui
 function ctx(systemPreamble?: string): any {
     return { fns: {
         agent: {
+            requireModel: (opts: Parameters<typeof requireModel>[2]) => requireModel(makeCtx(), null, opts),
             fullSystemPrompt: async () => "runtime instructions",
             normalizeSleepContext: () => null,
             getSleepGeneration: () => null,

@@ -2,7 +2,8 @@ import { filterProjects, type NavigationChat, type NavigationProject } from './n
 import { defaultWorkspaceView, type WorkspaceView } from '../components/mauzcode/WorkspaceViewMenu';
 const key = 'mauzcode.workspace-view';
 export function readWorkspaceView(): WorkspaceView {
-  const requestedFilter = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('workspaceFilter');
+  const browser = (globalThis as typeof globalThis & { window?: { location: { search: string } } }).window;
+  const requestedFilter = browser ? new URLSearchParams(browser.location.search).get('workspaceFilter') : null;
   const filter = requestedFilter === 'active' || requestedFilter === 'archived' ? requestedFilter : undefined;
   try {
     const value = JSON.parse(localStorage.getItem(key) || '{}');

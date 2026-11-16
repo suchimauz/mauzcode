@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { resolve, relative } from "node:path";
+import { stat } from "node:fs/promises";
 import ts from "typescript";
 
 // Parse executable property accesses, not strings/comments containing fixture source.
@@ -31,7 +32,17 @@ test("all repository consumers use the public models facade", async () => {
     const root = resolve(import.meta.dir, "../..");
     const failures: string[] = [];
     for (const dir of ["src", "plugins", "frontend/src", "script", "tests"]) {
-        for await (const file of new Bun.Glob("**/*.{ts,tsx,js,jsx}").scan({ cwd: resolve(root, dir), absolute: true })) {
+        const cwd = resolve(root, dir);
+        // Only the optional legacy test root may be absent; other scan failures
+        // must still fail the architecture check rather than hide consumers.
+        if (dir === "tests") {
+            try { await stat(cwd); }
+            catch (error) {
+                if (error instanceof Error && 'code' in error && error.code === 'ENOENT') continue;
+                throw error;
+            }
+        }
+        for await (const file of new Bun.Glob("**/*.{ts,tsx,js,jsx}").scan({ cwd, absolute: true })) {
             const path = relative(root, file);
             if (path.includes("/node_modules/") || path.endsWith(".d.ts")) continue;
             failures.push(...violations(path, await Bun.file(file).text()));

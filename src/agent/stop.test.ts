@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import stop from './stop';
 
-function fixture({ plan = false, loadedPlan = plan } = {}) {
+function fixture({ plan = false, loadedPlan = plan }: { plan?: boolean; loadedPlan?: boolean } = {}) {
     const ac = new AbortController(), sampling = new AbortController();
     const calls: string[] = [];
     const scratchpad: any = plan ? { plan: { tasks: [{ id: 'x', status: 'active', activeSince: Date.now() - 1000, elapsedMs: 50 }] } } : {};

@@ -123,7 +123,7 @@ function alive(pid: number): boolean {
 
 async function snapshotOf(admin: SQL): Promise<Snapshot> {
     // Ordinary tables of the migrations, not those an extension owns (postgis' spatial_ref_sys).
-    const tables = (await admin.unsafe(`
+    const tables: string[] = (await admin.unsafe(`
         SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
           AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = c.oid AND d.deptype = 'e')
@@ -173,7 +173,7 @@ async function resetOnce(w: Worker): Promise<void> {
     }
     // Only the tables that hold rows: one round trip to find them, one TRUNCATE for all.
     const probe = s.tables.map(t => `SELECT ${sqlString(t)} AS t WHERE EXISTS (SELECT 1 FROM public.${ident(t)})`).join(" UNION ALL ");
-    const full = probe ? (await sql.unsafe(probe)).map((r: any) => r.t as string) : [];
+    const full: string[] = probe ? (await sql.unsafe(probe)).map((r: any) => r.t as string) : [];
     if (full.length) await sql.unsafe(`TRUNCATE ${full.map(t => "public." + ident(t)).join(", ")} RESTART IDENTITY CASCADE`);
     // Sequences advanced by rows that were deleted, not truncated (ids start at 1 again, as on a fresh db).
     const seqs = await sql.unsafe(`SELECT sequencename FROM pg_sequences WHERE schemaname = 'public' AND last_value IS NOT NULL`);

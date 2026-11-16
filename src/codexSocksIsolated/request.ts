@@ -54,8 +54,8 @@ export default async function (
      buf=Buffer.concat([buf,chunk]);
      if(stage===0){if(buf.length<2)return;if(buf[0]!==5||buf[1]!==0)return fail(Error('SOCKS auth'));buf=buf.subarray(2);stage=1;s.write(Buffer.concat([Buffer.from([5,1,0,3,name.length]),name,Buffer.from([port>>8,port&255])]));}
      if(stage===1){if(buf.length<4)return;if(buf[0]!==5||buf[2]!==0||buf[1]!==0)return fail(Error('SOCKS rejected'));
-     const atyp=buf[3];if(![1,3,4].includes(atyp))return fail(Error('SOCKS address type'));if(atyp===3&&buf.length<5)return;
-     const n=atyp===1?10:atyp===4?22:7+buf[4];if(atyp===3&&buf[4]===0)return fail(Error('SOCKS empty address'));if(buf.length<n)return;if(buf.length!==n)return fail(Error('SOCKS trailing bytes'));
+     const atyp=buf[3]!;if(![1,3,4].includes(atyp))return fail(Error('SOCKS address type'));if(atyp===3&&buf.length<5)return;
+     const n=atyp===1?10:atyp===4?22:7+buf[4]!;if(atyp===3&&buf[4]===0)return fail(Error('SOCKS empty address'));if(buf.length<n)return;if(buf.length!==n)return fail(Error('SOCKS trailing bytes'));
      done=true;s.pause();clean();resolve(s);}
      };
      s.on('data',data);s.once('error',fail);s.once('close',closed);signal?.addEventListener('abort',abort,{once:true});

@@ -21,7 +21,7 @@ function provider(calls: Calls, extra: Partial<types.models.ProviderDefinition> 
         transports: ["direct", "socks"],
         validate: (_ctx, config) => { if (String(config.baseUrl).includes("forbidden")) throw new Error("forbidden host"); },
         test: async (_ctx, conn) => { calls.test++; const key = await conn.secret("apiKey"); if (conn.config.baseUrl === "https://fail.example") throw new Error(`401 for key ${key}`); return { status: "available", reason: "models-ok", message: "ok", checkedAt: 1 }; },
-        actions: { echo: { label: "Echo", run: async (_ctx, conn, input) => { calls.action++; return input === "leak" ? { token: await conn.secret("apiKey") } : { got: input }; } } },
+        actions: { echo: { label: "Echo", run: async (_ctx, conn, input): Promise<types.models.ActionValue> => { calls.action++; return input === "leak" ? { token: await conn.secret("apiKey") } : { got: input }; } } },
         ...extra,
     };
 }
@@ -271,7 +271,7 @@ describe("models.api", () => {
         expect(overview).toMatchObject({ providers: [{ id: "acme" }], connections: [], csrfToken: "good" });
         const created = await post({ action: "create", provider: "acme", accountName: "w", config: { baseUrl: "https://a.example", models: ["m"] }, secrets: { apiKey: KEY, org: ORG } });
         expect(created.status).toBe(201);
-        const { connection } = await created.json();
+        const { connection } = await created.json() as { connection: { id: string } };
         const bodies: unknown[] = [connection];
         for (const body of [
             { action: "providers" }, { action: "list" }, { action: "get", id: connection.id },

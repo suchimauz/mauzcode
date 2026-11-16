@@ -39,7 +39,7 @@ export function workTurns(events: ChatEvent[], running: boolean, runs: RunMetada
       // assistant replies and earlier work on their original side of the boundary.
       // A Git review delivery likewise precedes the run it wakes (durable event identity, not position on screen).
       let peerStart = legacy.length;
-      while (peerStart > 0 && (isPeer(legacy[peerStart - 1]) || isGitReview(legacy[peerStart - 1]))) peerStart--;
+      while (peerStart > 0 && (isPeer(legacy[peerStart - 1]!) || isGitReview(legacy[peerStart - 1]!))) peerStart--;
       const pendingPeers = legacy.splice(peerStart);
       flush();
       let turn = result.at(-1);

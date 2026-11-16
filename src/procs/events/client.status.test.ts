@@ -47,13 +47,13 @@ test('transport status observes open/hello, loss, retry, hidden close; unsubscri
     expect(b.live.getStatus()).toBe('connecting');
     b.sources[1].onmessage({ data: JSON.stringify({ type: 'hello', serverStart: 1 }) });
     expect(resyncs).toBe(1);
-    b.document.visibilityState = 'hidden'; b.handlers.visibilitychange();
+    b.document.visibilityState = 'hidden'; b.handlers.visibilitychange!();
     expect(b.live.getStatus()).toBe('disconnected');
     expect(b.sources[1].closed).toBe(true);
     expect(states).toEqual(['connected', 'disconnected', 'connecting', 'connected', 'disconnected']);
-    off(); b.document.visibilityState = 'visible'; b.handlers.visibilitychange();
+    off(); b.document.visibilityState = 'visible'; b.handlers.visibilitychange!();
     expect(states.length).toBe(5);
-    b.handlers.pagehide(); expect(b.live.getStatus()).toBe('disconnected');
+    b.handlers.pagehide!(); expect(b.live.getStatus()).toBe('disconnected');
 });
 
 test('refreshTopics reconnects only changed subscriptions and resyncs on hello', () => {
@@ -72,7 +72,7 @@ test('refreshTopics reconnects only changed subscriptions and resyncs on hello',
 
 test('HTTP/2 stays connected hidden; initially hidden HTTP/1 tab is disconnected', () => {
     const b = browser('h2'); b.sources[0].onopen();
-    b.document.visibilityState = 'hidden'; b.handlers.visibilitychange();
+    b.document.visibilityState = 'hidden'; b.handlers.visibilitychange!();
     expect(b.live.getStatus()).toBe('connected'); expect(b.sources[0].closed).toBe(false);
     const hidden = browser('http/1.1', 'hidden');
     expect(hidden.sources.length).toBe(0); expect(hidden.live.getStatus()).toBe('disconnected');

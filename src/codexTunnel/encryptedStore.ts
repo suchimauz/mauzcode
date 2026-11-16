@@ -12,7 +12,7 @@ export default function (
         /** Explicit name input for this account operation. */
         name: string;
     },
-): { read(): Promise<{ revision: number; value: any; }>; save(revision: number | null, value: object): Promise<number>; } {
+): { read(): Promise<{ revision: number; value: any; } | null>; save(revision: number | null, value: object): Promise<number>; } {
     const name=opts.name;
     
      const namespace='codex-socks-v1';

@@ -22,7 +22,12 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
   const isJson = response.headers.get('content-type')?.includes('application/json');
   if (!isJson) throw new ApiError('Сессия недоступна. Откройте MauzCode и войдите снова.', response.status === 200 ? 401 : response.status);
   const body = await response.json();
-  if (!response.ok) throw new ApiError(body.message || body.error || `Ошибка HTTP ${response.status}`, response.status);
+  if (!response.ok) {
+    const details = body && typeof body === 'object' ? body : {};
+    const message = 'message' in details && typeof details.message === 'string' ? details.message : '';
+    const error = 'error' in details && typeof details.error === 'string' ? details.error : '';
+    throw new ApiError(message || error || `Ошибка HTTP ${response.status}`, response.status);
+  }
   return body as T;
 }
 export function getAgents(signal?: AbortSignal) { return requestJson<{ agents: MauzCodeAgent[] }>('/api/v1/agents', { signal }); }

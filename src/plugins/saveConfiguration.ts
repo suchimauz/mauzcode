@@ -37,7 +37,7 @@ export default async function (
      if (present && !['string','number','boolean'].includes(typeof raw)) throw new Error('Invalid field value: ' + item.name);
      if (item.secret) {
       if (present && typeof raw !== 'string') throw new Error('Secret must be text');
-      if (present && raw !== '') writes.push({module:item.module,key:item.key,value:raw,isSecret:true});
+      if (present && typeof raw === 'string' && raw !== '') writes.push({module:item.module,key:item.key,value:raw,isSecret:true});
       continue;
      }
      if (!present && d.type !== 'boolean') continue;

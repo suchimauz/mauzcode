@@ -29,7 +29,7 @@ function fixture(kind = 'bound', checkpoint = 'active', pending: boolean | 'unkn
  return {ctx,agent,state,messages,executed,counts:()=>({streams,checks,flushes,inputReads}),execute:(extra:any={})=>run(ctx,null,{agent,userText:'human question',...extra})};
 }
 for(const kind of ['bound','inactive','excluded']) test(`${kind} cannot use legacy or plan as a Goal bypass`,async()=>{
- const h=fixture(kind);const result=await h.execute();expect(result.text).toBe('human answer');expect(h.counts().streams).toBe(1);expect(h.counts().checks).toBe(0);expect(h.messages.some(m=>m.message_type==='plan_feedback')).toBe(false);
+ const h=fixture(kind);const result=await h.execute();expect(result).toHaveProperty('text','human answer');expect(h.counts().streams).toBe(1);expect(h.counts().checks).toBe(0);expect(h.messages.some(m=>m.message_type==='plan_feedback')).toBe(false);
 });
 for(const pending of [true,'unknown'] as const) test(`absent Goal plan/legacy stops at ${pending} pending-input boundary`,async()=>{
  const h=fixture('absent','active',pending);await h.execute();expect(h.counts().streams).toBe(1);expect(h.counts().checks).toBe(0);
@@ -41,12 +41,12 @@ for(const kind of ['disabled','absent']) test(`${kind} retains ordinary bounded 
 // silently because the durable Goal status already explains the stop.
 for(const boundary of ['unknown','budget_limited','paused']) test(`${boundary} usage/checkpoint stops without tool or extra inference`,async()=>{
  const h=fixture('bound',boundary);let calls=0;h.ctx.fns.models.stream=async()=>{calls++;return {toolCalls:[{id:'t',name:'danger',args:{}}],usage:{}}};
- const result=await h.execute();if(boundary==='unknown')expect(result.text).toContain('Further automatic work stopped');else expect(result.text).toBe('');expect(calls).toBe(1);expect(h.executed).toEqual([]);expect(h.counts().checks).toBe(0);
+ const result=await h.execute();if(boundary==='unknown')expect(result).toHaveProperty('text',expect.stringContaining('Further automatic work stopped'));else expect(result).toHaveProperty('text','');expect(calls).toBe(1);expect(h.executed).toEqual([]);expect(h.counts().checks).toBe(0);
 });
 test('checkpoint budget transition within batch skips remaining tools and inference',async()=>{
  const h=fixture();let flushes=0,calls=0;h.ctx.fns.goal.runCheckpointFlush=async()=>({kind:'committed',allowContinuation:++flushes===1,status:flushes===1?'active':'budget_limited'});
  h.ctx.fns.models.stream=async()=>{calls++;return {toolCalls:[{id:'t1',name:'first',args:{}},{id:'t2',name:'second',args:{}}],usage:{}}};
- const result=await h.execute();expect(h.executed).toEqual(['first']);expect(calls).toBe(1);expect(result.text).toBe('');
+ const result=await h.execute();expect(h.executed).toEqual(['first']);expect(calls).toBe(1);expect(result).toHaveProperty('text','');
 });
 test('confirmed inactive capture permits explicit human tool work, but no synthetic continuation',async()=>{
  const h=fixture('inactive');let calls=0;h.ctx.fns.models.stream=async()=>++calls===1?{toolCalls:[{id:'t',name:'humanTool',args:{}}]}:{text:'answer'};
@@ -60,10 +60,10 @@ test('blocked provider usage refuses proposed tools after one request',async()=>
  h.ctx.fns.goal.runUsageRecord=async({format,requestId}:any)=>{formats.push(format);h.state.pendingRequests.delete(requestId);h.state.blocked='Unknown usage';return {kind:'blocked',allowContinuation:false}};
  h.ctx.fns.goal.runCheckpointFlush=async()=>({kind:'blocked',allowContinuation:false});
  h.ctx.fns.models.stream=async()=>{calls++;return {toolCalls:[{id:'t',name:'work',args:{}}]}};
- const result=await h.execute();expect(formats).toEqual(['common-stream']);expect(calls).toBe(1);expect(h.executed).toEqual([]);expect(result.text).toContain('Further automatic work stopped');
+ const result=await h.execute();expect(formats).toEqual(['common-stream']);expect(calls).toBe(1);expect(h.executed).toEqual([]);expect(result).toHaveProperty('text',expect.stringContaining('Further automatic work stopped'));
 });
 test('blocked capture refuses human and automatic work before sampling',async()=>{
- const h=fixture('blocked');const result=await h.execute();expect(result.goalAdmissionBlocked).toBe(true);expect(h.counts().streams).toBe(0);expect(h.counts().checks).toBe(0);expect(h.executed).toEqual([]);expect(h.messages.some(m=>m.message_type==='plan_feedback')).toBe(false);
+ const h=fixture('blocked');const result=await h.execute();expect(result).toHaveProperty('goalAdmissionBlocked',true);expect(h.counts().streams).toBe(0);expect(h.counts().checks).toBe(0);expect(h.executed).toEqual([]);expect(h.messages.some(m=>m.message_type==='plan_feedback')).toBe(false);
 });
 
 function nativeFixture(kind = 'bound') {

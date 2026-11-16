@@ -12,7 +12,7 @@ test('chat and mention providers return plain data, no HTML or popup calls', asy
  expect(rows).toEqual([{id:'mention:1',label:'<author> in <title>',href:'/agent/abc#m-3',detail:mention.excerpt,hint:new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(0)),icon:'ph-at',unread:true,pin:'agent:abc'}]);
  const out=await chats.render(ctx,null,opts);
  expect(out.items).toEqual([{id:'new-chat',label:'Новый чат',href:'/?newSession=1',icon:'ph-plus-circle'}]);
- expect(out.sections?.[0].items).toEqual(rows);expect(JSON.stringify(out)).not.toContain('"html"');
+ expect(out.sections?.[0]?.items).toEqual(rows);expect(JSON.stringify(out)).not.toContain('"html"');
  expect((await chats.render(ctx,null,{...opts,config:{hideNewChat:true}})).items).toEqual([]);
 });
 test('plugin catalogue is structured without network access',async()=>{

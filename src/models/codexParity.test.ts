@@ -41,7 +41,7 @@ async function setup(opts: { transport?: types.models.TransportSpec; config?: Re
     const view = await ctx.fns.models.create({ provider: "codex", accountName: "me", config: opts.config ?? {}, secrets: {}, transport: opts.transport ?? { kind: "direct" } });
     const { conn } = await ctx.fns.models.connections.resolve({ id: view.id });
     await ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", tokens: { id_token: ID_TOKEN, access_token: TOKEN, refresh_token: "rt-SECRET" } });
-    const stream = (o: Partial<Parameters<typeof ctx.fns.models.stream>[0]> = {}) =>
+    const stream = (o: Partial<Parameters<typeof ctx.fns.models.stream>[0]> = {}): Promise<types.models.StreamResult> =>
         ctx.fns.models.stream({ connectionId: view.id, model: "gpt-5", instructions: "sys", messages: [{ role: "user", content: "hi" }], sessionId: "s1", ...o });
     return { ctx, calls, replies, view, legacy, stream };
 }
@@ -172,7 +172,7 @@ describe("cache identity and sticky routing", () => {
 });
 
 describe("reasoning normalization", () => {
-    const cases: [string | undefined, string][] = [[undefined, "medium"], ["auto", "medium"], ["off", "none"], ["low", "low"], ["xhigh", "high"]];
+    const cases: [types.models.ReasoningLevel | 'auto' | undefined, string][] = [[undefined, "medium"], ["auto", "medium"], ["off", "none"], ["low", "low"], ["xhigh", "high"]];
     test.each(cases)("gpt-5 profile: %p → %p", async (pref, wire) => {
         const { calls, replies, stream } = await setup();
         replies.push(sse([done()]));

@@ -4,6 +4,7 @@ import run from './run';
 import estimateTokens from '../compaction/estimateTokens';
 import selectTail from '../compaction/selectTail';
 import project from '../compaction/project';
+import requireModel from './requireModel';
 
 function fixture() {
  const ac = new AbortController();
@@ -24,7 +25,7 @@ function fixture() {
    row.sleep_context=JSON.parse(p[0]);return {changes:1};
   }}},
   session:{deliverInbound:async()=>({drained:0}),getMessages:async({id}:any)=>structuredClone(rows[id]??[]), updateScratchpad:async()=>{},appendEventWithHtml:async()=>{},archive:async()=>{},appendMessage:async({id,message}:any)=>{(rows[id]??=[]).push(message);},syncAgentState:async()=>{agent.sleepContext=row.sleep_context;}},
-  agent:{normalizeSleepContext:({sleepContext}:any)=>sleepContext,getSleepGeneration:()=>null,start:async()=>({id:'child',model:'test'}),fullSystemPrompt:async()=>'',contextTokens:async({fallbackTokens}:any)=>({tokens:fallbackTokens,source:'estimate',reportedTokens:null,deltaTokens:null,reportedAt:null})},
+  agent:{requireModel:(o:Parameters<typeof requireModel>[2])=>requireModel(ctx,null,o),normalizeSleepContext:({sleepContext}:any)=>sleepContext,getSleepGeneration:()=>null,start:async()=>({id:'child',model:'test'}),fullSystemPrompt:async()=>'',contextTokens:async({fallbackTokens}:any)=>({tokens:fallbackTokens,source:'estimate',reportedTokens:null,deltaTokens:null,reportedAt:null})},
   compaction:{tokenizer:async()=>null,calibration:async()=>({factor:1,samples:0,source:'heuristic'}),retainGenerations:async({generations}:any)=>generations,project:(opts:any)=>project(ctx,null,opts),estimateTokens:(opts:any)=>estimateTokens(ctx,null,opts),selectTail:(opts:any)=>selectTail(ctx,null,opts),resolve:async()=>({provider:'test',compact:async(_c:any,_s:any,opts:any)=>summarize(opts)})}
  }};
  return {ctx,agent,root,row,ac,setSummary:(fn:any)=>{summarize=fn;},call:()=>compact(ctx,null,{agent,runToken:'owner',signal:ac.signal})};
@@ -67,7 +68,7 @@ function runFixture(over=false) {
  const ctx:any={fns:{
  procs:{db:{select:async()=>[{i:0}]},log:{warn:()=>{}},events:{emit:()=>{}}},
  session:{recordContextUsage:async({usage}:any)=>{usageSnapshots.push(usage);},forAgent:()=>null,appendUserMessage:async({text}:any)=>append({message:{role:'user',content:text}}),appendMessage:append,syncAgentState:async()=>{},appendAssistantEvent:async()=>{visibleReplies++;return {idx:visibleReplies};},appendErrorEvent:async()=>{},appendToolCallEvent:async()=>{},updateMessageContent:async({idx,content}:any)=>{messages[idx].content=content;}},
- agent:{statusLineForTurn:async()=>'',stashResult:async({output}:any)=>({content:output}),autoCompactIfNeeded:async({checkOnly}:any)=>{if(!checkOnly)attempts++;expect(messages.filter(m=>m.role==='tool').every(m=>m.content==='done')).toBe(true);return {status:checkOnly?'over_threshold':'failed',estimatedTokens:over?195000:10000,contextWindow:200000};},stop:async()=>{stops++;agent.abortController.abort();}},
+ agent:{requireModel:(o:Parameters<typeof requireModel>[2])=>requireModel(ctx,null,o),statusLineForTurn:async()=>'',stashResult:async({output}:any)=>({content:output}),autoCompactIfNeeded:async({checkOnly}:any)=>{if(!checkOnly)attempts++;expect(messages.filter(m=>m.role==='tool').every(m=>m.content==='done')).toBe(true);return {status:checkOnly?'over_threshold':'failed',estimatedTokens:over?195000:10000,contextWindow:200000};},stop:async()=>{stops++;agent.abortController.abort();}},
  markdown:{render:async({source}:any)=>source},tools:{call:async()=>{effects++;return {output:'done'};}},models:{stream:async()=>{streams++;const usage={prompt_tokens:streams*1000,completion_tokens:100};return streams<=3?{text:'',usage,toolCalls:[{id:'c'+streams,name:'effect',args:{}}]}:{text:'finished',usage,toolCalls:[]};}}
  }};
  // Current run lifecycle/goal/planning hooks: inert stubs (goal feature disabled, nothing waiting).

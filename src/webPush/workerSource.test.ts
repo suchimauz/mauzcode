@@ -11,8 +11,8 @@ async function fixture() {
       getNotifications: async () => [{ tag: 'input-i1', close: async () => { closed.push('input-i1'); } }, { tag: 'error-run-1', close: async () => { closed.push('error-run-1'); } }] },
     clients: { matchAll: async () => [{ url: 'https://mauzcode.test/a/ab', focus: async () => { focused++; } }], openWindow: async (url: string) => { opened.push(url); } } };
   new Function('self', await workerSource({} as Context, null, {}))(self);
-  async function push(data: any) { let work: any; handlers.push({ data: { json: () => data }, waitUntil: (p: any) => work = p }); await work; }
-  async function click(url: string) { let work: any; handlers.notificationclick({ notification: { data: { url }, close() {} }, waitUntil: (p: any) => work = p }); await work; }
+  async function push(data: any) { let work: any; handlers.push!({ data: { json: () => data }, waitUntil: (p: any) => work = p }); await work; }
+  async function click(url: string) { let work: any; handlers.notificationclick!({ notification: { data: { url }, close() {} }, waitUntil: (p: any) => work = p }); await work; }
   return { handlers, shown, opened, push, click, focused: () => focused, closed };
 }
 test('worker parses, registers no fetch handler, ignores injected payload text and rejects unsafe links', async () => {

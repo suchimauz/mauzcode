@@ -5,9 +5,9 @@ import { join } from "node:path";
 export default async function(ctx:Context,session:Session|null,opts:{/** Incoming owner-confirmed JSON request. */req:Request;/** Route parameters. */params:Record<string,string>}) {
     if(session?.user?.role !== 'owner') return Response.json({error:'Owners only'},{status:403});
     if(!await ctx.fns.auth.verifyCsrf({req:opts.req,token:opts.req.headers.get('X-CSRF-Token')??''})) return Response.json({error:'Invalid CSRF token'},{status:403});
-    let input: { confirmed?: boolean; target?: string };
+    let input: unknown;
     try { input=await opts.req.json(); } catch { return Response.json({error:'Invalid JSON'},{status:400}); }
-    if(input?.confirmed!==true || typeof input.target!=='string') return Response.json({error:'Explicit confirmation and target required'},{status:400});
+    if(!input || typeof input!=='object' || Array.isArray(input) || !('confirmed' in input) || input.confirmed!==true || !('target' in input) || typeof input.target!=='string') return Response.json({error:'Explicit confirmation and target required'},{status:400});
     const s=await ctx.fns.update.check({fetch:true});
     if(s.state!=="available"||!s.current||!s.target||s.target!==input.target) return Response.json({error:'Update changed; refresh and confirm again. '+s.message},{status:409});
     const root=String((ctx.state as any).root??process.cwd());

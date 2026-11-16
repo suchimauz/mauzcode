@@ -19,5 +19,5 @@ it('bounds startup and body deadlines even when cancellation stalls',async()=>{
 it('fetches quota through shared SOCKS dispatcher without network',async()=>{
  const c:any={fns:{sshProvider:{dispatch:async(o:any)=>{expect(o.url).toBe('https://chatgpt.com/backend-api/wham/usage');expect(o.init.method).toBe('GET');return Response.json({rate_limit:{primary_window:{used_percent:12}}});}},sshAccount:{}}};
  c.fns.sshAccount.fetch=(o:any)=>fetchRemote(c,null,o);
- const res=await fetchUsage(c,null,opts);expect((await res.json()).rate_limit.primary_window.used_percent).toBe(12);
+ const res=await fetchUsage(c,null,opts);expect((await res.json() as {rate_limit: {primary_window: {used_percent: number}}}).rate_limit.primary_window.used_percent).toBe(12);
 });

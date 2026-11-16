@@ -26,7 +26,7 @@ function fixture() {
     return { ctx, row, live };
 }
 
-const flags = [["jevEvidenceEnabled","jev_evidence_enabled"],["jevFileRankingEnabled","jev_file_ranking_enabled"],["jevResultReviewEnabled","jev_result_review_enabled"],["jevRiskReviewEnabled","jev_risk_review_enabled"]];
+const flags = [["jevEvidenceEnabled","jev_evidence_enabled"],["jevFileRankingEnabled","jev_file_ranking_enabled"],["jevResultReviewEnabled","jev_result_review_enabled"],["jevRiskReviewEnabled","jev_risk_review_enabled"]] as const;
 for (const [flag, column] of flags) {
  test(flag + ' defaults off, persists, preserves omitted and unrelated settings', async () => {
   const {ctx, row, live} = fixture();
@@ -36,7 +36,7 @@ for (const [flag, column] of flags) {
   await save(ctx, null, {agent:live});
   const restored = await load(ctx, null, {id:live.id});
   expect(restored?.[flag]).toBe(true);
-  for(const previous of ['jevContextEnabled','jevAgentRoutingEnabled','jevModelRoutingEnabled']) expect(restored?.[previous]).toBe(true);
+  for(const previous of ['jevContextEnabled','jevAgentRoutingEnabled','jevModelRoutingEnabled'] as const) expect(restored?.[previous]).toBe(true);
   for(const [other] of flags) if(other!==flag) expect(restored?.[other]).toBe(false);
   await setAutomation(ctx, null, {id: live.id, [flag]:false});
   expect(row[column]).toBe(false);

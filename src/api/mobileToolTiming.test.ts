@@ -18,8 +18,8 @@ test('projects measured tool durations and explicit timeouts without inventing a
         ] },
     } };
     const response = await route(ctx, null, { req: new Request('http://local/api/v1/agents/fixture/events'), params: { id: 'fixture' } });
-    const body = await response.json();
-    expect(body.events.map(({ durationMs, timeoutMs }: any) => ({ durationMs, timeoutMs }))).toEqual([
+    const body = await response.json() as {events: Array<{durationMs: number | null; timeoutMs: number | null}>; activeTools: unknown[]};
+    expect(body.events.map(({ durationMs, timeoutMs }) => ({ durationMs, timeoutMs }))).toEqual([
         { durationMs: 52.84, timeoutMs: null }, { durationMs: 5001, timeoutMs: 5000 },
         { durationMs: null, timeoutMs: null }, { durationMs: 0, timeoutMs: null },
     ]);

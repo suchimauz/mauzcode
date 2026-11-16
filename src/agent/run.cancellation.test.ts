@@ -1,10 +1,11 @@
 import { expect, test } from 'bun:test';
 import run from './run';
+import requireModel from './requireModel';
 
 // No shared runtime or DB: deferred hooks place Stop exactly across awaits.
 function harness() {
     const rows: any[] = [];
-    const agent: any = { id: 'cancel', scratchpad: {}, messages: [] };
+    const agent: any = { id: 'cancel', model: 'mock/default:test', scratchpad: {}, messages: [] };
     const noop = async () => {};
     let stopped = false;
     let calls = 0;
@@ -18,7 +19,7 @@ function harness() {
             syncAgentState: async () => { agent.messages = rows.slice(); },
             appendToolCallEvent: noop, appendAssistantEvent: async () => ({idx: 0}), recordContextUsage: noop,
             updateMessageContent: async ({ idx, content }: any) => { rows[idx].content = content; } },
-        agent: { cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => ({ scheduled: false }), statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
+        agent: { requireModel: (o: Parameters<typeof requireModel>[2]) => requireModel(ctx, null, o), cacheRoot:async({agent}:any)=>agent.id,buildLlmRequest: async () => ({instructions:'',messages:[]}), wireTools:()=>[], recordRunLifecycle: async () => {}, retryWait: async () => {}, retrySchedule: async () => ({ scheduled: false }), statusLineForTurn: async () => '', autoCompactIfNeeded: async () => ({ status: 'not_needed' }),
             stashResult: async ({ output }: any) => ({ content: output }) },
         models: { resolveRoute: async () => ({ provider: 'fixture' }), classifyError: () => ({ kind: 'fatal', retryable: false }), stream: async () => ({ toolCalls: [{ id: 'a', name: 'one' }, { id: 'b', name: 'two' }] }) },
         tools: { call: async () => { calls++; return { output: 'ok' }; } },

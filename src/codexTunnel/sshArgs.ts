@@ -18,5 +18,5 @@ export default function (
 ): string[] {
     const connection=opts.connection;
     const port=opts.port;
-    if(connection.bin!=='ssh'||!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid SSH invocation');const args:string[]=[];for(let i=0;i<connection.args.length;i++){const a=connection.args[i];if(a==='--')continue;if(a==='-o'&&/^Control(Master|Persist|Path)=/.test(connection.args[i+1])){i++;continue}args.push(a)}return [connection.bin,...args,'-o','ControlMaster=no','-o','ControlPath=none','-o','ControlPersist=no','-o','ExitOnForwardFailure=yes','-N','-D',`127.0.0.1:${port}`,'--',connection.host]
+    if(connection.bin!=='ssh'||!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid SSH invocation');const args:string[]=[];for(let i=0;i<connection.args.length;i++){const a=connection.args[i]!;if(a==='--')continue;if(a==='-o'&&/^Control(Master|Persist|Path)=/.test(connection.args[i+1] ?? '')){i++;continue}args.push(a)}return [connection.bin,...args,'-o','ControlMaster=no','-o','ControlPath=none','-o','ControlPersist=no','-o','ExitOnForwardFailure=yes','-N','-D',`127.0.0.1:${port}`,'--',connection.host]
 }
