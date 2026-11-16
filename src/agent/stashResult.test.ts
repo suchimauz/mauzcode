@@ -12,7 +12,7 @@ function harness(fail = false) {
         return ref;
     } } } };
     ctx.fns.resultStore.prepare = (o: any) => prepare(ctx, null, o);
-    return { writes, ref, agent, run: (output: string, kind = 'read') => stashResult(ctx, null, { agent, output, kind }) };
+    return { ctx, writes, ref, agent, run: (output: string, kind = 'read') => stashResult(ctx, null, { agent, output, kind }) };
 }
 
 test('inline threshold includes exactly 6000 characters and never writes', async () => {
@@ -64,4 +64,31 @@ test('a read result keeps its readId line in the preview even when the head is c
     // bash keeps the tail, but a readId never appears there: nothing is prepended
     const b = await h.run('z'.repeat(7000), 'bash');
     expect(b.content).not.toContain('readId:');
+});
+
+test('read_result output stays inline up to its bounded maximum; other tools are still stored', async () => {
+    const h = harness();
+    const readTool = { wireName: 'read_result', name: 'read_result', fn: 'tools.readResult' };
+    h.ctx.fns.tools = { list: () => [readTool] };
+    const range = JSON.stringify({ ok: true, text: '"'.repeat(16000), totalChars: 50000, offset: 0, truncated: true });
+    expect(range.length).toBeGreaterThan(16000);
+    expect(await h.run(range, 'read_result')).toEqual({ content: range });
+    expect(h.writes).toHaveLength(0);
+    const other = await h.run('x'.repeat(16000), 'grep');
+    expect(other.result_ref).toEqual(h.ref);
+    expect(h.writes).toHaveLength(1);
+});
+
+test('preview hint names read_result only when the agent can call it', async () => {
+    const h = harness();
+    const readTool = { wireName: 'read_result', name: 'read_result', fn: 'tools.readResult' };
+    h.ctx.fns.tools = { list: () => [readTool] };
+    let wire: any[] = [{ name: 'read_result' }];
+    h.ctx.fns.agent = { wireTools: () => wire };
+    const native = await h.run('x'.repeat(7000), 'grep');
+    expect(native.content).toContain(`read_result: { "id": "${h.ref.id}", "offset": 0, "limit": 4000 }`);
+    expect(native.content).not.toContain('ctx.fns.agent.readResult');
+    wire = [];
+    const evalHint = await h.run('x'.repeat(7000), 'grep');
+    expect(evalHint.content).toContain('await ctx.fns.agent.readResult({ id:');
 });

@@ -123,3 +123,20 @@ describe("tool_describe", () => {
         await expect(ctx.fns.tools.toolDescribe({ name: "input.request" })).rejects.toThrow("trusted agent invocation");
     });
 });
+
+
+describe("read_result availability and guidance", () => {
+    test("is advertised only with agent.readResult and switches the prompt guidance", async () => {
+        const allowed = agentWith(snapshot(["tools.*", "agent.readResult", "input.request"]));
+        const denied = agentWith(snapshot(["tools.*", "input.request"]));
+        expect(ctx.fns.agent.wireTools({ agent: allowed }).map(t => t.name)).toContain("read_result");
+        expect(ctx.fns.agent.wireTools({ agent: denied }).map(t => t.name)).not.toContain("read_result");
+        expect((await call(denied, "read_result", { id: "r1" })).output).toMatch(/^Error: unknown tool "read_result"\./);
+        const prompt = await ctx.fns.agent.fullSystemPrompt({ agent: { ...allowed, workspaceDir: "/tmp" } as any });
+        expect(prompt).toContain("Read ranges with the read_result tool");
+        expect(prompt).not.toContain("await ctx.fns.agent.readResult(");
+        const narrowed = await ctx.fns.agent.fullSystemPrompt({ agent: { ...allowed, tools: ["eval"], workspaceDir: "/tmp" } as any });
+        expect(narrowed).toContain("await ctx.fns.agent.readResult(");
+        expect(ctx.fns.tools.promptSection({ protocol: "json", allows: name => name !== "agent.readResult" })).not.toContain("read_result");
+    });
+});

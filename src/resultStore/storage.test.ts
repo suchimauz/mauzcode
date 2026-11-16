@@ -7,6 +7,7 @@ import write from './write';
 import read from './read';
 import root from './root';
 import readResult from '../agent/readResult';
+import nativeReadResult from '../tools/readResult';
 import getFullMessages from '../session/getFullMessages';
 
 const dirs: string[] = [];
@@ -26,13 +27,14 @@ async function fixture() {
     ctx.fns.resultStore.root = (o: any) => root(ctx, null, o);
     ctx.fns.resultStore.read = (o: any) => read(ctx, null, o);
     ctx.fns.session.getFullMessages = (o: any) => getFullMessages(ctx, null, o);
+    ctx.fns.agent.readResult = (o: any) => readResult(ctx, null, o);
     const put = async (text = 'hello', ownerAgentId = 'owner') => {
         const ref = await write(ctx, null, { ownerAgentId, kind: 'test', text });
         (messages[ownerAgentId] ??= []).push({ role: 'tool', result_ref: ref });
         return ref;
     };
     const path = (ref: any) => join(instance, '.mauzcode/results', ref.ownerAgentId, ref.id + '.json');
-    return { instance, ctx, caller, messages, agents, put, path, get: (ref: any) => read(ctx, null, { ref }), api: (opts: any) => readResult(ctx, null, opts) };
+    return { instance, ctx, caller, messages, agents, put, path, get: (ref: any) => read(ctx, null, { ref }), api: (opts: any) => readResult(ctx, null, opts), native: (opts: any) => nativeReadResult(ctx, { kind: 'agent', agentId: caller.id, agent: caller } as any, opts) };
 }
 
 test('trigger ownership is rechecked on cache hit without messages', async () => {
@@ -258,4 +260,23 @@ test('foreign trigger UUID stays inaccessible on cold cache',async()=>{
     };
     expect(await f.api({id:ref.id})).toEqual({ok:false,error:'not_found'});
     expect(reads).toBe(1);expect(f.ctx.state.resultStore?.cache).toBeUndefined();
+});
+
+describe('native read_result parity', () => {
+    test('same ranges, clamping, foreign not_found and legacy_unavailable as agent.readResult', async () => {
+        const f = await fixture(); const text = '🌍' + 'a'.repeat(20000); const ref = await f.put(text);
+        f.messages.owner = [{ role: 'tool', result_ref: ref }];
+        for (const range of [{}, { offset: 4000, limit: 4000 }, { offset: -3, limit: 0 }, { offset: 2.9, limit: 3.9 }, { limit: 50000 }, { offset: 99999, limit: 20 }]) {
+            expect(await f.native({ id: ref.id, ...range })).toEqual(await f.api({ id: ref.id, ...range }));
+        }
+        expect((await f.native({ id: ref.id, limit: 50000 }) as any).text.length).toBe(16000);
+        const foreign = await f.put('other agent', 'stranger');
+        expect(await f.native({ id: foreign.id })).toEqual({ ok: false, error: 'not_found' });
+        expect(await f.native({ id: 'r12' })).toEqual({ ok: false, error: 'legacy_unavailable' });
+    });
+    test('rejects unknown arguments, agent overrides and a missing trusted invocation', async () => {
+        const f = await fixture(); const ref = await f.put();
+        for (const args of [{ id: ref.id, agentId: 'stranger' }, { id: ref.id, owner: 'x' }, { id: '' }]) await expect(f.native(args)).rejects.toThrow('read_result');
+        await expect(nativeReadResult(f.ctx, null, { id: ref.id })).rejects.toThrow('trusted agent invocation');
+    });
 });

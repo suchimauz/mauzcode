@@ -1,4 +1,6 @@
 const LIMIT = 6_000;
+// Largest read_result output: 16000 text units plus JSON envelope and escaping headroom.
+const READ_RESULT_LIMIT = 40_000;
 
 /** Keep small tool outputs inline and store larger outputs as immutable result files.
  * Returns bounded transcript content and, only after a successful write, its structured
@@ -20,6 +22,9 @@ export default async function (
     const { agent, kind } = opts;
     const output = String(opts.output ?? "");
     if (output.length <= LIMIT) return { content: output };
+    // A read_result range is already bounded (16000 units plus a small envelope);
+    // storing it again would only produce another preview that needs another read.
+    if (isReadResult(ctx, kind) && output.length <= READ_RESULT_LIMIT) return { content: output };
 
     const fromTail = kind === "bash";
     const { preview: cut, ref: result_ref, storageError } = await ctx.fns.resultStore.prepare({ownerAgentId:agent.id,kind,text:output,inlineLimit:LIMIT,tail:fromTail});
@@ -33,7 +38,17 @@ export default async function (
         const note = `[${label} — result storage failed: ${reason}. Full output was NOT saved; no retrieval reference is available.]`;
         return { content: fromTail ? `${note}\n${preview}` : `${preview}\n${note}` };
     }
-    const note = `[${label} — full output saved. Read a bounded range with eval: ` +
-        `await ctx.fns.agent.readResult({ id: ${JSON.stringify(result_ref.id)}, offset: 0, limit: 4000 })]`;
+    const nativeRead = typeof ctx.fns.agent?.wireTools === "function" && ctx.fns.agent.wireTools({ agent }).some(tool => isReadResult(ctx, tool.name));
+    const note = nativeRead
+        ? `[${label} — full output saved. Read a bounded range with read_result: ` +
+          `{ "id": ${JSON.stringify(result_ref.id)}, "offset": 0, "limit": 4000 }]`
+        : `[${label} — full output saved. Read a bounded range with eval: ` +
+          `await ctx.fns.agent.readResult({ id: ${JSON.stringify(result_ref.id)}, offset: 0, limit: 4000 })]`;
     return { content: fromTail ? `${note}\n${preview}` : `${preview}\n${note}`, result_ref };
+}
+
+// The native read tool, matched by its declared implementation so a renamed
+// or disambiguated wire name still counts.
+function isReadResult(ctx: Context, name: string): boolean {
+    return typeof ctx.fns.tools?.list === "function" && ctx.fns.tools.list({}).some(tool => (tool.wireName === name || tool.name === name) && tool.fn === "tools.readResult");
 }

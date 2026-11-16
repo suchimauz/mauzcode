@@ -15,9 +15,9 @@
 
 ## 3. read_result
 
-- [ ] 3.1 Add `read_result` declaration (`requires`: `agent.readResult`) and adapter bound to the trusted agent; verify parity tests with `agent.readResult` for ranges, clamping, foreign id `not_found` and `legacy_unavailable`
-- [ ] 3.2 Return `read_result` output inline in `agent.stashResult` (no re-store); verify a 16000-unit read creates no new result id
-- [ ] 3.3 Make the stored-result preview hint and prompt guidance name `read_result` when it is in the agent's tool list, eval otherwise; verify both variants in tests
+- [x] 3.1 Add `read_result` declaration (`requires`: `agent.readResult`) and adapter bound to the trusted agent; verify parity tests with `agent.readResult` for ranges, clamping, foreign id `not_found` and `legacy_unavailable`
+- [x] 3.2 Return `read_result` output inline in `agent.stashResult` (no re-store); verify a 16000-unit read creates no new result id
+- [x] 3.3 Make the stored-result preview hint and prompt guidance name `read_result` when it is in the agent's tool list, eval otherwise; verify both variants in tests
 
 ## 4. request_input
 

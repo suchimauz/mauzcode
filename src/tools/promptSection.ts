@@ -18,7 +18,7 @@ export default function (
     opts: { /** Tool wire protocol; defaults to markers. */ protocol?: "markers" | "json"; /** Optional legacy tool-name narrowing. */ only?: string[]; /** Access predicate for each declaration's implementation function. */ allows?: (name: string) => boolean } = {},
 ): string {
     const protocol = opts.protocol ?? "markers";
-    let tools = ctx.fns.tools.list({}).filter(t => !opts.allows || opts.allows(t.fn));
+    let tools = ctx.fns.tools.list({}).filter(t => !opts.allows || (ctx.fns.tools.requirements({ tool: t }) ?? [""]).every(name => !!name && opts.allows!(name)));
     if (opts.only?.length) tools = tools.filter((t: any) => opts.only!.includes(t.wireName) || opts.only!.includes(t.name));
 
     const advertised = tools.filter((t: any) => t.promptSnippet);

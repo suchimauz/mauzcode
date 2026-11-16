@@ -7,6 +7,9 @@ export default async function (ctx: Context, _session: Session | null, opts: {
 }): Promise<string> {
     const { agent } = opts;
     const allows = (agent.preset && ctx.fns.agentPreset.predicate({ snapshot: agent.preset })) || (() => true);
+    // The native read tool replaces the eval recipe only when this agent can actually call it.
+    const nativeReadResult = typeof ctx.fns.agent?.wireTools === "function"
+        && ctx.fns.agent.wireTools({ agent }).some(tool => ctx.fns.tools.list({}).some(t => t.wireName === tool.name && t.fn === "tools.readResult"));
     const excluded = new Set(agent.preset?.layers.flatMap(layer => layer.excludeSections) ?? []);
     const sections = [...(ctx.state.prompts?.registry?.values() ?? [])] as { id: string; order: number; requires: string[]; body: string; generator?: string }[];
     const blocks = [await Bun.file(resolve(import.meta.dir, "SYSTEM_PROMPT_BASE.md")).text()];
@@ -31,7 +34,9 @@ export default async function (ctx: Context, _session: Session | null, opts: {
         // Optional guidance stays inside its original section so existing exclusions still win.
         // Keep mandatory safety text in the section body even when an auxiliary API is denied.
         if (section.id === "eval" && allows("agent.readResult")) {
-            body += '\n\nBig tool results have a bounded preview and immutable result UUID. Read ranges with await ctx.fns.agent.readResult({ id: "<uuid>", offset: 0, limit: 4000 }); inspect ok, text and truncated before reading more. Do not rerun a tool or read scratchpad.results to recover output. Old rN references are unavailable; a storage-failure preview has no full saved result.';
+            body += nativeReadResult
+                ? '\n\nBig tool results have a bounded preview and immutable result UUID. Read ranges with the read_result tool ({ id: "<uuid>", offset: 0, limit: 4000 }); inspect ok, text and truncated before reading more. Do not rerun a tool or read scratchpad.results to recover output. Old rN references are unavailable; a storage-failure preview has no full saved result.'
+                : '\n\nBig tool results have a bounded preview and immutable result UUID. Read ranges with await ctx.fns.agent.readResult({ id: "<uuid>", offset: 0, limit: 4000 }); inspect ok, text and truncated before reading more. Do not rerun a tool or read scratchpad.results to recover output. Old rN references are unavailable; a storage-failure preview has no full saved result.';
         }
         if (section.id === "agentMessaging" && allows("agent.search")) {
             body += '\n\nFind an ordinary agent by title or id with await ctx.fns.agent.search({ query, limit }); use its exact returned id for messaging. Shared agents are published reusable context, not ordinary chat lookup.';
