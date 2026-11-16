@@ -24,7 +24,7 @@ The Models tab SHALL list connections with account name, provider label and icon
 - **THEN** only its status and reason are shown
 
 ### Requirement: Add and edit connections
-The Models tab SHALL let the owner pick a provider type from the catalogue (built-in and plugin providers), fill the account name, the provider fields and the transport, test, save, edit and remove a connection; removal MUST require explicit confirmation.
+The Models tab SHALL let the owner pick a provider type from the catalogue (built-in and plugin providers), fill the account name, the provider fields and the transport, test, save, edit and remove a connection; removal MUST require explicit confirmation. The Add connection control and its expanded creation form SHALL precede the existing connection list in visual and DOM/keyboard order for all providers, without duplicating the creation block or changing the first-connection expanded state.
 
 #### Scenario: Add a custom connection
 - **WHEN** the owner picks Custom, fills the account name, URL, protocol and key and saves
@@ -33,6 +33,18 @@ The Models tab SHALL let the owner pick a provider type from the catalogue (buil
 #### Scenario: Remove requires confirmation
 - **WHEN** the owner clicks remove on a connection
 - **THEN** nothing is deleted until the owner confirms
+
+#### Scenario: Existing connections
+- **WHEN** the owner opens Models with existing connections
+- **THEN** a single Add connection control appears above the connection list, not after it, and precedes connection-card controls in keyboard navigation order
+
+#### Scenario: Expanded creation form
+- **WHEN** the owner opens Add connection and selects any built-in or plugin provider
+- **THEN** the provider picker and creation form remain above the existing connections, with the existing validation and save/cancel behavior
+
+#### Scenario: First connection
+- **WHEN** the owner opens Models with no connections
+- **THEN** the existing expanded first-connection creation flow remains available at the beginning of the content with no duplicate creation block
 
 ### Requirement: Schema-driven forms
 When a provider has no custom UI component, its form SHALL be generated from its field schema; secret fields MUST be write-only and show only whether a value is set.
