@@ -140,3 +140,36 @@ describe("read_result availability and guidance", () => {
         expect(ctx.fns.tools.promptSection({ protocol: "json", allows: name => name !== "agent.readResult" })).not.toContain("read_result");
     });
 });
+
+describe("native tool schemas across provider adapters", () => {
+    const names = ["tool_search", "tool_describe", "read_result", "request_input"];
+    test("every adapter carries each schema unchanged, with strict mode only where legal", () => {
+        const agent = agentWith(snapshot(["*"], [], ["*"]));
+        const wire = ctx.fns.agent.wireTools({ agent }).filter(t => names.includes(t.name));
+        expect(wire.map(t => t.name).sort()).toEqual([...names].sort());
+        const p = ctx.fns.models.protocol;
+        for (const spec of wire) {
+            expect(spec.parameters).toMatchObject({ type: "object", additionalProperties: false });
+            expect(JSON.stringify(spec.parameters)).not.toMatch(/"(agentId|allows|session|owner|preset)"/);
+            // Strict decoding only where legal: all-required schemas (tool_describe) yes, optional fields no.
+            const strict = spec.name === "tool_describe";
+            expect(p.openaiChat.toTools({ tools: [spec] })).toEqual([{ type: "function", function: { ...spec, strict } }]);
+            expect(p.openaiResponses.toTools({ tools: [spec] })).toEqual([{ type: "function", ...spec, strict }]);
+            expect(p.anthropic.toTools({ tools: [spec] })).toEqual([{ name: spec.name, description: spec.description, input_schema: spec.parameters }]);
+            expect(p.gemini.toTools({ tools: [spec] })).toEqual([{ functionDeclarations: [{ name: spec.name, description: spec.description, parameters: spec.parameters }] }]);
+            expect(spec.name).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+            expect(spec.description.length).toBeLessThan(600);
+        }
+    });
+
+    test("Standard advertises all four, and each disappears when its wrapped capability is denied", async () => {
+        const standard = ctx.fns.agentPreset.defaults({}).find(p => p.id === "standard")!;
+        const layer = (deny: string[]): types.agentPreset.Snapshot => ({ presetId: "standard", name: "Standard", layers: [{ id: "standard", allow: standard.allow, deny, plugins: standard.plugins, prompt: "", excludeSections: [] }] });
+        expect(ctx.fns.agent.wireTools({ agent: agentWith(layer([])) }).map(t => t.name)).toEqual(expect.arrayContaining(names));
+        for (const [tool, denied] of [["tool_search", "runtime.docs.search"], ["tool_search", "plugins.search"], ["tool_describe", "runtime.docs.get"], ["tool_describe", "plugins.read"], ["read_result", "agent.readResult"], ["request_input", "input.request"]] as const) {
+            const visible = ctx.fns.agent.wireTools({ agent: agentWith(layer([denied])) }).map(t => t.name);
+            expect(visible).not.toContain(tool);
+            expect(visible.length).toBeGreaterThan(0);
+        }
+    });
+});

@@ -8,7 +8,7 @@ const snapshot = (allow: string[], deny: string[] = []): types.agentPreset.Snaps
 async function setup(preset?: types.agentPreset.Snapshot) {
     const ctx: any = await mkTestCtx({ env: { MAUZCODE_OAUTH_ENCRYPTION_KEY: Buffer.alloc(32, 21).toString("base64") } });
     const agent = await ctx.fns.agent.start({ model: "test:model", systemPrompt: "" });
-    // Explicit rules: the adapters are not in the Standard catalogue until task 5.1.
+    // Explicit allow-all rules keep this test independent of shipped preset contents.
     agent.preset = preset ?? snapshot(["*"]);
     await ctx.fns.session.save({ agent });
     const call = (args: unknown) => ctx.fns.tools.call({ name: "request_input", args, agent });

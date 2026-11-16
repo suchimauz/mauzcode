@@ -334,7 +334,11 @@ export default function (
                 "tools.grep",
                 "tools.find",
                 "tools.bash",
-                "tools.eval"
+                "tools.eval",
+                "tools.toolSearch",
+                "tools.toolDescribe",
+                "tools.readResult",
+                "tools.requestInput"
             ]
         },
         "tsgo": {

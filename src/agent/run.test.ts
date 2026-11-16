@@ -89,7 +89,7 @@ describe('agent.run', () => {
 
         const wire = ctx.fns.agent.wireTools({ agent });
         // Native goal tools (create_goal/get_goal/update_goal) join when the goal feature is on.
-        expect(wire.map((t: any) => t.name).filter((n: string) => !n.endsWith('_goal')).sort()).toEqual(['bash', 'edit', 'eval', 'find', 'grep', 'read', 'respondHtml', 'write']);
+        expect(wire.map((t: any) => t.name).filter((n: string) => !n.endsWith('_goal')).sort()).toEqual(['bash', 'edit', 'eval', 'find', 'grep', 'read', 'read_result', 'request_input', 'respondHtml', 'tool_describe', 'tool_search', 'write']);
 
         const narrowed = ctx.fns.agent.wireTools({ agent: { ...agent, tools: ['read'] } });
         expect(narrowed).toHaveLength(1);

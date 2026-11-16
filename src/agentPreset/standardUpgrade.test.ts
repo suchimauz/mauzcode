@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { testCtx } from '../$test';
-import migration from './$migration_20380102120000_expand_standard_capabilities';
+import expansion from './$migration_20380102120000_expand_standard_capabilities';
+import nativeTools from './$migration_20380103120000_native_agent_tools';
+
+// Both factory upgrades in order, as boot applies them.
+const migration = { up: async (ctx: Context) => { await expansion.up(ctx); await nativeTools.up(ctx); } };
 
 // Historical fixture must not follow today's catalogue or defaults.
 const previous = {
@@ -111,9 +115,34 @@ describe('conservative Standard factory upgrade', () => {
             await migration.up(ctx);
             const upgraded = await read(ctx);
             expect(upgraded.plugins).toEqual(['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab']);
-            expect([...upgraded.allow].sort()).toEqual([...previous.allow, 'projects.list', 'projects.get'].sort());
+            expect([...upgraded.allow].sort()).toEqual([...previous.allow, 'projects.list', 'projects.get',
+                'tools.toolSearch', 'tools.toolDescribe', 'tools.readResult', 'tools.requestInput'].sort());
         } finally {
             ctx.state.registry.agentPreset.defaults = defaults;
+        }
+    });
+});
+
+describe('native agent tools Standard upgrade', () => {
+    const expanded = { ...previous, description: 'Code and task work with specification, review, research and browser plugins; no runtime management.',
+        allow: [...previous.allow, 'projects.list', 'projects.get'], plugins: ['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab'] };
+    test('adds exactly the four adapters to an untouched expanded Standard, once', async () => {
+        const ctx = await testCtx();
+        await store(ctx, { ...expanded, allow: [...expanded.allow].reverse() });
+        await nativeTools.up(ctx);
+        const upgraded = await read(ctx);
+        expect([...upgraded.allow].sort()).toEqual([...expanded.allow, 'tools.toolSearch', 'tools.toolDescribe', 'tools.readResult', 'tools.requestInput'].sort());
+        expect([...upgraded.allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
+        await nativeTools.up(ctx);
+        expect(await read(ctx)).toEqual(upgraded);
+    });
+    test('preserves customized Standard definitions', async () => {
+        const ctx = await testCtx();
+        for (const variant of [{ prompt: 'mine' }, { deny: ['tools.bash'] }, { plugins: ['openspec'] }, { allow: [...expanded.allow, 'projects.*'] }, { allow: expanded.allow.slice(1) }] as Partial<types.agentPreset.Preset>[]) {
+            await store(ctx, { ...expanded, ...variant });
+            const before = await read(ctx);
+            await nativeTools.up(ctx);
+            expect(await read(ctx)).toEqual(before);
         }
     });
 });
