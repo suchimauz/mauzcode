@@ -87,6 +87,19 @@ configure the React sidebar. Hiding an item never blocks access to its route.
 **A plugin's own setting** — declare `~/.mauzcode/user/lisboalive/src/lisboalive/$setting_home.ts`, then fix it
 for the instance in `~/.mauzcode/settings/$settings_lisboalive.json` as `{ "home": "Cascais" }`.
 
+### Disabled model providers — `models.disabledProviders`
+
+`models.disabledProviders` (`src/models/$setting_disabledProviders.ts`, `type: "json"`, default `[]`)
+is the instance-wide set of provider ids the owner took out of service. The Models settings tab
+writes it through the owner-only `setProviderEnabled` API action (serialized, idempotent); every
+inference request, route resolution, provider action, connection test/usage, model discovery and
+creation checks it and refuses with `PROVIDER_DISABLED` before any network request. Connections
+and secrets are kept; re-enabling restores everything. Validation checks shape only — ids of
+unregistered providers are stored and take effect when the provider loads. Fixing the value in
+`~/.mauzcode/settings/$settings_models.json` (e.g. `{ "disabledProviders": ["codex"] }`) makes the
+UI switch read-only (`enabledLocked`) and `settings.set` fail with `SETTING_FIXED`. Details:
+[models-providers.md](models-providers.md#global-provider-switch--modelsdisabledproviders).
+
 ### Model retries — `agent.retryPolicy`
 
 `agent.retryPolicy` (`src/agent/$setting_retryPolicy.ts`) decides how often a failed model request is

@@ -13,11 +13,11 @@ type SetOpts = {
     isSecret?: boolean;
 };
 
-/** Creates or updates one persisted setting override; refuses an instance (global) key fixed by a $settings_ file. */
+/** Creates or updates one persisted setting override; refuses an instance (global) key fixed by a $settings_ file with code SETTING_FIXED, status 409 and structured `settingKey`/`fixedBy` (file path) metadata. */
 export default async function (ctx: Context, _session: Session | null, opts: SetOpts): Promise<{ ok: true }> {
     if (opts.scopeType === 'global' && !opts.scopeId) {
         const fixed = (await ctx.fns.settings.files({})).values[`${opts.module}.${opts.key}`];
-        if (fixed) throw new Error(`${opts.module}.${opts.key} is fixed by ${fixed.path} — change it in that file (one place per value)`);
+        if (fixed) throw Object.assign(new Error(`${opts.module}.${opts.key} is fixed by ${fixed.path} — change it in that file (one place per value)`), { code: 'SETTING_FIXED', status: 409, settingKey: `${opts.module}.${opts.key}`, fixedBy: fixed.path });
     }
     // A declared descriptor may reject a value before it is stored (e.g. route syntax).
     const descriptor = ((ctx.state as any).settings?.registry as Map<string, any> | undefined)?.get(`${opts.module}.${opts.key}`);

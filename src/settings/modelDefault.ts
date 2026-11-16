@@ -2,7 +2,7 @@
  * Chooses the model route for a caller that names no model; there is no default-model setting.
  *
  * Returns the last used model (kv `last-model`) when it still resolves through models.resolveRoute, otherwise the first
- * enabled model of the earliest enabled connection (manual models are used as listed; discovery uses the cached
+ * enabled model of the earliest enabled connection whose provider is not globally disabled (manual models are used as listed; discovery uses the cached
  * catalogue), otherwise throws `NO_MODEL`. Never reads `llm.defaultModel` or the `MODEL` environment variable.
  */
 export default async function (ctx: Context, _session: Session | null, _opts?: {}): Promise<string> {
@@ -11,8 +11,9 @@ export default async function (ctx: Context, _session: Session | null, _opts?: {
         try { return (await ctx.fns.models.resolveRoute({ route: last })).route; }
         catch { /* A removed connection or disabled model falls through to the first enabled model. */ }
     }
+    const disabledProviders = await ctx.fns.models.disabledProviders({});
     for (const connection of await ctx.fns.models.list({})) {
-        if (!connection.enabled || !connection.providerRegistered) continue;
+        if (!connection.enabled || !connection.providerRegistered || disabledProviders.has(connection.provider)) continue;
         let models: types.models.ModelInfo[] = [];
         try { models = (await ctx.fns.models.listModels({ id: connection.id })).models; }
         catch { continue; }

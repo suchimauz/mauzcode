@@ -12,7 +12,8 @@ intact; retiring code is not a database rollback.
 The public surface is a **minimal facade** of root procedures
 `ctx.fns.models.<name>`: `stream`, `call`, `compact`, `resolveRoute`, `tokenPrice`, `displayNames`, `listModels`, `setModelEnabled`,
 `refreshAll`, `list`, `get`, `create`, `update`, `remove`, `test`, `usage` and
-`action`, plus `models.providers` (catalogue) and `models.api` (HTTP). Each facade
+`action`, plus `models.providers` (catalogue), `models.disabledProviders` (read-through
+disabled-provider set) and `models.api` (HTTP). Each facade
 entry delegates once to its implementation with unchanged options, callbacks,
 signal and return/error identity. Every other model procedure lives in an
 implementation namespace and is called by its full name, e.g.
@@ -356,6 +357,45 @@ always show a generic plug icon, whatever endpoint they use.
 The owner toggles models with `models.setModelEnabled({ id, model, enabled })`
 (API op `setModelEnabled`). Disabled models stay in `listModels` with
 `disabled: true`. No legacy model-policy settings are consulted.
+
+### Global provider switch — `models.disabledProviders`
+
+The owner can take a whole provider out of service (cost control, an outage, a paused
+subscription) with one switch per provider in Settings → Models. Connection cards are
+grouped under provider headers (logo, label, switch); providers without connections get
+a header row too.
+
+- **State**: the declared global setting `models.disabledProviders`
+  (`src/models/$setting_disabledProviders.ts`, `type: "json"`, default `[]`) holds a JSON
+  array of provider ids. Validation checks shape only (non-empty strings); ids of
+  unregistered providers are kept, so an unloaded plugin provider returns disabled.
+  Connections, their enabled flags, disabled-model sets and secrets are never touched.
+- **Reader**: `models.disabledProviders()` returns a normalized `Set<string>`, reading
+  through settings on every call without caching. Enforcement points call it directly;
+  batch projections (`modelCatalogue`, `modelUsage`, `refreshAll`, `modelDefault`) read it
+  once per request.
+- **Enforcement**: the central guard `models.inference.assertProviderEnabled({ provider })`
+  throws `Provider <id> is disabled` with code `PROVIDER_DISABLED` (409, not retryable,
+  listed in `agent.retryCodes().never`). It runs in `assertModelEnabled` (stream, compact,
+  call, countTokens), in `resolveRoute` right after parsing — before the connection lookup,
+  winning over `CONNECTION_NOT_FOUND`/`CONNECTION_DISABLED`/`MODEL_DISABLED_BY_USER` — and
+  before `connections.resolve` in provider actions. `connections.create` is rejected;
+  `test`/`usage` return status `disabled`; `listModels` serves cache/manual ids even on
+  refresh; `refreshAll` skips the provider. This is an admission check: operations admitted
+  before the disable write may finish; existing streams are not cancelled; the next request
+  rechecks and fails.
+- **API**: GET `/models/api` and the `providers` action return `ProviderSettingsView[]`
+  (`ProviderView & { enabled, enabledLocked }`), computed per request; `models.providers()`
+  itself stays a synchronous declaration catalogue. The owner-only `setProviderEnabled`
+  action (`{ provider, enabled }`) serializes read-modify-write in a promise-chain mutex
+  (`ctx.state.models.disabledProvidersQueue`), is idempotent, and keeps unknown ids.
+  A setting fixed by an instance file (`$settings_models.json`) fails with 409
+  `SETTING_FIXED` and the file path (`fixedBy`); the views carry `enabledLocked: true`
+  and the UI renders the switch read-only.
+- **Pickers**: `frontendBridge.modelCatalogue` flags the provider's models `disabled: true`
+  and its groups `enabled: false, unavailable: false`, so every picker hides them without
+  unavailable-catalogue notices; `modelUsage` omits its connections; `settings.modelDefault`
+  skips them. Disabled providers are absent from the Add-connection selector.
 
 ## Built-in Codex provider
 

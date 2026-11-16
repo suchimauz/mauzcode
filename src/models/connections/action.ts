@@ -1,7 +1,7 @@
 /**
  * Invoke a provider-declared action such as login or logout on one connection
  *
- * Use for provider-owned flows; the core implements no provider-specific authorization. Fails with `UNKNOWN_ACTION` (nothing called) when the provider did not declare the action. Disabled connections are refused. The result must be JSON-compatible; any of the connection's secret values or secret:// references found in it cause the result to be withheld.
+ * Use for provider-owned flows; the core implements no provider-specific authorization. Fails with `UNKNOWN_ACTION` (nothing called) when the provider did not declare the action. A globally disabled provider is refused with PROVIDER_DISABLED (409) before the connection is resolved; disabled connections are refused. The result must be JSON-compatible; any of the connection's secret values or secret:// references found in it cause the result to be withheld.
  * @param opts.id Connection UUID.
  * @param opts.action Declared action name.
  * @param opts.input JSON-compatible action input. @default null
@@ -19,6 +19,7 @@ export default async function (
     },
 ): Promise<types.models.ActionValue> {
     const view = await ctx.fns.models.connections.get({ id: opts.id });
+    await ctx.fns.models.inference.assertProviderEnabled({ provider: view.provider });
     const def = Object.hasOwn(ctx.state.models?.providers ?? {}, view.provider) ? ctx.state.models!.providers![view.provider]!.definition : undefined;
     const name = typeof opts.action === "string" ? opts.action : "";
     const declared = def?.actions && Object.hasOwn(def.actions, name) ? def.actions[name] : undefined;

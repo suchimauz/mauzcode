@@ -210,6 +210,17 @@
 .models-provider-logo { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: 0 0 18px; color: var(--text); }
 .models-provider-logo .navigation-chat-icon { width: 16px; height: 16px; flex-basis: 16px; }
 .models-add-provider { display: flex; align-items: center; gap: 8px; margin: 0; }
+.models-provider-groups { display: flex; flex-direction: column; gap: var(--space-5); }
+.models-provider-group { display: flex; flex-direction: column; gap: var(--space-2); }
+.models-provider-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.models-provider-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.models-provider-title h3 { margin: 0; font-size: var(--font-md); font-weight: 600; }
+.models-provider-hint { margin: 0; }
+.models-provider-switch input:disabled { cursor: default; }
+/* Dimmed cards under a disabled provider; controls stay operable where allowed. */
+.ssh-card.is-provider-disabled { opacity: 0.6; }
+.ssh-card.is-provider-disabled:focus-within { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) { .ssh-card.is-provider-disabled { transition: opacity 150ms ease-out; } }
 .preset-description { margin: 0; color: var(--text-secondary); font-size: var(--font-sm); line-height: 1.5; }
 .preset-default { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .preset-rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); }

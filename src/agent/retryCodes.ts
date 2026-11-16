@@ -35,7 +35,7 @@ export default function (
         never: [
             // Waiting cannot change these; the turn must stop with the error.
             'QUOTA_EXHAUSTED', 'AUTH', 'INVALID_INPUT', 'OVERFLOW', 'CANCELLED',
-            'MODEL_DISABLED_BY_USER', 'CONNECTION_DISABLED', 'MODEL_NOT_SELECTED',
+            'MODEL_DISABLED_BY_USER', 'CONNECTION_DISABLED', 'PROVIDER_DISABLED', 'MODEL_NOT_SELECTED',
             'PROXY_AUTH', 'PROXY_CONFIG', 'PROXY_TLS', 'PROXY_DENIED', 'SSH_PERMANENT',
         ],
     };

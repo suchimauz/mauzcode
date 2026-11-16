@@ -1,7 +1,7 @@
 /**
  * Create a model connection for a registered provider
  *
- * Use to add an account of a provider (built-in or plugin). Validates the provider-unique account name (1–100 characters, no slash or colon), configuration against the provider schema and provider `validate`, and the transport against the provider's allowed kinds and saved proxies/SSH instances. Secret field values are encrypted under `secret://models/<id>.<field>` in the same transaction as the row. Does not touch existing LLM routes, accounts or agents. Returns the secret-free view.
+ * Use to add an account of a provider (built-in or plugin). A globally disabled provider is rejected with PROVIDER_DISABLED (409) before anything is stored. Validates the provider-unique account name (1–100 characters, no slash or colon), configuration against the provider schema and provider `validate`, and the transport against the provider's allowed kinds and saved proxies/SSH instances. Secret field values are encrypted under `secret://models/<id>.<field>` in the same transaction as the row. Does not touch existing LLM routes, accounts or agents. Returns the secret-free view.
  * @param opts.provider Registered provider id.
  * @param opts.accountName Display account name, unique within this provider; no slash or colon.
  * @param opts.config Non-secret configuration; the core key `models` holds manual model ids.
@@ -33,6 +33,7 @@ export default async function (
     if (/[/:]/.test(accountName)) invalid("Account name cannot contain / or :", "accountName");
     if (opts.enabled !== undefined && typeof opts.enabled !== "boolean") invalid("enabled must be true or false", "enabled");
     const { config, secrets } = await ctx.fns.models.connections.validateConfig({ provider: opts.provider, config: opts.config, secrets: opts.secrets });
+    await ctx.fns.models.inference.assertProviderEnabled({ provider: opts.provider });
     const transport = opts.transport ?? { kind: "direct" as const };
     const def = ctx.state.models!.providers![opts.provider]!.definition;
     try { await ctx.fns.models.transport.validateTransport({ transport, allowed: def.transports }); }

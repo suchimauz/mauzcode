@@ -1,7 +1,7 @@
 /**
  * Resolve a stored model route using only current storage and cached metadata
  *
- * Use through models.resolveRoute to obtain connection identity, provider inference descriptors, native compaction support, optional cached limits and the effective context limit (owner override, cached provider metadata, public catalogue via models.catalog.catalogLimits, 200000 fallback) with its source; the output limit falls back to the catalogue too. Never discovers models, reads secrets or sends provider requests, including on cold caches. Disabled and missing routes fail with nonretryable SDK failures.
+ * Use through models.resolveRoute to obtain connection identity, provider inference descriptors, native compaction support, optional cached limits and the effective context limit (owner override, cached provider metadata, public catalogue via models.catalog.catalogLimits, 200000 fallback) with its source; the output limit falls back to the catalogue too. Never discovers models, reads secrets or sends provider requests, including on cold caches. A globally disabled provider fails PROVIDER_DISABLED right after parsing, before the connection lookup, winning over CONNECTION_NOT_FOUND, CONNECTION_DISABLED and MODEL_DISABLED_BY_USER. Disabled and missing routes fail with nonretryable SDK failures.
  * @param opts.route Exact registered provider/accountName:modelId route.
  */
 export default async function (
@@ -17,6 +17,8 @@ export default async function (
         throw ctx.fns.models.inference.failure({ message, status: 409, info: { code, classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
     };
     try {
+        // Provider switch first: no connection lookup or credential resolution for a disabled provider.
+        await ctx.fns.models.inference.assertProviderEnabled({ provider: parsed.provider });
         const connections = await ctx.fns.models.connections.list({ provider: parsed.provider });
         const view = connections.find(c => c.accountName === parsed.accountName);
         if (!view) return fail("CONNECTION_NOT_FOUND", `Connection for ${opts.route} was not found; choose a model.`);
@@ -43,7 +45,7 @@ export default async function (
         };
     } catch (error) {
         const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
-        if (["CONNECTION_DISABLED", "MODEL_DISABLED_BY_USER", "NOT_FOUND"].includes(code)) {
+        if (["PROVIDER_DISABLED", "CONNECTION_DISABLED", "MODEL_DISABLED_BY_USER", "NOT_FOUND"].includes(code)) {
             return fail(code === "NOT_FOUND" ? "CONNECTION_NOT_FOUND" : code, error instanceof Error ? error.message : code);
         }
         if (code === "UNKNOWN_PROVIDER") return fail("LEGACY_ROUTE", `Legacy model route ${opts.route}; choose a model.`);

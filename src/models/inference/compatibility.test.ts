@@ -2,10 +2,12 @@ import { expect, test } from "bun:test";
 
 async function fixture() {
     const ctx: any = { state: { models: { providers: {} } }, fns: { models: { inference: {}, connections: {} } } };
-    for (const name of ["assertModelEnabled", "checkInput", "compact", "failure", "resolveReasoning", "stream"]) {
+    for (const name of ["assertModelEnabled", "assertProviderEnabled", "checkInput", "compact", "failure", "resolveReasoning", "stream"]) {
         const leaf = (await import(`./${name}.ts`)).default;
         ctx.fns.models.inference[name] = (opts: unknown) => leaf(ctx, null, opts);
     }
+    // Global provider switch reader: nothing disabled in this fixture.
+    ctx.fns.models.disabledProviders = async () => new Set<string>();
     // Only stream and compact remain root facade delegates.
     for (const name of ["compact", "stream"]) {
         const root = (await import(`../${name}.ts`)).default;

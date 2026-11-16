@@ -1,7 +1,7 @@
 /**
  * Test a model connection through its provider and cache the safe result
  *
- * Use for an explicit "Test" button or before relying on a connection. Disabled connections return status `disabled` without calling the provider or the network. Otherwise calls the provider `test` with the connection bound to its transport; a throw or a malformed result becomes `unavailable` with a machine-readable reason and a message cleaned of secret values. Results are cached for 60 s per connection revision (any update invalidates) and concurrent calls share one in-flight check.
+ * Use for an explicit "Test" button or before relying on a connection. Disabled connections and connections of globally disabled providers return status `disabled` without calling the provider or the network. Otherwise calls the provider `test` with the connection bound to its transport; a throw or a malformed result becomes `unavailable` with a machine-readable reason and a message cleaned of secret values. Results are cached for 60 s per connection revision (any update invalidates) and concurrent calls share one in-flight check.
  * @param opts.id Connection UUID.
  * @param opts.cached Reuse a result from the last 60 s instead of testing again. @default false
  */
@@ -17,6 +17,7 @@ export default async function (
 ): Promise<types.models.TestResult> {
     const view = await ctx.fns.models.connections.get({ id: opts.id });
     if (!view.enabled) return { status: "disabled", reason: "disabled", message: "Connection is disabled", checkedAt: Date.now() };
+    if ((await ctx.fns.models.disabledProviders({})).has(view.provider)) return { status: "disabled", reason: "disabled", message: "Provider " + view.provider + " is disabled", checkedAt: Date.now() };
     return await ctx.fns.models.connections.cached({ connection: view, kind: "test", reuse: opts.cached === true, run: async (): Promise<types.models.TestResult> => {
         const seen: string[] = [];
         try {

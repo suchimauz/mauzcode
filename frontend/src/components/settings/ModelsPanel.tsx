@@ -8,7 +8,7 @@ import { ApiError } from '../../lib/mauzcode';
 import { usePluginUi } from '../../extensions/pluginRuntime';
 import type { ExtensionContext } from '../../extensions/types';
 import {
-  connectionAction, connectionModels, connectionUsage, createConnection, setContextLimits, setModelEnabled, getModelsState, removeConnection, setConnectionEnabled, testConnection, transportLabel, updateConnection,
+  connectionAction, connectionModels, connectionUsage, createConnection, setContextLimits, setModelEnabled, getModelsState, removeConnection, setConnectionEnabled, setProviderEnabled, testConnection, transportLabel, updateConnection,
   type ConnectionInput, type ConnectionModels, type ModelContextLimit, type ModelConnectionView, type ModelFieldSpec, type ModelInfo, type ModelProviderView, type ModelsState, type ModelTransportSpec, type ModelUsageReport,
 } from '../../lib/modelConnections';
 import { SettingsField as Field } from './SettingsField';
@@ -196,6 +196,8 @@ function ContextLimitControl({ model, limit, override, draft, error, saving, dis
 }
 
 function ConnectionCard({ connection, provider, actions }: { connection: ModelConnectionView; provider?: ModelProviderView; actions: Actions }) {
+  // Global provider switch gates network controls; the connection-level switch stays operable.
+  const providerOff = provider?.enabled === false;
   const [usage, setUsage] = useState<ModelUsageReport | null>(null);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [open, setOpen] = useState<Section>(null);
@@ -262,14 +264,14 @@ function ConnectionCard({ connection, provider, actions }: { connection: ModelCo
   const listed = new Set((models?.models ?? []).map(m => m.id));
   const pendingAbsent = Object.keys(contextDrafts).filter(id => !listed.has(id)).sort();
   const label = provider?.label ?? connection.provider;
-  return <article className="ssh-card" data-model-connection={connection.id} aria-label={connection.accountName}>
+  return <article className={`ssh-card${providerOff ? ' is-provider-disabled' : ''}`} data-model-connection={connection.id} aria-label={connection.accountName}>
     <header className="ssh-card-header">
       <div className="ssh-card-title">
         <div className="ssh-card-name"><ProviderLogo logo={actions.state.providerLogos?.[connection.provider]} providerId={connection.provider} icon={provider?.icon} /><h3>{connection.accountName}</h3>{!connection.enabled && <span className="ssh-badge is-pending"><span aria-hidden="true" />Disabled</span>}</div>
         <p className="ssh-card-target">{label}{!connection.providerRegistered && ' (provider not loaded)'} · {transportLabel(connection.transport, actions.state.proxies)}</p>
       </div>
       <div className="models-card-buttons">
-        <Button onClick={() => { void test(); }} disabled={actions.busy || !connection.enabled || !connection.providerRegistered}><RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />Test</Button>
+        <Button onClick={() => { void test(); }} disabled={actions.busy || !connection.enabled || !connection.providerRegistered || providerOff}><RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />Test</Button>
         <label className="settings-check models-enabled"><input type="checkbox" role="switch" checked={connection.enabled} disabled={actions.busy} onChange={e => { const enabled = e.target.checked; void actions.run(enabled ? 'Enable' : 'Disable', () => setConnectionEnabled(actions.csrf, connection.id, enabled), () => `${connection.accountName} ${enabled ? 'enabled' : 'disabled'}`).then(r => r && actions.reload()); }} />Enabled</label>
       </div>
     </header>
@@ -299,7 +301,7 @@ function ConnectionCard({ connection, provider, actions }: { connection: ModelCo
       </div>}
       <div className="models-cache-row">
         <p className="settings-field-hint">{models.cachedAt ? `Updated ${formatTime(models.cachedAt)} · refreshes hourly` : `Source: ${models.source}`}</p>
-        <Button variant="ghost" disabled={updatingModels || actions.busy || !connection.enabled} onClick={() => { void updateModels(); }}><RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />{updatingModels ? 'Updating…' : 'Update models'}</Button>
+        <Button variant="ghost" disabled={updatingModels || actions.busy || !connection.enabled || providerOff} onClick={() => { void updateModels(); }}><RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />{updatingModels ? 'Updating…' : 'Update models'}</Button>
       </div></>}</div>}
     {open === 'remove' && <div className="ssh-card-section settings-confirm" role="group" aria-label="Confirm removal">
       <p className="settings-note">Removes <b>{connection.accountName}</b> and its stored secrets from MauzCode. This cannot be undone.</p>
@@ -313,6 +315,7 @@ type LoginStatus = { loggedIn: boolean; needsLogin: boolean; expiresAt: number |
 
 /** Native provider login; the browser authorization step opens separately from the connection transport. */
 function ProviderLogin({ connection, actions }: { connection: ModelConnectionView; actions: Actions }) {
+  const providerOff = actions.state.providers.find(p => p.id === connection.provider)?.enabled === false;
   const [status, setStatus] = useState<LoginStatus | null>(null);
   const [flow, setFlow] = useState<LoginFlow | null>(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -325,12 +328,13 @@ function ProviderLogin({ connection, actions }: { connection: ModelConnectionVie
   const reloadRef = useRef(actions.reload); reloadRef.current = actions.reload;
   const reload = useCallback(() => reloadRef.current(), []);
   const refresh = useCallback(async (signal?: AbortSignal) => {
+    if (providerOff) return null; // Backend refuses provider actions while disabled; do not even ask.
     try {
       const s = await connectionAction<LoginStatus>(csrf, connection.id, 'loginStatus', null, signal);
       setStatus(s); setFlow(s.flow);
       return s;
     } catch { return null; }
-  }, [csrf, connection.id]);
+  }, [csrf, connection.id, providerOff]);
   useEffect(() => { const c = new AbortController(); void refresh(c.signal); return () => c.abort(); }, [refresh, connection.updatedAt]);
   const pending = flow?.status === 'pending';
   useEffect(() => {
@@ -358,7 +362,7 @@ function ProviderLogin({ connection, actions }: { connection: ModelConnectionVie
     }
   };
   const copy = async () => { if (!flow?.userCode) return; try { await navigator.clipboard.writeText(flow.userCode); setCopied(true); } catch { setCopied(false); } };
-  const live = !status ? 'Checking login…'
+  const live = providerOff ? 'Provider is disabled' : !status ? 'Checking login…'
     : pending ? 'Waiting for authorization in the browser…'
     : flow?.status === 'failed' || flow?.status === 'expired' ? (flow.message ?? 'Login failed')
     : status.loggedIn ? 'Logged in' : status.needsLogin && status.expiresAt ? 'Login expired; log in again' : 'Not logged in';
@@ -395,24 +399,56 @@ function ProviderLogin({ connection, actions }: { connection: ModelConnectionVie
       <div className="ssh-form-actions"><Button variant="ghost" onClick={() => setConfirmLogout(false)}>Cancel</Button><Button className="button--danger" disabled={actions.busy} onClick={() => { void logout(); }}>Log out</Button></div>
     </div> : <div className="ssh-form-actions">
       {pending ? <Button variant="ghost" disabled={actions.busy} onClick={() => { void cancel(); }}>Cancel login</Button>
-        : <Button disabled={actions.busy || !connection.enabled} onClick={() => { void start(); }}>{status?.loggedIn ? 'Log in again' : 'Log in'}</Button>}
-      {status?.loggedIn && !pending && <Button variant="ghost" disabled={actions.busy} onClick={() => setConfirmLogout(true)}>Log out</Button>}
+        : <Button disabled={actions.busy || !connection.enabled || providerOff} onClick={() => { void start(); }}>{status?.loggedIn ? 'Log in again' : 'Log in'}</Button>}
+      {status?.loggedIn && !pending && <Button variant="ghost" disabled={actions.busy || providerOff} onClick={() => setConfirmLogout(true)}>Log out</Button>}
     </div>}
   </section>;
 }
 
 function AddConnection({ actions, first }: { actions: Actions; first: boolean }) {
-  const providers = actions.state.providers;
+  // Disabled providers are never offered for new connections; the backend refuses creation independently.
+  const providers = actions.state.providers.filter(p => p.enabled !== false);
   const [open, setOpen] = useState(first);
   const [providerId, setProviderId] = useState(providers.find(p => p.id === 'custom')?.id ?? providers[0]?.id ?? '');
-  const provider = providers.find(p => p.id === providerId);
-  if (!providers.length) return <p className="settings-note">No model providers are registered.</p>;
+  const provider = providers.find(p => p.id === providerId) ?? providers[0];
+  if (!actions.state.providers.length) return <p className="settings-note">No model providers are registered.</p>;
+  if (!providers.length) return <p className="settings-note" role="note">All model providers are disabled. Enable a provider below to add a connection.</p>;
   if (!open) return <Button className="ssh-add-toggle" onClick={() => setOpen(true)}><Plus size={14} strokeWidth={1.5} aria-hidden="true" />Add connection</Button>;
   return <section className="ssh-card" aria-label="Add connection">
     <h3>Add connection</h3>
     {provider && <p className="models-add-provider"><ProviderLogo logo={actions.state.providerLogos?.[provider.id]} providerId={provider.id} icon={provider.icon} />{provider.label}</p>}
-    <SelectField name="provider" label="Provider" value={providerId} onChange={setProviderId} options={providers.map(p => ({ value: p.id, label: p.label }))} hint={provider?.description} />
+    <SelectField name="provider" label="Provider" value={provider?.id ?? ''} onChange={setProviderId} options={providers.map(p => ({ value: p.id, label: p.label }))} hint={provider?.description} />
     {provider && <ProviderForm key={provider.id} provider={provider} actions={actions} onDone={() => { if (!first) setOpen(false); }} />}
+  </section>;
+}
+
+/** Provider header row: mark, label, global enable switch; shown even without connections. */
+function ProviderSection({ provider, connections, actions }: { provider: ModelProviderView; connections: ModelConnectionView[]; actions: Actions }) {
+  const enabled = provider.enabled !== false;
+  const locked = provider.enabledLocked === true;
+  const hintId = useId();
+  const hint = locked ? 'Fixed by an instance settings file; change models.disabledProviders there.'
+    : enabled ? 'Turning this off hides the provider’s models everywhere; active sessions using them fail on their next request.'
+    : 'Provider is disabled: its models are hidden and active sessions using them fail on their next request. Connections and secrets are kept.';
+  const toggle = (next: boolean) => {
+    if (locked || actions.busy) return; // A file-fixed switch never sends a request, even via label forwarding.
+    void actions.run(next ? 'Enable provider' : 'Disable provider',
+      () => setProviderEnabled(actions.csrf, provider.id, next),
+      () => `${provider.label} ${next ? 'enabled' : 'disabled'}`).then(r => r && actions.reload());
+  };
+  return <section className="models-provider-group" data-model-provider={provider.id} aria-label={`${provider.label} provider`}>
+    <header className="models-provider-header">
+      <div className="models-provider-title">
+        <ProviderLogo logo={actions.state.providerLogos?.[provider.id]} providerId={provider.id} icon={provider.icon} />
+        <h3>{provider.label}</h3>
+        {!enabled && <span className="ssh-badge is-pending"><span aria-hidden="true" />Disabled</span>}
+      </div>
+      <label className="settings-check models-enabled models-provider-switch">
+        <input type="checkbox" role="switch" aria-label={`Enable ${provider.label} provider`} aria-describedby={hintId} checked={enabled} disabled={actions.busy || locked} onChange={e => toggle(e.target.checked)} />Enabled
+      </label>
+    </header>
+    <p id={hintId} className="settings-field-hint models-provider-hint">{hint}</p>
+    {connections.length > 0 && <div className="ssh-list">{connections.map(c => <ConnectionCard key={c.id} connection={c} provider={provider} actions={actions} />)}</div>}
   </section>;
 }
 
@@ -444,7 +480,11 @@ export function ModelsPanel({ context }: { context: ExtensionContext }) {
       : !state || !actions ? <p className="settings-loading" role="status">Загрузка…</p>
       : <>
         <AddConnection actions={actions} first={state.connections.length === 0} />
-        {state.connections.length > 0 && <div className="ssh-list">{state.connections.map(c => <ConnectionCard key={c.id} connection={c} provider={state.providers.find(p => p.id === c.provider)} actions={actions} />)}</div>}
+        {state.providers.length > 0 && <div className="models-provider-groups">
+          {state.providers.map(p => <ProviderSection key={p.id} provider={p} connections={state.connections.filter(c => c.provider === p.id)} actions={actions} />)}
+          {/* Connections whose provider is no longer registered keep their card, ungrouped. */}
+          {state.connections.some(c => !state.providers.some(p => p.id === c.provider)) && <div className="ssh-list">{state.connections.filter(c => !state.providers.some(p => p.id === c.provider)).map(c => <ConnectionCard key={c.id} connection={c} actions={actions} />)}</div>}
+        </div>}
       </>}
   </div>;
 }
