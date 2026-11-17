@@ -3,10 +3,12 @@ import { testCtx } from '../$test';
 import expansion from './$migration_20380102120000_expand_standard_capabilities';
 import nativeTools from './$migration_20380103120000_native_agent_tools';
 import planDelegationTools from './$migration_20380104120000_native_plan_delegation_tools';
+import showArtifactTool from './$migration_20380105120000_native_show_artifact';
 
 // Every factory upgrade in order, as boot applies them.
-const migration = { up: async (ctx: Context) => { await expansion.up(ctx); await nativeTools.up(ctx); await planDelegationTools.up(ctx); } };
+const migration = { up: async (ctx: Context) => { await expansion.up(ctx); await nativeTools.up(ctx); await planDelegationTools.up(ctx); await showArtifactTool.up(ctx); } };
 const P1 = ['tools.planUpdate', 'tools.planDone', 'tools.delegateTask', 'tools.finishTask'];
+const P2 = ['tools.showArtifact'];
 
 // Historical fixture must not follow today's catalogue or defaults.
 const previous = {
@@ -118,7 +120,7 @@ describe('conservative Standard factory upgrade', () => {
             const upgraded = await read(ctx);
             expect(upgraded.plugins).toEqual(['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab']);
             expect([...upgraded.allow].sort()).toEqual([...previous.allow, 'projects.list', 'projects.get',
-                'tools.toolSearch', 'tools.toolDescribe', 'tools.readResult', 'tools.requestInput', ...P1].sort());
+                'tools.toolSearch', 'tools.toolDescribe', 'tools.readResult', 'tools.requestInput', ...P1, ...P2].sort());
         } finally {
             ctx.state.registry.agentPreset.defaults = defaults;
         }
@@ -136,8 +138,9 @@ describe('native agent tools Standard upgrade', () => {
         expect([...upgraded.allow].sort()).toEqual([...expanded.allow, 'tools.toolSearch', 'tools.toolDescribe', 'tools.readResult', 'tools.requestInput'].sort());
         await nativeTools.up(ctx);
         expect(await read(ctx)).toEqual(upgraded);
-        // The next factory upgrade chains on top and lands on today's shipped defaults.
+        // The next factory upgrades chain on top and land on today's shipped defaults.
         await planDelegationTools.up(ctx);
+        await showArtifactTool.up(ctx);
         expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {
@@ -155,15 +158,17 @@ describe('native plan and delegation tools Standard upgrade', () => {
     const p0 = { ...previous, description: 'Code and task work with specification, review, research and browser plugins; no runtime management.',
         allow: [...previous.allow, 'projects.list', 'projects.get', 'tools.toolSearch', 'tools.toolDescribe', 'tools.readResult', 'tools.requestInput'],
         plugins: ['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab'] };
-    test('adds exactly the four adapters to an untouched P0 Standard, once, matching shipped defaults', async () => {
+    test('adds exactly the four adapters to an untouched P0 Standard, once', async () => {
         const ctx = await testCtx();
         await store(ctx, { ...p0, allow: [...p0.allow].reverse() });
         await planDelegationTools.up(ctx);
         const upgraded = await read(ctx);
         expect([...upgraded.allow].sort()).toEqual([...p0.allow, ...P1].sort());
-        expect([...upgraded.allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
         await planDelegationTools.up(ctx);
         expect(await read(ctx)).toEqual(upgraded);
+        // The next factory upgrade chains on top and lands on today's shipped defaults.
+        await showArtifactTool.up(ctx);
+        expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {
         const ctx = await testCtx();
@@ -171,6 +176,31 @@ describe('native plan and delegation tools Standard upgrade', () => {
             await store(ctx, { ...p0, ...variant });
             const before = await read(ctx);
             await planDelegationTools.up(ctx);
+            expect(await read(ctx)).toEqual(before);
+        }
+    });
+});
+
+describe('native show_artifact Standard upgrade', () => {
+    const p1 = { ...previous, description: 'Code and task work with specification, review, research and browser plugins; no runtime management.',
+        allow: [...previous.allow, 'projects.list', 'projects.get', 'tools.toolSearch', 'tools.toolDescribe', 'tools.readResult', 'tools.requestInput', ...P1],
+        plugins: ['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab'] };
+    test('adds exactly the adapter to an untouched P1 Standard, once, matching shipped defaults', async () => {
+        const ctx = await testCtx();
+        await store(ctx, { ...p1, allow: [...p1.allow].reverse() });
+        await showArtifactTool.up(ctx);
+        const upgraded = await read(ctx);
+        expect([...upgraded.allow].sort()).toEqual([...p1.allow, ...P2].sort());
+        expect([...upgraded.allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
+        await showArtifactTool.up(ctx);
+        expect(await read(ctx)).toEqual(upgraded);
+    });
+    test('preserves customized Standard definitions', async () => {
+        const ctx = await testCtx();
+        for (const variant of [{ prompt: 'mine' }, { deny: ['tools.bash'] }, { plugins: ['openspec'] }, { allow: [...p1.allow, 'projects.*'] }, { allow: p1.allow.slice(1) }] as Partial<types.agentPreset.Preset>[]) {
+            await store(ctx, { ...p1, ...variant });
+            const before = await read(ctx);
+            await showArtifactTool.up(ctx);
             expect(await read(ctx)).toEqual(before);
         }
     });

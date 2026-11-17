@@ -6,6 +6,8 @@
 export default async function (ctx: Context, _session: Session | null, opts: {
     /** Restrict advertised kinds and launch functions to reachable capabilities. */
     allows?: (name: string) => boolean;
+    /** Teach the native show_artifact tool for files; set only when the agent can call it. */
+    native?: boolean;
 }): Promise<string> {
     // Built-in kinds are described in full; plugin kinds and the functions that show their result on the
     // canvas are only named — canvas.search finds them with their args, so the prompt does not grow
@@ -29,7 +31,9 @@ export default async function (ctx: Context, _session: Session | null, opts: {
         "When the person asks to open, show or look at a file, a README, a document or a picture, put it on the canvas. Only the canvas region refreshes; the chat, drafts and scroll stay. Showing the same thing again just switches to its tab. Relative paths resolve in your workspace; for another project pass an absolute path.",
         "",
         ...(visible("ui.openFile") ? ["Use the canvas — not `ui.openFile`, which navigates the whole page away from the chat."] : []),
-        ...(all.some(k => k.name === "file") ? ['To show files beside chat, use canvas.show with kind:"file".'] : []),
+        ...(all.some(k => k.name === "file") ? [opts.native
+            ? "To show a file beside the chat, call the show_artifact tool ({ path, title?, host?, mode? }); it opens your own canvas. Use canvas.show for other kinds."
+            : 'To show files beside chat, use canvas.show with kind:"file".'] : []),
         ...kinds.map(k => `- \`${k.name}\` — ${k.hint!.trim()}`),
         ...(plugin.length && visible("canvas.search") ? [`- plugin kinds: ${plugin.map(n => `\`${n}\``).join(", ")} — their args via \`canvas.search({ query })\``] : []),
         "",

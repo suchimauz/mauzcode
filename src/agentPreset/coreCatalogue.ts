@@ -342,7 +342,8 @@ export default function (
                 "tools.planUpdate",
                 "tools.planDone",
                 "tools.delegateTask",
-                "tools.finishTask"
+                "tools.finishTask",
+                "tools.showArtifact"
             ]
         },
         "tsgo": {

@@ -63,9 +63,9 @@ type RunRecord = {
 /**
  * Benchmark agent tool routes: eval-only versus native tools on fixed scenarios with objective checks
  *
- * Runs fixed scenarios (discovery, question, mixed, large_result, plan, delegate) in two arms built from one resolved preset snapshot: 'eval' denies the native adapters tools.toolSearch/toolDescribe/readResult/requestInput, 'native' is the unmodified clone. Every run uses a fresh hidden agent with its own scratch directory. Checks are objective (fixture-derived expected values, the inputs table, transcript tool calls, plan/delegation state). Runs whose scenario capability was not exercised (for example no stored result in large_result) are reported as not_exercised and excluded from success. Records per-run tool calls by name, rejected calls, tokens from context_usage events, model turns and duration; cancels any open input left by a run; aggregates success rate, rejected calls, tokens and p50/p95 turns per arm and scenario; evaluates the 10% decision threshold; and writes .mauzcode/bench/results/routes-<timestamp>.json. Costs real model tokens; use selfTest:true for a free check of arm construction, exercise detection and threshold logic.
+ * Runs fixed scenarios (discovery, question, mixed, large_result, plan, delegate, artifact) in two arms built from one resolved preset snapshot: 'eval' denies the native adapters tools.toolSearch/toolDescribe/readResult/requestInput/planUpdate/planDone/delegateTask/finishTask/showArtifact, 'native' is the unmodified clone. Every run uses a fresh hidden agent with its own scratch directory. Checks are objective (fixture-derived expected values, the inputs table, transcript tool calls, plan/delegation state, canvas tabs). Runs whose scenario capability was not exercised (for example no stored result in large_result) are reported as not_exercised and excluded from success. Records per-run tool calls by name, rejected calls, tokens from context_usage events, model turns and duration; cancels any open input left by a run; aggregates success rate, rejected calls, tokens and p50/p95 turns per arm and scenario; evaluates the 10% decision threshold; and writes .mauzcode/bench/results/routes-<timestamp>.json. Costs real model tokens; use selfTest:true for a free check of arm construction, exercise detection and threshold logic.
  * @param opts.model Provider-qualified model used by every run in both arms; required unless selfTest is true.
- * @param opts.scenarios Scenario ids to run; omitted runs all six.
+ * @param opts.scenarios Scenario ids to run; omitted runs all seven.
  * @param opts.arms Arms to run; omitted runs both. The decision is computed only when both run.
  * @param opts.repetitions Runs per scenario and arm. @default 3 @minimum 1 @maximum 10
  * @param opts.concurrency Runs executed in parallel. @default 4 @minimum 1 @maximum 8
@@ -80,7 +80,7 @@ export default async function (
     opts: {
         /** Provider-qualified model used by every run in both arms; required unless selfTest is true. */
         model?: string;
-        /** Scenario ids to run; omitted runs all six. */
+        /** Scenario ids to run; omitted runs all seven. */
         scenarios?: string[];
         /** Arms to run; omitted runs both. The decision is computed only when both run. */
         arms?: Array<"eval" | "native">;
@@ -98,7 +98,7 @@ export default async function (
         selfTest?: boolean;
     },
 ): Promise<any> {
-    const NATIVE = ["tools.toolSearch", "tools.toolDescribe", "tools.readResult", "tools.requestInput", "tools.planUpdate", "tools.planDone", "tools.delegateTask", "tools.finishTask"];
+    const NATIVE = ["tools.toolSearch", "tools.toolDescribe", "tools.readResult", "tools.requestInput", "tools.planUpdate", "tools.planDone", "tools.delegateTask", "tools.finishTask", "tools.showArtifact"];
     const REQUEST_WIRE = "request_input";
     const SYSTEM = "You are a participant in an automated benchmark. Work precisely, answer factually, and verify with tools when the task requires it.";
     const stamp = () => new Date().toISOString().replace(/[:.]/g, "-");
@@ -260,6 +260,26 @@ export default async function (
                 const got = typeof result === "number" ? result : Number(result?.count ?? NaN);
                 const ok = meta.status === "ready" && got === x.count;
                 return { pass: ok, detail: `children=${e.children.length} status=${meta.status ?? "-"} result=${JSON.stringify(result ?? null)} expected=${x.count}` };
+            },
+        },
+        {
+            id: "artifact",
+            capability: "artifact display",
+            build: async (c, dir) => {
+                const mark = rand(8);
+                await c.fns.files.write({ path: dir + "/report.md", content: `# Bench report\n\nRESULT-${mark}\n` });
+                return {
+                    prompt: "Show me the file report.md from the working directory on the canvas beside the chat so I can read it. Then answer artifact=shown.",
+                    expected: { path: dir + "/report.md" },
+                };
+            },
+            check: async (c, e, x) => {
+                const rows: any[] = await c.fns.procs.db.select({ sql: "SELECT id, kind, payload FROM canvas_items WHERE agent_id = ? AND closed_at IS NULL", params: [e.agentIds[0]] });
+                const state: any[] = await c.fns.procs.db.select({ sql: "SELECT open, active_item_id FROM canvas_state WHERE agent_id = ?", params: [e.agentIds[0]] });
+                const tabs = rows.filter((r) => r.kind === "file").map((r) => ({ id: Number(r.id), args: typeof r.payload === "string" ? JSON.parse(r.payload) : r.payload }));
+                const tab = tabs.find((t) => t.args?.path === x.path);
+                const active = !!tab && state[0]?.open === true && String(state[0]?.active_item_id) === String(tab.id);
+                return { pass: active, detail: `fileTabs=${tabs.length} match=${!!tab} active=${active} expected=${x.path}` };
             },
         },
     ];
