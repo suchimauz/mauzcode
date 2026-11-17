@@ -1,0 +1,481 @@
+{
+  "label": "ab-artifact-2-2026-11-17T12-28-34-775Z",
+  "at": "2026-11-17T12:29:10.333Z",
+  "model": "claude/brailyndaishaun14091998:claude-opus-5-5",
+  "presetId": "standard",
+  "nativeAdapters": [
+    "tools.toolSearch",
+    "tools.toolDescribe",
+    "tools.readResult",
+    "tools.requestInput",
+    "tools.planUpdate",
+    "tools.planDone",
+    "tools.delegateTask",
+    "tools.finishTask",
+    "tools.showArtifact"
+  ],
+  "repetitions": 3,
+  "concurrency": 2,
+  "scenarios": [
+    {
+      "id": "question",
+      "capability": "structured input"
+    },
+    {
+      "id": "artifact",
+      "capability": "artifact display"
+    }
+  ],
+  "perArm": {
+    "eval": {
+      "runs": 6,
+      "exercised": 6,
+      "notExercised": 0,
+      "errors": 0,
+      "success": 6,
+      "successRate": 1,
+      "toolCalls": 15,
+      "rejected": 0,
+      "totalTokens": 234502,
+      "exercisedTokens": 234502,
+      "p50Turns": 1,
+      "p95Turns": 6
+    },
+    "native": {
+      "runs": 6,
+      "exercised": 6,
+      "notExercised": 0,
+      "errors": 0,
+      "success": 6,
+      "successRate": 1,
+      "toolCalls": 6,
+      "rejected": 0,
+      "totalTokens": 147750,
+      "exercisedTokens": 147750,
+      "p50Turns": 1,
+      "p95Turns": 2
+    }
+  },
+  "perScenario": {
+    "question": {
+      "eval": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 3,
+        "rejected": 0,
+        "totalTokens": 40823,
+        "exercisedTokens": 40823,
+        "p50Turns": 1,
+        "p95Turns": 1
+      },
+      "native": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 3,
+        "rejected": 0,
+        "totalTokens": 49496,
+        "exercisedTokens": 49496,
+        "p50Turns": 1,
+        "p95Turns": 1
+      }
+    },
+    "artifact": {
+      "eval": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 12,
+        "rejected": 0,
+        "totalTokens": 193679,
+        "exercisedTokens": 193679,
+        "p50Turns": 4,
+        "p95Turns": 6
+      },
+      "native": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 3,
+        "rejected": 0,
+        "totalTokens": 98254,
+        "exercisedTokens": 98254,
+        "p50Turns": 2,
+        "p95Turns": 2
+      }
+    }
+  },
+  "decision": {
+    "met": true,
+    "successOk": true,
+    "tokensDrop": 0.36994140774918766,
+    "p50TurnsDrop": 0,
+    "rule": "native success ≥ eval success AND (tokens or p50 turns fall ≥10%), exercised runs only"
+  },
+  "openInputsLeft": 0,
+  "runs": [
+    {
+      "arm": "eval",
+      "scenario": "artifact",
+      "repetition": 1,
+      "agentId": "c",
+      "agentIds": [
+        "c"
+      ],
+      "outcome": "success",
+      "detail": "fileTabs=1 match=true active=true expected=/home/suchimauz/wt/add-native-show-artifact/.mauzcode/tmp/shared/bench-routes/ab-artifact-2-2026-11-17T12-28-34-775Z/eval/artifact-1/report.md",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tools_eval": 3
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 54942,
+        "completion": 544,
+        "cacheRead": 40733
+      },
+      "turns": 4,
+      "childTurns": 0,
+      "durationMs": 11021,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I opened report.md on the canvas next to the chat. It's the active tab, and I checked that the file exists in the working directory.\n\nartifact=shown"
+    },
+    {
+      "arm": "eval",
+      "scenario": "artifact",
+      "repetition": 2,
+      "agentId": "g",
+      "agentIds": [
+        "g"
+      ],
+      "outcome": "success",
+      "detail": "fileTabs=1 match=true active=true expected=/home/suchimauz/wt/add-native-show-artifact/.mauzcode/tmp/shared/bench-routes/ab-artifact-2-2026-11-17T12-28-34-775Z/eval/artifact-2/report.md",
+      "toolCalls": 5,
+      "toolsByName": {
+        "tools_eval": 4,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 82533,
+        "completion": 468,
+        "cacheRead": 68295
+      },
+      "turns": 6,
+      "childTurns": 0,
+      "durationMs": 13075,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I opened `report.md` on the canvas next to the chat. It's the active tab, so you can read it now.\n\nartifact=shown"
+    },
+    {
+      "arm": "eval",
+      "scenario": "artifact",
+      "repetition": 3,
+      "agentId": "k",
+      "agentIds": [
+        "k"
+      ],
+      "outcome": "success",
+      "detail": "fileTabs=1 match=true active=true expected=/home/suchimauz/wt/add-native-show-artifact/.mauzcode/tmp/shared/bench-routes/ab-artifact-2-2026-11-17T12-28-34-775Z/eval/artifact-3/report.md",
+      "toolCalls": 4,
+      "toolsByName": {
+        "tools_eval": 3,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 54792,
+        "completion": 400,
+        "cacheRead": 40641
+      },
+      "turns": 4,
+      "childTurns": 0,
+      "durationMs": 9474,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've opened report.md on the canvas beside the chat, and it's now the active tab, so you can read it there.\n\nartifact=shown"
+    },
+    {
+      "arm": "eval",
+      "scenario": "question",
+      "repetition": 1,
+      "agentId": "b",
+      "agentIds": [
+        "b"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "tools_eval": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 13462,
+        "completion": 146,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 4619,
+      "openInputsCancelled": [
+        "inb1d0764f5fe2f9d3"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "eval",
+      "scenario": "question",
+      "repetition": 2,
+      "agentId": "e",
+      "agentIds": [
+        "e"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "tools_eval": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 13462,
+        "completion": 145,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 2793,
+      "openInputsCancelled": [
+        "in96ed76d0d9fc8505"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "eval",
+      "scenario": "question",
+      "repetition": 3,
+      "agentId": "i",
+      "agentIds": [
+        "i"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "tools_eval": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 13462,
+        "completion": 146,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 2879,
+      "openInputsCancelled": [
+        "in9f49b87129e49c6e"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "native",
+      "scenario": "artifact",
+      "repetition": 1,
+      "agentId": "d",
+      "agentIds": [
+        "d"
+      ],
+      "outcome": "success",
+      "detail": "fileTabs=1 match=true active=true expected=/home/suchimauz/wt/add-native-show-artifact/.mauzcode/tmp/shared/bench-routes/ab-artifact-2-2026-11-17T12-28-34-775Z/native/artifact-1/report.md",
+      "toolCalls": 1,
+      "toolsByName": {
+        "show_artifact": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 32667,
+        "completion": 85,
+        "cacheRead": 16249
+      },
+      "turns": 2,
+      "childTurns": 0,
+      "durationMs": 4627,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've opened report.md on the canvas next to the chat, so you can read it there.\n\nartifact=shown"
+    },
+    {
+      "arm": "native",
+      "scenario": "artifact",
+      "repetition": 2,
+      "agentId": "h",
+      "agentIds": [
+        "h"
+      ],
+      "outcome": "success",
+      "detail": "fileTabs=1 match=true active=true expected=/home/suchimauz/wt/add-native-show-artifact/.mauzcode/tmp/shared/bench-routes/ab-artifact-2-2026-11-17T12-28-34-775Z/native/artifact-2/report.md",
+      "toolCalls": 1,
+      "toolsByName": {
+        "show_artifact": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 32667,
+        "completion": 85,
+        "cacheRead": 16249
+      },
+      "turns": 2,
+      "childTurns": 0,
+      "durationMs": 4332,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've opened report.md on the canvas next to the chat, so you can read it there.\n\nartifact=shown"
+    },
+    {
+      "arm": "native",
+      "scenario": "artifact",
+      "repetition": 3,
+      "agentId": "l",
+      "agentIds": [
+        "l"
+      ],
+      "outcome": "success",
+      "detail": "fileTabs=1 match=true active=true expected=/home/suchimauz/wt/add-native-show-artifact/.mauzcode/tmp/shared/bench-routes/ab-artifact-2-2026-11-17T12-28-34-775Z/native/artifact-3/report.md",
+      "toolCalls": 1,
+      "toolsByName": {
+        "show_artifact": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 32667,
+        "completion": 83,
+        "cacheRead": 16249
+      },
+      "turns": 2,
+      "childTurns": 0,
+      "durationMs": 5043,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I opened report.md on the canvas beside the chat so you can read it there.\n\nartifact=shown"
+    },
+    {
+      "arm": "native",
+      "scenario": "question",
+      "repetition": 1,
+      "agentId": "a",
+      "agentIds": [
+        "a"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 16262,
+        "completion": 244,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 3984,
+      "openInputsCancelled": [
+        "in83f9a8a9e0a27814"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "native",
+      "scenario": "question",
+      "repetition": 2,
+      "agentId": "f",
+      "agentIds": [
+        "f"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 16262,
+        "completion": 230,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 3387,
+      "openInputsCancelled": [
+        "ina55987dcc34499e9"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "native",
+      "scenario": "question",
+      "repetition": 3,
+      "agentId": "j",
+      "agentIds": [
+        "j"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 16262,
+        "completion": 236,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 3240,
+      "openInputsCancelled": [
+        "in93003208695788ac"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    }
+  ]
+}

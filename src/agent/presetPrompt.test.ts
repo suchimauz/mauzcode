@@ -175,9 +175,9 @@ test("fixed-fixture prompt budgets preserve historical before measurements and n
     // Standard grew past the old 17,500 limit when it gained plugins and native tools (023f4405, 0c103847).
     // Every limit stays below the historical before size: Minimal shrinks >=23%, Creator >=23%, Standard >=0.4%.
     const limits = { minimal: 2300, standard: 20200, creator: 24800 };
-    // Native agent tools added by add-p0-native-agent-tools and add-p1-plan-delegation-tools; Minimal has no grant for them.
+    // Native agent tools added by add-p0-native-agent-tools, add-p1-plan-delegation-tools and add-native-show-artifact; Minimal has no grant for them.
     // finish_task is absent here: the fixture agent is not a delegated child.
-    const addedNative = ["delegate_task", "plan_done", "plan_update", "read_result", "request_input", "tool_describe", "tool_search"];
+    const addedNative = ["delegate_task", "plan_done", "plan_update", "read_result", "request_input", "show_artifact", "tool_describe", "tool_search"];
     for (const id of ["minimal", "standard", "creator"] as const) {
         expect(limits[id]).toBeLessThan(before[id].promptChars);
         const agent = await fixture(id);

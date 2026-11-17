@@ -29,7 +29,9 @@ test("Creator preserves safety and discovery invariants without freezing histori
         expect(paragraphs.some(p => new Bun.CryptoHasher("sha256").update(p).digest("hex") === hash)).toBe(true);
         for (const fragment of fragments) expect(normalize(prompt)).toContain(normalize(fragment));
     }
-    expect(prompt).toContain('To show files beside chat, use canvas.show with kind:"file".');
+    // The fixture has no preset, so it can call the native show_artifact tool; the file guidance names it.
+    expect(prompt).toContain("call the show_artifact tool");
+    expect(prompt).toContain("Use canvas.show for other kinds.");
     expect(prompt).toContain('not `ui.openFile`, which navigates the whole page away from the chat.');
     // Historical artifacts are evidence, not snapshots to recapture when wording changes.
     expect(new Bun.CryptoHasher("sha256").update(before).digest("hex")).toBe("97d135f6bfeb3d8f38b240ac28c3d29e773167316b11c7f2349877bddb3b7be1");
