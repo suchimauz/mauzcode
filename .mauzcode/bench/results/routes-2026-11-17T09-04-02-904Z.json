@@ -1,0 +1,337 @@
+{
+  "label": "smoke-2026-11-17T09-03-38-363Z",
+  "at": "2026-11-17T09:04:02.904Z",
+  "model": "claude/2yfl55fsh:claude-opus-5-5",
+  "presetId": "standard",
+  "nativeAdapters": [
+    "tools.toolSearch",
+    "tools.toolDescribe",
+    "tools.readResult",
+    "tools.requestInput"
+  ],
+  "repetitions": 1,
+  "concurrency": 6,
+  "scenarios": [
+    {
+      "id": "discovery",
+      "capability": "discovery lookup"
+    },
+    {
+      "id": "question",
+      "capability": "structured input"
+    },
+    {
+      "id": "mixed",
+      "capability": "discovery lookup and structured input"
+    },
+    {
+      "id": "large_result",
+      "capability": "stored-result read"
+    },
+    {
+      "id": "plan",
+      "capability": "visible plan"
+    },
+    {
+      "id": "delegate",
+      "capability": "delegation"
+    }
+  ],
+  "perArm": {
+    "native": {
+      "runs": 6,
+      "exercised": 6,
+      "notExercised": 0,
+      "errors": 0,
+      "success": 5,
+      "successRate": 0.8333333333333334,
+      "toolCalls": 15,
+      "rejected": 0,
+      "totalTokens": 322216,
+      "exercisedTokens": 322216,
+      "p50Turns": 3,
+      "p95Turns": 5
+    }
+  },
+  "perScenario": {
+    "discovery": {
+      "native": {
+        "runs": 1,
+        "exercised": 1,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 1,
+        "successRate": 1,
+        "toolCalls": 2,
+        "rejected": 0,
+        "totalTokens": 45471,
+        "exercisedTokens": 45471,
+        "p50Turns": 3,
+        "p95Turns": 3
+      }
+    },
+    "question": {
+      "native": {
+        "runs": 1,
+        "exercised": 1,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 1,
+        "successRate": 1,
+        "toolCalls": 1,
+        "rejected": 0,
+        "totalTokens": 14741,
+        "exercisedTokens": 14741,
+        "p50Turns": 1,
+        "p95Turns": 1
+      }
+    },
+    "mixed": {
+      "native": {
+        "runs": 1,
+        "exercised": 1,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 0,
+        "successRate": 0,
+        "toolCalls": 3,
+        "rejected": 0,
+        "totalTokens": 45189,
+        "exercisedTokens": 45189,
+        "p50Turns": 3,
+        "p95Turns": 3
+      }
+    },
+    "large_result": {
+      "native": {
+        "runs": 1,
+        "exercised": 1,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 1,
+        "successRate": 1,
+        "toolCalls": 2,
+        "rejected": 0,
+        "totalTokens": 50437,
+        "exercisedTokens": 50437,
+        "p50Turns": 3,
+        "p95Turns": 3
+      }
+    },
+    "plan": {
+      "native": {
+        "runs": 1,
+        "exercised": 1,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 1,
+        "successRate": 1,
+        "toolCalls": 2,
+        "rejected": 0,
+        "totalTokens": 45509,
+        "exercisedTokens": 45509,
+        "p50Turns": 3,
+        "p95Turns": 3
+      }
+    },
+    "delegate": {
+      "native": {
+        "runs": 1,
+        "exercised": 1,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 1,
+        "successRate": 1,
+        "toolCalls": 5,
+        "rejected": 0,
+        "totalTokens": 120869,
+        "exercisedTokens": 120869,
+        "p50Turns": 5,
+        "p95Turns": 5
+      }
+    }
+  },
+  "decision": null,
+  "openInputsLeft": 0,
+  "runs": [
+    {
+      "arm": "native",
+      "scenario": "delegate",
+      "repetition": 1,
+      "agentId": "su",
+      "agentIds": [
+        "su",
+        "sv"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":8} expected=8",
+      "toolCalls": 5,
+      "toolsByName": {
+        "tools_eval": 3,
+        "bash": 2
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 119895,
+        "completion": 974,
+        "cacheRead": 103692
+      },
+      "turns": 5,
+      "childTurns": 3,
+      "durationMs": 24475,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I gave the task to a child agent. It will count the regular files directly inside `items/`, without looking in subfolders. I'll give you the count when its result comes back."
+    },
+    {
+      "arm": "native",
+      "scenario": "discovery",
+      "repetition": 1,
+      "agentId": "sp",
+      "agentIds": [
+        "sp"
+      ],
+      "outcome": "success",
+      "detail": "name=true missing=[]",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tool_search": 1,
+        "tool_describe": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 45309,
+        "completion": 162,
+        "cacheRead": 29824
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 11274,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "The function is **`markdown.highlight`**. I found it with a tool search and checked its schema.\n\nIts required options are **`code`** and **`lang`**."
+    },
+    {
+      "arm": "native",
+      "scenario": "large_result",
+      "repetition": 1,
+      "agentId": "st",
+      "agentIds": [
+        "st"
+      ],
+      "outcome": "success",
+      "detail": "answer=fDnAJd4EecfLSchFedR8 expected=fDnAJd4EecfLSchFedR8 stored=1",
+      "toolCalls": 2,
+      "toolsByName": {
+        "bash": 1,
+        "read_result": 1
+      },
+      "rejected": 0,
+      "storedResults": 1,
+      "tokens": {
+        "prompt": 50129,
+        "completion": 308,
+        "cacheRead": 31594
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 13964,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "token=fDnAJd4EecfLSchFedR8"
+    },
+    {
+      "arm": "native",
+      "scenario": "mixed",
+      "repetition": 1,
+      "agentId": "ss",
+      "agentIds": [
+        "ss"
+      ],
+      "outcome": "failure",
+      "detail": "forms=1 kind=confirm waited=true spec=true lastCall=true named=false",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tool_search": 1,
+        "tool_describe": 1,
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 44800,
+        "completion": 389,
+        "cacheRead": 29541
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 12898,
+      "openInputsCancelled": [
+        "in8a5c3c2141d55231"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "native",
+      "scenario": "plan",
+      "repetition": 1,
+      "agentId": "sq",
+      "agentIds": [
+        "sq"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tools_eval": 1,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 44906,
+        "completion": 603,
+        "cacheRead": 29704
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 14055,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I created the \"bench\" plan with three tasks, s1, s2 and s3. I wrote step1.txt, step2.txt and step3.txt in order and marked each task done right after writing its file. Reading the files back shows the right contents: PLAN-pU5U4V, PLAN-Gn27ss and PLAN-pV6ed4.\n\nplan=done"
+    },
+    {
+      "arm": "native",
+      "scenario": "question",
+      "repetition": 1,
+      "agentId": "sr",
+      "agentIds": [
+        "sr"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 14550,
+        "completion": 191,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 7213,
+      "openInputsCancelled": [
+        "in898655116541ad60"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    }
+  ]
+}

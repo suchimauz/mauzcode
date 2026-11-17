@@ -1,0 +1,1327 @@
+{
+  "label": "ab2-2026-11-17T09-08-00-811Z",
+  "at": "2026-11-17T09:10:17.098Z",
+  "model": "claude/2yfl55fsh:claude-opus-5-5",
+  "presetId": "standard",
+  "nativeAdapters": [
+    "tools.toolSearch",
+    "tools.toolDescribe",
+    "tools.readResult",
+    "tools.requestInput"
+  ],
+  "repetitions": 3,
+  "concurrency": 4,
+  "scenarios": [
+    {
+      "id": "discovery",
+      "capability": "discovery lookup"
+    },
+    {
+      "id": "question",
+      "capability": "structured input"
+    },
+    {
+      "id": "mixed",
+      "capability": "discovery lookup and structured input"
+    },
+    {
+      "id": "large_result",
+      "capability": "stored-result read"
+    },
+    {
+      "id": "plan",
+      "capability": "visible plan"
+    },
+    {
+      "id": "delegate",
+      "capability": "delegation"
+    }
+  ],
+  "perArm": {
+    "eval": {
+      "runs": 18,
+      "exercised": 18,
+      "notExercised": 0,
+      "errors": 0,
+      "success": 18,
+      "successRate": 1,
+      "toolCalls": 62,
+      "rejected": 5,
+      "totalTokens": 1154124,
+      "exercisedTokens": 1154124,
+      "p50Turns": 3,
+      "p95Turns": 7
+    },
+    "native": {
+      "runs": 18,
+      "exercised": 18,
+      "notExercised": 0,
+      "errors": 0,
+      "success": 18,
+      "successRate": 1,
+      "toolCalls": 42,
+      "rejected": 1,
+      "totalTokens": 927120,
+      "exercisedTokens": 927120,
+      "p50Turns": 3,
+      "p95Turns": 4
+    }
+  },
+  "perScenario": {
+    "discovery": {
+      "eval": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 7,
+        "rejected": 0,
+        "totalTokens": 140074,
+        "exercisedTokens": 140074,
+        "p50Turns": 3,
+        "p95Turns": 4
+      },
+      "native": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 6,
+        "rejected": 0,
+        "totalTokens": 136363,
+        "exercisedTokens": 136363,
+        "p50Turns": 3,
+        "p95Turns": 3
+      }
+    },
+    "question": {
+      "eval": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 3,
+        "rejected": 0,
+        "totalTokens": 40138,
+        "exercisedTokens": 40138,
+        "p50Turns": 1,
+        "p95Turns": 1
+      },
+      "native": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 3,
+        "rejected": 0,
+        "totalTokens": 44307,
+        "exercisedTokens": 44307,
+        "p50Turns": 1,
+        "p95Turns": 1
+      }
+    },
+    "mixed": {
+      "eval": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 10,
+        "rejected": 0,
+        "totalTokens": 135889,
+        "exercisedTokens": 135889,
+        "p50Turns": 3,
+        "p95Turns": 4
+      },
+      "native": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 9,
+        "rejected": 0,
+        "totalTokens": 135629,
+        "exercisedTokens": 135629,
+        "p50Turns": 3,
+        "p95Turns": 3
+      }
+    },
+    "large_result": {
+      "eval": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 17,
+        "rejected": 3,
+        "totalTokens": 320568,
+        "exercisedTokens": 320568,
+        "p50Turns": 7,
+        "p95Turns": 7
+      },
+      "native": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 8,
+        "rejected": 0,
+        "totalTokens": 187102,
+        "exercisedTokens": 187102,
+        "p50Turns": 4,
+        "p95Turns": 4
+      }
+    },
+    "plan": {
+      "eval": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 7,
+        "rejected": 1,
+        "totalTokens": 139788,
+        "exercisedTokens": 139788,
+        "p50Turns": 3,
+        "p95Turns": 4
+      },
+      "native": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 7,
+        "rejected": 1,
+        "totalTokens": 153802,
+        "exercisedTokens": 153802,
+        "p50Turns": 3,
+        "p95Turns": 4
+      }
+    },
+    "delegate": {
+      "eval": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 18,
+        "rejected": 1,
+        "totalTokens": 377667,
+        "exercisedTokens": 377667,
+        "p50Turns": 5,
+        "p95Turns": 7
+      },
+      "native": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 9,
+        "rejected": 0,
+        "totalTokens": 269917,
+        "exercisedTokens": 269917,
+        "p50Turns": 3,
+        "p95Turns": 3
+      }
+    }
+  },
+  "decision": {
+    "met": true,
+    "successOk": true,
+    "tokensDrop": 0.19668943718352622,
+    "p50TurnsDrop": 0,
+    "rule": "native success ≥ eval success AND (tokens or p50 turns fall ≥10%), exercised runs only"
+  },
+  "openInputsLeft": 0,
+  "runs": [
+    {
+      "arm": "eval",
+      "scenario": "delegate",
+      "repetition": 1,
+      "agentId": "th",
+      "agentIds": [
+        "th",
+        "ti"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":11} expected=11",
+      "toolCalls": 5,
+      "toolsByName": {
+        "tools_eval": 3,
+        "bash": 2
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 109828,
+        "completion": 948,
+        "cacheRead": 94713
+      },
+      "turns": 5,
+      "childTurns": 3,
+      "durationMs": 23534,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've handed the count to a child agent. I'll give you the number once its result comes back."
+    },
+    {
+      "arm": "eval",
+      "scenario": "delegate",
+      "repetition": 2,
+      "agentId": "tv",
+      "agentIds": [
+        "tv",
+        "tw"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":9} expected=9",
+      "toolCalls": 8,
+      "toolsByName": {
+        "tools_eval": 6,
+        "bash": 2
+      },
+      "rejected": 1,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 154919,
+        "completion": 1383,
+        "cacheRead": 138351
+      },
+      "turns": 7,
+      "childTurns": 4,
+      "durationMs": 25783,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've handed the count to a child agent (id `tw`), and it's working on it now. I'll reply with count=<number> as soon as it sends back its result."
+    },
+    {
+      "arm": "eval",
+      "scenario": "delegate",
+      "repetition": 3,
+      "agentId": "uj",
+      "agentIds": [
+        "uj",
+        "ul"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":15} expected=15",
+      "toolCalls": 5,
+      "toolsByName": {
+        "tools_eval": 3,
+        "bash": 2
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 109567,
+        "completion": 1022,
+        "cacheRead": 94605
+      },
+      "turns": 5,
+      "childTurns": 3,
+      "durationMs": 21837,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've handed the count to a child agent. The tool call didn't print an ID back, so I'll confirm it started when its result comes in, and then answer count=<number>."
+    },
+    {
+      "arm": "eval",
+      "scenario": "discovery",
+      "repetition": 1,
+      "agentId": "sx",
+      "agentIds": [
+        "sx"
+      ],
+      "outcome": "success",
+      "detail": "name=true missing=[]",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tools_eval": 2
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 41333,
+        "completion": 305,
+        "cacheRead": 26595
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 10537,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "The function is **`markdown.highlight`**. The runtime docs describe it as \"Highlights source code as HTML\".\n\nIts required options are **`code`** and **`lang`**. The signature I looked up is `({ code: string; lang: string }) => Promise<string>`, and neither option is marked optional."
+    },
+    {
+      "arm": "eval",
+      "scenario": "discovery",
+      "repetition": 2,
+      "agentId": "tl",
+      "agentIds": [
+        "tl"
+      ],
+      "outcome": "success",
+      "detail": "name=true missing=[]",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tools_eval": 3
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 56425,
+        "completion": 381,
+        "cacheRead": 41325
+      },
+      "turns": 4,
+      "childTurns": 0,
+      "durationMs": 12629,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "The function is **`markdown.highlight`**. I checked its documentation with the runtime tools, and its schema lists two required options: **`code`** and **`lang`**."
+    },
+    {
+      "arm": "eval",
+      "scenario": "discovery",
+      "repetition": 3,
+      "agentId": "ty",
+      "agentIds": [
+        "ty"
+      ],
+      "outcome": "success",
+      "detail": "name=true missing=[]",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tools_eval": 2
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 41333,
+        "completion": 297,
+        "cacheRead": 26595
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 9190,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I looked this up in the runtime docs. The function is **`markdown.highlight`**, described as \"Highlights source code as HTML\".\n\nIts required options are **`code`** and **`lang`**. Its signature is `({ code: string; lang: string }) => Promise<string>`."
+    },
+    {
+      "arm": "eval",
+      "scenario": "large_result",
+      "repetition": 1,
+      "agentId": "td",
+      "agentIds": [
+        "td"
+      ],
+      "outcome": "success",
+      "detail": "answer=6AJd6HC9rtjJQXapdfNT expected=6AJd6HC9rtjJQXapdfNT stored=1",
+      "toolCalls": 5,
+      "toolsByName": {
+        "bash": 1,
+        "tools_eval": 4
+      },
+      "rejected": 1,
+      "storedResults": 1,
+      "tokens": {
+        "prompt": 94218,
+        "completion": 876,
+        "cacheRead": 77509
+      },
+      "turns": 6,
+      "childTurns": 0,
+      "durationMs": 24903,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "token=6AJd6HC9rtjJQXapdfNT"
+    },
+    {
+      "arm": "eval",
+      "scenario": "large_result",
+      "repetition": 2,
+      "agentId": "tr",
+      "agentIds": [
+        "tr"
+      ],
+      "outcome": "success",
+      "detail": "answer=cyjHx8TzAgWn39J9TuYq expected=cyjHx8TzAgWn39J9TuYq stored=1",
+      "toolCalls": 6,
+      "toolsByName": {
+        "bash": 1,
+        "tools_eval": 5
+      },
+      "rejected": 1,
+      "storedResults": 1,
+      "tokens": {
+        "prompt": 111991,
+        "completion": 1254,
+        "cacheRead": 94877
+      },
+      "turns": 7,
+      "childTurns": 0,
+      "durationMs": 30188,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "token=cyjHx8TzAgWn39J9TuYq"
+    },
+    {
+      "arm": "eval",
+      "scenario": "large_result",
+      "repetition": 3,
+      "agentId": "uf",
+      "agentIds": [
+        "uf"
+      ],
+      "outcome": "success",
+      "detail": "answer=ZFd2vsU8V7BtTLBneUBw expected=ZFd2vsU8V7BtTLBneUBw stored=1",
+      "toolCalls": 6,
+      "toolsByName": {
+        "bash": 1,
+        "tools_eval": 5
+      },
+      "rejected": 1,
+      "storedResults": 1,
+      "tokens": {
+        "prompt": 111136,
+        "completion": 1093,
+        "cacheRead": 94250
+      },
+      "turns": 7,
+      "childTurns": 0,
+      "durationMs": 24265,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "token=ZFd2vsU8V7BtTLBneUBw"
+    },
+    {
+      "arm": "eval",
+      "scenario": "mixed",
+      "repetition": 1,
+      "agentId": "tb",
+      "agentIds": [
+        "tb"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=confirm waited=true spec=true lastCall=true named=true",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tools_eval": 3
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 40365,
+        "completion": 422,
+        "cacheRead": 26571
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 13699,
+      "openInputsCancelled": [
+        "in908d9bfeda5bcdb8"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "eval",
+      "scenario": "mixed",
+      "repetition": 2,
+      "agentId": "tp",
+      "agentIds": [
+        "tp"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=confirm waited=true spec=true lastCall=true named=true",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tools_eval": 3
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 40365,
+        "completion": 378,
+        "cacheRead": 26571
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 10157,
+      "openInputsCancelled": [
+        "in87fc404db001cf2f"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "eval",
+      "scenario": "mixed",
+      "repetition": 3,
+      "agentId": "ud",
+      "agentIds": [
+        "ud"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=confirm waited=true spec=true lastCall=true named=true",
+      "toolCalls": 4,
+      "toolsByName": {
+        "tools_eval": 4
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 53877,
+        "completion": 482,
+        "cacheRead": 39984
+      },
+      "turns": 4,
+      "childTurns": 0,
+      "durationMs": 12594,
+      "openInputsCancelled": [
+        "inaad47093e0f6c153"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "eval",
+      "scenario": "plan",
+      "repetition": 1,
+      "agentId": "tf",
+      "agentIds": [
+        "tf"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tools_eval": 2,
+        "bash": 1
+      },
+      "rejected": 1,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 55891,
+        "completion": 967,
+        "cacheRead": 41481
+      },
+      "turns": 4,
+      "childTurns": 0,
+      "durationMs": 16654,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I created the \"bench\" plan with tasks s1, s2 and s3 and ran them in order. Each file was written, then its task was marked done. I read the files back afterwards and they contain the right text: step1.txt has `PLAN-zsVpbh`, step2.txt has `PLAN-DfgtA9` and step3.txt has `PLAN-7ntSts`.\n\nplan=done"
+    },
+    {
+      "arm": "eval",
+      "scenario": "plan",
+      "repetition": 2,
+      "agentId": "tt",
+      "agentIds": [
+        "tt"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tools_eval": 1,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 40912,
+        "completion": 606,
+        "cacheRead": 27041
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 12764,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "plan=done\n\nI created the \"bench\" plan with tasks s1, s2 and s3. I wrote step1.txt (`PLAN-zfx39Z`), step2.txt (`PLAN-a2JPEj`) and step3.txt (`PLAN-rb4eae`) in order, and marked each task done right after writing its file. Reading the three files back afterward showed the expected content in each."
+    },
+    {
+      "arm": "eval",
+      "scenario": "plan",
+      "repetition": 3,
+      "agentId": "uh",
+      "agentIds": [
+        "uh"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tools_eval": 1,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 40846,
+        "completion": 566,
+        "cacheRead": 27014
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 11116,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I created the \"bench\" plan with tasks s1, s2 and s3 and did them in order. I wrote each file, then marked its task done with session.done. I checked the files afterwards and each one holds exactly the right text: step1.txt has PLAN-xJTyn7, step2.txt has PLAN-nJjdP2 and step3.txt has PLAN-TgrZVf.\n\nplan=done"
+    },
+    {
+      "arm": "eval",
+      "scenario": "question",
+      "repetition": 1,
+      "agentId": "sz",
+      "agentIds": [
+        "sz"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "tools_eval": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 13230,
+        "completion": 146,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 4895,
+      "openInputsCancelled": [
+        "inac6a108b8d415a8b"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "eval",
+      "scenario": "question",
+      "repetition": 2,
+      "agentId": "tn",
+      "agentIds": [
+        "tn"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "tools_eval": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 13230,
+        "completion": 146,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 3859,
+      "openInputsCancelled": [
+        "inb1abceb245fa7fe9"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "eval",
+      "scenario": "question",
+      "repetition": 3,
+      "agentId": "ub",
+      "agentIds": [
+        "ub"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "tools_eval": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 13230,
+        "completion": 156,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 3854,
+      "openInputsCancelled": [
+        "inb8e6b146743e7bf4"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "native",
+      "scenario": "delegate",
+      "repetition": 1,
+      "agentId": "tj",
+      "agentIds": [
+        "tj",
+        "tk"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":13} expected=13",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tools_eval": 2,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 89383,
+        "completion": 589,
+        "cacheRead": 73391
+      },
+      "turns": 3,
+      "childTurns": 3,
+      "durationMs": 15230,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've handed the count to a child agent. I'll give you the number once it reports back."
+    },
+    {
+      "arm": "native",
+      "scenario": "delegate",
+      "repetition": 2,
+      "agentId": "tx",
+      "agentIds": [
+        "tx",
+        "tz"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":15} expected=15",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tools_eval": 2,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 89340,
+        "completion": 598,
+        "cacheRead": 73346
+      },
+      "turns": 3,
+      "childTurns": 3,
+      "durationMs": 15435,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've handed the task to a child agent. It will count the regular files directly inside `items/`, without looking in subfolders. I'll reply with `count=<number>` when its result comes back."
+    },
+    {
+      "arm": "native",
+      "scenario": "delegate",
+      "repetition": 3,
+      "agentId": "uk",
+      "agentIds": [
+        "uk",
+        "um"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":8} expected=8",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tools_eval": 2,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 89395,
+        "completion": 612,
+        "cacheRead": 73400
+      },
+      "turns": 3,
+      "childTurns": 3,
+      "durationMs": 15402,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've handed the count to a child agent. I'll give you the number when its result comes back."
+    },
+    {
+      "arm": "native",
+      "scenario": "discovery",
+      "repetition": 1,
+      "agentId": "ta",
+      "agentIds": [
+        "ta"
+      ],
+      "outcome": "success",
+      "detail": "name=true missing=[]",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tool_search": 1,
+        "tool_describe": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 45309,
+        "completion": 156,
+        "cacheRead": 29824
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 10544,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I looked it up with the tools. The function is **`markdown.highlight`**, and its required options are **`code`** and **`lang`**."
+    },
+    {
+      "arm": "native",
+      "scenario": "discovery",
+      "repetition": 2,
+      "agentId": "tm",
+      "agentIds": [
+        "tm"
+      ],
+      "outcome": "success",
+      "detail": "name=true missing=[]",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tool_search": 1,
+        "tool_describe": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 45309,
+        "completion": 140,
+        "cacheRead": 29824
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 9224,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "The function is `markdown.highlight`. Its required options are `code` and `lang`."
+    },
+    {
+      "arm": "native",
+      "scenario": "discovery",
+      "repetition": 3,
+      "agentId": "ua",
+      "agentIds": [
+        "ua"
+      ],
+      "outcome": "success",
+      "detail": "name=true missing=[]",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tool_search": 1,
+        "tool_describe": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 45309,
+        "completion": 140,
+        "cacheRead": 29824
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 24285,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "The function is `markdown.highlight`. Its required options are `code` and `lang`."
+    },
+    {
+      "arm": "native",
+      "scenario": "large_result",
+      "repetition": 1,
+      "agentId": "te",
+      "agentIds": [
+        "te"
+      ],
+      "outcome": "success",
+      "detail": "answer=B59KqNEWU2kXsjP2AccD expected=B59KqNEWU2kXsjP2AccD stored=1",
+      "toolCalls": 3,
+      "toolsByName": {
+        "bash": 1,
+        "read_result": 2
+      },
+      "rejected": 0,
+      "storedResults": 1,
+      "tokens": {
+        "prompt": 67231,
+        "completion": 387,
+        "cacheRead": 48990
+      },
+      "turns": 4,
+      "childTurns": 0,
+      "durationMs": 14909,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "token=B59KqNEWU2kXsjP2AccD"
+    },
+    {
+      "arm": "native",
+      "scenario": "large_result",
+      "repetition": 2,
+      "agentId": "ts",
+      "agentIds": [
+        "ts"
+      ],
+      "outcome": "success",
+      "detail": "answer=QRAfGLXTxjrVkeqMKA3Q expected=QRAfGLXTxjrVkeqMKA3Q stored=1",
+      "toolCalls": 3,
+      "toolsByName": {
+        "bash": 1,
+        "read_result": 2
+      },
+      "rejected": 0,
+      "storedResults": 1,
+      "tokens": {
+        "prompt": 67686,
+        "completion": 450,
+        "cacheRead": 49322
+      },
+      "turns": 4,
+      "childTurns": 0,
+      "durationMs": 15325,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "token=QRAfGLXTxjrVkeqMKA3Q"
+    },
+    {
+      "arm": "native",
+      "scenario": "large_result",
+      "repetition": 3,
+      "agentId": "ug",
+      "agentIds": [
+        "ug"
+      ],
+      "outcome": "success",
+      "detail": "answer=fCekWK4UhPMQGDPG9WEk expected=fCekWK4UhPMQGDPG9WEk stored=1",
+      "toolCalls": 2,
+      "toolsByName": {
+        "bash": 1,
+        "read_result": 1
+      },
+      "rejected": 0,
+      "storedResults": 1,
+      "tokens": {
+        "prompt": 51052,
+        "completion": 296,
+        "cacheRead": 31586
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 10310,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "token=fCekWK4UhPMQGDPG9WEk"
+    },
+    {
+      "arm": "native",
+      "scenario": "mixed",
+      "repetition": 1,
+      "agentId": "tc",
+      "agentIds": [
+        "tc"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=confirm waited=true spec=true lastCall=true named=true",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tool_search": 1,
+        "tool_describe": 1,
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 44802,
+        "completion": 466,
+        "cacheRead": 29542
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 13694,
+      "openInputsCancelled": [
+        "in9f0e98112643d684"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "native",
+      "scenario": "mixed",
+      "repetition": 2,
+      "agentId": "tq",
+      "agentIds": [
+        "tq"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=confirm waited=true spec=true lastCall=true named=true",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tool_search": 1,
+        "tool_describe": 1,
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 44800,
+        "completion": 386,
+        "cacheRead": 29541
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 11487,
+      "openInputsCancelled": [
+        "inb58a2d0ca967eedc"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "native",
+      "scenario": "mixed",
+      "repetition": 3,
+      "agentId": "ue",
+      "agentIds": [
+        "ue"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=confirm waited=true spec=true lastCall=true named=true",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tool_search": 1,
+        "tool_describe": 1,
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 44800,
+        "completion": 375,
+        "cacheRead": 29541
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 9864,
+      "openInputsCancelled": [
+        "in9023ba4cab6510f8"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "native",
+      "scenario": "plan",
+      "repetition": 1,
+      "agentId": "tg",
+      "agentIds": [
+        "tg"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tools_eval": 1,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 44837,
+        "completion": 600,
+        "cacheRead": 29669
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 11334,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "plan=done\n\nI created the \"bench\" plan with tasks s1, s2 and s3. I wrote `step1.txt`, `step2.txt` and `step3.txt` in order and marked each task done with `session.done` right after its file was written. Reading the files back confirmed they contain exactly `PLAN-btJ64k`, `PLAN-ytF34h` and `PLAN-thz2RF`."
+    },
+    {
+      "arm": "native",
+      "scenario": "plan",
+      "repetition": 2,
+      "agentId": "tu",
+      "agentIds": [
+        "tu"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tools_eval": 1,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 44931,
+        "completion": 624,
+        "cacheRead": 29716
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 11700,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "plan=done\n\nI created the plan \"bench\" with tasks s1, s2 and s3 and ran them in order. Each file was written and marked done with `session.done` right after. I checked the files: step1.txt contains PLAN-QZJ7m6, step2.txt contains PLAN-7uHG5C and step3.txt contains PLAN-Mc3mYG."
+    },
+    {
+      "arm": "native",
+      "scenario": "plan",
+      "repetition": 3,
+      "agentId": "ui",
+      "agentIds": [
+        "ui"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tools_eval": 2,
+        "bash": 1
+      },
+      "rejected": 1,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 61754,
+        "completion": 1056,
+        "cacheRead": 45810
+      },
+      "turns": 4,
+      "childTurns": 0,
+      "durationMs": 32677,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "plan=done\n\nI created the \"bench\" plan with tasks s1, s2 and s3. Each file was written in order, and I marked each task done right after writing its file. step1.txt contains `PLAN-umrpPM`, step2.txt contains `PLAN-3428nt` and step3.txt contains `PLAN-kYmEPH`, as checked by reading them back."
+    },
+    {
+      "arm": "native",
+      "scenario": "question",
+      "repetition": 1,
+      "agentId": "sy",
+      "agentIds": [
+        "sy"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 14550,
+        "completion": 230,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 5481,
+      "openInputsCancelled": [
+        "in9549e4a7fc81abf4"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "native",
+      "scenario": "question",
+      "repetition": 2,
+      "agentId": "to",
+      "agentIds": [
+        "to"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 14550,
+        "completion": 197,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 3706,
+      "openInputsCancelled": [
+        "in9b756d7197c1aa91"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "native",
+      "scenario": "question",
+      "repetition": 3,
+      "agentId": "uc",
+      "agentIds": [
+        "uc"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=choice waited=true spec=true lastCall=true",
+      "toolCalls": 1,
+      "toolsByName": {
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 14550,
+        "completion": 230,
+        "cacheRead": 0
+      },
+      "turns": 1,
+      "childTurns": 0,
+      "durationMs": 3796,
+      "openInputsCancelled": [
+        "in98b9184b3c8573c2"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    }
+  ]
+}

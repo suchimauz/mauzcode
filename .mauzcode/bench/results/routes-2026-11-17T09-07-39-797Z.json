@@ -1,0 +1,90 @@
+{
+  "label": "smoke-mixed-2026-11-17T09-07-30-043Z",
+  "at": "2026-11-17T09:07:39.797Z",
+  "model": "claude/2yfl55fsh:claude-opus-5-5",
+  "presetId": "standard",
+  "nativeAdapters": [
+    "tools.toolSearch",
+    "tools.toolDescribe",
+    "tools.readResult",
+    "tools.requestInput"
+  ],
+  "repetitions": 1,
+  "concurrency": 4,
+  "scenarios": [
+    {
+      "id": "mixed",
+      "capability": "discovery lookup and structured input"
+    }
+  ],
+  "perArm": {
+    "native": {
+      "runs": 1,
+      "exercised": 1,
+      "notExercised": 0,
+      "errors": 0,
+      "success": 1,
+      "successRate": 1,
+      "toolCalls": 3,
+      "rejected": 0,
+      "totalTokens": 45205,
+      "exercisedTokens": 45205,
+      "p50Turns": 3,
+      "p95Turns": 3
+    }
+  },
+  "perScenario": {
+    "mixed": {
+      "native": {
+        "runs": 1,
+        "exercised": 1,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 1,
+        "successRate": 1,
+        "toolCalls": 3,
+        "rejected": 0,
+        "totalTokens": 45205,
+        "exercisedTokens": 45205,
+        "p50Turns": 3,
+        "p95Turns": 3
+      }
+    }
+  },
+  "decision": null,
+  "openInputsLeft": 0,
+  "runs": [
+    {
+      "arm": "native",
+      "scenario": "mixed",
+      "repetition": 1,
+      "agentId": "sw",
+      "agentIds": [
+        "sw"
+      ],
+      "outcome": "success",
+      "detail": "forms=1 kind=confirm waited=true spec=true lastCall=true named=true",
+      "toolCalls": 3,
+      "toolsByName": {
+        "tool_search": 1,
+        "tool_describe": 1,
+        "request_input": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 44812,
+        "completion": 393,
+        "cacheRead": 29549
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 9717,
+      "openInputsCancelled": [
+        "inb3f969b531145377"
+      ],
+      "openInputsLeft": 0,
+      "finalText": ""
+    }
+  ]
+}
