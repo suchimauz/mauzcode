@@ -6,11 +6,15 @@ Define agent presets: named, stored compositions that decide which runtime funct
 ## Requirements
 
 ### Requirement: Agent preset definition
-An agent preset SHALL be a persistent composition with an identifier, a display name, a description, a sort order, a built-in flag, `allow` function patterns, `deny` function patterns, granted plugins, excluded prompt sections and a system-prompt addition. Preset identifiers MUST be unique, non-empty kebab-case strings.
+An agent preset SHALL have an identifier, name, description, sort order, built-in flag, allow and deny patterns, plugin grants, excluded prompt sections and a prompt addition. Built-in definitions SHALL come exclusively from shipped code; custom definitions SHALL persist exclusively in PostgreSQL. Identifiers MUST be unique non-empty kebab-case strings across both sources.
 
 #### Scenario: Duplicate identifier
-- **WHEN** a preset is created with the identifier of an existing preset
-- **THEN** the operation fails and the existing preset is unchanged
+- **WHEN** a custom preset is created with the identifier of an existing custom or built-in preset
+- **THEN** the operation fails and the existing definition is unchanged
+
+#### Scenario: Custom definitions are not source files
+- **WHEN** an authorized caller creates or edits a custom preset
+- **THEN** its definition is persisted in PostgreSQL and no source file is generated or modified
 
 ### Requirement: Function patterns and plugin entries
 A function pattern SHALL match full runtime function names (`<namespace>.<function>`, nested namespaces separated by dots), where `*` matches any sequence of characters including dots. A granted plugin entry SHALL be a plugin name or `*` for every plugin.
@@ -99,11 +103,21 @@ Standard SHALL allow `plugins.search`, `plugins.read` and `plugins.functions`. A
 - **AND** plugin discovery remains callable and returns no plugin entries
 
 ### Requirement: Built-in presets
-The system SHALL provide three built-in presets, `standard`, `creator` and `minimal`. Their default definitions SHALL ship with the code and SHALL be written to storage when absent.
+The system SHALL provide `standard`, `creator` and `minimal` from current shipped code, including the reviewed core catalogue used to generate Standard. Their definitions MUST NOT depend on stored preset rows. Startup and ordinary reads MUST NOT seed, repair or upgrade database copies of built-ins.
 
 #### Scenario: Fresh installation
-- **WHEN** the system starts with no stored presets
-- **THEN** `standard`, `creator` and `minimal` exist with their default definitions
+- **WHEN** the system starts with an empty preset table
+- **THEN** all three built-ins are available with their code-generated definitions
+- **AND** startup and subsequent reads leave the preset table empty
+
+#### Scenario: Stale database copy cannot override code
+- **WHEN** a legacy database row for `standard` has different description, allow rules or plugin grants
+- **THEN** every effective read of `standard` returns the current code definition, not the stored row
+
+#### Scenario: Shipped definition changes
+- **WHEN** an updated built-in definition is loaded and a new agent is created using its identifier
+- **THEN** the new snapshot uses the updated code definition without a preset-row update or reset
+- **AND** existing agent snapshots remain unchanged
 
 ### Requirement: Standard preset defaults
 By default `standard` SHALL allow an explicit list of core functions: file and search tools, shell, evaluation, workspace, session planning, structured input, canvas, markdown, Git, reading settings and runtime documentation, and delegation. Core functions outside the list, including runtime management, plugin loading, settings and preset writes, SHALL be denied.
@@ -148,18 +162,6 @@ By default `minimal` SHALL allow only the shell, read, write and edit tools and 
 #### Scenario: Minimal tool set
 - **WHEN** a Minimal agent's request is built
 - **THEN** its native tools are exactly the shell, read, write and edit tools
-
-### Requirement: Built-in presets are editable and resettable
-A built-in preset SHALL be editable like any other preset. Resetting a built-in preset SHALL restore its shipped default definition. A built-in preset MUST NOT be deletable. A custom preset SHALL be deletable unless it is the configured default preset.
-
-#### Scenario: Reset after edit
-- **WHEN** Standard was changed to grant `redmine` and is then reset
-- **THEN** Standard grants exactly `openspec`, `git`, `websearch`, `browser`, `gh`, `terminal` and `glab`
-- **AND** its core grants include `projects.list` and `projects.get`
-
-#### Scenario: Delete a built-in
-- **WHEN** deletion of `creator` is requested
-- **THEN** the operation fails and `creator` remains
 
 ### Requirement: Default preset for new sessions
 A setting SHALL select the preset used when a new agent is created without an explicit preset; its default value SHALL be `standard`. When the setting names a missing preset, agent creation MUST fail with an error naming the missing preset rather than silently using another preset.
@@ -301,16 +303,25 @@ A delegated or forked child agent SHALL inherit its parent's snapshot. A child M
 - **THEN** the child has the parent's Standard snapshot
 
 ### Requirement: Preset management
-The runtime SHALL provide operations to list, read, create, update, delete and reset presets, and to resolve a preset into a snapshot. Write operations SHALL be available only to agents whose snapshot allows them: built-in Creator allows them, Standard and Minimal deny them. An allowed write SHALL NOT require a separate human confirmation. Invalid definitions (unknown fields, malformed patterns, missing identifier) MUST be rejected.
+The runtime SHALL list, read, create, update, delete, reset and resolve presets. Create, update and delete SHALL operate only on custom definitions; reset SHALL return a built-in's current code definition without writes and reject custom identifiers. Existing snapshot-based write permissions SHALL remain: Creator allows management, Standard and Minimal deny writes. Invalid definitions MUST be rejected; allowed non-destructive custom writes SHALL need no extra confirmation.
 
 #### Scenario: Creator grants a plugin to Standard
-- **WHEN** a Creator agent updates Standard to grant `openspec`
-- **THEN** the update succeeds without a confirmation prompt
-- **AND** new Standard agents can call `openspec.run`
+- **WHEN** a Creator agent attempts to update Standard to grant `openspec`
+- **THEN** the operation rejects the built-in update without writing data
+- **AND** it directs the caller to create or edit a custom preset instead
+
+#### Scenario: Creator grants a plugin to a custom preset
+- **WHEN** a Creator agent updates a custom preset to grant `openspec`
+- **THEN** the update succeeds without an extra confirmation prompt
+- **AND** only subsequently created agents using that custom preset receive the changed rules
 
 #### Scenario: Standard tries to edit a preset
 - **WHEN** a Standard agent calls the preset update operation
 - **THEN** the call fails as denied by Standard
+
+#### Scenario: Reset compatibility
+- **WHEN** an authorized caller resets `standard`
+- **THEN** the operation returns the current code definition without database writes or snapshot changes
 
 ### Requirement: Preset-scoped runtime reflection
 Within agent evaluation, enumeration, membership and descriptor reflection on `ctx.fns` SHALL advertise only live functions allowed by the immutable snapshot and namespaces with allowed descendants. Descriptor values MUST preserve the guard instead of exposing raw procedures or registry objects. Explicit denied calls SHALL retain their actionable rejection diagnostic.
@@ -473,24 +484,6 @@ Optimization evidence SHALL compare before and after using the same registry, pl
 - **THEN** the report gives the measured reduction and remaining opportunities without broadening scope or weakening guarantees
 - **AND** any increase in Minimal has a concrete justification
 
-### Requirement: Conservative Standard default upgrade
-The default upgrade SHALL update a stored Standard definition only when it matches the recognized previous factory definition. It SHALL preserve customized definitions and all existing agent snapshots. The upgrade SHALL be idempotent and SHALL NOT change Creator or Minimal defaults.
-
-#### Scenario: Untouched factory definition
-- **WHEN** the upgrade encounters the previous unmodified factory Standard definition
-- **THEN** the stored definition receives the new shipped defaults
-- **AND** subsequently created agents receive the new grants
-- **AND** previously created agents retain their original snapshots
-
-#### Scenario: Customized definition
-- **WHEN** any user-configurable field differs from the recognized previous factory Standard definition
-- **THEN** the stored definition is left unchanged
-- **AND** documentation explains explicit opt-in to the new defaults
-
-#### Scenario: Repeated upgrade
-- **WHEN** the upgrade runs again after successful application
-- **THEN** it makes no additional preset changes and does not rewrite agent snapshots
-
 ### Requirement: Expanded grants preserve existing guards
 The added grants SHALL retain deny precedence, child access intersection and capability-filtered discovery. They SHALL NOT bypass human confirmation requirements, Plan mode restrictions or external service prerequisites.
 
@@ -513,32 +506,70 @@ The added grants SHALL retain deny precedence, child access intersection and cap
 - **AND** other plugin grants do not automatically install or authenticate external tools
 
 ### Requirement: Owner read-only preset view
-Full stored preset definitions SHALL be readable by the authenticated owner through a read-only Settings view and its owner endpoint. The new-session defaults response SHALL continue to expose only preset identifier, name, description and sort order, never allow, deny, plugins, excluded sections or prompt.
+Full effective built-in and custom definitions SHALL be readable by the authenticated owner through the read-only Settings view and owner endpoint. Both SHALL use the same catalogue as snapshot resolution. New-session defaults SHALL expose only identifier, name, description and sort order, never rules or prompt content.
 
 #### Scenario: Menu stays minimal
-- **WHEN** the new-session defaults are requested after this change
+- **WHEN** the new-session defaults are requested
 - **THEN** preset entries contain only `id`, `name`, `description` and `sortOrder`
+- **AND** built-in entries come from code and custom entries come from PostgreSQL
 
 #### Scenario: Viewing does not change snapshots
 - **WHEN** the owner opens the Agent presets settings tab
 - **THEN** no preset, setting or existing agent snapshot is modified
 
-### Requirement: Additive OpenSpec opt-in for customized Standard
-An explicit OpenSpec opt-in for a customized stored Standard preset SHALL preserve unrelated plugin grants and editable settings. New Standard agents SHALL receive access to every mounted OpenSpec function, subject to deny rules and inherited layers. Existing agent snapshots and action-specific approval requirements MUST remain unchanged.
+### Requirement: Unified effective preset catalogue
+List, get, resolve, default validation, owner Settings and new-session consumers SHALL use one effective catalogue combining generated built-ins with stored custom presets, ordered by sort order then identifier. Reserved identifiers SHALL resolve to code definitions only. Unknown identifiers and missing configured defaults MUST retain their explicit errors without silent fallback.
 
-#### Scenario: Preserve an existing plugin grant
-- **GIVEN** the stored Standard preset grants only `nrepl` and has no denies
-- **WHEN** the user explicitly requests full OpenSpec access
-- **THEN** the stored plugin grants contain `nrepl` and `openspec`
-- **AND** all other editable preset fields remain unchanged
+#### Scenario: Consistent consumers
+- **WHEN** a code-defined Standard and a stored custom preset are listed, selected and resolved
+- **THEN** all consumers use the same definitions and ordering
+- **AND** each identifier appears exactly once
 
-#### Scenario: New snapshot receives the full plugin grant
-- **WHEN** a new top-level Standard agent is created after the opt-in with no deny rules
-- **THEN** every function declared by the mounted OpenSpec plugin is allowed
-- **AND** unrelated ungranted plugins remain unavailable
+#### Scenario: Missing custom default
+- **WHEN** the configured default names a missing custom preset
+- **THEN** Settings reports that identifier as missing and creation without an explicit preset fails
+- **AND** the system does not silently select Standard
 
-#### Scenario: Existing snapshots stay frozen
-- **GIVEN** a Standard agent was created before the opt-in without an OpenSpec grant
-- **WHEN** the stored Standard preset gains the OpenSpec grant
-- **THEN** the existing agent snapshot is unchanged and still denies OpenSpec
-- **AND** no approval requirement is bypassed by the stored preset update
+### Requirement: Built-in identity and immutability
+Built-in identifiers SHALL be reserved independently of database contents. Creating, updating or deleting them MUST fail without writes and explain that customization requires a distinct custom preset. Custom presets SHALL retain existing editing and deletion behavior, including protection of the configured default. Copying built-in fields into a custom definition MUST create an independent record, not a live override.
+
+#### Scenario: Write attempts without stored built-ins
+- **WHEN** an authorized caller attempts to create, update or delete `standard` with no corresponding database row
+- **THEN** the operation fails with a built-in identity error and changes no data
+
+#### Scenario: Independent custom copy
+- **WHEN** a custom preset is created from Standard fields under a new identifier and Standard later changes in code
+- **THEN** the custom preset keeps its stored fields and Standard uses the updated code fields
+
+#### Scenario: Protected custom default
+- **WHEN** deletion is requested for the configured custom default
+- **THEN** deletion fails and the default remains available
+
+### Requirement: Lossless legacy preset transition
+The transition SHALL remove obsolete built-in database rows only after preserving every differing definition as a distinct custom record. Comparison SHALL cover all editable fields and ignore timestamps and rule ordering. Existing custom records MUST remain intact. Migration SHALL be atomic, collision-safe and idempotent; it MUST NOT rewrite existing agent snapshots or configured default identifiers.
+
+#### Scenario: Customized Standard is preserved
+- **GIVEN** a legacy Standard grants `nrepl` and `openspec` instead of the shipped plugin list
+- **WHEN** the transition runs
+- **THEN** a discoverable custom preset preserves its description, sort order, allow, deny, plugins, excluded sections and prompt under a new identifier and clearly identified name
+- **AND** `standard` resolves to shipped code and its obsolete database row is removed
+
+#### Scenario: Factory-equivalent row
+- **WHEN** a legacy built-in row matches current code in every editable field apart from rule ordering
+- **THEN** it is removed without creating a redundant custom preset
+
+#### Scenario: Collision and retry
+- **GIVEN** the proposed preservation identifier is already occupied by a custom preset
+- **WHEN** migration runs and is then repeated
+- **THEN** it preserves the legacy definition under a different available identifier without overwriting the existing custom record
+- **AND** the repeated run creates no further copies
+
+#### Scenario: Atomic failure
+- **WHEN** preservation or removal fails during migration
+- **THEN** the transition rolls back without losing the original definitions or leaving partial copies
+
+#### Scenario: Defaults and old agents keep their identity
+- **WHEN** a customized built-in row is preserved as a custom preset
+- **THEN** existing agents keep their original identifiers and snapshots
+- **AND** a default of `standard` remains `standard`, meaning code-defined Standard for future agents
+- **AND** documentation identifies the preserved custom preset as an explicit opt-in for future agents that need the old settings
