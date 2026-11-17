@@ -1,0 +1,494 @@
+{
+  "label": "p1c-2026-11-17T09_56_48.439Z-2026-11-17T09-56-48-442Z",
+  "at": "2026-11-17T09:57:53.241Z",
+  "model": "claude/2yfl55fsh:claude-opus-5-5",
+  "presetId": "standard",
+  "nativeAdapters": [
+    "tools.toolSearch",
+    "tools.toolDescribe",
+    "tools.readResult",
+    "tools.requestInput",
+    "tools.planUpdate",
+    "tools.planDone",
+    "tools.delegateTask",
+    "tools.finishTask"
+  ],
+  "repetitions": 3,
+  "concurrency": 4,
+  "scenarios": [
+    {
+      "id": "plan",
+      "capability": "visible plan"
+    },
+    {
+      "id": "delegate",
+      "capability": "delegation"
+    }
+  ],
+  "perArm": {
+    "eval": {
+      "runs": 6,
+      "exercised": 4,
+      "notExercised": 0,
+      "errors": 2,
+      "success": 4,
+      "successRate": 1,
+      "toolCalls": 27,
+      "rejected": 0,
+      "totalTokens": 457799,
+      "exercisedTokens": 321004,
+      "p50Turns": 3,
+      "p95Turns": 9
+    },
+    "native": {
+      "runs": 6,
+      "exercised": 6,
+      "notExercised": 0,
+      "errors": 0,
+      "success": 6,
+      "successRate": 1,
+      "toolCalls": 33,
+      "rejected": 0,
+      "totalTokens": 739971,
+      "exercisedTokens": 739971,
+      "p50Turns": 4,
+      "p95Turns": 8
+    }
+  },
+  "perScenario": {
+    "plan": {
+      "eval": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 12,
+        "rejected": 0,
+        "totalTokens": 210146,
+        "exercisedTokens": 210146,
+        "p50Turns": 3,
+        "p95Turns": 9
+      },
+      "native": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 21,
+        "rejected": 0,
+        "totalTokens": 347736,
+        "exercisedTokens": 347736,
+        "p50Turns": 8,
+        "p95Turns": 8
+      }
+    },
+    "delegate": {
+      "eval": {
+        "runs": 3,
+        "exercised": 1,
+        "notExercised": 0,
+        "errors": 2,
+        "success": 1,
+        "successRate": 1,
+        "toolCalls": 15,
+        "rejected": 0,
+        "totalTokens": 247653,
+        "exercisedTokens": 110858,
+        "p50Turns": 5,
+        "p95Turns": 5
+      },
+      "native": {
+        "runs": 3,
+        "exercised": 3,
+        "notExercised": 0,
+        "errors": 0,
+        "success": 3,
+        "successRate": 1,
+        "toolCalls": 12,
+        "rejected": 0,
+        "totalTokens": 392235,
+        "exercisedTokens": 392235,
+        "p50Turns": 4,
+        "p95Turns": 4
+      }
+    }
+  },
+  "decision": {
+    "met": false,
+    "successOk": true,
+    "tokensDrop": -1.3051768825310588,
+    "p50TurnsDrop": -0.3333333333333333,
+    "rule": "native success ≥ eval success AND (tokens or p50 turns fall ≥10%), exercised runs only"
+  },
+  "openInputsLeft": 0,
+  "runs": [
+    {
+      "arm": "eval",
+      "scenario": "delegate",
+      "repetition": 1,
+      "agentId": "wb",
+      "agentIds": [
+        "wb",
+        "wd"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":9} expected=9",
+      "toolCalls": 5,
+      "toolsByName": {
+        "tools_eval": 4,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 109922,
+        "completion": 936,
+        "cacheRead": 94515
+      },
+      "turns": 5,
+      "childTurns": 3,
+      "durationMs": 22809,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've handed the count to a child agent. I'll give you the answer once it reports back."
+    },
+    {
+      "arm": "eval",
+      "scenario": "delegate",
+      "repetition": 2,
+      "agentId": "wh",
+      "agentIds": [
+        "wh",
+        "wi"
+      ],
+      "outcome": "error",
+      "detail": "Run ownership lost",
+      "toolCalls": 5,
+      "toolsByName": {
+        "tools_eval": 4,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 67770,
+        "completion": 636,
+        "cacheRead": 53163
+      },
+      "turns": 3,
+      "childTurns": 2,
+      "durationMs": 14358,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "eval",
+      "scenario": "delegate",
+      "repetition": 3,
+      "agentId": "wn",
+      "agentIds": [
+        "wn",
+        "wp"
+      ],
+      "outcome": "error",
+      "detail": "Run ownership lost",
+      "toolCalls": 5,
+      "toolsByName": {
+        "tools_eval": 4,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 67749,
+        "completion": 640,
+        "cacheRead": 53185
+      },
+      "turns": 3,
+      "childTurns": 2,
+      "durationMs": 13335,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": ""
+    },
+    {
+      "arm": "eval",
+      "scenario": "plan",
+      "repetition": 1,
+      "agentId": "vz",
+      "agentIds": [
+        "vz"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 8,
+      "toolsByName": {
+        "tools_eval": 4,
+        "write": 3,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 125340,
+        "completion": 1048,
+        "cacheRead": 110904
+      },
+      "turns": 9,
+      "childTurns": 0,
+      "durationMs": 29293,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I created the \"bench\" plan with tasks s1, s2 and s3. I wrote step1.txt (`PLAN-2fc6rY`), step2.txt (`PLAN-vKfUJN`) and step3.txt (`PLAN-uUKs9w`), in that order, and marked each task done right after writing its file. Reading the files back shows the right contents.\n\nThe plan and done calls didn't return any confirmation, so I couldn't check the plan's final status.\n\nplan=done"
+    },
+    {
+      "arm": "eval",
+      "scenario": "plan",
+      "repetition": 2,
+      "agentId": "wf",
+      "agentIds": [
+        "wf"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tools_eval": 1,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 41116,
+        "completion": 686,
+        "cacheRead": 27154
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 13347,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I created the \"bench\" plan with tasks s1, s2 and s3. I wrote step1.txt, step2.txt and step3.txt in order and marked each task done right after its file was written. Reading the files back shows the right contents: `PLAN-MFm2PN`, `PLAN-umwXtq` and `PLAN-H9M2ZM`.\n\nplan=done"
+    },
+    {
+      "arm": "eval",
+      "scenario": "plan",
+      "repetition": 3,
+      "agentId": "wk",
+      "agentIds": [
+        "wk"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 2,
+      "toolsByName": {
+        "tools_eval": 1,
+        "bash": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 41199,
+        "completion": 757,
+        "cacheRead": 27195
+      },
+      "turns": 3,
+      "childTurns": 0,
+      "durationMs": 12867,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I created the \"bench\" plan with tasks s1, s2 and s3. I wrote each file in order and marked its task done right after writing it. A final check shows the files hold the right text: step1.txt has `PLAN-HW8hcm`, step2.txt has `PLAN-t6fULs`, and step3.txt has `PLAN-3sGPUQ`.\n\nplan=done"
+    },
+    {
+      "arm": "native",
+      "scenario": "delegate",
+      "repetition": 1,
+      "agentId": "wc",
+      "agentIds": [
+        "wc",
+        "we"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":11} expected=11",
+      "toolCalls": 4,
+      "toolsByName": {
+        "delegate_task": 1,
+        "bash": 1,
+        "plan_done": 1,
+        "finish_task": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 129646,
+        "completion": 853,
+        "cacheRead": 96635
+      },
+      "turns": 4,
+      "childTurns": 4,
+      "durationMs": 21087,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've handed the count to a helper agent and will reply when it reports back."
+    },
+    {
+      "arm": "native",
+      "scenario": "delegate",
+      "repetition": 2,
+      "agentId": "wj",
+      "agentIds": [
+        "wj",
+        "wl"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":13} expected=13",
+      "toolCalls": 4,
+      "toolsByName": {
+        "delegate_task": 1,
+        "bash": 1,
+        "plan_done": 1,
+        "finish_task": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 130468,
+        "completion": 859,
+        "cacheRead": 97330
+      },
+      "turns": 4,
+      "childTurns": 4,
+      "durationMs": 20096,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've handed the count to a child agent (wl). I'll give you the number as soon as its result comes back."
+    },
+    {
+      "arm": "native",
+      "scenario": "delegate",
+      "repetition": 3,
+      "agentId": "wo",
+      "agentIds": [
+        "wo",
+        "wq"
+      ],
+      "outcome": "success",
+      "detail": "children=1 status=ready result={\"count\":12} expected=12",
+      "toolCalls": 4,
+      "toolsByName": {
+        "delegate_task": 1,
+        "bash": 1,
+        "plan_done": 1,
+        "finish_task": 1
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 129590,
+        "completion": 819,
+        "cacheRead": 96587
+      },
+      "turns": 4,
+      "childTurns": 4,
+      "durationMs": 18593,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I've handed the count to a child agent (wq). I'll give you the answer once its result comes back."
+    },
+    {
+      "arm": "native",
+      "scenario": "plan",
+      "repetition": 1,
+      "agentId": "wa",
+      "agentIds": [
+        "wa"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 7,
+      "toolsByName": {
+        "plan_update": 1,
+        "write": 3,
+        "plan_done": 3
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 82683,
+        "completion": 710,
+        "cacheRead": 65576
+      },
+      "turns": 5,
+      "childTurns": 0,
+      "durationMs": 17163,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "plan=done\n\nI wrote step1.txt, step2.txt and step3.txt in order, containing PLAN-mzPdzf, PLAN-2Smray and PLAN-BJ8wAH. I marked each task in the \"bench\" plan done right after its file was written, and all 3 are now complete."
+    },
+    {
+      "arm": "native",
+      "scenario": "plan",
+      "repetition": 2,
+      "agentId": "wg",
+      "agentIds": [
+        "wg"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 7,
+      "toolsByName": {
+        "plan_update": 1,
+        "write": 3,
+        "plan_done": 3
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 131465,
+        "completion": 720,
+        "cacheRead": 114474
+      },
+      "turns": 8,
+      "childTurns": 0,
+      "durationMs": 25003,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "plan=done\n\nI wrote step1.txt, step2.txt and step3.txt in order, each holding its PLAN mark. I marked each task done in the \"bench\" plan right after its file was written."
+    },
+    {
+      "arm": "native",
+      "scenario": "plan",
+      "repetition": 3,
+      "agentId": "wm",
+      "agentIds": [
+        "wm"
+      ],
+      "outcome": "success",
+      "detail": "ids=true allDone=true files=true states=done,done,done",
+      "toolCalls": 7,
+      "toolsByName": {
+        "plan_update": 1,
+        "write": 3,
+        "plan_done": 3
+      },
+      "rejected": 0,
+      "storedResults": 0,
+      "tokens": {
+        "prompt": 131435,
+        "completion": 723,
+        "cacheRead": 114449
+      },
+      "turns": 8,
+      "childTurns": 0,
+      "durationMs": 25876,
+      "openInputsCancelled": [],
+      "openInputsLeft": 0,
+      "finalText": "I created the plan \"bench\" and wrote the three files in order. step1.txt contains PLAN-SLBcHM, step2.txt contains PLAN-mwzggc and step3.txt contains PLAN-D5E4jj. I marked each task done right after its file was written, and all three are now closed.\n\nplan=done"
+    }
+  ]
+}

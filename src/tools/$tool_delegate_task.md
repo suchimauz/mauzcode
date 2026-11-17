@@ -1,0 +1,37 @@
+---
+fn: tools.delegateTask
+requires: [agent.delegate]
+description: >-
+  Delegate independent side work to a new child agent that runs an ordered task plan asynchronously.
+  Returns {id, status:"working"} at once and never waits; the child's summary and result arrive later
+  as a team update, so end your turn instead of polling. presetId can only narrow your own access.
+promptSnippet: "delegate an ordered task plan to a child agent; returns its id at once"
+parameters:
+  type: object
+  properties:
+    title:
+      type: string
+      description: "Short title for the child and its plan."
+    tasks:
+      type: array
+      description: "Ordered, non-empty task list in the plan format; ids are stable and unique."
+      items:
+        type: object
+        properties:
+          id:
+            type: string
+            description: "Stable task id."
+          title:
+            type: string
+            description: "Short task title."
+          instructions:
+            type: string
+            description: "Self-contained guidance; the child does not see your transcript."
+        required: [id, title]
+        additionalProperties: false
+    presetId:
+      type: string
+      description: "Optional preset that narrows the child's access; never widens yours."
+  required: [title, tasks]
+  additionalProperties: false
+---

@@ -42,7 +42,7 @@ The system SHALL provide a native tool `delegate_task` that accepts a `title`, a
 - **THEN** the child still cannot call the functions the parent's preset denies
 
 ### Requirement: Child-only task finish
-The system SHALL provide a native tool `finish_task` that accepts a non-empty `summary` and a required JSON-compatible `result`. It MUST be advertised and executable only for an agent created by delegation. It MUST fail while any task of the child's plan is not done, and on success it MUST store the result and deliver it to the parent once. A repeated call after success MUST NOT deliver the result again.
+The system SHALL provide a native tool `finish_task`, advertised and executable only for an agent created by delegation. It MUST fail while any task of the child's plan is not done. On success it MUST store the result and deliver the summary and result to the parent once; a repeated call after success MUST NOT deliver again.
 
 #### Scenario: Finish a completed delegation
 - **WHEN** a delegated child with all tasks done calls `finish_task` with a summary and result
@@ -55,6 +55,13 @@ The system SHALL provide a native tool `finish_task` that accepts a non-empty `s
 #### Scenario: Not a delegated child
 - **WHEN** an agent that was not created by delegation looks for `finish_task`
 - **THEN** the tool is not in its tool list and a direct call is rejected
+
+### Requirement: Typed finish result
+`finish_task` SHALL accept a non-empty `summary` and a required `result` that is a JSON object. Arrays, scalars, `null` and JSON-encoded strings MUST be rejected without delivery; a scalar is passed wrapped, for example `{ value: 7 }`.
+
+#### Scenario: Result passed as an encoded string
+- **WHEN** a delegated child with all tasks done calls `finish_task` with `result` set to the string `"{\"count\": 7}"`
+- **THEN** the call fails and nothing is delivered to the parent
 
 ### Requirement: Trusted agent binding
 Every tool in this capability SHALL act on the invoking agent taken from the trusted invocation. Arguments MUST NOT select another agent, parent or owner; such arguments and any other unknown arguments MUST be rejected. A missing trusted invocation context MUST fail instead of falling back to any current agent.

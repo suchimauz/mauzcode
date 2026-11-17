@@ -98,7 +98,7 @@ export default async function (
         selfTest?: boolean;
     },
 ): Promise<any> {
-    const NATIVE = ["tools.toolSearch", "tools.toolDescribe", "tools.readResult", "tools.requestInput"];
+    const NATIVE = ["tools.toolSearch", "tools.toolDescribe", "tools.readResult", "tools.requestInput", "tools.planUpdate", "tools.planDone", "tools.delegateTask", "tools.finishTask"];
     const REQUEST_WIRE = "request_input";
     const SYSTEM = "You are a participant in an automated benchmark. Work precisely, answer factually, and verify with tools when the task requires it.";
     const stamp = () => new Date().toISOString().replace(/[:.]/g, "-");
@@ -110,8 +110,13 @@ export default async function (
     
     /** Builds both arms from one resolved snapshot; arm "eval" only adds the native adapter denies. */
     const buildArms = (base: types.agentPreset.Snapshot): Record<Arm, types.agentPreset.Snapshot> => {
-        const native = structuredClone(base);
-        const evalOnly = structuredClone(base);
+        // The common base grants every native adapter, so a customized stored preset that predates an
+        // adapter cannot silently turn the native arm into a second eval arm.
+        const granted = structuredClone(base);
+        const top = granted.layers[granted.layers.length - 1];
+        if (top) top.allow = [...new Set([...top.allow, ...NATIVE])];
+        const native = structuredClone(granted);
+        const evalOnly = structuredClone(granted);
         const last = evalOnly.layers[evalOnly.layers.length - 1];
         if (!last) throw new Error("bench.routes: preset snapshot has no layers");
         last.deny = [...new Set([...last.deny, ...NATIVE])];
@@ -215,7 +220,7 @@ export default async function (
             build: async () => {
                 const marks = [rand(6), rand(6), rand(6)];
                 return {
-                    prompt: `Create a visible plan with session.plan titled "bench" with exactly three tasks, ids s1, s2, s3. Task sN: write the file stepN.txt in the working directory containing exactly PLAN-<mark>, where the marks are s1=${marks[0]}, s2=${marks[1]}, s3=${marks[2]}. Execute the tasks in order and mark each one done with session.done right after its file is written. Finally answer plan=done.`,
+                    prompt: `Create your visible plan titled "bench" with exactly three tasks, ids s1, s2, s3. Task sN: write the file stepN.txt in the working directory containing exactly PLAN-<mark>, where the marks are s1=${marks[0]}, s2=${marks[1]}, s3=${marks[2]}. Execute the tasks in order and mark each plan task done right after its file is written. Finally answer plan=done.`,
                     expected: { marks },
                 };
             },
@@ -243,7 +248,7 @@ export default async function (
                 for (let i = 0; i < count; i += 1) await c.fns.files.write({ path: `${dir}/items/f${i}-${rand(4)}.txt`, content: "x\n" });
                 await c.fns.files.write({ path: dir + "/items/sub/nested.txt", content: "x\n" });
                 return {
-                    prompt: "Delegate this to a child agent with agent.delegate (one task, do not count yourself): count the regular files directly inside the items/ directory of this workspace, not recursing into subdirectories, and finish with result { count: <number> }. After delegating, end your turn; when the child's result arrives, answer count=<number>.",
+                    prompt: "Delegate this to a child agent (one task, do not count yourself): count the regular files directly inside the items/ directory of this workspace, not recursing into subdirectories, and finish with result { count: <number> }. After delegating, end your turn; when the child's result arrives, answer count=<number>.",
                     expected: { count },
                 };
             },
@@ -381,7 +386,7 @@ export default async function (
         const lowerSuccess = decide(mk(1, 1000, 2), mk(0.9, 500, 1));
         const checks = {
             armsDifferOnlyByNativeDenies: armsDiffOnlyByDenies(arms.eval, arms.native),
-            nativeArmMatchesBase: JSON.stringify(arms.native) === JSON.stringify(base),
+            nativeArmIsBasePlusNativeGrants: JSON.stringify({ ...arms.native, layers: arms.native.layers.map((l) => ({ ...l, allow: l.allow.filter((a) => !NATIVE.includes(a) || base.layers.some((b) => b.allow.includes(a))) })) }) === JSON.stringify(base),
             syntheticLargeResultNotExercised: large.exercised?.(synthetic) === false,
             thresholdMissedAt7pctWithMoreTurns: missed.met === false,
             thresholdMetAt12pctTokens: metByTokens.met === true,

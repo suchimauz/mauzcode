@@ -53,6 +53,12 @@ export type Tool = {
      *  preset check covers the capability, not just the adapter. */
     requires?: string[];
 
+    /** A synchronous predicate (dotted name) called with `{ agent }`; the tool is
+     *  advertised and executable only while it returns true — for tools that only
+     *  make sense in one situation, such as `finish_task` for delegated children.
+     *  A missing or throwing predicate makes the tool unavailable. */
+    availableWhen?: string;
+
     /** A function (dotted name) run after the schema passes, for rules a schema
      *  cannot state — "exactly one of these two shapes", "this string may not be
      *  empty". It is handed `{ args }` and returns the complaints; anything

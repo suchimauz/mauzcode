@@ -61,8 +61,11 @@ await ctx.fns.bench.run({ models: ["oneapi:qwen3.8-flash-next"], tasks: ["runtes
 
 Сравнивает не модели, а **маршруты**: один снимок пресета (по умолчанию Standard) даёт две «руки».
 
-- `eval` — клон снимка + `deny` нативных адаптеров `tools.toolSearch`, `tools.toolDescribe`, `tools.readResult`, `tools.requestInput`;
-- `native` — неизменённый клон.
+- общая база — снимок + `allow` всех нативных адаптеров (`tools.toolSearch`, `tools.toolDescribe`, `tools.readResult`, `tools.requestInput`, `tools.planUpdate`, `tools.planDone`, `tools.delegateTask`, `tools.finishTask`), чтобы кастомизированный Standard без этих grant'ов не превращал native-руку во вторую eval-руку;
+- `eval` — база + `deny` тех же адаптеров;
+- `native` — база.
+
+Промпты сценариев `plan` и `delegate` не называют API (`session.plan`, `agent.delegate`), чтобы не подталкивать ни одну руку к конкретному маршруту; результаты до `add-p1-plan-delegation-tools` получены со старыми промптами.
 
 Перед запуском стенд проверяет, что снимки отличаются только этими deny. Каждый прогон — новый hidden-агент со своей папкой в `.mauzcode/tmp/<agent-id>/bench-routes/...`.
 

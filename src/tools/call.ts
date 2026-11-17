@@ -35,10 +35,10 @@ export default async function (
     const tool = all.find((t: any) => t.wireName === name || t.name === name || t.key === name);
     // Unknown and preset-denied tools get one indistinguishable message that lists
     // only the tools this agent may call, never a denied tool, function or preset name.
-    if (!tool || (snapshot && !ctx.fns.tools.permitted({ tool, snapshot }))) {
+    if (!tool || (snapshot && !ctx.fns.tools.permitted({ tool, snapshot })) || (tool.availableWhen && !ctx.fns.tools.available({ tool, agent: opts.agent }))) {
         const only = opts.agent?.tools;
         const available = all
-            .filter((t: any) => (!only?.length || only.includes(t.wireName) || only.includes(t.name)) && (!snapshot || ctx.fns.tools.permitted({ tool: t, snapshot })))
+            .filter((t: any) => (!only?.length || only.includes(t.wireName) || only.includes(t.name)) && (!snapshot || ctx.fns.tools.permitted({ tool: t, snapshot })) && (!t.availableWhen || ctx.fns.tools.available({ tool: t, agent: opts.agent })))
             .map((t: any) => t.wireName);
         return { output: `Error: unknown tool "${name}". Available: ${available.join(", ")}`, isError: true, handlerExecuted: false };
     }

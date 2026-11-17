@@ -338,7 +338,11 @@ export default function (
                 "tools.toolSearch",
                 "tools.toolDescribe",
                 "tools.readResult",
-                "tools.requestInput"
+                "tools.requestInput",
+                "tools.planUpdate",
+                "tools.planDone",
+                "tools.delegateTask",
+                "tools.finishTask"
             ]
         },
         "tsgo": {

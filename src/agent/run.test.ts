@@ -88,8 +88,9 @@ describe('agent.run', () => {
         const agent = await ctx.fns.agent.start({ model: 'mock/default:test' });
 
         const wire = ctx.fns.agent.wireTools({ agent });
-        // Native goal tools (create_goal/get_goal/update_goal) join when the goal feature is on.
-        expect(wire.map((t: any) => t.name).filter((n: string) => !n.endsWith('_goal')).sort()).toEqual(['bash', 'edit', 'eval', 'find', 'grep', 'read', 'read_result', 'request_input', 'respondHtml', 'tool_describe', 'tool_search', 'write']);
+        // Native goal tools (create_goal/get_goal/update_goal) join when the goal feature is on;
+        // finish_task appears only for delegated children.
+        expect(wire.map((t: any) => t.name).filter((n: string) => !n.endsWith('_goal')).sort()).toEqual(['bash', 'delegate_task', 'edit', 'eval', 'find', 'grep', 'plan_done', 'plan_update', 'read', 'read_result', 'request_input', 'respondHtml', 'tool_describe', 'tool_search', 'write']);
 
         const narrowed = ctx.fns.agent.wireTools({ agent: { ...agent, tools: ['read'] } });
         expect(narrowed).toHaveLength(1);
