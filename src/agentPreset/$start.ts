@@ -1,4 +1,3 @@
-/** Restore missing built-ins after schema migrations and before agents resume. */
-export default async function (ctx: Context, _session: Session | null, _opts: {}): Promise<void> {
-    await ctx.fns.agentPreset.ensureBuiltins({});
+/** Built-ins require no startup seeding; historical rows are handled only by migrations. */
+export default async function (_ctx: Context, _session: Session | null, _opts: {}): Promise<void> {
 }

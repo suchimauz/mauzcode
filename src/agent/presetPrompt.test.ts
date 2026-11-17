@@ -46,15 +46,16 @@ test("Standard discovers no plugin workflow until openspec is granted; plugin se
     ctx.state.registry.openspec = { run: () => {} };
     ctx.state.prompts.registry.set("fixturePlugin", { id: "fixturePlugin", requires: ["openspec.run"], order: 200, body: "Plugin section sentinel" });
     try {
-        // Standard grants plugins by default (agent-presets spec); start from an explicit plugin-free Standard.
-        await ctx.fns.agentPreset.update({ id: "standard", patch: { plugins: [] } });
-        const standard = await fixture("standard");
+        // Customize a distinct copy, never the code-defined Standard.
+        const { builtin, updated_at, ...definition } = (await ctx.fns.agentPreset.get({ id: 'standard' }))!;
+        await ctx.fns.agentPreset.create({ preset: { ...definition, id: 'prompt-custom', plugins: [] } });
+        const standard = await fixture("prompt-custom");
         let prompt = await ctx.fns.agent.fullSystemPrompt({ agent: standard });
         expect(prompt).not.toContain("## Mounted plugins");
         expect(prompt).not.toContain("ctx.fns.plugins.search");
         expect(prompt).not.toContain("Plugin section sentinel");
-        await ctx.fns.agentPreset.update({ id: "standard", patch: { plugins: ["openspec"] } });
-        const granted = await fixture("standard");
+        await ctx.fns.agentPreset.update({ id: "prompt-custom", patch: { plugins: ["openspec"] } });
+        const granted = await fixture("prompt-custom");
         prompt = await ctx.fns.agent.fullSystemPrompt({ agent: granted });
         expect(prompt).toContain("## Mounted plugins");
         expect(prompt).toContain("ctx.fns.plugins.search");
@@ -65,7 +66,7 @@ test("Standard discovers no plugin workflow until openspec is granted; plugin se
         ctx.state.registry.plugins.list = oldList;
         ctx.state.registry.openspec = { run: () => {} };
         ctx.state.prompts.registry.delete("fixturePlugin");
-        await ctx.fns.agentPreset.reset({ id: "standard" });
+        await ctx.fns.agentPreset.remove({ id: "prompt-custom" });
     }
 });
 

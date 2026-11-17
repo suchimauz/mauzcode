@@ -1,6 +1,6 @@
 import { requestJson } from './mauzcode';
 
-/** Stored agent preset as projected by the owner-only Settings endpoint. */
+/** Effective code-managed or custom agent preset projected by the owner-only Settings endpoint. */
 export type AgentPresetView = {
   id: string;
   name: string;
@@ -26,7 +26,7 @@ const isPreset = (v: unknown): v is AgentPresetView => {
     && typeof p.prompt === 'string' && typeof p.updatedAt === 'number';
 };
 
-/** Read every stored preset and the default selection; read-only. */
+/** Read the effective preset catalogue and default selection; read-only. */
 export async function getAgentPresets(signal?: AbortSignal): Promise<AgentPresetsState> {
   const data = await requestJson<Record<string, unknown>>(PATH, { signal });
   if (data.version !== 1 || !Array.isArray(data.presets) || !data.presets.every(isPreset) || typeof data.defaultPresetId !== 'string' || typeof data.defaultPresetMissing !== 'boolean') {

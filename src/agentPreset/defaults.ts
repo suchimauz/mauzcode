@@ -1,7 +1,7 @@
 /**
  * Return fresh shipped Standard, Creator and Minimal preset definitions.
  *
- * Use these definitions to seed missing built-ins or reset an edited built-in. Returned arrays are independent on every call. The deterministic updated_at value is zero; storage writers assign the actual write timestamp.
+ * Canonical authority for built-in identifiers and rules; never persisted by ordinary reads or startup. Returned arrays are independent on every call. The deterministic updated_at value is zero, not a database write timestamp.
  */
 export default function (
     ctx: Context,

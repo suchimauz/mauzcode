@@ -1,7 +1,7 @@
 /**
- * Read stored agent presets and the default selection for the React Settings tab
+ * Read effective code-managed and custom agent presets for the React Settings tab
  *
- * Use for the read-only Settings → Agent presets tab. An authenticated owner GET returns every stored preset in menu order with its full access rules, plugin grants, excluded prompt sections and prompt text, plus the configured default identifier and whether that preset is missing. Never writes, never changes the default, and never returns agent snapshots. Unauthenticated requests get 401, non-owners 403, other methods 405 with Allow: GET; responses are uncached.
+ * Use for the read-only Settings → Agent presets tab. An authenticated owner GET returns generated built-ins and stored custom presets from the effective catalogue in menu order with its full access rules, plugin grants, excluded prompt sections and prompt text, plus the configured default identifier and whether that preset is missing. Never writes, never changes the default, and never returns agent snapshots. Unauthenticated requests get 401, non-owners 403, other methods 405 with Allow: GET; responses are uncached.
  * @param opts.req Authenticated owner GET request.
  */
 export default async function (

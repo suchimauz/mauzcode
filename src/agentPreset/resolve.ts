@@ -1,4 +1,4 @@
-/** Resolve stored rules into an independent creation snapshot; a child can only narrow its parent. */
+/** Resolve current code-defined built-in or stored custom rules into an independent creation snapshot; a child can only narrow its parent. */
 export default async function (ctx: Context, _session: Session | null, opts: {
     /** Explicit preset identifier; omitted uses the parent or configured default. */
     id?: string;

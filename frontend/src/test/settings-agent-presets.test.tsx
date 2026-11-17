@@ -4,7 +4,7 @@ import { AgentPresetsPanel } from '../components/settings/AgentPresetsPanel';
 import { SETTINGS_TABS } from '../components/settings/SettingsDialog';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-const preset = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), description: `${id} preset`, sortOrder: 0, builtin: true, allow: [], deny: [], plugins: [], excludeSections: [], prompt: '', updatedAt: 1_700_000_000_000, ...extra });
+const preset = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id[0]!.toUpperCase() + id.slice(1), description: `${id} preset`, sortOrder: 0, builtin: true, allow: [], deny: [], plugins: [], excludeSections: [], prompt: '', updatedAt: 0, ...extra });
 const body = (defaultPresetId = 'standard', presets = [preset('standard', { allow: ['files.*', 'git.*'], plugins: ['git'], prompt: 'Be careful.\n  Indented.' }), preset('creator', { sortOrder: 1, allow: ['*'], plugins: ['*'] }), preset('team', { builtin: false, deny: ['bash'] })]) =>
   ({ version: 1, presets, defaultPresetId, defaultPresetMissing: !presets.some(p => p.id === defaultPresetId) });
 function mock(...responses: Response[]) {
@@ -42,6 +42,26 @@ it('renders presets with badges, default marker, rule lists and prompt', async (
   expect(fetch.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
 });
 
+it('distinguishes code-managed Standard from preserved custom settings without an epoch date', async () => {
+  const updatedAt = 1_700_000_000_000;
+  mock(json(body('standard-custom', [
+    preset('standard', { plugins: ['openspec', 'git'] }),
+    preset('standard-custom', { name: 'Standard (preserved custom)', builtin: false, plugins: ['nrepl', 'openspec'], updatedAt }),
+  ])));
+  render(<AgentPresetsPanel />);
+  const standard = await screen.findByRole('region', { name: 'Standard' });
+  const custom = card('Standard (preserved custom)');
+  expect(within(standard).getByText(/Managed by code/)).toBeVisible();
+  expect(within(standard).queryByText(/Updated/)).toBeNull();
+  expect(standard).not.toHaveTextContent(new Date(0).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }));
+  expect(within(custom).getByText('standard-custom')).toBeVisible();
+  expect(within(custom).getByText('Custom')).toBeVisible();
+  expect(within(custom).getByText('Default for new sessions')).toBeVisible();
+  expect(within(custom).getByRole('list', { name: 'Plugins' })).toHaveTextContent('nreplopenspec');
+  expect(within(custom).getByText(/Updated/)).toHaveTextContent(new Date(updatedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }));
+  expect(within(custom).queryByText(/Managed by code/)).toBeNull();
+});
+
 it('warns about a missing default and marks no preset', async () => {
   mock(json(body('ghost')));
   render(<AgentPresetsPanel />);
@@ -54,7 +74,7 @@ it('warns about a missing default and marks no preset', async () => {
 it('shows the empty state', async () => {
   mock(json(body('standard', [])));
   render(<AgentPresetsPanel />);
-  expect(await screen.findByText('No agent presets are stored.')).toBeVisible();
+  expect(await screen.findByText('No agent presets are available.')).toBeVisible();
 });
 
 it('shows an error and retries', async () => {

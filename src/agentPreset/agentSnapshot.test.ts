@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { mkTestCtx } from '../_testCtx.entry';
 
-test('preset edit grants a plugin only to agents created afterwards', async () => {
+test('code definition changes affect new agents, not old snapshots or custom copies', async () => {
     const ctx = await mkTestCtx();
     ctx.state.registry.agentPreset.origin = (_c: Context, _s: Session | null, opts: { name: string }) => opts.name.startsWith('redmine.') ? { kind: 'plugin', plugin: 'redmine' } : { kind: 'core' };
     const first = await ctx.fns.ui.createAgent({ model: 'mock:test', open: false });
@@ -15,12 +15,20 @@ test('preset edit grants a plugin only to agents created afterwards', async () =
         expect(ctx.fns.agentPreset.allows({ snapshot: a.preset, name })).toBe(false);
     }
     const snapshot = structuredClone(a.preset);
-    await ctx.fns.agentPreset.update({ id: 'standard', patch: { plugins: ['redmine'] } });
+    const { builtin, updated_at, ...definition } = (await ctx.fns.agentPreset.get({ id: 'standard' }))!;
+    await ctx.fns.agentPreset.create({ preset: { ...definition, id: 'snapshot-copy' } });
+    const originalDefaults = ctx.state.registry.agentPreset.defaults;
+    const definitions = ctx.fns.agentPreset.defaults({});
+    definitions[0]!.plugins = ['redmine'];
+    ctx.state.registry.agentPreset.defaults = () => structuredClone(definitions);
+    try {
     const second = await ctx.fns.ui.createAgent({ model: 'mock:test', open: false });
     const b = await ctx.fns.session.load({ id: second.id });
     expect(ctx.fns.agentPreset.allows({ snapshot: a.preset, name: 'redmine.myIssues' })).toBe(false);
     expect(ctx.fns.agentPreset.allows({ snapshot: b.preset, name: 'redmine.myIssues' })).toBe(true);
     expect((await ctx.fns.session.load({ id: a.id })).preset).toEqual(snapshot);
+    expect((await ctx.fns.agentPreset.get({ id: 'snapshot-copy' }))?.plugins).toEqual(definition.plugins);
+    } finally { ctx.state.registry.agentPreset.defaults = originalDefaults; }
 });
 
 test('deleting a custom preset leaves both agents usable through their stored snapshots', async () => {

@@ -35,8 +35,9 @@ function mockSidecarModel(ctx: any, turns: any[]) {
 describe("agent.updateGoalSidecar", () => {
     test('sidecar inherits the creation snapshot even after its definition changes', async () => {
         const ctx = await mkTestCtx();
-        const parent = await ctx.fns.agent.start({ model: 'mock/default:test', preset: await ctx.fns.agentPreset.resolve({ id: 'minimal' }) });
-        await ctx.fns.agentPreset.update({ id: 'minimal', patch: { allow: ['*'] } });
+        await ctx.fns.agentPreset.create({ preset: { id: 'sidecar-custom', name: 'Sidecar custom', allow: ['tools.read'] } });
+        const parent = await ctx.fns.agent.start({ model: 'mock/default:test', preset: await ctx.fns.agentPreset.resolve({ id: 'sidecar-custom' }) });
+        await ctx.fns.agentPreset.update({ id: 'sidecar-custom', patch: { allow: ['*'] } });
         let observed;
         ctx.state.registry.agent.run = async (_c: Context, _s: Session | null, opts: { agent: types.agent.Agent }) => { observed = opts.agent.preset; };
         await ctx.fns.agent.updateGoalSidecar({ agent: parent, messageIdx: 0, userMessage: 'Goal' });

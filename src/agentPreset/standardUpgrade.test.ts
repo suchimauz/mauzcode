@@ -59,7 +59,8 @@ describe('conservative Standard factory upgrade', () => {
         const ctx = await testCtx();
         await ctx.fns.agentPreset.ensureBuiltins({});
         await store(ctx, { allow: [...previous.allow].reverse() });
-        const oldSnapshot = await ctx.fns.agentPreset.resolve({ id: 'standard' });
+        const stored = await read(ctx);
+        const oldSnapshot = { presetId: stored.id, name: stored.name, layers: [{ id: stored.id, allow: stored.allow, deny: stored.deny, plugins: stored.plugins, excludeSections: stored.exclude_sections, prompt: stored.prompt }] };
         await ctx.fns.procs.db.run({
             sql: `INSERT INTO agents (id, model, created_at, updated_at, preset_id, preset_snapshot)
                 VALUES ('standard-before-upgrade', 'mock:echo', 1, 1, 'standard', ?::jsonb)`,
@@ -72,7 +73,7 @@ describe('conservative Standard factory upgrade', () => {
         expect({ ...upgraded, updated_at: Number(upgraded.updated_at) }).toEqual({ ...shipped, allow: expect.any(Array), updated_at: expect.any(Number) });
         expect([...upgraded.allow].sort()).toEqual([...shipped.allow].sort());
         expect(Number(upgraded.updated_at)).toBeGreaterThan(123);
-        const newSnapshot = await ctx.fns.agentPreset.resolve({ id: 'standard' });
+        const newSnapshot = { layers: [{ plugins: upgraded.plugins, allow: upgraded.allow }] };
         expect(newSnapshot.layers[0]?.plugins).toEqual(shipped.plugins);
         expect(newSnapshot.layers[0]?.allow).toContain('projects.list');
         expect(oldSnapshot.layers[0]?.plugins).toEqual([]);

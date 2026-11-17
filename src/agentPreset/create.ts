@@ -5,6 +5,7 @@ export default async function (ctx: Context, _session: Session | null, opts: {
 }): Promise<types.agentPreset.Preset> {
     ctx.fns.agentPreset.validateDefinition({ definition: opts.preset });
     const p = opts.preset;
+    if (ctx.fns.agentPreset.defaults({}).some(preset => preset.id === p.id)) throw new Error(`Cannot create built-in preset: ${p.id}. Create a custom copy with a distinct identifier instead.`);
     const rows = await ctx.fns.procs.db.select({
         sql: `INSERT INTO agent_presets (id, name, description, sort_order, builtin, allow, deny, plugins, exclude_sections, prompt, updated_at)
             VALUES (?, ?, ?, ?, false, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?, ?) RETURNING *`,

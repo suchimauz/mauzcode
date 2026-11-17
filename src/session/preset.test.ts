@@ -17,7 +17,7 @@ describe('creation-time preset persistence', () => {
         const ctx = await mkTestCtx();
         const agent = await ctx.fns.agent.start({ model: 'mock:test' });
         await ctx.fns.procs.db.run({ sql: 'UPDATE agents SET preset_id = NULL, preset_snapshot = NULL WHERE id = ?', params: [agent.id] });
-        await ctx.fns.agentPreset.update({ id: 'creator', patch: { allow: [] } });
+        await ctx.fns.procs.db.run({ sql: `INSERT INTO agent_presets (id, name, builtin, allow, updated_at) VALUES ('creator', 'Stale Creator', true, '[]'::jsonb, 1) ON CONFLICT (id) DO UPDATE SET allow = '[]'::jsonb` });
         const warnings: object[] = [];
         ctx.state.registry.procs.log.warn = (_c: Context, _s: Session | null, opts: object) => { warnings.push(opts); };
         const loaded = await ctx.fns.session.load({ id: agent.id });

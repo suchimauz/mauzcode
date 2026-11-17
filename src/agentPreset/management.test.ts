@@ -28,13 +28,20 @@ describe('preset management', () => {
     test('built-in reset and protected deletion', async () => {
         const ctx = await testCtx();
         await ctx.fns.agentPreset.ensureBuiltins({});
-        await ctx.fns.agentPreset.update({ id: 'standard', patch: { plugins: ['redmine'], prompt: 'edited' } });
+        await ctx.fns.procs.db.run({ sql: 'DELETE FROM agent_presets' });
+        for (const id of ['standard', 'creator', 'minimal']) {
+            await expect(ctx.fns.agentPreset.create({ preset: { id, name: 'Override' } })).rejects.toThrow('custom');
+            await expect(ctx.fns.agentPreset.update({ id, patch: { plugins: ['redmine'] } })).rejects.toThrow('custom');
+            await expect(ctx.fns.agentPreset.remove({ id })).rejects.toThrow('custom');
+        }
         const reset = await ctx.fns.agentPreset.reset({ id: 'standard' });
         expect(reset.plugins).toEqual(['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab']);
         expect(reset.allow).toEqual(expect.arrayContaining(['projects.list', 'projects.get', 'planning.*', 'input.*']));
         expect(reset.allow.filter(pattern => pattern.startsWith('projects.'))).toEqual(['projects.list', 'projects.get']);
         expect(reset.prompt).toBe('');
         expect(reset.builtin).toBe(true);
+        expect(reset.updated_at).toBe(0);
+        expect(await ctx.fns.procs.db.select({ sql: 'SELECT * FROM agent_presets' })).toEqual([]);
         for (const id of ['standard', 'creator', 'minimal']) await expect(ctx.fns.agentPreset.remove({ id })).rejects.toThrow('built-in');
         await ctx.fns.agentPreset.create({ preset: { id: 'test-default', name: 'Default' } });
         const scoped = Object.create(ctx);
@@ -45,13 +52,16 @@ describe('preset management', () => {
         await ctx.fns.agentPreset.remove({ id: 'test-default' });
     });
 
-    test('boot inserts missing rows and preserves edits', async () => {
+    test('boot and compatibility ensure leave empty storage empty', async () => {
         const ctx = await testCtx();
         await ctx.fns.agentPreset.ensureBuiltins({});
-        await ctx.fns.agentPreset.update({ id: 'standard', patch: { prompt: 'keep edit' } });
-        await ctx.fns.procs.db.run({ sql: "DELETE FROM agent_presets WHERE id = 'minimal'" });
+        await ctx.fns.procs.db.run({ sql: 'DELETE FROM agent_presets' });
         await start(ctx, null, {});
-        expect((await ctx.fns.agentPreset.get({ id: 'standard' }))?.prompt).toBe('keep edit');
+        await start(ctx, null, {});
+        await ctx.fns.agentPreset.ensureBuiltins({});
+        expect(await ctx.fns.agentPreset.list({})).toEqual(ctx.fns.agentPreset.defaults({}));
+        expect(await ctx.fns.procs.db.select({ sql: 'SELECT * FROM agent_presets' })).toEqual([]);
+        expect((await ctx.fns.agentPreset.get({ id: 'standard' }))?.prompt).toBe('');
         expect((await ctx.fns.agentPreset.get({ id: 'minimal' }))?.builtin).toBe(true);
         const order = await ctx.fns.procs.lifecycle.order({});
         expect(order.indexOf('agentPreset')).toBeGreaterThan(order.indexOf('procs/migrate'));
@@ -76,10 +86,14 @@ describe('preset management', () => {
         expect(inherited).toEqual(parent);
         inherited.layers[0]!.allow.push('new.*');
         expect(parent.layers[0]!.allow).not.toContain('new.*');
-        await ctx.fns.agentPreset.update({ id: 'standard', patch: { plugins: ['redmine'] } });
-        expect(parent.layers[0]!.plugins).toEqual(['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab']);
-        expect((await ctx.fns.agentPreset.resolve({})).layers[0]!.plugins).toEqual(['redmine']);
-        await ctx.fns.agentPreset.reset({ id: 'standard' });
+        const originalDefaults = ctx.state.registry.agentPreset.defaults;
+        const definitions = ctx.fns.agentPreset.defaults({});
+        definitions[0]!.plugins = ['redmine'];
+        ctx.state.registry.agentPreset.defaults = () => structuredClone(definitions);
+        try {
+            expect(parent.layers[0]!.plugins).toEqual(['openspec', 'git', 'websearch', 'browser', 'gh', 'terminal', 'glab']);
+            expect((await ctx.fns.agentPreset.resolve({})).layers[0]!.plugins).toEqual(['redmine']);
+        } finally { ctx.state.registry.agentPreset.defaults = originalDefaults; }
         await ctx.fns.agentPreset.create({ preset: { id: 'temporary', name: 'Temporary', allow: ['tools.read'] } });
         const kept = await ctx.fns.agentPreset.resolve({ id: 'temporary' });
         await ctx.fns.agentPreset.remove({ id: 'temporary' });
@@ -89,19 +103,20 @@ describe('preset management', () => {
     test('additive OpenSpec opt-in preserves customization and frozen snapshots', async () => {
         const ctx = await testCtx();
         await ctx.fns.agentPreset.ensureBuiltins({});
-        await ctx.fns.agentPreset.update({ id: 'standard', patch: {
+        const { builtin, updated_at, ...definition } = (await ctx.fns.agentPreset.get({ id: 'standard' }))!;
+        await ctx.fns.agentPreset.create({ preset: { ...definition, id: 'custom-standard',
             plugins: ['nrepl'], prompt: 'Keep my instructions', description: 'Custom Standard',
             sort_order: 7, deny: ['tools.bash'], exclude_sections: ['custom-section'],
         } });
-        const before = (await ctx.fns.agentPreset.get({ id: 'standard' }))!;
-        const oldSnapshot = await ctx.fns.agentPreset.resolve({ id: 'standard' });
+        const before = (await ctx.fns.agentPreset.get({ id: 'custom-standard' }))!;
+        const oldSnapshot = await ctx.fns.agentPreset.resolve({ id: 'custom-standard' });
         const frozen = JSON.stringify(oldSnapshot);
-        await ctx.fns.agentPreset.update({ id: 'standard', patch: {
+        await ctx.fns.agentPreset.update({ id: 'custom-standard', patch: {
             plugins: [...new Set([...before.plugins, 'openspec'])],
         } });
-        const after = (await ctx.fns.agentPreset.get({ id: 'standard' }))!;
+        const after = (await ctx.fns.agentPreset.get({ id: 'custom-standard' }))!;
         expect(after).toEqual({ ...before, plugins: ['nrepl', 'openspec'], updated_at: after.updated_at });
-        const snapshot = await ctx.fns.agentPreset.resolve({ id: 'standard' });
+        const snapshot = await ctx.fns.agentPreset.resolve({ id: 'custom-standard' });
         // Core test contexts do not mount official plugins; use their declared source
         // functions with deterministic origin metadata, without running the CLI.
         const plugins = ctx.fns.plugins.list({});
@@ -127,10 +142,10 @@ describe('preset management', () => {
             ctx.state.registry.plugins.list = originalList;
         }
         expect(JSON.stringify(oldSnapshot)).toBe(frozen);
-        await ctx.fns.agentPreset.update({ id: 'standard', patch: {
+        await ctx.fns.agentPreset.update({ id: 'custom-standard', patch: {
             plugins: [...new Set([...after.plugins, 'openspec'])],
         } });
-        expect((await ctx.fns.agentPreset.get({ id: 'standard' }))?.plugins).toEqual(['nrepl', 'openspec']);
+        expect((await ctx.fns.agentPreset.get({ id: 'custom-standard' }))?.plugins).toEqual(['nrepl', 'openspec']);
         await ctx.fns.agentPreset.reset({ id: 'standard' });
     });
 

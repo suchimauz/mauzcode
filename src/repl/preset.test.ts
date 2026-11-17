@@ -61,18 +61,26 @@ test("runtime and plugin discovery hide unavailable functions", async () => {
     await expect(run('await ctx.fns.runtime.docs.get({name: "procs.dev.genTypes", allows: () => true})', ungranted)).rejects.toThrow('no such available');
 });
 
-test("Creator updates Standard without approval; only new snapshots gain openspec", async () => {
+test("Creator updates a custom copy without approval; built-ins and denied callers stay protected", async () => {
     const original = ctx.state.registry.openspec.run;
     ctx.state.registry.openspec.run = async () => 'invoked';
     try {
-        await ctx.fns.agentPreset.update({id: 'standard', patch: {plugins: []}});
-        const older = await ctx.fns.agentPreset.resolve({id: 'standard'});
-        await run('await ctx.fns.agentPreset.update({id: "standard", patch: {plugins: ["openspec"]}})', creator);
-        const newer = await ctx.fns.agentPreset.resolve({id: 'standard'});
+        const { builtin, updated_at, ...definition } = (await ctx.fns.agentPreset.get({ id: 'standard' }))!;
+        await run(`await ctx.fns.agentPreset.create({preset: ${JSON.stringify({ ...definition, id: 'eval-custom', plugins: [] })}})`, creator);
+        for (const snapshot of [standard, await ctx.fns.agentPreset.resolve({ id: 'minimal' })]) {
+            for (const code of ['update({id: "eval-custom", patch: {plugins: []}})', 'reset({id: "standard"})', 'remove({id: "eval-custom"})', 'create({preset: {id: "denied", name: "Denied"}})']) {
+                await expect(run(`await ctx.fns.agentPreset.${code}`, snapshot)).rejects.toThrow('not available');
+            }
+        }
+        await expect(run('await ctx.fns.agentPreset.update({id: "standard", patch: {plugins: []}})', creator)).rejects.toThrow('custom');
+        await run('await ctx.fns.agentPreset.reset({id: "standard"})', creator);
+        const older = await ctx.fns.agentPreset.resolve({id: 'eval-custom'});
+        await run('await ctx.fns.agentPreset.update({id: "eval-custom", patch: {plugins: ["openspec"]}})', creator);
+        const newer = await ctx.fns.agentPreset.resolve({id: 'eval-custom'});
         expect(await run('console.log(await ctx.fns.openspec.run({args: ["list"]}))', newer)).toBe('invoked');
         await expect(run('await ctx.fns.openspec.run({args: ["list"]})', older)).rejects.toThrow('openspec.run is not available in preset Standard');
     } finally {
         ctx.state.registry.openspec.run = original;
-        await ctx.fns.agentPreset.reset({id: 'standard'});
+        await ctx.fns.agentPreset.remove({id: 'eval-custom'});
     }
 });

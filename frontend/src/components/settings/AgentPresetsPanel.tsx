@@ -38,11 +38,11 @@ function PresetCard({ preset, isDefault }: { preset: AgentPresetView; isDefault:
       <h4>Prompt</h4>
       {preset.prompt ? <pre className="preset-prompt" tabIndex={0}>{preset.prompt}</pre> : <p className="preset-none">none</p>}
     </div>
-    <p className="preset-meta">Sort order {preset.sortOrder} · Updated {formatTime(preset.updatedAt)}</p>
+    <p className="preset-meta">Sort order {preset.sortOrder} · {preset.builtin ? 'Managed by code' : `Updated ${formatTime(preset.updatedAt)}`}</p>
   </section>;
 }
 
-/** Owner-only read-only view of stored agent presets and the default selection. */
+/** Owner-only read-only view of code-managed and custom presets and the default selection. */
 export function AgentPresetsPanel() {
   const [data, setData] = useState<AgentPresetsState | null>(null);
   const [error, setError] = useState('');
@@ -62,7 +62,7 @@ export function AgentPresetsPanel() {
   return <section className="settings-panel" aria-label="Agent presets">
     <header className="settings-panel-header">
       <h2>Agent presets</h2>
-      <p className="settings-note">Read-only. Preset changes apply only to new agents; existing agents keep their snapshot. Presets are a guardrail, not a sandbox.</p>
+      <p className="settings-note">Read-only. Built-ins are managed by code; custom presets are stored in the database. Preset changes apply only to new agents; existing agents keep their snapshot. Presets are a guardrail, not a sandbox.</p>
     </header>
     {error
       ? <div className="settings-feedback is-error" role="alert">{error} <Button variant="ghost" onClick={() => { void load(); }}>Retry</Button></div>
@@ -70,7 +70,7 @@ export function AgentPresetsPanel() {
       : <>
         {data.defaultPresetMissing && <p className="settings-feedback is-error" role="alert">The default preset <code>{data.defaultPresetId}</code> does not exist. New sessions without an explicit preset cannot be created.</p>}
         {data.presets.length === 0
-          ? <p className="settings-note" role="status">No agent presets are stored.</p>
+          ? <p className="settings-note" role="status">No agent presets are available.</p>
           : <div className="ssh-list">{data.presets.map(p => <PresetCard key={p.id} preset={p} isDefault={!data.defaultPresetMissing && p.id === data.defaultPresetId} />)}</div>}
       </>}
   </section>;

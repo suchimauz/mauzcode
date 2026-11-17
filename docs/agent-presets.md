@@ -1,6 +1,6 @@
 # Agent presets
 
-A preset is a stored, named composition of core function patterns, plugin grants, excluded prompt sections and additional instructions. At creation an agent receives an independent snapshot of those rules. Editing or deleting the stored definition does not change existing snapshots. There is no switch-preset operation for an existing agent.
+A preset is a named composition of core function patterns, plugin grants, excluded prompt sections and additional instructions. Built-ins are generated from shipped code; custom definitions are stored only in PostgreSQL, never generated into source files. At creation an agent receives an independent snapshot of those rules. Changing shipped code or editing/deleting a custom definition does not change existing snapshots. There is no switch-preset operation for an existing agent.
 
 ## Built-ins and defaults
 
@@ -8,17 +8,23 @@ A preset is a stored, named composition of core function patterns, plugin grants
 - **Creator**: `allow: ["*"]`, `plugins: ["*"]`.
 - **Minimal**: `tools.bash`, `tools.read`, `tools.write`, `tools.edit`; no plugins.
 
-Built-ins are seeded by migration and restored when missing at boot, after migrations and before agents resume. Boot never overwrites edits. `agentPreset.reset({ id: "standard" })` restores the shipped definition. Built-ins cannot be deleted. Custom presets can be deleted unless selected by `agentPreset.default` (which defaults to `standard`). A missing default is an error naming that identifier, not an implicit fallback. Pre-preset agents are migrated to Creator to preserve their behaviour.
+`agentPreset.defaults` generates fresh built-in definitions, including Standard's reviewed core catalogue. `get` and `list` combine these with custom database rows; stored reserved-ID rows can never shadow code. Reads and startup never seed, repair or upgrade stored copies. Built-ins have `builtin: true` and deterministic `updated_at: 0` (code-managed, not an epoch update date). Custom rows retain their database timestamps.
 
-## Upgrading Standard
+The built-in identifiers `standard`, `creator` and `minimal` are reserved even with an empty table: create, update and remove reject them. Customize a distinct custom ID instead. `agentPreset.reset({ id: "standard" })` is a compatibility read returning today's code definition without writes; its existing capability gate is unchanged. Custom presets can be deleted unless selected by `agentPreset.default` (which defaults to `standard`). A missing default is an explicit error, not an implicit fallback. Historical migration of pre-preset agents to Creator remains unchanged.
 
-The Standard default upgrade changes a stored definition only if every user-configurable field matches the recognized previous factory definition. Customized definitions are preserved; Creator and Minimal are unchanged. The upgrade is idempotent and never rewrites existing agent snapshots. Only agents created afterwards receive the upgraded stored rules.
+## Legacy transition and future upgrades
 
-A second conservative upgrade adds the native tool adapters `tools.toolSearch`, `tools.toolDescribe`, `tools.readResult` and `tools.requestInput` to a stored Standard that still exactly matches the expanded factory definition (rules in any order). Customized Standard definitions are left alone; add those four names in the preset editor to opt in. Existing agent snapshots are never rewritten.
+The forward migration `20380105120000_separate_builtin_presets` runs after the historical preset migrations, atomically under a table lock. It compares each reserved-ID row with current code across every editable field; rule arrays are compared as sets, ignoring order, timestamps and storage flags. An equivalent row is removed without a copy. Every differing definition—including an old factory version whose provenance cannot be proved—is preserved under `<id>-custom`, then `<id>-custom-2`, etc. on collision, with a name such as `Standard (preserved custom)`. Rules, description, sort order, prompt and timestamp are retained. Other legacy `builtin=true` rows keep their ID and become custom. Existing custom rows are not overwritten. Failures roll back; reruns create no extra copies.
 
-A third conservative upgrade adds the native plan and delegation adapters `tools.planUpdate`, `tools.planDone`, `tools.delegateTask` and `tools.finishTask` to a stored Standard that still exactly matches the definition produced by the previous upgrade. Customized Standard definitions are left alone; add those four names in the preset editor to opt in. `finish_task` is additionally advertised only to agents created by `agent.delegate`.
+Migration diagnostics report old-to-preserved identifiers, never prompt contents. Discover the actual ID in Settings → Agent presets or `agentPreset.list({})`; do not assume `standard-custom` was available. A preserved Standard with `nrepl` and `openspec` intentionally differs from today's shipped Standard and is shown as a separate Custom card. To keep those old settings for future agents, explicitly select its actual ID, or explicitly configure it as `agentPreset.default`.
 
-To opt in explicitly after customizing Standard, use the preset editor to add the seven plugin grants and `projects.list` / `projects.get` while retaining your other changes. Alternatively, `agentPreset.reset({ id: "standard" })` restores the entire shipped definition, replacing custom rules, prompt and exclusions. Create a new agent to use the resulting grants; an existing agent keeps its snapshot.
+**Breaking default meaning:** the migration never changes `agentPreset.default`, agent `preset_id` or snapshot bytes. A default of `standard` still names `standard`, but future agents now receive current shipped Standard. Existing agents retain their old rules. Subsequent shipped-definition updates require neither stored-Standard upgrades nor reset: new snapshots read code directly. Custom copies remain independent.
+
+### Guarded deployment and downgrade
+
+Implementation and tests do not authorize production migration. Obtain separate deployment/maintenance approval, quiesce preset writes and agent creation, and back up the database (including presets, settings, agent identifiers and snapshots) before running normal migrations. Run the complete forward chain before agents resume; verify only custom rows remain, built-ins resolve to code, preserved IDs are discoverable, and defaults/snapshot bytes are unchanged. Repeated boot must not recreate built-in rows.
+
+Downgrade is a separately approved maintenance operation, not an automatic destructive down migration. Old binaries expect stored built-ins: restore from the backup or explicitly reconstruct the intended old built-in rows before loading old code. Reconcile and preserve custom records and snapshots created since the backup; never blindly restore over or delete preserved custom data.
 
 A grant enables capability-filtered documentation and instructions for installed plugins, not installation, authentication or external-service setup. CLI tools, credentials, browser connections and other plugin prerequisites must still be configured separately. Denies and parent/child intersections still apply. Plugin-specific input kinds require their declared plugin capabilities. Outward actions still require their existing human confirmation process; Plan mode still prohibits OpenSpec artifact writes before approval. Presets do not grant permission to bypass either guard.
 
@@ -40,26 +46,35 @@ Native discovery tools: `tool_search` (`requires`: `runtime.docs.search`, `plugi
 
 Children inherit an independent copy when no preset is selected. Selecting a child preset appends its layer after the parent's layers; every layer must allow the call. Thus Creator cannot widen a Standard parent's access. Both prompt additions and exclusions remain represented in the layers.
 
+## Effective-catalogue consumer inventory
+
+- `agentPreset.defaults` generates built-ins from the reviewed `coreCatalogue`; `get` and `list` are the shared effective read boundary. Only preset CRUD and historical/forward migrations access `agent_presets` directly.
+- `agentPreset.resolve` reads `get` and the `agentPreset.default` setting, then copies or intersects snapshot layers. Root creation (`agent.start`, `agent.createFromValues`, `ui.createAgent`) and delegation (`agent.delegateTask`) use this boundary. Stored agent snapshots are loaded independently; catalogue reads never refresh them.
+- `frontendBridge.agentPresets` reads `list` for full owner Settings definitions and checks the configured default against the catalogue. `frontendBridge.newSession` uses `list` for the minimal menu projection and `get` for explicit selection validation; creation ultimately uses `resolve`.
+- Startup's `agentPreset.$start` and the test harness historically called `ensureBuiltins`; these compatibility paths must not seed or repair rows. Historical preset migrations remain intact; the forward transition removes their obsolete rows before normal startup.
+- The React `AgentPresetsPanel` displays the owner endpoint projection, not a separate database query. No other production table consumers were found by the scoped `agent_presets` audit.
+
 ## Management API
 
-Use `agentPreset.list({})` for menu order (`sort_order`, then `id`), and `get({ id })` for a row or `null`. `create({ preset })` requires a unique kebab-case `id` and nonempty `name`; other writable fields are `description`, `sort_order`, `allow`, `deny`, `plugins`, `exclude_sections` and `prompt`. Omitted arrays default to empty, text to empty, and sort order to zero. `update({ id, patch })` changes only supplied fields. Storage owns `builtin` and `updated_at`; they and `id` are not patchable. Unknown fields, malformed patterns, invalid plugin identifiers and non-string array entries fail validation. Writes do not require an additional confirmation when the calling agent is allowed to perform them.
+Use `agentPreset.list({})` for the effective catalogue in menu order (`sort_order`, then `id`), and `get({ id })` for an independent effective definition or `null`. `create({ preset })` requires a unique kebab-case `id` and nonempty `name`; other writable fields are `description`, `sort_order`, `allow`, `deny`, `plugins`, `exclude_sections` and `prompt`. Omitted arrays default to empty, text to empty, and sort order to zero. `update({ id, patch })` changes only supplied fields of a custom preset. Creating, updating or deleting any built-in ID fails without writes and directs callers to a distinct custom preset. Storage owns `builtin` and `updated_at`; they and `id` are not patchable. Unknown fields, malformed patterns, invalid plugin identifiers and non-string array entries fail validation. Writes do not require an additional confirmation when the calling agent is allowed to perform them.
 
-For example, a Creator can grant full OpenSpec access to future Standard agents without losing existing grants such as `nrepl`:
+For example, a Creator can make an independent custom copy of shipped Standard with an additional grant:
 
 ```ts
 const preset = await ctx.fns.agentPreset.get({ id: "standard" });
 if (!preset) throw new Error("Missing standard preset");
-await ctx.fns.agentPreset.update({
-    id: "standard",
-    patch: { plugins: [...new Set([...preset.plugins, "openspec"])] },
+const { builtin, updated_at, ...definition } = preset;
+await ctx.fns.agentPreset.create({
+    preset: { ...definition, id: "team-standard", name: "Team Standard",
+        plugins: [...new Set([...preset.plugins, "nrepl"])] },
 });
 ```
 
-`plugins` replaces the list, so merge the current grants rather than supplying only `openspec`. This changes no other editable fields and does not reset custom settings. The stored identifier is `standard`, not `standart`. The plugin grant covers every mounted OpenSpec function, subject to denies and inherited layers; it does not bypass action-specific approvals. Create a new Standard agent to use it: existing snapshots remain unchanged. `remove({ id })` returns whether a custom row was deleted. `reset({ id })` is built-in only. `resolve({ id?, parent? })` copies rules into a snapshot, using the configured default for root creation and copying the parent when both a parent and no explicit id are supplied. Unknown identifiers fail explicitly.
+Select `team-standard` explicitly for a new agent. Later `update` calls target that custom ID, not `standard`. `plugins` replaces the list, so merge current grants to retain unrelated choices. The same applies to a preserved custom ID discovered after migration. Plugin grants remain subject to denies, inherited layers and action-specific approvals. `remove({ id })` returns whether a custom row was deleted. `reset({ id })` accepts built-ins only and never writes. `resolve({ id?, parent? })` copies rules into a snapshot, using the configured default for root creation and copying the parent when both a parent and no explicit id are supplied. Unknown identifiers fail explicitly.
 
 ## Settings view
 
-Settings → **Agent presets** is a read-only owner view of every stored preset in `list` order: name, id, description, Built-in/Custom badge, allow/deny/plugin/excluded-section lists (`none` when empty, `*` labelled as everything), prompt text, sort order and update time. The configured default carries a "Default for new sessions" marker; when that preset is missing the panel warns instead. It offers no write controls — edit presets through the Management API above.
+Settings → **Agent presets** is a read-only owner view of generated built-ins and stored custom presets in `list` order: name, id, description, Built-in/Custom badge, allow/deny/plugin/excluded-section lists (`none` when empty, `*` labelled as everything), prompt text, sort order and source/update information: built-ins say "Managed by code", while custom cards show their stored update time. The configured default carries a "Default for new sessions" marker; when that preset is missing the panel warns instead. It offers no write controls — edit presets through the Management API above.
 
 The panel reads `GET /ui-lab-api/agent-presets` (`frontendBridge.agentPresets`): owner-only (401 unauthenticated, 403 non-owner, 405 with `Allow: GET` otherwise), `Cache-Control: no-store`, `Vary: Cookie`. Response: `{ version: 1, presets: [{ id, name, description, sortOrder, builtin, allow, deny, plugins, excludeSections, prompt, updatedAt }], defaultPresetId, defaultPresetMissing }`. The new-session menu endpoint deliberately keeps exposing only `id`, `name`, `description` and `sortOrder`.
 
