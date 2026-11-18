@@ -26,4 +26,4 @@
 - [x] 4.2 Shared `ToolCallPanel`: Call section (full command/code with copy, path with open, key/value args, expandable nested values) above Output; used for finished, running and mobile views; fetch referenced large args on expand. Running output: fetch from 0 on expand, then from last `end` on each refresh; show drop marker; sticky-bottom scroll; render last ~5000 lines with "show earlier".
 - [x] 4.3 Restyle `tool-row.css`: category tints, label weight, muted monospace summary, error icon/accent, single-line ellipsis with tooltip, identical layout for running/finished.
 - [x] 4.4 Update tool-row, tool-summary, current-action, tool-timing and work-groups tests and ToolRow/Execution/WorkGroups stories with the new tools and a long multi-line running command.
-- [ ] 4.5 Visual check in the running app: light/dark, desktop/mobile, running and finished rows, failed call, long command expanded.
+- [x] 4.5 Visual check in the running app: light/dark, desktop/mobile, running and finished rows, failed call, long command expanded.
