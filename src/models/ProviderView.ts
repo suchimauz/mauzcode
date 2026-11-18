@@ -4,6 +4,7 @@ export type ProviderView = {
     label: string;
     description?: string;
     icon?: string;
+    hasClientVersion: boolean;
     fields: types.models.FieldSpec[];
     transports: types.models.TransportSpec["kind"][];
     actions: { name: string; label: string }[];

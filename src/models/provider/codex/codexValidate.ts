@@ -11,8 +11,8 @@ export default function (
         config: types.models.ResolvedConnection["config"];
     },
 ): void {
-    const _ctx = ctx;
     const { config } = opts;
+    if (String(config.clientVersion ?? "").trim() && config.detectCliVersion === true) throw new Error("Codex client version override cannot be combined with CLI detection");
     
     
             if (config.clientVersion !== undefined && config.clientVersion !== "" && !/^[0-9A-Za-z.+-]{1,40}$/.test(String(config.clientVersion))) throw new Error("Client version must look like 0.98.0");

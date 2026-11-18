@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import leafVersion from "./codexVersion";
+import clientVersion from "./codexClientVersion";
 import leafProfile from "./codexReasoningProfile";
 import leafQuota from "./codexQuota";
 import leafFailure from "./codexFailure";
@@ -11,6 +12,7 @@ let failureOptions: Record<string, unknown> | undefined;
 const ctx = { fns: { models: {
     inference: { failure: (opts: Record<string, unknown>) => { failureOptions = opts; return sentinel; } },
     provider: { codex: {
+        codexClientVersion: (opts: Parameters<typeof clientVersion>[2]) => clientVersion(ctx, null, opts),
         codexVersion: (opts: Parameters<typeof leafVersion>[2]) => leafVersion(ctx, null, opts),
         codexReasoningProfile: (opts: Parameters<typeof leafProfile>[2]) => leafProfile(ctx, null, opts),
         codexQuota: (opts: Parameters<typeof leafQuota>[2]) => leafQuota(ctx, null, opts),
@@ -22,10 +24,10 @@ const ctx = { fns: { models: {
 for (const [label, version, profile, quota, failure, input] of [
     ["leaf", leafVersion, leafProfile, leafQuota, leafFailure, leafInput],
 ] as const) {
-    test(`${label}: version validation and reasoning boundaries preserve fixed contracts`, () => {
+    test(`${label}: version validation and reasoning boundaries preserve fixed contracts`, async () => {
         for (const value of [null, "", "bad version", "x".repeat(41), "\r\nInjected: yes"])
-            expect(version(ctx, null, { config: { clientVersion: value } })).toBe("0.157.1");
-        expect(version(ctx, null, { config: { clientVersion: " 0.160.2+custom " } })).toBe("0.160.2+custom");
+            expect(await version(ctx, null, { config: { clientVersion: value } })).toBe("0.157.1");
+        expect(await version(ctx, null, { config: { clientVersion: " 0.160.2+custom " } })).toBe("0.160.2+custom");
         expect(profile(ctx, null, { model: "gpt-6" })).toEqual({ supported: ["low", "medium", "high", "xhigh"], default: "medium", source: "profile", profile: "codex-2026-07" });
         expect(profile(ctx, null, { model: "gpt-5.1-codex" })?.supported).toEqual(["off", "minimal", "low", "medium", "high"]);
         expect(profile(ctx, null, { model: "codex-max" })?.supported).toEqual(["off", "minimal", "low", "medium", "high", "xhigh"]);

@@ -2,7 +2,8 @@
 export default {
     id: "claude", label: "Claude", description: "Claude subscription with owner-managed OAuth login", icon: "sparkles",
     inference: { systemPreamble: "You are Claude Code, Anthropic's official CLI for Claude.", priceVendor: "anthropic" },
-    fields: [{ key: "clientVersion", label: "Client version", type: "text", required: false }],
+    fields: [{ key: "clientVersion", label: "Client version", type: "text", required: false }, { key: "detectCliVersion", label: "Detect CLI version", type: "boolean", default: true }],
+    async clientVersion(ctx, conn, opts: { refresh?: boolean }) { return ctx.fns.models.provider.claude.claudeClientVersion({ conn, refresh: opts.refresh }); },
     transports: ["direct", "socks", "ssh-tunnel"],
     validate(ctx, config) { return ctx.fns.models.provider.claude.claudeValidate({ config }); },
     async test(ctx, conn) { return ctx.fns.models.provider.claude.claudeTest({ conn }); },

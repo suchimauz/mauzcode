@@ -36,7 +36,7 @@ test("real boot discovers modelProvider and namespace reload replaces the same o
 
         const before = ctx.fns.models.providers({}).filter(provider => provider.id === "reload-fixture");
         expect(before).toEqual([{
-            id: "reload-fixture", label: "Before reload",
+            id: "reload-fixture", label: "Before reload", hasClientVersion: false,
             fields: [{ key: "token", label: "Token", type: "secret", required: true }],
             transports: ["direct"], actions: [{ name: "inspect", label: "Inspect" }],
         }]);
@@ -49,7 +49,7 @@ test("real boot discovers modelProvider and namespace reload replaces the same o
         expect("files" in reloaded ? reloaded.files : []).toContain("reloadFixture/$modelProvider_reload-fixture.ts");
         const after = ctx.fns.models.providers({}).filter(provider => provider.id === "reload-fixture");
         expect(after).toEqual([{
-            id: "reload-fixture", label: "After reload",
+            id: "reload-fixture", label: "After reload", hasClientVersion: false,
             fields: [{ key: "token", label: "Token", type: "secret", required: true }],
             transports: ["direct", "socks"], actions: [{ name: "inspect", label: "Inspect again" }],
         }]);

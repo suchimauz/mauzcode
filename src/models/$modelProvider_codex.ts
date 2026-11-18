@@ -6,10 +6,12 @@ export default {
     icon: "Bot",
     inference: { priceVendor: "openai" },
     fields: [
-        { key: "clientVersion", label: "Client version", type: "text", help: "Optional Codex client version sent to the backend; defaults to the documented SDK version (models.codexVersion)." },
+        { key: "clientVersion", label: "Client version", type: "text", help: "Optional Codex client version sent to the backend; defaults to the detected CLI version when enabled, otherwise the documented SDK version." },
+        { key: "detectCliVersion", label: "Detect CLI version", type: "boolean", default: false, help: "Use the local codex --version result instead of the SDK default. Cannot be combined with an override." },
     ],
     transports: ["direct", "socks", "ssh-tunnel"],
     validate(ctx, config) { return ctx.fns.models.provider.codex.codexValidate({ config }); },
+    async clientVersion(ctx, conn, opts) { return ctx.fns.models.provider.codex.codexClientVersion({ config: conn.config, refresh: opts.refresh }); },
     async test(ctx, conn) { return ctx.fns.models.provider.codex.codexTest({ conn }); },
     async listModels(ctx, conn) { return ctx.fns.models.provider.codex.codexListModels({ conn }); },
     async usage(ctx, conn) { return ctx.fns.models.provider.codex.codexUsage({ conn }); },

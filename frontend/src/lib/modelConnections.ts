@@ -14,6 +14,7 @@ export type ModelUsageReport = {
   windows?: { label: string; usedPercent?: number; remaining?: number; resetAt?: number }[];
   balance?: { amount: number; currency: string };
 };
+export type ModelClientVersion = { version: string; source: 'override' | 'detected' | 'fallback' | 'default'; detail?: string };
 export type ModelTestResult = { status: ModelUsageReport['status']; reason: string; message: string; checkedAt: number };
 export type ModelInfo = { id: string; label?: string; description?: string; contextWindow?: number; maxOutputTokens?: number; disabled?: boolean };
 /** Effective local context budget of a model: owner override, else provider metadata, else a public catalogue value, else 200,000 tokens. */
@@ -49,6 +50,9 @@ export const setProviderEnabled = (csrf: string, provider: string, enabled: bool
 /** The backend rejects removal without explicit `confirmed: true`. */
 export const removeConnection = (csrf: string, id: string) => post<{ removed: string }>(csrf, { action: 'remove', id, confirmed: true });
 export const testConnection = (csrf: string, id: string) => post<{ result: ModelTestResult }>(csrf, { action: 'test', id }).then(r => r.result);
+/** Secret-free effective client version, loaded separately from the overview. */
+export const connectionClientVersion = (csrf: string, id: string, refresh = false) =>
+  post<{ clientVersion: ModelClientVersion | null }>(csrf, { action: 'clientVersion', id, refresh }).then(r => r.clientVersion);
 export const connectionUsage = (csrf: string, id: string, refresh = false, signal?: AbortSignal) =>
   post<{ usage: ModelUsageReport }>(csrf, { action: 'usage', id, refresh }, signal).then(r => r.usage);
 export const setModelEnabled = (csrf: string, id: string, model: string, enabled: boolean) =>

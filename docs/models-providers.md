@@ -195,6 +195,7 @@ and `test(ctx, conn)`. `description` and `icon` (Lucide name or data URL) are op
 | `test(ctx, conn)` | `Promise<TestResult>`; required connection check |
 | `listModels(ctx, conn)` | Optional `Promise<ModelInfo[]>` |
 | `usage(ctx, conn)` | Optional `Promise<UsageReport>` |
+| `clientVersion(ctx, conn, { refresh })` | Optional `Promise<{ version: string; source: string; detail?: string }>`; effective wire identity, with source `override`, `detected`, `fallback` or `default`; no credentials, network requests or raw command output |
 | `usageRefreshMs` | Optional integer 10000–3600000 ms (default 60000): minimum interval between usage requests per connection; available and unavailable reports are cached this long, `refresh` bypasses |
 | `validate(ctx, config)` | Optional synchronous/async validation; throw to reject |
 | `stream(ctx, conn, req)` | Optional `Promise<StreamResult>`; streaming inference, reached only through `models.stream` |
@@ -400,11 +401,15 @@ a header row too.
 ## Built-in Codex provider
 
 `$modelProvider_codex.ts` connects a ChatGPT subscription through the Codex
-backend. It has one optional field, `clientVersion`. Without it,
-`models.provider.codex.codexVersion` sends the documented SDK default **0.157.1** (the floor
-that exposes the GPT-6 catalogue). The SDK never runs the codex CLI, a shell
-or an account-file lookup. The provider allows the `direct`, `socks` and
-`ssh-tunnel` transports.
+backend. Its optional `clientVersion` overrides the wire version; `detectCliVersion`
+defaults to **false**. Without an override or opt-in detection,
+`models.provider.codex.codexVersion` sends the documented SDK default **0.157.1**
+(the floor that exposes the GPT-6 catalogue). Opting in runs local `codex --version`
+on the MauzCode host, never over the connection's SSH transport and never through
+a shell or account-file lookup. A detected older version is honored and reported
+with a short warning detail; detection failure uses the SDK default. Detection
+is bounded to 12 seconds, with successful results cached for five minutes and
+failures for 30 seconds. The provider allows `direct`, `socks` and `ssh-tunnel`.
 
 **Ownership.** The whole Codex path — conversion (`models.provider.codex.codexInput`), SSE
 framing (`models.transport.parseSSE`), version, reasoning profile, failure
@@ -563,12 +568,37 @@ entries. Plugin mount/unmount lifecycle is separate from this SDK foundation.
 ## Catalogue
 
 `await ctx.fns.models.providers({})` returns a sorted `ProviderView[]` with only
-`id`, `label`, optional `description`/`icon`, copied field schemas, allowed
+`id`, `label`, `hasClientVersion`, optional `description`/`icon`, copied field schemas, allowed
 transports and `{ name, label }[]` action metadata. It exposes neither executable
 callbacks, ownership bookkeeping, connection values nor secret references.
 Unknown internal properties are not spread into the result, and secret defaults
 are stripped defensively. Provider authors remain responsible for keeping their
 explicit public metadata free of secrets.
+
+## Client-version reporting
+
+Claude and Codex advertise `hasClientVersion: true`; other built-in providers
+report false. `await ctx.fns.models.connections.clientVersion({ id, refresh? })`
+and owner-only `POST /models/api` with `{ action: "clientVersion", id, refresh? }`
+return `{ clientVersion: { version, source, detail? } }`, or `{ clientVersion: null }`
+when the provider has no hook. The POST requires the normal same-origin and
+cookie-bound `x-csrf-token` checks. An unknown connection returns `NOT_FOUND`.
+
+Reports project only those three fields: version is 1–40 characters from
+`[0-9A-Za-z.+-]`, source is `override`, `detected`, `fallback` or `default`, and
+optional detail is at most 200 characters without secret references or raw
+command output. The reporting hook cannot read credentials or use `conn.fetch`.
+`refresh: true` bypasses only that provider's local detection cache; an override
+skips detection even on refresh. Reporting does not make inference requests.
+
+Both providers accept an optional `clientVersion` and boolean `detectCliVersion`.
+An explicit `detectCliVersion: true` with a non-empty override is rejected;
+an existing override with the detection key absent remains valid. The settings
+form turns detection off while an override is supplied. Claude detects local
+`claude --version` by default and otherwise uses **2.1.260** (`fallback`);
+Codex detection is opt-in and otherwise uses **0.157.1** (`default`). These same
+resolvers supply wire headers. `CLAUDE_CODE_CLI_VERSION` and
+`CLAUDE_CODE_USER_AGENT` no longer affect identity: migrate to connection settings.
 
 ## UI slot `modelProviders`
 

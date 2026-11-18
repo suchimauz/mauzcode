@@ -584,3 +584,99 @@ it('enabledLocked renders every provider switch disabled with a file hint and se
   fireEvent.click(customSwitch);
   expect(posts.some(p => p.body.action === 'setProviderEnabled')).toBe(false);
 });
+
+const versionProvider = (id = 'claude') => ({ id, label: id === 'claude' ? 'Claude' : 'Codex', hasClientVersion: true, fields: [
+  { key: 'clientVersion', label: 'Client version', type: 'text' },
+  { key: 'detectCliVersion', label: 'Detect CLI version', type: 'boolean', default: id === 'claude' },
+], transports: ['direct'], actions: [] });
+
+function mockVersionApi(id = 'claude', config: Record<string, unknown> = {}, report: unknown = { version: '2.1.260', source: 'detected' }) {
+  const connections = [{ ...stored, provider: id, config }];
+  const posts = mockApi(connections, [versionProvider(id)]);
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  const lookup = vi.fn(async (_body: any) => json({ clientVersion: report }));
+  vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if (init.method === 'POST') {
+      const body = JSON.parse(String(init.body));
+      if (body.action === 'clientVersion') { posts.push({ body, headers: init.headers }); return lookup(body); }
+      if (body.action === 'update') connections[0] = { ...connections[0], config: body.config, updatedAt: connections[0].updatedAt + 1 };
+    }
+    return base(url, init);
+  });
+  return { posts, lookup };
+}
+
+it.each([
+  ['claude', {}, 'detected', 'detected: claude --version', true],
+  ['codex', { detectCliVersion: true }, 'detected', 'detected: codex --version', true],
+  ['codex', {}, 'default', 'built-in default', false],
+  ['claude', { detectCliVersion: false }, 'fallback', 'built-in fallback', false],
+  ['claude', { clientVersion: '1.2.3' }, 'override', 'connection override', false],
+])('shows %s client version source %s %s', async (id, config, source, label, reDetect) => {
+  mockVersionApi(id as string, config as Record<string, unknown>, { version: '1.2.3', source, detail: 'Version detail' });
+  render(<ModelsPanel context={context} />);
+  expect(await screen.findByText(`· v1.2.3 (${label})`)).toHaveAttribute('title', 'Version detail');
+  expect(!!screen.queryByRole('button', { name: 'Re-detect' })).toBe(reDetect);
+});
+
+it('loads lazily, disables re-detect while pending and requests a fresh version with CSRF', async () => {
+  const { posts, lookup } = mockVersionApi();
+  let resolve!: (value: Response) => void;
+  lookup.mockImplementationOnce(() => new Promise<Response>(done => { resolve = done; }));
+  render(<ModelsPanel context={context} />);
+  expect(await screen.findByRole('article', { name: 'Work' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Loading client version')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Re-detect' })).toBeDisabled();
+  resolve(json({ clientVersion: { version: '2.1.260', source: 'detected' } }));
+  await screen.findByText('· v2.1.260 (detected: claude --version)');
+  lookup.mockResolvedValueOnce(json({ clientVersion: { version: '2.1.261', source: 'detected' } }));
+  fireEvent.click(screen.getByRole('button', { name: 'Re-detect' }));
+  await screen.findByText('· v2.1.261 (detected: claude --version)');
+  expect(posts.find(p => p.body.action === 'clientVersion' && p.body.refresh === true)?.headers['X-CSRF-Token']).toBe('csrf');
+});
+
+it('silently hides failed version lookups but reports explicit re-detect failures', async () => {
+  const { lookup } = mockVersionApi();
+  lookup.mockImplementation(async () => json({ error: 'Version unavailable' }, 500));
+  render(<ModelsPanel context={context} />);
+  const button = await screen.findByRole('button', { name: 'Re-detect' });
+  await waitFor(() => expect(button).not.toBeDisabled());
+  expect(screen.queryByLabelText('Loading client version')).toBeNull();
+  expect(screen.queryByText(/Version unavailable/)).toBeNull();
+  expect(screen.getByText('Claude · Direct')).toBeInTheDocument();
+  fireEvent.click(button);
+  expect(await screen.findByText(/Version unavailable/)).toBeInTheDocument();
+});
+
+it('does not request versions for a provider without the hook', async () => {
+  const posts = mockApi([stored]);
+  render(<ModelsPanel context={context} />);
+  await screen.findByText('Configured');
+  expect(posts.some(p => p.body.action === 'clientVersion')).toBe(false);
+  expect(screen.queryByRole('button', { name: 'Re-detect' })).toBeNull();
+});
+
+it('unchecks detection when typing an override, saves false and reloads the report', async () => {
+  const { posts, lookup } = mockVersionApi();
+  render(<ModelsPanel context={context} />);
+  await screen.findByText('· v2.1.260 (detected: claude --version)');
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  const form = screen.getByRole('form', { name: 'Edit Work' });
+  const detect = within(form).getByRole('checkbox', { name: 'Detect CLI version' });
+  expect(detect).toBeChecked();
+  fireEvent.change(within(form).getByLabelText('Client version'), { target: { value: '3.0.0' } });
+  expect(detect).not.toBeChecked(); expect(detect).toBeDisabled();
+  lookup.mockResolvedValue(json({ clientVersion: { version: '3.0.0', source: 'override' } }));
+  fireEvent.submit(form);
+  await screen.findByText('· v3.0.0 (connection override)');
+  expect(posts.find(p => p.body.action === 'update')?.body.config).toEqual({ clientVersion: '3.0.0', detectCliVersion: false });
+  expect(screen.queryByRole('button', { name: 'Re-detect' })).toBeNull();
+});
+
+it('disables the default detection for a stored override without the detection key', async () => {
+  mockVersionApi('claude', { clientVersion: '3.0.0' });
+  render(<ModelsPanel context={context} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+  const detect = screen.getByRole('checkbox', { name: 'Detect CLI version' });
+  expect(detect).not.toBeChecked(); expect(detect).toBeDisabled();
+});

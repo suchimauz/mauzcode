@@ -33,7 +33,7 @@ describe("model provider SDK and registry", () => {
         for (const owner of ["core", "alpha", "beta"]) {
             const ctx = fixture(); await register(ctx, entry(owner));
             expect(ctx.state.models.providers?.acme?.owner).toBe(owner);
-            expect(catalogue(ctx)).toEqual([{ id: "acme", label: "Acme", description: "Fixture provider", icon: "Boxes", fields: definition().fields, transports: ["direct"], actions: [] }]);
+            expect(catalogue(ctx)).toEqual([{ id: "acme", label: "Acme", hasClientVersion: false, description: "Fixture provider", icon: "Boxes", fields: definition().fields, transports: ["direct"], actions: [] }]);
         }
     });
     test("invalid ids identify the file and leave existing providers unchanged", async () => {

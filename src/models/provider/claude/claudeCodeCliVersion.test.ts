@@ -1,5 +1,6 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
 import version from './claudeCodeCliVersion';
+import detection from './claudeCliVersionDetection';
 
 let spawn: ReturnType<typeof spyOn> | undefined;
 afterEach(() => spawn?.mockRestore());
@@ -10,6 +11,7 @@ function context() {
         get: async ({name}: any) => descriptors[name],
         connection: async ({name}: any) => ({ bin: 'ssh', args: ['-T'], host: descriptors[name].host }),
     } } };
+    ctx.fns.models = { provider: { claude: { claudeCliVersionDetection: (opts: any) => detection(ctx, null, opts) } } };
     spawn = spyOn(Bun, 'spawn').mockImplementation(((argv: string[]) => {
         calls.push(argv);
         const value = argv[0] === 'claude' ? '1.2.3' : argv[2] === 'one' ? '2.3.4' : '3.4.5';
@@ -32,13 +34,12 @@ test('local and two SSH destinations isolated; concurrent probes deduplicated; d
     expect(await version(ctx, null, {instance: 'a'})).toBe('3.4.5');
     expect(calls).toHaveLength(5);
 });
-test('explicit override applies to both local and SSH without reading descriptors', async () => {
+test('environment override is ignored for local and SSH detection', async () => {
     const {ctx, calls} = context();
     ctx.env.CLAUDE_CODE_CLI_VERSION = ' 9.8.7 ';
-    ctx.fns.sshInstance.get = () => { throw Error('must not read'); };
-    expect(await version(ctx, null, {})).toBe('9.8.7');
-    expect(await version(ctx, null, {instance: 'a'})).toBe('9.8.7');
-    expect(calls).toHaveLength(0);
+    expect(await version(ctx, null, {})).toBe('1.2.3');
+    expect(await version(ctx, null, {instance: 'a'})).toBe('2.3.4');
+    expect(calls).toHaveLength(2);
 });
 test('malformed output, timeout exit and excessive output use cached fallback, never local CLI', async () => {
     for (const [output, code] of [['wrong 9.9.9', 0], ['2.3.4 (Claude Code)', 124], ['x'.repeat(4097), 0]] as const) {
