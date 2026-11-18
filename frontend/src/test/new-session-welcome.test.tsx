@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { NewSessionWelcome } from '../components/mauzcode/NewSessionWelcome';
 import { compactCount, heatmapDays, type WelcomeStats } from '../lib/welcomeStats';
 
-const stats: WelcomeStats = { range: 'all', timezone: 'UTC', asOf: '2026-06-21T10:00:00Z', sessions: 12, messages: 9876, totalTokens: 1250000, activeDays: 3, peakHour: 22, favoriteModel: 'test-model', models: [{ model: 'test-model', messages: 9876, totalTokens: 1250000, inputTokens: 1000000, outputTokens: 250000 }], daily: [{ date: '2026-06-21', messages: 9876, sessions: 12, totalTokens: 1250000, models: [{ model: 'test-model', totalTokens: 1250000 }] }] };
+const stats: WelcomeStats = { range: 'all', timezone: 'UTC', asOf: '2026-06-21T10:00:00Z', sessions: 12, messages: 9876, totalTokens: 1250000, activeDays: 3, peakHour: 22, favoriteModel: 'test-model', models: [{ model: 'test-model', requests: 23, totalTokens: 1250000, inputTokens: 1000000, outputTokens: 250000 }], daily: [{ date: '2026-06-21', messages: 9876, sessions: 12, totalTokens: 1250000, models: [{ model: 'test-model', totalTokens: 1250000 }] }] };
 function respond(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } }); }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('NewSessionWelcome', () => {
@@ -34,6 +34,15 @@ describe('NewSessionWelcome', () => {
     render(<NewSessionWelcome userName="" />); await screen.findByText('0');
     expect(screen.getAllByText('—')).toHaveLength(3);
     expect(screen.getByRole('heading')).toHaveTextContent("What's up next?");
+  });
+  it('keeps unattributed tokens in overview, not in the model chart', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond({ ...stats, favoriteModel: null, models: [], daily: [{ ...stats.daily[0], models: [] }] })));
+    const { container } = render(<NewSessionWelcome userName="A" />);
+    await screen.findByText('1.3M');
+    expect(screen.getByText('Favorite model').parentElement).toHaveTextContent('—');
+    fireEvent.click(screen.getByRole('button', { name: 'Models' }));
+    expect(screen.getByText('No model usage recorded for this period.')).toBeInTheDocument();
+    expect(container.querySelector('.welcome-chart-column')).toBeNull();
   });
   it('shows an error and retries without invented data', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(respond({ error: 'Forbidden' }, 403)).mockResolvedValueOnce(respond(stats)); vi.stubGlobal('fetch', fetcher);

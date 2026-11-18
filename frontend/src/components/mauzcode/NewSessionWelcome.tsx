@@ -66,7 +66,7 @@ export function NewSessionWelcome({ userName }: { userName: string }) {
             <span className="welcome-stat-label">{label}</span><span className="welcome-stat-value" data-model={label === 'Favorite model' || undefined} data-loading={!stats || undefined} title={value || undefined}>{stats ? value : <span className="welcome-skeleton" />}</span>
           </div>)}</div>
           {stats ? <Heatmap stats={stats} /> : <div className="welcome-heat" aria-label="Loading statistics">{Array.from({ length: 182 }, (_, i) => <span className="welcome-heat-cell" key={i} />)}</div>}
-          <div className="welcome-stats-note" title="Tokens include only recorded usage. Historical coverage may be incomplete. Models are attributed to the session’s current model.">{stats ? `UTC · ${range === 'all' ? 'All time' : `Last ${range === '7d' ? '7' : '30'} days`} · Recorded usage only${refreshing ? ' · Updating…' : ''}` : 'Loading statistics…'}</div>
+          <div className="welcome-stats-note" title="Tokens include only recorded usage. Historical coverage may be incomplete. Favorite model is based on requests with a recorded model. Unattributed usage is included only in totals.">{stats ? `UTC · ${range === 'all' ? 'All time' : `Last ${range === '7d' ? '7' : '30'} days`} · Recorded usage only${refreshing ? ' · Updating…' : ''}` : 'Loading statistics…'}</div>
         </> : stats ? <>
           <ModelChart stats={stats} />
           <div className="welcome-models">{(expanded ? stats.models : stats.models.slice(0, 5)).map((model, index) => <div className="welcome-model" key={model.model} title={model.model}>
@@ -96,17 +96,17 @@ function Heatmap({ stats }: { stats: WelcomeStats }) {
 }
 function rankStyle(index: number): CSSProperties { return { '--model-opacity': Math.max(.2, 1 - index * .2) } as CSSProperties; }
 function ModelChart({ stats }: { stats: WelcomeStats }) {
-  const days = stats.daily.filter(day => day.totalTokens != null && day.totalTokens > 0);
+  const days = stats.daily.map(day => ({ ...day, models: day.models ?? [], totalTokens: (day.models ?? []).reduce((sum, m) => sum + (m.totalTokens ?? 0), 0) })).filter(day => day.totalTokens > 0);
   const max = Math.max(1, ...days.map(day => day.totalTokens || 0));
   const ceiling = Math.ceil(max / 10 ** Math.floor(Math.log10(max))) * 10 ** Math.floor(Math.log10(max));
   return <div className="welcome-chart" role="img" aria-label="Daily token usage by model, UTC">
     <div className="welcome-chart-plot">
       {[0, 1, 2, 3, 4].map(i => <span key={i} className="welcome-chart-tick" style={{ bottom: `${i * 25}%` }}>{compactCount(ceiling * i / 4)}</span>)}
       <div className="welcome-chart-bars">{days.map(day => <div key={day.date} className="welcome-chart-column" title={`${day.date} · ${compactCount(day.totalTokens)} tokens`} style={{ height: `${(day.totalTokens || 0) / ceiling * 100}%` }}>
-        {day.models?.length ? day.models.map(model => <span key={model.model} className="welcome-chart-segment" style={{ ...rankStyle(Math.max(0, stats.models.findIndex(row => row.model === model.model))), height: `${(model.totalTokens || 0) / (day.totalTokens || 1) * 100}%` }} />) : <span className="welcome-chart-segment" style={{ height: '100%' }} />}
+        {day.models.map(model => <span key={model.model} className="welcome-chart-segment" style={{ ...rankStyle(Math.max(0, stats.models.findIndex(row => row.model === model.model))), height: `${(model.totalTokens || 0) / (day.totalTokens || 1) * 100}%` }} />)}
       </div>)}</div>
     </div>
     <div className="welcome-chart-axis"><span>{days[0]?.date.slice(5)}</span><span>{days.length > 1 ? days.at(-1)?.date.slice(5) : ''}</span></div>
-    {!days.length && <div className="welcome-stats-note">No measured token usage for this period.</div>}
+    {!days.length && <div className="welcome-stats-note">No measured token usage by known models for this period.</div>}
   </div>;
 }

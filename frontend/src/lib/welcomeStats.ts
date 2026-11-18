@@ -1,7 +1,7 @@
 import { requestJson } from './mauzcode';
 
 export type StatsRange = 'all' | '30d' | '7d';
-export type WelcomeModel = { model: string; messages: number; totalTokens: number | null; inputTokens?: number | null; outputTokens?: number | null };
+export type WelcomeModel = { model: string; requests: number; totalTokens: number | null; inputTokens?: number | null; outputTokens?: number | null };
 export type WelcomeDay = { date: string; messages: number; sessions: number; totalTokens: number | null; models?: { model: string; totalTokens: number | null }[] };
 export type WelcomeStats = {
   refreshing?: boolean;

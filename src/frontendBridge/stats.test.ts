@@ -1,9 +1,22 @@
 import {describe,test,expect,afterEach} from 'bun:test';
+import { mkTestCtx } from '../_testCtx.entry';
 import stats from './statsData';
 import middleware from '../$middleware_ui-lab-api';
 let serial=0; const session:any={user:{id:'owner-a'}};
 const realNow=Date.now; afterEach(()=>{Date.now=realNow;});
 function fixture(agents:any[]=[],messages:any[]=[],events:any[]=[]){const calls:any[]=[];const owner='owner-'+(++serial);session.user.id=owner;const ctx:any={fns:{auth:{listUsers:async()=>[{id:owner,role:'owner'}]},procs:{db:{select:async(o:any)=>{calls.push(o);return o.sql.includes('FROM agents a')?agents:o.sql.includes('FROM messages m')?messages:events;}}}}};return {ctx,calls};}
+test('SQL attributes an archived session to its recorded requests, not its session model', async () => {
+ const dbCtx = await mkTestCtx(); const {ctx}=fixture(); ctx.fns.procs.db=dbCtx.fns.procs.db;
+ const id='stats-archived-history',now=Date.now();
+ await dbCtx.fns.procs.db.run({sql:"INSERT INTO agents (id,model,visibility,created_at,updated_at,archived_at) VALUES (?,NULL,'nav',?,?,?)",params:[id,now,now,now]});
+ await dbCtx.fns.session.appendMessage({id,message:{role:'user',content:'Hello'}});
+ for(const model of ['mock/a:first','mock/b:second','mock/b:second',null,null,null]){
+  await dbCtx.fns.session.appendEvent({id,event:{type:'context_usage',model,usage:{prompt_tokens:1,completion_tokens:2}}});
+ }
+ const r=await stats(ctx,session,{});
+ expect(r.favoriteModel).toBe('second');expect(r.models.map(m=>[m.model,m.requests,m.totalTokens])).toEqual([['second',2,6],['first',1,3]]);
+ expect(r.messages).toBe(1);expect(r.totalTokens).toBe(18);
+});
 describe('owner stats',()=>{
  test('requires session before any database read',async()=>{const {ctx,calls}=fixture();await expect(stats(ctx,null,{})).rejects.toThrow('Unauthorized');expect(calls).toHaveLength(0);});
  test('rejects invalid range and timezone',async()=>{const {ctx}=fixture();await expect(stats(ctx,session,{range:'bad' as any})).rejects.toThrow('Invalid');await expect(stats(ctx,session,{timezone:'nonsense'})).rejects.toThrow('Invalid');});
@@ -18,6 +31,23 @@ describe('owner stats',()=>{
  test('route passes exact parameters and disables caching',async()=>{let seen:any;const ctx:any={fns:{frontendBridge:{statsData:async(o:any)=>{seen=o;return {sessions:3};}}}};const r=await middleware(ctx,session,{req:new Request('http://localhost/ui-lab-api/stats?range=30d&timezone=Asia%2FTokyo')});expect(r.status).toBe(200);expect(r.headers.get('Cache-Control')).toBe('no-store');expect(seen).toEqual({range:'30d',timezone:'Asia/Tokyo'});expect(await r.json()).toEqual({sessions:3});});
 });
 describe('model grouping',()=>{
- test('merges one model across providers, accounts and ssh hosts',async()=>{const date=new Date().toISOString().slice(0,10);const a='ssh/host:codex/acc1:gpt-x',b='mauzcode/mini:codex/acc2:gpt-x',c='oneapi:qwen';const {ctx}=fixture([],[{date,hour:1,model:a,n:2,source_count:2},{date,hour:1,model:b,n:3,source_count:3},{date,hour:1,model:c,n:1,source_count:1}],[{date,model:a,known:1,missing:0,input:10,output:5,total:15,source_count:1},{date,model:b,known:1,missing:0,input:20,output:5,total:25,source_count:1}]);const r=await stats(ctx,session,{range:'7d'});expect(r.models.map(m=>m.model)).toEqual(['gpt-x','qwen']);expect(r.models[0]).toMatchObject({messages:5,totalTokens:40,inputTokens:30,outputTokens:10});expect(r.favoriteModel).toBe('gpt-x');expect(r.daily[0]?.models).toEqual([{model:'gpt-x',totalTokens:40}]);});
- test('uses shared display names and merges routes with the same name',async()=>{const date=new Date().toISOString().slice(0,10);const a='claude/one:claude-opus-4-5',b='custom/gate:anthropic/claude-opus-4.5';const {ctx}=fixture([],[{date,hour:2,model:a,n:2,source_count:2},{date,hour:2,model:b,n:1,source_count:1}],[]);ctx.fns.models={displayNames:async({routes}:any)=>Object.fromEntries(routes.map((r:string)=>[r,'Claude Opus 4.5']))};const r=await stats(ctx,session,{range:'30d'});expect(r.models.map(m=>m.model)).toEqual(['Claude Opus 4.5']);expect(r.models[0]?.messages).toBe(3);expect(r.favoriteModel).toBe('Claude Opus 4.5');});
+ const date=new Date().toISOString().slice(0,10);
+ const usage=(model:unknown,known:number,missing:number,input:number,output:number)=>({date,model,known,missing,input,output,total:input+output,source_count:known+missing});
+ test('merges routes across providers and ranks requests even without token counts',async()=>{
+  const {ctx}=fixture([],[],[usage('ssh/host:codex/acc1:gpt-x',1,1,10,5),usage('mauzcode/mini:codex/acc2:gpt-x',1,2,20,5),usage('oneapi:qwen',0,4,0,0)]);
+  const r=await stats(ctx,session,{});
+  expect(r.models.map(m=>m.model)).toEqual(['gpt-x','qwen']);expect(r.favoriteModel).toBe('gpt-x');
+  expect(r.models[0]).toMatchObject({requests:5,totalTokens:40,inputTokens:30,outputTokens:10});
+  expect(r.models[1]?.totalTokens).toBeNull();expect(r.daily[0]?.models).toEqual([{model:'gpt-x',totalTokens:40}]);
+ });
+ test('merges request routes with a shared display name',async()=>{
+  const {ctx}=fixture([],[],[usage('claude/one:claude-opus-4-5',2,0,8,2),usage('custom/gate:anthropic/claude-opus-4.5',1,0,4,1)]);
+  ctx.fns.models={displayNames:async({routes}:any)=>Object.fromEntries(routes.map((r:string)=>[r,'Claude Opus 4.5']))};
+  const r=await stats(ctx,session,{});expect(r.models.map(m=>m.model)).toEqual(['Claude Opus 4.5']);expect(r.models[0]?.requests).toBe(3);expect(r.favoriteModel).toBe('Claude Opus 4.5');
+ });
+ test('unattributed requests and messages contribute only to overall and daily totals',async()=>{
+  const {ctx}=fixture([],[{date,hour:5,n:20,source_count:20}],[null,undefined,'','  ','null'].map(m=>usage(m,1,0,10,5)));
+  const r=await stats(ctx,session,{});expect(r.messages).toBe(20);expect(r.totalTokens).toBe(75);expect(r.favoriteModel).toBeNull();expect(r.models).toEqual([]);
+  expect(r.daily[0]).toMatchObject({messages:20,totalTokens:75,models:[]});
+ });
 });
