@@ -21,22 +21,30 @@ it('running and finished rows of one call show the same label, icon and summary'
   expect(finishedRow.getAttribute('data-category')).toBe(runningRow.getAttribute('data-category'));
 });
 
-it('an expanded running command shows the whole call above full live output, appended by offset', async () => {
+it('an expanded running command shows the whole command once, without frames, above full live output appended by offset', async () => {
   const fetcher = vi.fn()
     .mockResolvedValueOnce(json({ start: 0, from: 0, end: 6, text: 'line1\n' }))
     .mockResolvedValueOnce(json({ start: 0, from: 6, end: 12, text: 'line2\n' }));
   vi.stubGlobal('fetch', fetcher);
   const view = render(<ActiveToolRow run={run} agentId="a" />);
-  const call = screen.getByRole('region', { name: 'Вызов' });
-  expect(call.textContent).toContain('bun run build && bun test --coverage ' + 'x'.repeat(400));
-  expect(call.textContent).toContain('••• (1 key)');
-  expect(screen.getByRole('button', { name: 'Копировать код' })).toBeInTheDocument();
-  await waitFor(() => expect(screen.getByRole('region', { name: 'Вывод' }).textContent).toContain('line1'));
+  const call = screen.getByLabelText('Команда');
+  expect(call.textContent).toBe('$ ' + command);
+  expect(view.container.querySelectorAll('.code-block, .tool-call-panel')).toHaveLength(0);
+  expect(view.container.textContent!.split('bun install').length).toBe(2);
+  await waitFor(() => expect(screen.getByLabelText('Вывод').textContent).toContain('line1'));
   expect(fetcher.mock.calls[0][0]).toBe('/api/v1/agents/a/runs/r1/output?from=0');
   view.rerender(<ActiveToolRow run={{ ...run, outputEnd: 12 }} agentId="a" />);
-  await waitFor(() => expect(screen.getByRole('region', { name: 'Вывод' }).textContent).toContain('line1\nline2'));
+  await waitFor(() => expect(screen.getByLabelText('Вывод').textContent).toContain('line1\nline2'));
   expect(fetcher.mock.calls[1][0]).toBe('/api/v1/agents/a/runs/r1/output?from=6');
   expect(screen.queryByText('tail only')).toBeNull();
+});
+
+it('shows no output block before there is output', () => {
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+  render(<ActiveToolRow run={{ ...run, tail: '', outputEnd: 0 }} agentId="a" />);
+  expect(screen.getByLabelText('Команда')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Вывод')).toBeNull();
+  expect(screen.queryByText(/Ожидание вывода/)).toBeNull();
 });
 
 it('shows a drop marker when older output was discarded and loads large arguments on expand', async () => {

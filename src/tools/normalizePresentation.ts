@@ -7,7 +7,7 @@
 const ICONS = [
     "file", "file-plus", "file-edit", "search", "terminal", "code", "answer", "checklist", "check",
     "delegate", "flag", "form", "canvas", "archive", "compass", "book", "target", "comment",
-    "comment-check", "wrench",
+    "comment-check", "plug", "unplug", "stop", "info", "ticket", "clock", "user", "list", "status", "wrench",
 ] as const;
 const CATEGORIES = ["files", "search", "commands", "agent", "git", "tools"] as const;
 

@@ -5,7 +5,7 @@ import { getRunArgs, type ActiveTool } from '../../lib/mauzcode';
 import { ToolShimmer } from './ToolShimmer';
 import { ToolTiming } from './ToolTiming';
 import { toolPresentation } from './toolIcons';
-import { ToolCallPanel } from './ToolCallPanel';
+import { LiveCall } from './LiveCall';
 import { LiveOutput } from './LiveOutput';
 import { useRunOutput } from './useRunOutput';
 import { ToolModal } from './ToolModal';
@@ -39,10 +39,11 @@ export function ActiveToolRow({ run, agentId, autoOpen = true }: { run: ActiveTo
       <span className="sr-only">{run.state === 'stopping' ? 'Останавливается' : 'Выполняется'}</span>
     </button>
     {(() => {
-      const panel = <div className="tool-row-panel">
-        <ToolCallPanel agentId={agentId} args={args} loading={!!run.argsLarge && !largeArgs.args && !largeArgs.error}
-          error={largeArgs.error ? <p role="alert">{largeArgs.error}</p> : undefined}
-          output={<>{live.error && <p role="alert">{live.error}</p>}<LiveOutput text={text} dropped={live.loaded ? live.start : 0} placeholder={run.state === 'stopping' ? 'Останавливается…' : 'Ожидание вывода…'} /></>} />
+      const panel = <div className="tool-row-panel tool-live">
+        <LiveCall args={args} loading={!!run.argsLarge && !largeArgs.args && !largeArgs.error} error={largeArgs.error} />
+        {live.error && <p role="alert">{live.error}</p>}
+        {(text || live.start > 0) && <LiveOutput text={text} dropped={live.loaded ? live.start : 0} />}
+        {!text && run.state === 'stopping' && <p className="tool-live-note">Останавливается…</p>}
       </div>;
       return mobile ? <ToolModal open={open} onOpenChange={setManualOpen} title={shown.summary ? `${shown.label} · ${shown.summary}` : shown.label}>{panel}</ToolModal> : open && panel;
     })()}

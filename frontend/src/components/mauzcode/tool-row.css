@@ -116,3 +116,16 @@
 .tool-row-summary:hover .tool-row-title, .tool-row-summary[aria-expanded='true'] .tool-row-title, .tool-row-header:hover .tool-row-title { color: var(--text); }
 .tool-row-summary:hover .tool-row-description, .tool-row-summary[aria-expanded='true'] .tool-row-description, .tool-row-header:hover .tool-row-description { color: var(--text-secondary); }
 .tool-row[data-state='stopping'] { --tool-tint: var(--tool-stopped); }
+
+/* Running call: minimal, no frames — the command once, then the output only if there is any. */
+.tool-row-panel.tool-live { margin: 2px 0 6px 22px; }
+.tool-live-command { display: flex; gap: 0; min-width: 0; color: var(--text); font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-live-command > .syntax-code { flex: 1; min-width: 0; }
+.tool-live-prompt { flex: none; color: var(--text-tertiary); user-select: none; }
+.tool-live-args { display: block; color: var(--text-secondary); }
+.tool-live-key { color: var(--text-tertiary); }
+.tool-live .tool-live-output { margin-top: 6px; }
+.tool-row-panel.tool-live pre.tool-live-text { padding: 0; max-height: 420px; overflow: auto; color: var(--text-secondary); background: transparent; }
+.tool-live .tool-live-marker { margin: 0 0 2px; }
+.tool-live .tool-preview-more { padding: 0 0 2px; border: 0; }
+.tool-live-note { margin: 4px 0 0; color: var(--text-tertiary); }

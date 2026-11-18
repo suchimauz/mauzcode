@@ -1,11 +1,12 @@
-import { Archive, BookOpen, CircleCheck, ClipboardList, Code2, Compass, FilePenLine, FilePlus2, FileText, Flag, ListChecks, MessageSquare, MessageSquareCheck, MessageSquareText, PanelRight, Search, Target, Terminal, Users, Wrench, type LucideIcon } from 'lucide-react';
+import { ArrowRightLeft, Archive, BookOpen, CircleCheck, CircleStop, Clock, Info, List, Plug, Ticket, Unplug, User, ClipboardList, Code2, Compass, FilePenLine, FilePlus2, FileText, Flag, ListChecks, MessageSquare, MessageSquareCheck, MessageSquareText, PanelRight, Search, Target, Terminal, Users, Wrench, type LucideIcon } from 'lucide-react';
 
 /** The server's icon allow-list (tools.normalizePresentation) mapped to lucide. The client holds no per-tool table. */
 const ICONS: Record<string, LucideIcon> = {
   file: FileText, 'file-plus': FilePlus2, 'file-edit': FilePenLine, search: Search, terminal: Terminal, code: Code2,
   answer: MessageSquareText, checklist: ListChecks, check: CircleCheck, delegate: Users, flag: Flag, form: ClipboardList,
   canvas: PanelRight, archive: Archive, compass: Compass, book: BookOpen, target: Target, comment: MessageSquare,
-  'comment-check': MessageSquareCheck, wrench: Wrench,
+  'comment-check': MessageSquareCheck, plug: Plug, unplug: Unplug, stop: CircleStop, info: Info, ticket: Ticket,
+  clock: Clock, user: User, list: List, status: ArrowRightLeft, wrench: Wrench,
 };
 export const TOOL_CATEGORIES = ['files', 'search', 'commands', 'agent', 'git', 'tools'] as const;
 export type ToolCategory = typeof TOOL_CATEGORIES[number];
