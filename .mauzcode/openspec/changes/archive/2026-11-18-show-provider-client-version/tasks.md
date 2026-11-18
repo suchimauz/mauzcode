@@ -32,8 +32,10 @@
 - Whole-project typecheck after generated declarations: only 4 errors in the unchanged `plugins/opencode-go` provider (unmounted `opencodeGo` namespace); no changed-file diagnostics.
 - `code.quality({})`: ok=true, 0 errors, 570 existing warnings. This checks the running host index, not this undeployed worktree.
 - Strict OpenSpec validation passes; `git diff --check` passes.
-- Running-app card/re-detect verification was not performed: worktree changes were not deployed or reloaded. Task 5.1 remains open for that acceptance check and a clean full frontend run in a fully provisioned checkout.
+- After merge to `main`: models namespace hot-reloaded with `procs.repl.load`; `models.providers({})` reports `hasClientVersion` only for claude and codex; `models.connections.clientVersion` on live connections returns Claude `2.1.322 (detected)` and Codex `0.157.1 (default)`, also with `refresh: true`.
+- `bun run frontend:build` passes on `main`; `code.quality({})` on the running host: ok=true, 0 errors.
+- Running-app Settings → Models cards (version, source, Re-detect) confirmed by the user in the browser.
 
 ## 5. Integration
 
-- [ ] 5.1 Run `ctx.fns.code.quality({})`, the models backend tests and the frontend tests, and check in the running app that a Claude and a Codex card show the version and source and that re-detect works
+- [x] 5.1 Run `ctx.fns.code.quality({})`, the models backend tests and the frontend tests, and check in the running app that a Claude and a Codex card show the version and source and that re-detect works
