@@ -67,7 +67,7 @@ function AgentGoalDock({ agentId, running, disabled, editor, onClose, onAccepted
     {expanded && goal && !editing && <div className="goal-details"><p>{goal.objective}</p><span>Токены: {goal.tokensUsed.toLocaleString('ru-RU')}{goal.tokenBudget === null ? ' · без лимита' : ` / ${goal.tokenBudget.toLocaleString('ru-RU')}`} · Время: {Math.floor(goal.timeUsedSeconds / 60)} мин</span></div>}
     {expanded && goal && !editing && (idle
       ? <GoalRemoval key={`${goal.goalId}:${goal.revision}`} objective={goal.objective} disabled={disabled || busy} onConfirm={() => void perform('clear')} />
-      : <div className="goal-details"><Button size="compact" disabled>Удалить цель</Button><span>Цель можно удалить, когда агент не выполняет задачу.</span></div>)}
+      : <div className="goal-details goal-removal-actions"><Button size="compact" disabled>Удалить цель</Button><span>Цель можно удалить, когда агент не выполняет задачу.</span></div>)}
     {editing && <form className="goal-details goal-form" onSubmit={event => { event.preventDefault(); if (snapshot?.enabled && objective.trim()) void perform(goal ? 'edit' : 'create'); }} onKeyDown={event => {
       if (event.nativeEvent.isComposing) return;
       if (event.key === 'Escape') { event.preventDefault(); if (!busy) close(); return; }
@@ -86,13 +86,11 @@ function AgentGoalDock({ agentId, running, disabled, editor, onClose, onAccepted
 
 function GoalRemoval({ objective, disabled, onConfirm }: { objective: string; disabled: boolean; onConfirm: () => void }) {
   const [confirming, setConfirming] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const cancel = () => { setConfirming(false); trigger.current?.focus(); };
-  return <div className="goal-details">
-    <button type="button" ref={trigger} className="button button--secondary button--compact" disabled={disabled} aria-expanded={confirming} onClick={() => setConfirming(true)}>Удалить цель</button>
-    {confirming && <div role="group" aria-label={`Удалить цель «${objective}»?`} onKeyDown={event => { if (event.key === 'Escape') cancel(); }}>
-      <p>Удалить цель «{objective}»? История чата сохранится.</p>
-      <div className="goal-form-actions"><Button autoFocus size="compact" onClick={cancel}>Отмена</Button><Button size="compact" disabled={disabled} onClick={() => { setConfirming(false); onConfirm(); }}>Подтвердить удаление</Button></div>
-    </div>}
+  const restoreFocus = useRef(false);
+  const cancel = () => { restoreFocus.current = true; setConfirming(false); };
+  if (!confirming) return <div className="goal-details"><Button autoFocus={restoreFocus.current} size="compact" disabled={disabled} onClick={() => { restoreFocus.current = false; setConfirming(true); }}>Удалить цель</Button></div>;
+  return <div key="confirmation" className="goal-details goal-removal-actions" role="group" aria-label={`Удалить цель «${objective}»?`} onKeyDown={event => { if (event.key === 'Escape') cancel(); }}>
+    <Button autoFocus size="compact" variant="ghost" onClick={cancel}>Отмена</Button>
+    <Button size="compact" className="button--danger" disabled={disabled} onClick={() => { setConfirming(false); onConfirm(); }}>Подтвердить удаление</Button>
   </div>;
 }

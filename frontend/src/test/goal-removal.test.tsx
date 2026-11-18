@@ -26,6 +26,7 @@ it('confirms the displayed revision once, keeps history and allows creating anot
   const chat = (editor: {text: string} | null) => <><GoalRow event={{ idx: 1, ts: 1, type: 'goal', text: 'Older', goalStatus: 'paused' }} /><GoalDock {...props} editor={editor} /></>;
   const view = render(chat(null)); await expand(); open();
   expect(screen.getByRole('group', { name: /First/ })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Удалить цель' })).toBeNull();
   expect(button('Отмена')).toHaveFocus();
   fireEvent.keyDown(button('Отмена'), { key: 'Escape' });
   expect(button('Удалить цель')).toHaveFocus(); expect(post).not.toHaveBeenCalled();
