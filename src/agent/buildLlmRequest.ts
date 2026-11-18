@@ -41,9 +41,16 @@ export default async function (
         const parent = rows[0]?.parent_id
             ? await ctx.fns.session.getFullMessages({ id: rows[0].parent_id }) : [];
         const inherited = rows[0]?.fork_offset == null ? parent : parent.slice(0, Number(rows[0].fork_offset));
-        fullHistory = [...inherited, ...own.filter(message => !(message.message_type === 'goal_continuation' && omitted.has(Number(message.idx)))
-            && !(authority && message.role === 'user'
-                && (!Number.isSafeInteger(Number(message.idx)) || Number(message.idx) > authority.authorizedThroughIdx!)))];
+        // A later firing (or a human row inserted during a tool call) must wait
+        // for another admission. Never widen the original frontier for steering.
+        const firingIdxs = new Set(authority?.firingIdxs);
+        fullHistory = [...inherited, ...own.filter(message => {
+            const idx = Number(message.idx);
+            if (message.message_type === 'goal_continuation' && omitted.has(idx)) return false;
+            if (!authority || message.role !== 'user') return true;
+            return message.idx != null && Number.isSafeInteger(idx) && (idx <= authority.authorizedThroughIdx!
+                || (message.message_type === 'trigger' && firingIdxs.has(idx)));
+        })];
     }
     // A checkpoint may already summarize the omitted row. Fail closed to full
     // history rather than leaking its instructions through a compact summary.

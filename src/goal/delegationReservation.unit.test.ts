@@ -2,20 +2,24 @@ import { test, expect } from 'bun:test';
 import reserve from './delegationReserve';
 import consume from './delegationConsume';
 import cancel from './delegationCancel';
+import endGrants from './delegationEndGrants';
+import endTriggers from './delegationEndTriggers';
 import lock from './delegationLock';
 import authorize from './delegationAuthorize';
 const goalId='00000000-0000-4000-8000-000000000001';
 function fixture(){
  let active=false,enabled=true,status='active';
- const agents:any={root:{id:'root',run_state:'running',run_token:'rt'},child:{id:'child',run_state:'idle',run_token:null,next_run_at:null}};
+ const agents:any={root:{id:'root',run_state:'running',run_token:'rt'},child:{id:'child',run_state:'idle',run_token:null,next_run_at:null,last_processed_msg_idx:-1}};
  const reservations=new Map<string,any>(),caps=new Map<string,any>(),calls:string[]=[];
  const ctx:any={state:{procs:{db:{transactionStorage:{getStore:()=>active?{active:true}:undefined}}}},fns:{goal:{},procs:{db:{}}}};
+ ctx.fns.settings={get:async()=>false};
  ctx.fns.goal.enabled=async()=>enabled;
  ctx.fns.goal.read=async({agentId}:any)=>({enabled,goal:agentId==='root'?{goalId,status}:null});
- for(const [name,fn] of Object.entries({delegationLock:lock,delegationAuthorize:authorize,delegationReserve:reserve,delegationConsume:consume,delegationCancel:cancel})) ctx.fns.goal[name]=(opts:any)=>(fn as any)(ctx,null,opts);
+ for(const [name,fn] of Object.entries({delegationEndGrants:endGrants,delegationEndTriggers:endTriggers,delegationLock:lock,delegationAuthorize:authorize,delegationReserve:reserve,delegationConsume:consume,delegationCancel:cancel})) ctx.fns.goal[name]=(opts:any)=>(fn as any)(ctx,null,opts);
  ctx.fns.procs.db.transaction=async({fn}:any)=>{if(active)throw Error('nested');active=true;try{return await fn();}finally{active=false;}};
  ctx.fns.procs.db.select=async({sql,params:p}:any)=>{
   calls.push(sql);
+  if(sql.startsWith('WITH RECURSIVE'))return [...reservations.values()].filter(r=>'r:'+r.reservation_id===p[8]);
   if(sql.includes('FROM agents')){const a=agents[p[0]];return a?[{...a,required:a.goal_delegation_required?'true':null}]:[];}
   if(sql.includes('FROM goal_delegation_reservations'))return [...reservations.values()].filter(r=>sql.includes('WHERE source_agent_id=')?r.source_agent_id===p[0]:r.reservation_id===p[0]);
   if(sql.includes('FROM messages'))return [{unauthorized:!!agents.child.unauthorized}];
@@ -31,7 +35,8 @@ function fixture(){
   else if(sql.includes('SET cancelled_at='))Object.assign(reservations.get(p[2]),{cancelled_at:p[0]});
   else if(sql.includes('SET reservation_id='))Object.assign(caps.get(p[1]),{reservation_id:p[0]});
   else if(sql.includes('SET retry_from_run_id=NULL'))Object.assign(reservations.get(p[0]),{retry_from_run_id:null});
-  else if(sql.includes("SET task_state='cancelled'"))Object.assign(reservations.get(p[0]),{task_state:'cancelled'});
+  else if(sql.includes("SET task_state='cancelled'"))Object.assign(reservations.get(p[2]),{task_state:'cancelled',cancelled_at:p[0]});
+  else if(sql.startsWith('UPDATE agent_trigger')){}
   else if(sql.includes('SET revoked_at=')){for(const c of caps.values())if(c.reservation_id===p[1]||c.capability_id===p[2])c.revoked_at=p[0];}
   else throw Error(sql);
   return {changes:1};

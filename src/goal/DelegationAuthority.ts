@@ -7,5 +7,7 @@ export type DelegationAuthority = Readonly<{
     sourceRunId: string;
     /** Immutable own-user task frontier; required for worker-issued descendant requests. */
     authorizedThroughIdx?: number;
+    /** Exact pending firing rows admitted under the same reservation, never a frontier extension. */
+    firingIdxs?: readonly number[];
     allowContinuation: false;
 }>;

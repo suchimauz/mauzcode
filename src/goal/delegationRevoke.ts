@@ -24,6 +24,7 @@ export default async function (
     if(!await ctx.fns.goal.enabled({})) throw new Error('Goal feature disabled');
     await ctx.fns.procs.db.transaction({fn:async()=>{
      await ctx.fns.goal.delegationLock({rootAgentId:opts.rootAgentId,goalId:opts.goalId,sourceAgentId:opts.rootAgentId,sourceRunToken:opts.rootRunToken});
+     await ctx.fns.goal.delegationEndGrants({rootAgentId:opts.rootAgentId,goalId:opts.goalId,capabilityId:opts.capabilityId,reason:'revoked'});
      await ctx.fns.procs.db.run({sql:'UPDATE goal_delegations SET revoked_at=COALESCE(revoked_at,?) WHERE capability_id=?::uuid AND root_agent_id=? AND goal_id=?::uuid',params:[Date.now(),opts.capabilityId,opts.rootAgentId,opts.goalId]});
     }});
 }

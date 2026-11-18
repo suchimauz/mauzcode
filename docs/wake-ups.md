@@ -2,7 +2,9 @@
 
 Wake-ups survive process restarts because their state lives in Postgres and is polled by `agent.workerLoop`.
 
-## Wake at a time
+For new code use [agent triggers](agent-triggers.md). The examples below use the legacy compatibility API.
+
+## Legacy: wake at a time
 
 ```ts
 await ctx.fns.agent.wakeIn({

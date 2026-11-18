@@ -30,7 +30,8 @@ describe("agent durable triggers", () => {
     const rows = await ctx.fns.agent.triggers({ id: agent.id, status: "all" });
     expect(rows[0].status).toBe("completed");
     const messages = await ctx.fns.session.getMessages({ id: agent.id });
-    expect(messages.at(-1)).toMatchObject({ role: "user", content: "Continue later", message_type: "trigger", excluded_from_cursor: true });
+    expect(messages.at(-1)).toMatchObject({ role: "user", content: "Continue later", message_type: "trigger" });
+    expect(await ctx.fns.procs.db.select({ sql: 'SELECT author, excluded_from_cursor FROM messages WHERE agent_id = ? AND idx = ?', params: [agent.id, messages.at(-1).idx] })).toEqual([{ author: null, excluded_from_cursor: 0 }]);
   });
 
   test("cron advances and cancelAll cancels active triggers", async () => {
@@ -54,11 +55,11 @@ describe("agent durable triggers", () => {
     let row = (await ctx.fns.agent.triggers({ id: agent.id }))[0];
     await poll(ctx, Number(row.nextAt) + 1);
     let messages = await ctx.fns.session.getMessages({ id: agent.id });
-    expect(messages.filter((m: any) => m.content === "File ready")).toHaveLength(1);
+    expect(messages.filter((m: any) => m.message_type === 'trigger' && m.content.startsWith('File ready\n'))).toHaveLength(1);
     row = (await ctx.fns.agent.triggers({ id: agent.id }))[0];
     await poll(ctx, Number(row.nextAt) + 1);
     messages = await ctx.fns.session.getMessages({ id: agent.id });
-    expect(messages.filter((m: any) => m.content === "File ready")).toHaveLength(1);
+    expect(messages.filter((m: any) => m.message_type === 'trigger' && m.content.startsWith('File ready\n'))).toHaveLength(1);
     await ctx.fns.files.remove({ path: marker });
   });
 

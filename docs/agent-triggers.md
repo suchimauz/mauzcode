@@ -43,11 +43,15 @@ Legacy `wakeAt`, `wakeIn`, `wakeUpWhen`, and `cancelWake` calls are compatibilit
 
 ## Persistence and delivery
 
-`agent_triggers` stores the trigger definition, lifecycle, next due time, claim token, timeout, and watch edge state. `agent_trigger_runs` is the durable execution history and idempotency record. The main agent worker includes the earliest active trigger in its sleep deadline and atomically claims due rows with `FOR UPDATE SKIP LOCKED`.
+`agent_triggers` stores the trigger definition, lifecycle, next due time, claim token, timeout, and watch edge state. `agent_trigger_runs` records execution history; `agent_trigger_deliveries` ties a firing's original scheduled time to its message index and consumption state. The main agent worker includes the earliest active trigger in its sleep deadline and atomically claims due rows with `FOR UPDATE SKIP LOCKED`.
 
-A firing appends a synthetic user-role message with `message_type="trigger"` and `excluded_from_cursor=true` to the existing agent session, then sets `agents.next_run_at`. It never creates a fresh conversation. One-shot triggers complete; cron triggers calculate their next wall-clock occurrence; failed checks use bounded retry. Abandoned claims are recovered after ten minutes.
+A firing appends a user-role message with `message_type="trigger"`, `excluded_from_cursor=false` and no human author, then schedules the existing conversation. A mid-turn firing remains pending until a successful turn consumes it. Replaying a firing does not duplicate its prompt; repeated cron ticks or watch edges coalesce while the same trigger has a pending delivery. Stopped or archived recipients receive no delivery. A ready watch includes its serialized result inline (up to 16,000 UTF-16 code units); larger results include a preview and a readable reference, or a notice if storage failed.
 
 Cron uses explicit IANA timezones. If the process was unavailable at a scheduled time, one due occurrence is delivered on recovery and the following occurrence is calculated from the recovery time, so missed runs do not create an unbounded backlog.
+
+## Delegated goal tasks
+
+`agent.triggerTaskWait` is **off by default**. With both it and `goal.enabled` on, a child may wait on a trigger it creates for itself under its current task grant. The next firing resumes the same task; it does not authorize messages from another agent or a person. At most five triggers may be armed per task. Finishing the task disarms them. Cancelling the last one, or a silent watch timeout, leaves the task blocked if no firing is pending. `agent.team` reports the reason to the parent.
 
 ## Inspector UI
 

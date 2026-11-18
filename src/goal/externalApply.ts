@@ -53,7 +53,7 @@ export default async function (
      if (!owner || owner.archived_at != null) throw new Error('Goal owner unavailable');
      if (owner.run_token !== opts.expectedRunToken || owner.run_state !== (state?'running':'idle') || state?.sealed) throw new Error('Goal conflict: owner claim changed or boundary sealed');
      const delegated=(await ctx.fns.procs.db.select({sql:`SELECT (
-      EXISTS(SELECT 1 FROM goal_delegation_reservations WHERE root_agent_id=? AND goal_id=?::uuid AND task_state IN ('open','pending_review'))
+      EXISTS(SELECT 1 FROM goal_delegation_reservations WHERE root_agent_id=? AND goal_id=?::uuid AND task_state IN ('open','pending_review','waiting','blocked'))
       OR EXISTS(SELECT 1 FROM goal_delegations WHERE root_agent_id=? AND goal_id=?::uuid AND (closed_at IS NULL OR reservation_id IS NULL))
      ) AS outstanding`,params:[opts.agentId,opts.expectedGoalId,opts.agentId,opts.expectedGoalId]}))[0];
      if (!delegated || delegated.outstanding) throw new Error('Goal conflict: outstanding source accounting authority');

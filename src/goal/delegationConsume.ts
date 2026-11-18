@@ -1,7 +1,7 @@
 /**
  * Bind an open task grant to an admitted real worker claim
  *
- * Trusted worker hook after claim commit, before continuation or model work. Bound authority uses original root and actual claim token, never lifecycle ID. Blocked results AND thrown errors prohibit ordinary fallback; lock contention requires retry of the whole hook. Same-token replay reauthorizes; replacement tokens require a settled durable retry permit. Unapproved user input parks admission without consuming that permit. Disabled mode uses a schema-independent agents probe. Does not schedule work.
+ * Trusted worker hook after claim commit, before continuation or model work. Bound authority uses original root and actual claim token, never lifecycle ID. Blocked results AND thrown errors prohibit ordinary fallback; lock contention requires retry of the whole hook. Same-token replay reauthorizes; replacement tokens require a settled retry permit or an individually verified pending firing for a waiting task. Unapproved user input parks admission without consuming that permit. Disabled mode uses a schema-independent agents probe. Does not schedule work.
  * @param opts.sourceAgentId Concrete worker-claimed child.
  * @param opts.sourceRunToken Actual committed worker claim token.
  */
@@ -28,18 +28,39 @@ export default async function (
     await ctx.fns.goal.delegationLock({rootAgentId:hint.root_agent_id,goalId:hint.goal_id,sourceAgentId:opts.sourceAgentId,sourceRunToken:opts.sourceRunToken});
     const [r]=await ctx.fns.procs.db.select({sql:'SELECT * FROM goal_delegation_reservations WHERE reservation_id=?::uuid FOR UPDATE',params:[hint.reservation_id]});
     if(!r || r.cancelled_at!=null) return {status:'blocked',reason:'Reservation missing or cancelled'};
-    if(r.task_state!=='open' || r.authorized_through_idx==null) return {status:'blocked',reason:'Task grant not open or frontier missing'};
-    const [extra]=await ctx.fns.procs.db.select({sql:"SELECT EXISTS(SELECT 1 FROM messages WHERE agent_id=? AND role='user' AND excluded_from_cursor=0 AND idx>?) AS unauthorized",params:[opts.sourceAgentId,r.authorized_through_idx]});
-    if(!extra || extra.unauthorized) return {status:'blocked',reason:'Unapproved task input'};
+    const waiting = r.task_state === 'waiting';
+    if ((!waiting && r.task_state !== 'open') || r.authorized_through_idx == null) return {status:'blocked',reason:'Task grant not open or frontier missing'};
+    const [owner] = await ctx.fns.procs.db.select({sql:'SELECT last_processed_msg_idx, scratchpad FROM agents WHERE id=?',params:[opts.sourceAgentId]});
+    const scratch = typeof owner?.scratchpad === 'string' ? JSON.parse(owner.scratchpad) : owner?.scratchpad;
+    if (!owner || scratch?.delegation?.status === 'ready' || scratch?.delegateTask?.status === 'finished') return {status:'blocked',reason:'Task already finished'};
+    const frontier = Number(r.authorized_through_idx);
+    const cursor = Math.max(frontier, Number(owner.last_processed_msg_idx));
+    const taskWait = await ctx.fns.settings.get({module:'agent',scopeType:'global',key:'triggerTaskWait'}) === true;
+    // Match each post-frontier row under the agent and reservation locks. One
+    // interleaved human row denies admission, leaving cursor and receipts intact.
+    let firingIdxs: readonly number[] = [];
+    if (taskWait) {
+        const extra = await ctx.fns.procs.db.select({sql:`SELECT m.idx, d.trigger_id FROM messages m
+            LEFT JOIN agent_trigger_deliveries d ON d.agent_id=m.agent_id AND d.message_idx=m.idx
+                AND m.message_type='trigger' AND d.reservation_id=?::uuid AND d.state='pending'
+            WHERE m.agent_id=? AND m.role='user' AND m.excluded_from_cursor=0 AND m.idx>? ORDER BY m.idx`,params:[r.reservation_id,opts.sourceAgentId,cursor]});
+        if (extra.some(row => !row.trigger_id)) return {status:'blocked',reason:'Unapproved task input'};
+        firingIdxs = Object.freeze(extra.map(row => Number(row.idx)));
+    } else {
+        const [extra]=await ctx.fns.procs.db.select({sql:"SELECT EXISTS(SELECT 1 FROM messages WHERE agent_id=? AND role='user' AND excluded_from_cursor=0 AND idx>?) AS unauthorized",params:[opts.sourceAgentId,cursor]});
+        if(!extra || extra.unauthorized) return {status:'blocked',reason:'Unapproved task input'};
+    }
+    if (waiting && !firingIdxs.length) return {status:'blocked',reason:'No pending task-bound firing'};
+    const inputGrant = {authorizedThroughIdx:frontier, ...(firingIdxs.length ? {firingIdxs} : {})};
     if(r.source_agent_id!==opts.sourceAgentId || r.root_agent_id!==hint.root_agent_id || r.goal_id!==hint.goal_id) throw new Error('Immutable reservation changed');
     const goal=await ctx.fns.goal.read({agentId:r.root_agent_id});
     if(!goal.enabled || goal.goal?.status!=='active') return {status:'blocked',reason:'Root goal not active'};
     const [existing]=await ctx.fns.procs.db.select({sql:'SELECT * FROM goal_delegations WHERE reservation_id=?::uuid AND source_run_id=?',params:[r.reservation_id,opts.sourceRunToken]});
     if(existing){
      const authority=await ctx.fns.goal.delegationAuthorize({rootAgentId:r.root_agent_id,goalId:r.goal_id,sourceAgentId:opts.sourceAgentId,sourceRunId:opts.sourceRunToken,sourceRunToken:opts.sourceRunToken,capabilityId:existing.capability_id});
-     return {status:'bound',authority:Object.freeze({...authority,authorizedThroughIdx:Number(r.authorized_through_idx)})};
+     return {status:'bound',authority:Object.freeze({...authority,...inputGrant})};
     }
-    if(r.consumed_at!=null){
+    if(r.consumed_at!=null && !waiting){
      if(!r.retry_from_run_id) return {status:'blocked',reason:'No durable retry permit'};
      const [previous]=await ctx.fns.procs.db.select({sql:'SELECT * FROM goal_delegations WHERE reservation_id=?::uuid AND source_run_id=?',params:[r.reservation_id,r.retry_from_run_id]});
      if(!previous || previous.closed_at==null || previous.revoked_at!=null || previous.settled_checkpoint_id==null) return {status:'blocked',reason:'Previous claim not settled'};
@@ -60,7 +81,7 @@ export default async function (
     await ctx.fns.procs.db.run({sql:'INSERT INTO goal_delegations(capability_id,root_agent_id,goal_id,source_agent_id,source_run_id,delegator_agent_id,delegator_run_id,parent_capability_id,created_at) VALUES (?::uuid,?,?::uuid,?,?,?,?,?::uuid,?)',params:[capabilityId,r.root_agent_id,r.goal_id,opts.sourceAgentId,opts.sourceRunToken,r.delegator_agent_id,r.delegator_run_id,r.parent_capability_id,now]});
     await ctx.fns.procs.db.run({sql:'UPDATE goal_delegations SET reservation_id=?::uuid WHERE capability_id=?::uuid',params:[r.reservation_id,capabilityId]});
     if(r.consumed_at==null) await ctx.fns.procs.db.run({sql:'UPDATE goal_delegation_reservations SET consumed_at=?,source_run_id=?,capability_id=?::uuid WHERE reservation_id=?::uuid',params:[now,opts.sourceRunToken,capabilityId,r.reservation_id]});
-    await ctx.fns.procs.db.run({sql:'UPDATE goal_delegation_reservations SET retry_from_run_id=NULL WHERE reservation_id=?::uuid',params:[r.reservation_id]});
-    return {status:'bound',authority:Object.freeze({capabilityId,rootAgentId:r.root_agent_id,goalId:r.goal_id,sourceAgentId:opts.sourceAgentId,sourceRunId:opts.sourceRunToken,authorizedThroughIdx:Number(r.authorized_through_idx),allowContinuation:false as const})};
+    await ctx.fns.procs.db.run({sql:"UPDATE goal_delegation_reservations SET retry_from_run_id=NULL,task_state='open' WHERE reservation_id=?::uuid",params:[r.reservation_id]});
+    return {status:'bound',authority:Object.freeze({capabilityId,rootAgentId:r.root_agent_id,goalId:r.goal_id,sourceAgentId:opts.sourceAgentId,sourceRunId:opts.sourceRunToken,...inputGrant,allowContinuation:false as const})};
     }}) as types.goal.DelegationConsumeResult;
 }

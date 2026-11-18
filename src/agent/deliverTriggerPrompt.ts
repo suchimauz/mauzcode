@@ -30,22 +30,35 @@ export default async function (
         /** Observed watch evaluation outcome; omit when unavailable. Recorded only for watch triggers. */
         watchStatus?: 'ready' | 'timeout';
     },
-): Promise<boolean> {
-    const agentId = await ctx.fns.procs.db.transaction({ fn: async () => {
-        const row = (await ctx.fns.procs.db.select({ sql: "SELECT agent_id FROM agent_triggers WHERE id=?", params: [opts.triggerId] }))[0];
+): Promise<boolean | 'coalesced' | 'invalidated'> {
+    const append = async () => {
+        const row = (await ctx.fns.procs.db.select({ sql: "SELECT agent_id,task_reservation_id FROM agent_triggers WHERE id=?", params: [opts.triggerId] }))[0];
         if (!row) return null;
         const target = (await ctx.fns.procs.db.select({ sql: "SELECT id,stopped_at,archived_at FROM agents WHERE id=? FOR UPDATE", params: [row.agent_id] }))[0];
-        const claim = (await ctx.fns.procs.db.select({ sql: "SELECT id,kind,config,timezone FROM agent_triggers WHERE id=? AND status='checking' AND claim_token=? FOR UPDATE", params: [opts.triggerId, opts.claimToken] }))[0];
+        const reservation = row.task_reservation_id ? (await ctx.fns.procs.db.select({sql:'SELECT task_state,cancelled_at FROM goal_delegation_reservations WHERE reservation_id=?::uuid FOR UPDATE',params:[row.task_reservation_id]}))[0] : undefined;
+        const claim = (await ctx.fns.procs.db.select({ sql: "SELECT id,kind,mode,config,timezone,next_at,task_reservation_id FROM agent_triggers WHERE id=? AND status='checking' AND claim_token=? FOR UPDATE", params: [opts.triggerId, opts.claimToken] }))[0];
         if (!claim) return null;
         if (!target || target.stopped_at != null || target.archived_at != null) {
             await ctx.fns.procs.db.run({ sql: "UPDATE agent_triggers SET status='active',claim_token=NULL,claimed_at=NULL,updated_at=? WHERE id=? AND status='checking' AND claim_token=?", params: [opts.now, opts.triggerId, opts.claimToken] });
             return null;
         }
         const id = String(target.id);
-        const message = await ctx.fns.session.appendMessage({ id, message: {
-            role: 'user', content: String(opts.prompt) + (opts.resultRef ? `\n\nPredicate result preview: ${opts.resultPreview ?? ''}\nFull result: await ctx.fns.agent.readResult({ id: "${opts.resultRef.id}", offset: 0, limit: 4000 })` : ''),
-            result_ref: opts.resultRef, message_type: 'trigger', excluded_from_cursor: true,
+        if (claim.task_reservation_id && (!reservation || reservation.cancelled_at != null || !['open','waiting'].includes(reservation.task_state))) return { outcome:'invalidated' as const };
+        const [replay] = await ctx.fns.procs.db.select({sql:'SELECT state FROM agent_trigger_deliveries WHERE trigger_id=? AND firing_key=? FOR UPDATE',params:[claim.id,claim.next_at]});
+        if (replay) return { outcome: replay.state === 'invalidated' ? 'invalidated' as const : true as const };
+        if (claim.kind === 'cron' || claim.mode === 'edge') {
+            const [pending] = await ctx.fns.procs.db.select({sql:"SELECT message_idx FROM agent_trigger_deliveries WHERE trigger_id=? AND state='pending' FOR UPDATE",params:[claim.id]});
+            if (pending) return { outcome:'coalesced' as const };
+        }
+        const message = await ctx.fns.session.appendMessage({ id, clientRequestId:`trigger:${claim.id}:${claim.next_at}`, message: {
+            role: 'user', author: null, content: String(opts.prompt) + (claim.kind === 'watch' && opts.watchStatus === 'ready' && opts.resultPreview !== undefined
+                ? opts.resultRef ? `\n\nPredicate result preview: ${opts.resultPreview}\nFull result: await ctx.fns.agent.readResult({ id: "${opts.resultRef.id}", offset: 0, limit: 4000 })`
+                    : `\n\nPredicate result: ${opts.resultPreview}` : ''),
+            result_ref: opts.resultRef, message_type: 'trigger', excluded_from_cursor: false,
         } });
+        if (message.duplicate) throw new Error('Trigger submission identity already occupied without its receipt');
+        const receipt = await ctx.fns.procs.db.run({sql:"INSERT INTO agent_trigger_deliveries(trigger_id,firing_key,agent_id,message_idx,reservation_id,state,created_at) VALUES(?,?,?,?,?::uuid,'pending',?) ON CONFLICT DO NOTHING",params:[claim.id,claim.next_at,id,message.idx,claim.task_reservation_id ?? null,opts.now]});
+        if (receipt.changes !== 1) throw new Error('Trigger receipt identity conflict');
         const config = typeof claim.config === 'string' ? JSON.parse(claim.config) : claim.config;
         await ctx.fns.session.appendEvent({ id, event: {
             type: 'wake_up', reason: opts.prompt, messageIdx: message.idx, triggerId: opts.triggerId,
@@ -56,10 +69,15 @@ export default async function (
             ...(claim.kind === 'watch' && (opts.watchStatus === 'ready' || opts.watchStatus === 'timeout') ? { watchStatus: opts.watchStatus } : {}),
             ...(opts.resultRef ? { resultRef: opts.resultRef, ...(opts.resultPreview !== undefined ? { resultPreview: opts.resultPreview } : {}) } : {}),
         } });
-        await ctx.fns.procs.db.run({ sql: "UPDATE agents SET next_run_at=COALESCE(next_run_at,?),updated_at=? WHERE id=?", params: [opts.now, opts.now, id] });
-        return id;
-    } }) as string | null;
-    if (!agentId) return false;
+        await ctx.fns.procs.db.run({ sql: "UPDATE agents SET next_run_at=CASE WHEN scratchpad::jsonb#>>'{parked,reason}'='usage_limit' THEN next_run_at ELSE COALESCE(next_run_at,?) END,updated_at=? WHERE id=?", params: [opts.now, opts.now, id] });
+        return { agentId:id, outcome:true as const };
+    };
+    // The dispatcher owns the finalization transaction and refreshes only after commit.
+    const inDispatcher = ctx.state.procs?.db?.transactionStorage?.getStore()?.active;
+    const result = inDispatcher ? await append() : await ctx.fns.procs.db.transaction({fn:append}) as Awaited<ReturnType<typeof append>>;
+    if (!result) return false;
+    if (inDispatcher || !('agentId' in result) || !result.agentId) return result.outcome;
+    const agentId = result.agentId;
     const live = ctx.state.agent?.[agentId];
     if (live) await ctx.fns.session.syncAgentState({ agent: live });
     ctx.fns.events.refreshAgentMeta({ agentId, section: 'wake', reason: 'trigger-delivered' });
