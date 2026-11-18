@@ -1,6 +1,6 @@
 # Goal runtime — integration in progress
 
-> **Current status:** the stage-one notes below are historical, not a description of all current code. Accounting, worker admission, descendant authorization, Stop, failure finalization, request context, and manual fork hooks have since been connected. The feature remains disabled by default. Native model tools and full resume scheduling are not available; descendant grant renewal and real isolated PostgreSQL verification are still in progress. Do not infer production readiness from passing mock tests, and do not apply global migrations as part of a test run.
+> **Current status:** the stage-one notes below are historical, not a description of all current code. Accounting, worker admission, descendant authorization, Stop, failure finalization, request context, and manual fork hooks have since been connected. Goals are enabled by default. Set `goal.enabled` to `false` to disable them for an instance. Do not infer production readiness from passing mock tests, and do not apply global migrations as part of a test run.
 
 ## Historical stage-one baseline
 

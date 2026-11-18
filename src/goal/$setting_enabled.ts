@@ -1,2 +1,2 @@
-/** The new goal store is opt-in; enabling does not wire lifecycle or import legacy state. */
-export default { type: "boolean", default: false, description: "Enable isolated goal storage APIs; lifecycle integration must be installed separately." };
+/** Goal support is enabled unless the instance explicitly disables it. */
+export default { type: "boolean", default: true, description: "Enable agent goals and their lifecycle integration." };
