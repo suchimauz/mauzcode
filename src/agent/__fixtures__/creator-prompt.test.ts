@@ -41,7 +41,7 @@ test("Creator preserves safety and discovery invariants without freezing histori
         "Never mutate", "secrets", "human approval", "Verify effects",
         "ctx.fns.runtime.docs.get", "procs.dev.createFunction", "ctx.fns.procs.repl.load",
         "ctx.fns.code.slice", "ctx.fns.code.callers", "ctx.fns.agent.delegate",
-        "ctx.fns.session.plan", "ctx.fns.input.request", "ctx.fns.plugins.search",
+        "ctx.fns.todo.create", "ctx.fns.input.request", "ctx.fns.plugins.search",
         "ctx.fns.plugins.read", "Bun.file", "Bun.write", "SERVER's cwd",
     ]) expect(prompt).toContain(invariant);
     expect(prompt).not.toContain("docs/architecture.md");

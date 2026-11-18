@@ -1,12 +1,12 @@
 ---
 id: plans
-title: plans
-requires: [session.plan, session.done, session.updatePlan, session.removePlan]
+title: todos
+requires: [todo.create, todo.done, todo.update, todo.remove]
 order: 50
 ---
-Plans for non-trivial multi-step work:
+Todos for multi-step work:
 
-  await ctx.fns.session.plan({ agent, title, tasks: [{ id, title, instructions }] })
-  await ctx.fns.session.done({ agent, id })
+  await ctx.fns.todo.create({ agent, title, tasks: [{ id, title, instructions }] })
+  await ctx.fns.todo.done({ agent, id })
 
-Keep task IDs stable. Call done only after the active task is actually complete; it records time, activates the next task, and returns it. Plans are visible and editable by the user in the Meta panel. Use session.updatePlan({ agent, title, tasks }) to edit while preserving state by ID, and session.removePlan({ agent, archive }) to archive or delete.
+Keep todo IDs stable. Call done only after an active todo is actually complete; it records time and, when no todo remains active, activates and returns the next one. Todos are shown read-only to the user above the chat composer. Use todo.update({ agent, title, tasks }) to revise while preserving state by ID; mark a pending or new todo with status: "active" only for really parallel work. Use todo.remove({ agent, archive }) to archive or delete the list. Todos are separate from planning mode.

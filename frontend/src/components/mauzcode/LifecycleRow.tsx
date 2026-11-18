@@ -29,7 +29,7 @@ export function LifecycleRow({ event }: { event: ChatEvent }) {
       break;
     case 'model_changed': title = 'Модель изменена'; body = `${text('fromLabel') || text('from', '?')} → ${text('toLabel') || text('to', '?')}`; break;
     case 'team_update':
-      title = ({ 'task.completed': 'Шаг выполнен', 'plan.completed': 'План завершён', answer: 'Ответ агента', blocked: 'Нужна помощь', failed: 'Ошибка выполнения' } as Record<string, string>)[text('event')] ?? 'Событие команды';
+      title = ({ 'task.completed': 'Шаг выполнен', 'todos.completed': 'Задачи завершены', 'plan.completed': 'Задачи завершены', answer: 'Ответ агента', blocked: 'Нужна помощь', failed: 'Ошибка выполнения' } as Record<string, string>)[text('event')] ?? 'Событие команды';
       subtitle = [text('memberId'), text('taskTitle')].filter(Boolean).join(' · ');
       body = text('summary'); detail = text('taskId'); break;
     case 'canvas_ping': title = 'Сигнал с canvas'; subtitle = text('title', 'Вкладка'); detail = text('dataPreview'); break;

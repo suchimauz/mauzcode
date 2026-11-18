@@ -276,10 +276,6 @@ export default function (
         "session": {
             "classification": "standard",
             "patterns": [
-                "session.plan",
-                "session.done",
-                "session.updatePlan",
-                "session.removePlan",
                 "session.get*",
                 "session.search*"
             ]
@@ -325,6 +321,15 @@ export default function (
             "classification": "creator",
             "patterns": []
         },
+        "todo": {
+            "classification": "standard",
+            "patterns": [
+                "todo.create",
+                "todo.update",
+                "todo.done",
+                "todo.remove"
+            ]
+        },
         "tools": {
             "classification": "standard",
             "patterns": [
@@ -339,8 +344,8 @@ export default function (
                 "tools.toolDescribe",
                 "tools.readResult",
                 "tools.requestInput",
-                "tools.planUpdate",
-                "tools.planDone",
+                "tools.todoUpdate",
+                "tools.todoDone",
                 "tools.delegateTask",
                 "tools.finishTask",
                 "tools.showArtifact"

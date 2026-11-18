@@ -1,4 +1,4 @@
-/** Create or update the agent's settings and durable state, including scratchpad and plans. On first save, resolve the creator from the parent, signed-in user, or trusted bound worker's durable creator. Never changes durable ownership on update. Never writes messages or events: use session.appendMessage/appendEvent for new history and session.replaceMessages/replaceEvents for explicit imports or replacements. Safe to call with a stale in-memory transcript. */
+/** Create or update the agent's settings and durable state, including scratchpad and todos. On first save, resolve the creator from the parent, signed-in user, or trusted bound worker's durable creator. Never changes durable ownership on update. Never writes messages or events: use session.appendMessage/appendEvent for new history and session.replaceMessages/replaceEvents for explicit imports or replacements. Safe to call with a stale in-memory transcript. */
 export default async function (ctx: Context, session: Session | null, opts: {
         /** Live agent instance to operate on. */
 agent: types.agent.Agent }): Promise<void> {

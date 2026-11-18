@@ -1,9 +1,9 @@
 /**
- * Native `finish_task` adapter: finishes the invoking delegated child's plan and delivers its result.
+ * Native `finish_task` adapter: finishes the invoking delegated child's todos and delivers its result.
  *
  * Executable only for an agent created by `agent.delegate` (see `tools.isDelegatedChild`). Binds the child
- * only from the trusted tool invocation and delegates to `agent.finishTask`, which rejects an unfinished plan,
- * stores the result on the final task and enqueues the parent update exactly once.
+ * only from the trusted tool invocation and delegates to `agent.finishTask`, which rejects unfinished todos,
+ * stores the result on the final todo and enqueues the parent update exactly once.
  * @param opts.summary Concise parent-facing summary of the completed work.
  * @param opts.result Required result object; arrays, scalars, null and JSON-encoded strings are rejected.
  */

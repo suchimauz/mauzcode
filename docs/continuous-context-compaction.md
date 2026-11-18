@@ -107,7 +107,7 @@ The summarizer must not decide whether to retain:
 - current workspace and permissions;
 - active goal and acceptance criteria;
 - unresolved side effects;
-- active plan and open tasks.
+- active todos and open tasks.
 
 These are injected from authoritative structured state.
 
@@ -117,7 +117,7 @@ These are injected from authoritative structured state.
 The model is not “a transcript that occasionally gets shorter”. It is a durable execution tree whose visible resolution changes over time.
 
 - New user goals grow tracks and goals.
-- Plans grow tasks.
+- Todo lists grow todos.
 - Tool cycles grow episodes, observations and artifacts.
 - Delegation grows a child-agent subtree.
 - Completion folds a branch into a capsule.
@@ -184,7 +184,7 @@ Only one track is foreground by default; multiple tracks may remain active when 
 
 ### Task
 
-A bounded unit of work inside a track. A task has an expected result and completion evidence. Existing `session.plan` tasks are an explicit source of task boundaries, but tasks may also be inferred when no plan exists.
+A bounded unit of work inside a track. A task has an expected result and completion evidence. Existing todos (`todo.create`) are an explicit source of task boundaries, but tasks may also be inferred when no plan exists.
 
 ### Episode
 
@@ -552,7 +552,7 @@ Track detection should combine explicit and inferred signals.
 ### 8.1 Strong explicit signals
 
 - user says “new topic”, “separately”, “switch to”;
-- a new `session.plan` is created with a different goal;
+- a new todo list is created with a different goal;
 - the user returns to an earlier named issue;
 - a new delegated task is created for an unrelated outcome.
 
@@ -677,7 +677,7 @@ Background activation for idle agents already exists in [`src/agent/sleepIdle.ts
 
 Implemented in [`src/agent/compact.ts`](../src/agent/compact.ts). Retain as explicit destructive transcript maintenance, not as the primary memory mechanism.
 
-### `session.plan`
+### Todos (`todo.*`)
 
 Use as authoritative explicit task structure. The memory compiler may infer tasks only when no explicit task covers the episode.
 
@@ -924,7 +924,7 @@ Eligibility is deliberately narrow: ChatGPT OAuth with Plus/Pro/Pro Lite on the 
 #### Design changes suggested by Codex
 
 1. **Give the model its remaining budget.** `buildLlmRequest` currently exposes no context-window telemetry, so the §7.1 trigger “context usage crosses a model-specific threshold” is unusable by the agent itself. Add a pinned remaining-tokens fragment and a cheap `contextRemaining` tool.
-2. **A summary-free rollover path.** Codex demonstrates that a new window can be assembled from authoritative state alone. We already hold more structure than Codex does — `session.plan`, `scratchpad`, delegated `finishTask({ summary, result })` — so a rollover of `system + plan + stash handles + child results + short tail` needs no LLM call, costs nothing and cannot drift. This strengthens Phase 2 below and should precede any tree work.
+2. **A summary-free rollover path.** Codex demonstrates that a new window can be assembled from authoritative state alone. We already hold more structure than Codex does — todos (`todo.*`), `scratchpad`, delegated `finishTask({ summary, result })` — so a rollover of `system + todos + stash handles + child results + short tail` needs no LLM call, costs nothing and cannot drift. This strengthens Phase 2 below and should precede any tree work.
 3. **Window identity in context.** Cheap, and it lets the model recognize that a reset happened instead of pretending continuity.
 4. **Let the agent request folding.** A model-callable request to fold the current branch is a better completion signal than a token threshold, matching §3.3 and the MAGE note about agent-declared completion.
 
@@ -979,7 +979,7 @@ Independent of the tree, cheap, and a prerequisite for every later trigger. See 
 - expose remaining context tokens to the model from [`src/agent/buildLlmRequest.ts`](../src/agent/buildLlmRequest.ts);
 - add a `contextRemaining` tool and a one-per-window threshold reminder;
 - carry a window identity (`first / previous / current`) in the projection;
-- add a rollover that rebuilds context from `system + session.plan + scratchpad stash handles + delegated results + short verbatim tail`, with no summarizer call;
+- add a rollover that rebuilds context from `system + todos + scratchpad stash handles + delegated results + short verbatim tail`, with no summarizer call;
 - reuse the existing `sleep_context` generation and CAS activation from [`src/agent/compactContext.ts`](../src/agent/compactContext.ts).
 
 ### Phase 1 — observe only
@@ -991,7 +991,7 @@ Independent of the tree, cheap, and a prerequisite for every later trigger. See 
 
 ### Phase 2 — completed task capsules
 
-- compact explicit completed `session.plan` tasks;
+- compact explicit completed todos;
 - reuse delegated-child `summary + result` as capsules;
 - retrieve raw ranges on demand.
 

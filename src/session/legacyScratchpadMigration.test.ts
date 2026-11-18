@@ -16,12 +16,12 @@ async function rows(ctx: any) {
 }
 
 describe('boot-only legacy scratchpad cleanup (isolated Postgres)', () => {
-    test('removes only two top-level keys, preserves plans/flags/precision and skips invalid/non-objects byte-for-byte; replay is harmless', async () => {
+    test('removes only two top-level keys, preserves todos/flags/precision and skips invalid/non-objects byte-for-byte; replay is harmless', async () => {
         const ctx = await mkTestCtx();
         expect(new URL(ctx.env.DATABASE_URL).pathname).toContain('mauzcode_test_');
-        const unchanged = ['{}', ' { "plan": {"title":"keep"}, "flag":true } ', '{broken', 'null', '[{"results":"keep"}]', '"text"', '42', 'true', '', '{"results":1,"other":"\\u0000"}'];
+        const unchanged = ['{}', ' { "todos": {"title":"keep"}, "flag":true } ', '{broken', 'null', '[{"results":"keep"}]', '"text"', '42', 'true', '', '{"results":1,"other":"\\u0000"}'];
         for (const [i, value] of unchanged.entries()) await seed(ctx, `skip${i}`, value);
-        await seed(ctx, 'both', '{"results":{"r1":"large"},"resultSeq":9,"plan":{"title":"keep","results":"nested"},"planHistory":[1],"flag":true,"n":9007199254740993}');
+        await seed(ctx, 'both', '{"results":{"r1":"large"},"resultSeq":9,"todos":{"title":"keep","results":"nested"},"todoHistory":[1],"flag":true,"n":9007199254740993}');
         await seed(ctx, 'results', '{"results":null,"flag":false}');
         await seed(ctx, 'seq', '{"resultSeq":0,"note":"keep"}');
         await seed(ctx, 'only', '{"results":[],"resultSeq":1}');
@@ -33,8 +33,8 @@ describe('boot-only legacy scratchpad cleanup (isolated Postgres)', () => {
         const kept = JSON.parse(byId.both);
         expect(kept.results).toBeUndefined();
         expect(kept.resultSeq).toBeUndefined();
-        expect(kept.plan).toEqual({ title: 'keep', results: 'nested' });
-        expect(kept.planHistory).toEqual([1]);
+        expect(kept.todos).toEqual({ title: 'keep', results: 'nested' });
+        expect(kept.todoHistory).toEqual([1]);
         expect(kept.flag).toBe(true);
         expect(JSON.parse(byId.results)).toEqual({ flag: false });
         expect(JSON.parse(byId.seq)).toEqual({ note: 'keep' });
@@ -46,8 +46,8 @@ describe('boot-only legacy scratchpad cleanup (isolated Postgres)', () => {
 
     test('statement failure rolls back every earlier row update', async () => {
         const ctx = await mkTestCtx();
-        await seed(ctx, 'first', '{"results":1,"plan":true}');
-        await seed(ctx, 'second', '{"results":2,"plan":true}');
+        await seed(ctx, 'first', '{"results":1,"todos":true}');
+        await seed(ctx, 'second', '{"results":2,"todos":true}');
         await ctx.fns.procs.db.exec({ sql: `CREATE FUNCTION reject_cleanup() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id = 'second' THEN RAISE EXCEPTION 'test rollback'; END IF; RETURN NEW; END $$;
 CREATE TRIGGER reject_cleanup BEFORE UPDATE ON agents FOR EACH ROW EXECUTE FUNCTION reject_cleanup();` });
         const before = await rows(ctx);
@@ -83,14 +83,14 @@ CREATE TRIGGER reject_cleanup BEFORE UPDATE ON agents FOR EACH ROW EXECUTE FUNCT
         expect(order.indexOf('procs/migrate')).toBeGreaterThan(order.indexOf('procs/db'));
         expect(order.indexOf('agent')).toBeGreaterThan(order.indexOf('procs/migrate'));
         expect(order.indexOf('procs/http')).toBeGreaterThan(order.indexOf('agent'));
-        await seed(ctx, 'boot', '{"results":"old","resultSeq":1,"plan":{"title":"survives"}}');
+        await seed(ctx, 'boot', '{"results":"old","resultSeq":1,"todos":{"title":"survives"}}');
         await ctx.fns.procs.db.run({ sql: 'DELETE FROM _migrations WHERE id = ?', params: [migrationId] });
         ctx.state.procs.migrate.list = [{ id: migrationId, up: cleanup.up }];
         const calls: string[] = [];
         const load = ctx.state.registry.session.loadAll;
         ctx.state.registry.session.loadAll = async (c: any, s: any, o: any) => {
             calls.push('load');
-            expect(JSON.parse((await rows(ctx))[0].scratchpad)).toEqual({ plan: { title: 'survives' } });
+            expect(JSON.parse((await rows(ctx))[0].scratchpad)).toEqual({ todos: { title: 'survives' } });
             return await load(c, s, o);
         };
         ctx.state.registry.agent.workerLoop = async () => { calls.push('worker'); };
@@ -101,6 +101,6 @@ CREATE TRIGGER reject_cleanup BEFORE UPDATE ON agents FOR EACH ROW EXECUTE FUNCT
         await Promise.resolve();
         expect(calls).toEqual(['migrated', 'load', 'worker']);
         expect((await ctx.fns.procs.migrate.up({})).applied).toEqual([]);
-        expect(ctx.state.agent.boot.scratchpad).toEqual({ plan: { title: 'survives' } });
+        expect(ctx.state.agent.boot.scratchpad).toEqual({ todos: { title: 'survives' } });
     });
 });

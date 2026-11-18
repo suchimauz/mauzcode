@@ -55,14 +55,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
     const content: types.tools.Content[] = [];
     if (text) content.push({ type: "text", text });
     content.push(...uploads.map(upload => upload.ref));
-    await ctx.fns.session.mutateScratchpad({ id, mutate: (scratchpad: Record<string, any>, now: number) => {
-        const plan = scratchpad.plan;
-        if (!plan?.pausedAt) return;
-        plan.pausedAt = null;
-        plan.updatedAt = now;
-        const active = Array.isArray(plan.tasks) ? plan.tasks.find((task: any) => task.status === 'active') : null;
-        if (active && !active.activeSince) active.activeSince = now;
-    } });
+    await ctx.fns.todo.resume({ id });
     const appended = await ctx.fns.session.appendMessage({ id, message: { role: "user", content: uploads.length ? content : text }, ts });
     if (uploads.length) await ctx.fns.attachments.commitUploads({ agentId: id, messageIdx: appended.idx, uploads });
     const event: any = { type: "user", text, attachments: uploads.map(upload => upload.meta), messageIdx: appended.idx, ts };

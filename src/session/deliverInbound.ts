@@ -43,7 +43,7 @@ export default async function (
        await ctx.fns.session.projectOutgoingDelivery({...item.outgoing,to:opts.id,deliveryKey:item.key,createdAt:ts,messageIdx:idx});
        senders.add(item.outgoing.from);
      }
-     await ctx.fns.procs.db.run({sql:"UPDATE agents SET updated_at=?,next_run_at=CASE WHEN ? AND stopped_at IS NULL AND COALESCE(last_error,'') NOT LIKE 'stopped by user%' AND COALESCE(last_error,'') <> 'context limit guard stopped work' AND COALESCE(NULLIF(scratchpad,'')::jsonb #>> '{plan,pausedAt}','') IN ('','0') THEN COALESCE(next_run_at,?) ELSE next_run_at END WHERE id=?",params:[ts,item.wake,ts,opts.id]});drained++;}}
+     await ctx.fns.procs.db.run({sql:"UPDATE agents SET updated_at=?,next_run_at=CASE WHEN ? AND stopped_at IS NULL AND COALESCE(last_error,'') NOT LIKE 'stopped by user%' AND COALESCE(last_error,'') <> 'context limit guard stopped work' AND COALESCE(NULLIF(scratchpad,'')::jsonb #>> '{todos,pausedAt}','') IN ('','0') THEN COALESCE(next_run_at,?) ELSE next_run_at END WHERE id=?",params:[ts,item.wake,ts,opts.id]});drained++;}}
      const receipt=d?(await ctx.fns.procs.db.select({sql:'SELECT message_idx,delivered_at FROM session_inbound_deliveries WHERE agent_id=? AND delivery_key=?',params:[opts.id,d.key]}))[0]:null;
      return {queued:!!receipt&&receipt.delivered_at==null,messageIdx:receipt?.message_idx==null?null:Number(receipt.message_idx),duplicate,drained};
     }}) as {queued:boolean;messageIdx:number|null;duplicate:boolean;drained:number};

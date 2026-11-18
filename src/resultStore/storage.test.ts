@@ -14,7 +14,7 @@ const dirs: string[] = [];
 afterEach(async () => { await Promise.all(dirs.splice(0).map(p => rm(p, { recursive: true, force: true }))); });
 async function fixture() {
     const instance = await mkdtemp(join(tmpdir(), 'mauzcode-result-test-')); dirs.push(instance);
-    const caller = { id: 'owner', scratchpad: { plan: { title: 'unchanged' } } };
+    const caller = { id: 'owner', scratchpad: { todos: { title: 'unchanged' } } };
     const messages: Record<string, any[]> = { owner: [] };
     const agents: Record<string, any> = { owner: { id: 'owner' } };
     const ctx: any = { state: { agent: { owner: caller } }, fns: {

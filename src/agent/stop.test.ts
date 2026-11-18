@@ -1,11 +1,12 @@
 import { describe, test, expect } from 'bun:test';
 import stop from './stop';
+import pause from '../todo/pause';
 
-function fixture({ plan = false, loadedPlan = plan }: { plan?: boolean; loadedPlan?: boolean } = {}) {
+function fixture({ todos = false, loadedTodos = todos }: { todos?: boolean; loadedTodos?: boolean } = {}) {
     const ac = new AbortController(), sampling = new AbortController();
     const calls: string[] = [];
-    const scratchpad: any = plan ? { plan: { tasks: [{ id: 'x', status: 'active', activeSince: Date.now() - 1000, elapsedMs: 50 }] } } : {};
-    const agent: any = { id: 'a1', abortController: ac, samplingAbortController: sampling, currentJobId: 'old', isStreaming: true, scratchpad: loadedPlan ? structuredClone(scratchpad) : {} };
+    const scratchpad: any = todos ? { todos: { tasks: [{ id: 'x', status: 'active', activeSince: Date.now() - 1000, elapsedMs: 50 }] } } : {};
+    const agent: any = { id: 'a1', abortController: ac, samplingAbortController: sampling, currentJobId: 'old', isStreaming: true, scratchpad: loadedTodos ? structuredClone(scratchpad) : {} };
     const row: any = { scratchpad: JSON.stringify(scratchpad), next_run_at: 123, run_state: 'running', run_token: 'old', stopped_at: null };
     let active = false;
     let locked = false;
@@ -29,12 +30,13 @@ function fixture({ plan = false, loadedPlan = plan }: { plan?: boolean; loadedPl
         tools: { runs: ({ agentId }: any) => { expect(agentId).toBe('a1'); return [{ id: 'tool-1' }]; }, abortRun: ({ id }: any) => { expect(ac.signal.aborted).toBe(true); calls.push('abort:' + id); } },
         session: { appendEvent: async ({ id, event }: any) => { expect(active).toBe(true); expect(locked).toBe(true); expect(id).toBe(agent.id); expect(row.llm_retry_pending).not.toBeNull(); retryEvents.push(event); }, appendErrorEvent: ({ error }: any) => { calls.push(error); }, syncAgentState: async () => {} },
         events: { refreshAgentMeta: () => {} },
+        todo: { pause: (opts: any) => pause(ctx, null, opts) },
     } };
     return { ctx, agent, row, ac, sampling, calls, retryEvents, replace: (fn: () => void) => { beforeCommit = fn; } };
 }
 
 describe('agent.stop durable pause', () => {
-    test('default stop clears queue, revokes ownership and cancels registered tools without needing a plan', async () => {
+    test('default stop clears queue, revokes ownership and cancels registered tools without needing todos', async () => {
         const f = fixture();
         expect(await stop(f.ctx, null, { agent: f.agent })).toEqual({ ok: true, clearQueue: true });
         expect(f.row.stopped_at).toBeGreaterThan(0);
@@ -61,14 +63,14 @@ describe('agent.stop durable pause', () => {
         const f = fixture(); await stop(f.ctx, null, { agent: f.agent, clearQueue: false });
         expect(f.row.next_run_at).toBe(123); expect(f.row.stopped_at).toBeGreaterThan(0);
     });
-    test('pauses the durable plan even when live scratchpad is stale; repeated stop preserves its timer', async () => {
-        const f = fixture({ plan: true, loadedPlan: false });
+    test('pauses the durable todos even when live scratchpad is stale; repeated stop preserves its timer', async () => {
+        const f = fixture({ todos: true, loadedTodos: false });
         await stop(f.ctx, null, { agent: f.agent });
-        const plan = JSON.parse(f.row.scratchpad).plan;
-        expect(plan.pausedAt).toBe(f.row.stopped_at); expect(plan.tasks[0].activeSince).toBeNull();
-        expect(plan.tasks[0].elapsedMs).toBeGreaterThanOrEqual(1050);
+        const todos = JSON.parse(f.row.scratchpad).todos;
+        expect(todos.pausedAt).toBe(f.row.stopped_at); expect(todos.tasks[0].activeSince).toBeNull();
+        expect(todos.tasks[0].elapsedMs).toBeGreaterThanOrEqual(1050);
         await stop(f.ctx, null, { agent: f.agent });
-        expect(JSON.parse(f.row.scratchpad).plan).toEqual(plan);
+        expect(JSON.parse(f.row.scratchpad).todos).toEqual(todos);
     });
     test('old stop cleanup does not erase controllers attached by a replacement run', async () => {
         const f = fixture(), newer = new AbortController();

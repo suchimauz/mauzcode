@@ -47,7 +47,7 @@ export default async function (
      if (!claimed.rows.length) return {state:(await ctx.fns.input.get({id:opts.id}))!.state,completed:false,scheduled:false};
      const esc=(v:string)=>v.replace(/[&"<>]/g,c=>({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]!));
      await ctx.fns.session.appendMessage({id:existing.agentId,ts:now,message:{role:'user',message_type:'input',content:'<input-result id="'+esc(opts.id)+'" kind="'+esc(existing.kind)+'" state="'+opts.state+'">\n'+opts.summary+(opts.result?'\n'+JSON.stringify(opts.result):'')+'\n</input-result>'}});
-     const scheduled = await ctx.fns.procs.db.run({sql:"UPDATE agents SET next_run_at=GREATEST(COALESCE(next_run_at,0),?),updated_at=? WHERE id=? AND archived_at IS NULL AND stopped_at IS NULL AND NOT EXISTS (SELECT 1 FROM inputs i WHERE i.agent_id=agents.id AND i.spec->>'_agentWait'='true' AND i.state IN ('open','processing')) AND NOT (COALESCE(scratchpad::jsonb,'{}'::jsonb)->'plan'->>'pausedAt' IS NOT NULL) RETURNING id",params:[now,now,existing.agentId]});
+     const scheduled = await ctx.fns.procs.db.run({sql:"UPDATE agents SET next_run_at=GREATEST(COALESCE(next_run_at,0),?),updated_at=? WHERE id=? AND archived_at IS NULL AND stopped_at IS NULL AND NOT EXISTS (SELECT 1 FROM inputs i WHERE i.agent_id=agents.id AND i.spec->>'_agentWait'='true' AND i.state IN ('open','processing')) AND NOT (COALESCE(scratchpad::jsonb,'{}'::jsonb)->'todos'->>'pausedAt' IS NOT NULL) RETURNING id",params:[now,now,existing.agentId]});
      return {state:opts.state,completed:true,scheduled:scheduled.rows.length > 0};
     };
     const ambient=(ctx.state as any).procs?.db?.transactionStorage?.getStore();

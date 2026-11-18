@@ -5,7 +5,7 @@ import snapshot from '../goal/forkSnapshot';
 import route from '../agent/$route_$id_fork_POST';
 function fixture(){
  let active=false; let persisted:any[]=[]; const events:string[]=[]; const order:string[]=[];
- const source:any={id:'a',model:'m',scratchpad:{plan:{x:1},results:{old:1}},title:'A'};
+ const source:any={id:'a',model:'m',scratchpad:{todos: {x:1},results:{old:1}},title:'A'};
  const state:any={binding:{sourceAgentId:'a',rootAgentId:'a',goalId:'g',runToken:'t'},sealed:false,pendingRequests:new Set()};
  const owner:any={run_state:'idle',run_token:null}; let goal:any={goalId:'g',revision:2,status:'active'};
  const ctx:any={state:{agent:{a:source},procs:{db:{transactionStorage:{getStore:()=>active?{active:true}:undefined}}}},fns:{}};
@@ -19,7 +19,7 @@ function fixture(){
  ctx.fns.goal={enabled:async()=>true,read:async()=>({enabled:true,goal}),runStopRegistry:async(o:any)=>{expect(o.action).toBe('get');expect(o.runToken).toBe('t');return state;},runCheckpointFlush:async()=>{expect(active).toBe(false);order.push('flush');return {kind:'committed'};},forkSnapshot:async(o:any)=>{expect(active).toBe(true);expect(ctx.state.agent.b).toBeUndefined();expect(o.transactionMode).toBe('caller');return {copied:true};}};
  return {ctx,owner,state,events,order,persisted:()=>persisted,setGoal:(g:any)=>goal=g};
 }
-test('default fork never inspects goal; normal start publishes unchanged',async()=>{const x=fixture();x.ctx.fns.goal.enabled=()=>{throw Error('must not read');};const child=await fork(x.ctx,null,{id:'a',visibility:'team'});expect(x.ctx.state.agent.b).toBe(child);expect(x.events).toEqual(['create','fork']);expect(child.scratchpad).toEqual({plan:{x:1}});});
+test('default fork never inspects goal; normal start publishes unchanged',async()=>{const x=fixture();x.ctx.fns.goal.enabled=()=>{throw Error('must not read');};const child=await fork(x.ctx,null,{id:'a',visibility:'team'});expect(x.ctx.state.agent.b).toBe(child);expect(x.events).toEqual(['create','fork']);expect(child.scratchpad).toEqual({todos: {x:1}});});
 test('snapshot rejects hidden/team and invalid mode before writes',async()=>{for(const visibility of ['hidden','team']){const x=fixture();await expect(fork(x.ctx,null,{id:'a',visibility:visibility as any,goalMode:'snapshot'})).rejects.toThrow();expect(x.persisted()).toEqual([]);}const x=fixture();await expect(fork(x.ctx,null,{id:'a',goalMode:'other' as any})).rejects.toThrow();});
 test('snapshot commit publishes once only after commit',async()=>{const x=fixture();const child=await fork(x.ctx,null,{id:'a',goalMode:'snapshot'});expect(x.ctx.state.agent.b).toBe(child);expect(x.events).toEqual(['create','fork']);});
 test('snapshot rollback leaves neither mocked rows nor published state/events',async()=>{const x=fixture();x.ctx.fns.goal.forkSnapshot=async()=>({copied:false,reason:'stale_source'});await expect(fork(x.ctx,null,{id:'a',goalMode:'snapshot'})).rejects.toThrow('retry');expect(x.persisted()).toEqual([]);expect(x.ctx.state.agent.b).toBeUndefined();expect(x.events).toEqual([]);});

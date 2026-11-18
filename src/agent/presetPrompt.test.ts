@@ -31,12 +31,12 @@ test("access includes sections, any layer excludes them, and prompt additions pr
     agent.systemPrompt = "Per agent sentinel";
     agent.preset.layers[0].prompt = "Answer in English";
     let prompt = await ctx.fns.agent.fullSystemPrompt({ agent });
-    expect(prompt).toContain("ctx.fns.session.plan");
+    expect(prompt).toContain("ctx.fns.todo.create");
     expect(prompt.indexOf("## Preset instructions")).toBeLessThan(prompt.indexOf("## Per-agent instructions"));
     expect(prompt).toContain("Answer in English");
     agent.preset.layers.push({ ...agent.preset.layers[0], excludeSections: ["plans"], prompt: "Second layer" });
     prompt = await ctx.fns.agent.fullSystemPrompt({ agent });
-    expect(prompt).not.toContain("ctx.fns.session.plan");
+    expect(prompt).not.toContain("ctx.fns.todo.create");
     expect(prompt).toContain("Second layer");
 });
 
@@ -74,12 +74,12 @@ test("custom deny and inherited intersection suppress capability sections", asyn
     for (const mode of ["deny", "intersection", "exclude"]) {
         const agent = await fixture("creator");
         const layer = structuredClone(agent.preset.layers[0]);
-        if (mode === "deny") layer.deny = ["session.plan"];
+        if (mode === "deny") layer.deny = ["todo.create"];
         if (mode === "intersection") layer.allow = ["tools.*"];
         if (mode === "exclude") layer.excludeSections = ["plans"];
         agent.preset = { ...agent.preset, layers: [...agent.preset.layers, layer] };
         const prompt = await ctx.fns.agent.fullSystemPrompt({ agent });
-        expect(prompt).not.toContain("ctx.fns.session.plan");
+        expect(prompt).not.toContain("ctx.fns.todo.create");
         expect(prompt).toContain("workspace AGENTS.md");
     }
 });
@@ -177,7 +177,7 @@ test("fixed-fixture prompt budgets preserve historical before measurements and n
     const limits = { minimal: 2300, standard: 20200, creator: 24800 };
     // Native agent tools added by add-p0-native-agent-tools, add-p1-plan-delegation-tools and add-native-show-artifact; Minimal has no grant for them.
     // finish_task is absent here: the fixture agent is not a delegated child.
-    const addedNative = ["delegate_task", "plan_done", "plan_update", "read_result", "request_input", "show_artifact", "tool_describe", "tool_search"];
+    const addedNative = ["delegate_task", "read_result", "request_input", "show_artifact", "todo_done", "todo_update", "tool_describe", "tool_search"];
     for (const id of ["minimal", "standard", "creator"] as const) {
         expect(limits[id]).toBeLessThan(before[id].promptChars);
         const agent = await fixture(id);

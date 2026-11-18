@@ -7,6 +7,8 @@ import { LiveComposer } from '../components/mauzcode/LiveComposer';
 import { attachmentLimitError, imagePreviewSize, isPreviewImage } from '../lib/attachments';
 vi.mock('../components/mauzcode/ComposerFooter', () => ({ ComposerFooter: () => null }));
 vi.mock('../lib/goal', async importOriginal => ({ ...await importOriginal<typeof import('../lib/goal')>(), getGoal: vi.fn().mockResolvedValue({ version: 1, enabled: false }) }));
+vi.mock('../lib/todos', () => ({ getTodos: vi.fn().mockResolvedValue({ todos: null }) }));
+vi.mock('../sdk/live', () => ({ subscribeLive: () => () => {} }));
 vi.mock('../lib/queue', async importOriginal => ({ ...await importOriginal<typeof import('../lib/queue')>(), getQueue: vi.fn().mockResolvedValue({ items: [] }) }));
 const create = vi.fn(), revoke = vi.fn();
 beforeEach(() => { create.mockImplementation(() => `blob:preview-${create.mock.calls.length}`); Object.defineProperty(URL,'createObjectURL',{configurable:true,value:create}); Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:revoke}); });

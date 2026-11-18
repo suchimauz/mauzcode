@@ -1,6 +1,6 @@
 /** Finish task for the runtime.  * @param opts.agent Agent whose state is read or updated.
  * @param opts.summary Concise summary of completed work or compacted context.
- * @param opts.result Required JSON-compatible result returned to the parent and stored on the final completed plan task.
+ * @param opts.result Required JSON-compatible result returned to the parent and stored on the final completed todo.
  * @param opts.wakeParent Whether to queue the parent after task completion.
 */
 export default async function (
@@ -16,7 +16,7 @@ export default async function (
     agent: types.agent.Agent;
         /** Concise summary of the operation or result. */
     summary: string;
-        /** Required JSON-compatible result stored on the final completed plan task. */
+        /** Required JSON-compatible result stored on the final completed todo. */
     result: any;
         /** Wake parent used by the operation. */
     wakeParent?: boolean },
@@ -37,15 +37,15 @@ export default async function (
         const terminal = delegated ? meta.status === "ready" : meta.status === "finished";
         if (terminal) return { alreadyFinished: true, meta };
         if (delegated) {
-            const tasks = Array.isArray(scratchpad?.plan?.tasks) ? scratchpad.plan.tasks : [];
+            const tasks = Array.isArray(scratchpad?.todos?.tasks) ? scratchpad.todos.tasks : [];
             const finalTask = [...tasks].reverse().find((task: any) => task.status === "done");
             if (!finalTask || tasks.some((task: any) => task.status !== "done")) {
-                throw new Error("finishTask: delegated plan must be fully completed before finishing");
+                throw new Error("finishTask: delegated todos must be fully completed before finishing");
             }
             finalTask.result = opts.result;
             finalTask.resultSummary = summary;
             finalTask.resultAt = finishedAt;
-            scratchpad.plan.updatedAt = finishedAt;
+            scratchpad.todos.updatedAt = finishedAt;
         }
         const finished = { summary, result: opts.result, finishedAt };
         meta.status = delegated ? "ready" : "finished";
@@ -61,9 +61,9 @@ export default async function (
     if (agent.parentId && savedMeta.result?.finishedAt) {
         const brief = String(savedMeta.summary ?? summary).trim().slice(0, 4000);
         const key = `completion:${agent.id}:${savedMeta.result.finishedAt}`;
-        const text = '<team-update member="' + agent.id + '" event="plan.completed">Agent ' + agent.id + ' plan.completed. ' + brief + '</team-update>';
+        const text = '<team-update member="' + agent.id + '" event="todos.completed">Agent ' + agent.id + ' todos.completed. ' + brief + '</team-update>';
         const payload = JSON.stringify({ key, text, author: 'agent:' + agent.id, messageType: 'team_update', wake: true,
-            event: { type: 'team_update', event: 'plan.completed', memberId: agent.id, taskId: null, taskTitle: null, summary: brief } });
+            event: { type: 'team_update', event: 'todos.completed', memberId: agent.id, taskId: null, taskTitle: null, summary: brief } });
         await ctx.fns.procs.db.run({ sql: 'INSERT INTO session_inbound_deliveries(agent_id,delivery_key,payload,created_at) VALUES(?,?,?,?) ON CONFLICT(agent_id,delivery_key) DO NOTHING', params: [String(agent.parentId), key, payload, Date.now()] });
     }
     return saved;
@@ -73,13 +73,13 @@ export default async function (
     if (updated.result.alreadyFinished) {
         await ctx.fns.session.syncAgentState?.({ agent });
         // Repair a crash between durable result persistence and notification enqueue.
-        if (agent.parentId) await ctx.fns.agent.steer({ from: agent, event: 'plan.completed', summary: String(meta.summary ?? summary) });
+        if (agent.parentId) await ctx.fns.agent.steer({ from: agent, event: 'todos.completed', summary: String(meta.summary ?? summary) });
         return { ok: true, parentId, summary: String(meta.summary ?? summary), waiterFound: false };
     }
     await ctx.fns.session.syncAgentState?.({ agent });
     const waiters = (((ctx.state as any).delegateTaskWaiters) ??= new Map());
     if (agent.parentId) {
-        await ctx.fns.agent.steer({ from: agent, event: "plan.completed", summary });
+        await ctx.fns.agent.steer({ from: agent, event: "todos.completed", summary });
         ctx.fns.events.refreshAgentMeta({ agentId: String(agent.parentId), section: "team", reason: "team-finished" });
     }
     const waiter = meta.mode === "await" ? waiters.get(agent.id) : null;

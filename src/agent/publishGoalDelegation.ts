@@ -7,7 +7,7 @@
  * @param opts.forkContext Inherit full transcript when true; false constructs a fresh child. Omit for a zero-offset fork.
  * @param opts.prompt First delegated task message persisted with internal delegation_task provenance.
  * @param opts.scratchpad Delegation metadata persisted on the new child; never authority.
- * @param opts.tasks Optional native visible plan initialized inside the transaction.
+ * @param opts.tasks Optional native visible todos initialized inside the transaction.
  */
 export default async function (
     ctx: Context,
@@ -25,7 +25,7 @@ export default async function (
         prompt: string;
         /** Delegation metadata persisted on the new child; never authority. */
         scratchpad: Record<string, unknown>;
-        /** Optional native visible plan initialized inside the transaction. */
+        /** Optional native visible todos initialized inside the transaction. */
         tasks?: Array<{id:string;title:string;instructions?:string}>;
     },
 ): Promise<{id:string}> {
@@ -38,7 +38,7 @@ export default async function (
      const reservation=await ctx.fns.goal.delegationReserve({rootAgentId:a.rootAgentId,goalId:a.goalId,delegatorAgentId:a.sourceAgentId,delegatorRunToken:a.runToken,sourceAgentId:child.id,parentCapabilityId:a.parentCapabilityId});
      child.scratchpad={...opts.scratchpad};
      await ctx.fns.session.updateScratchpad({id:child.id,scratchpad:child.scratchpad});
-     if(opts.tasks) await ctx.fns.session.plan({agent:child,title:opts.title,tasks:opts.tasks,deferPublication:true});
+     if(opts.tasks) await ctx.fns.todo.create({agent:child,title:opts.title,tasks:opts.tasks,deferPublication:true});
      const ts=Date.now();
      const message=await ctx.fns.session.appendMessage({id:child.id,message:{role:'user',content:opts.prompt,author:'agent:'+a.sourceAgentId,message_type:'delegation_task'},ts});
      await ctx.fns.goal.delegationPublish({reservationId:reservation.reservationId,delegatorRunToken:a.runToken,authorizedThroughIdx:message.idx});
