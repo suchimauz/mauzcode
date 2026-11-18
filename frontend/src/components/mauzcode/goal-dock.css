@@ -8,7 +8,6 @@
 .goal-form input { width:100%; box-sizing:border-box; }
 .goal-form-actions { display:flex; justify-content:flex-end; gap:var(--space-2); }
 .goal-actions { display:flex; align-items:center; flex:none; gap:var(--space-1); }
-.goal-dock:has(+ .queue-dock) + .queue-dock { border-radius:0; }
 @media (max-width:480px) { .goal-dock .queue-row { flex-wrap:wrap; gap:6px; } .goal-dock .queue-status { font-size:11px; } }
 /* The dot fills a slot as wide as a compact icon button, so dot, edit and pause sit at equal steps. */
 .goal-status-dot { position:relative; width:8px; height:8px; margin:0 10px; flex:none; border-radius:50%; background:var(--text-caption); }
