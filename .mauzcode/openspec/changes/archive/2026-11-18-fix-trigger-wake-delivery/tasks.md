@@ -89,11 +89,16 @@ Each block can be merged on its own and leaves the system working. Blocks 1–3 
 - [x] 11.2 Test on existing data: old triggers stay unbound, old messages not replayed; down step works
 - [x] 11.3 Run `bun test src/agent src/goal` and `ctx.fns.code.quality({})`
 - [x] 11.4 Test: with `agent.triggerTaskWait` off, a delegated child's trigger stays unbound and behaves as after block 1
-- [ ] 11.5 After deploy, schedule a short `agent.wake` on a test agent and on `yc`, confirm a turn runs
+- [x] 11.5 After deploy, schedule a short `agent.wake` on each of two agents and confirm a new turn on both. The original second target (`yc`) was archived; the operator requested a new agent (`yu`) instead.
 
 ## Worktree verification
 
 - Isolated Postgres and mock providers: `bun test --timeout 20000 ./src/agent ./src/goal` — 1,256 passed. This includes task-bound wake, cron and watch cycles, steering, retry, cancellation/revocation races and explicit task completion.
 - `bun run test` — 3,837 passed, 12 skipped, 0 failed. Whole-project typecheck passed with the optional `opencode-go` plugin mounted for its imported model-provider test fixture.
 - `code.quality({})` on the worktree index: 0 errors, 559 warnings. Strict metadata checks passed for changed runtime procedures.
-- No deployment or live wake was performed. Task 11.5 remains a post-deployment check.
+
+## Post-deployment verification
+
+- MauzCode restarted on `a9a8db68`. Startup recorded both `20390101000000_goal_task_waiting` and `20390101000001_trigger_task_binding` as applied.
+- `yt`: one-shot `tr_01a1eebf-8ae7-7315-9f67-2f87a1c7d088` fired; a subsequent assistant response confirmed marker `smoke-ed443798-5263-45bb-969f-c9277a39c793`.
+- `yu`: one-shot `tr_01a1eec4-dca9-7145-83b9-1020b2f0ec17` fired; the assistant replied `WAKE-REPLACEMENT-yu-A9A8DB68` in the new turn. No new trigger was created for archived agent `yc`.
