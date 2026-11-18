@@ -1,23 +1,29 @@
 # Tasks
 
-## 1. Provider version resolution
+## 1. Claude version resolution
 
-- [ ] 1.1 Refactor `claudeCodeCliVersion` to cache whether the value was detected or fell back while keeping its string return, and add `models.provider.claude.claudeClientVersion({ conn })` returning `{ version, source, userAgentOverridden }`; verify with unit tests for override, env, detected, fallback and `CLAUDE_CODE_USER_AGENT` (existing `claudeCodeCliVersion.test.ts` still passes)
-- [ ] 1.2 Switch `claudeWireHeaders` to the resolver and verify with a test that the user agent version equals the reported version for each source
-- [ ] 1.3 Add `models.provider.codex.codexCliVersion({})` (local `codex --version`, timeout, output cap, 5 min / 30 s cache, shared in-flight promise); verify with unit tests using a fake `codex` on PATH for success, `codex-cli` prefix parsing, missing binary, hang/kill and cache reuse
-- [ ] 1.4 Add `models.provider.codex.codexClientVersion({ config })` with precedence override → `CODEX_CLI_VERSION` → detected (ignored when older than the SDK default) → default, make `codexVersion` an async wrapper and await it in `codexListModels`, `codexTest` and `codexWireResponses`; verify with unit tests for every source and the floor, and that `codex.test.ts` / `codexParity.test.ts` still pass
+- [ ] 1.1 Add the `detectCliVersion` boolean field (default true) to `$modelProvider_claude.ts` and reject an override together with an explicit `detectCliVersion: true` in `claudeValidate.ts`; verify with unit tests for both-set rejection, a stored override without the key being accepted, and invalid override rejection
+- [ ] 1.2 Refactor `claudeCodeCliVersion` to cache `{ value, detected }`, accept `refresh`, and stop reading `CLAUDE_CODE_CLI_VERSION`; add `models.provider.claude.claudeClientVersion({ conn, refresh? })` returning `{ version, source, detail? }` with override (re-validated) → detected (when enabled) → fallback; verify with unit tests for every source, detection disabled (no command), refresh, and env ignored (update `claudeCodeCliVersion.test.ts`)
+- [ ] 1.3 Switch `claudeWireHeaders` to the resolver and remove `CLAUDE_CODE_USER_AGENT`; verify that the user agent contains the reported version for each source, that the environment variable is ignored, and update `claudeProtocol.test.ts`
 
-## 2. Provider SDK hook and API
+## 2. Codex version resolution
 
-- [ ] 2.1 Add optional `clientVersion` to `ProviderDefinition`, `hasClientVersion` to `ProviderView`, and implement the hook in `$modelProvider_claude.ts` and `$modelProvider_codex.ts`; verify with a test that `models.providers({})` reports `hasClientVersion` true only for claude and codex
-- [ ] 2.2 Add `models.connections.clientVersion({ id })` with output shape validation and the POST action `clientVersion` in `src/models/api.ts`; verify with tests for a claude connection, a provider without the hook (null, no provider code runs), an unknown id and a non-owner/missing CSRF request
-- [ ] 2.3 Update `src/models/fixtures/public-contract.baseline.json` and `docs/models-providers.md` (hook, action, `CODEX_CLI_VERSION`) and verify the public-contract test passes
+- [ ] 2.1 Add the `detectCliVersion` boolean field (default false) to `$modelProvider_codex.ts` and reject it together with an override in `codexValidate.ts`; verify with unit tests
+- [ ] 2.2 Add `models.provider.codex.codexCliVersion({ refresh? })` (local `codex --version`, 8 s / 12 s timeouts, 4 KB cap, 5 min / 30 s cache, shared in-flight promise); verify with unit tests using a fake `codex` on PATH for success, `codex-cli` prefix parsing, missing binary, hang/kill, cache reuse and refresh
+- [ ] 2.3 Add `models.provider.codex.codexClientVersion({ config, refresh? })` with override → detected (when enabled, also older than the SDK default, with detail) → default; make `codexVersion` an async wrapper and await it in `codexListModels`, `codexTest` and `codexWireResponses`; verify with unit tests for every source, an older detected version, detection disabled (no command), and that `codex.test.ts` / `codexParity.test.ts` still pass
 
-## 3. Settings UI
+## 3. Provider SDK hook and API
 
-- [ ] 3.1 Add `connectionClientVersion` and the `hasClientVersion` type to `frontend/src/lib/modelConnections.ts` and `frontend/src/extensions/types.ts`; verify the frontend typecheck passes
-- [ ] 3.2 Show `v<version> (<source label>)` with a detail tooltip on the connection card in `ModelsPanel.tsx`, loaded lazily and refreshed after save; verify with `settings-models.test.tsx` cases for Claude detected, Codex detected and default, override after save, failure without toast and a provider without the hook
+- [ ] 3.1 Add optional `clientVersion(ctx, conn, { refresh })` to `ProviderDefinition`, `hasClientVersion` to `ProviderView`, and implement it in both provider definitions; verify that `models.providers({})` reports `hasClientVersion` true only for claude and codex
+- [ ] 3.2 Add `models.connections.clientVersion({ id, refresh? })` with output shape validation and the POST action `clientVersion` in `src/models/api.ts`; verify with tests for a claude connection, refresh, a provider without the hook (null, no provider code runs), an unknown id, a non-owner/missing CSRF request, and that the response holds no secret values, references or command output
+- [ ] 3.3 Update `src/models/fixtures/public-contract.baseline.json`, `docs/models-providers.md` (setting, hook, action) and `docs/anthropic-subscription-operations.md` (removed environment variables); verify the public-contract test passes
 
-## 4. Integration
+## 4. Settings UI
 
-- [ ] 4.1 Run `ctx.fns.code.quality({})`, the models backend tests and the frontend tests, and check in the running app that a Claude and a Codex card show the version and source
+- [ ] 4.1 Add `connectionClientVersion(csrf, id, refresh?)` and the `hasClientVersion` type to `frontend/src/lib/modelConnections.ts` and `frontend/src/extensions/types.ts`; verify the frontend typecheck passes
+- [ ] 4.2 In the connection form, uncheck and disable "Detect CLI version" while the override is not empty and send `detectCliVersion: false` with an override; verify with a `settings-models.test.tsx` case
+- [ ] 4.3 Show `v<version> (<source label>)` with a detail tooltip and a loading placeholder on the connection card in `ModelsPanel.tsx`, loaded lazily and refreshed after save, plus a Re-detect button when detection is enabled; verify with `settings-models.test.tsx` cases for Claude detected, Codex detected and default, override after save, re-detect, failure without toast and a provider without the hook
+
+## 5. Integration
+
+- [ ] 5.1 Run `ctx.fns.code.quality({})`, the models backend tests and the frontend tests, and check in the running app that a Claude and a Codex card show the version and source and that re-detect works
