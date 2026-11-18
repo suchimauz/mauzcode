@@ -51,7 +51,7 @@ export default async function (
     // Hop = length of the agent-to-agent reply chain. If the sender is currently answering an
     // agent message, continue its counter; a human turn resets it.
     const last = (await ctx.fns.procs.db.select({
-        sql: "SELECT content, message_type FROM messages WHERE agent_id = ? AND role = 'user' AND excluded_from_cursor = 0 ORDER BY idx DESC LIMIT 1",
+        sql: "SELECT content, message_type FROM messages WHERE agent_id = ? AND role = 'user' AND excluded_from_cursor = 0 AND COALESCE(message_type, '') NOT IN ('trigger', 'wake_up') ORDER BY idx DESC LIMIT 1",
         params: [sender.id],
     })) as any[];
     const prevHop = last[0]?.message_type === "agent_message" ? Number(/hop="(\d+)"/.exec(String(last[0].content))?.[1] ?? 0) : 0;

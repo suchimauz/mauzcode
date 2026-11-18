@@ -3,6 +3,7 @@ import lock from './delegationLock';
 import authorize from './delegationAuthorize';
 import register from './delegationRegister';
 import revoke from './delegationRevoke';
+import endGrants from './delegationEndGrants';
 
 const goalId='00000000-0000-4000-8000-000000000001';
 function fixture(){
@@ -12,10 +13,11 @@ function fixture(){
  const ctx:any={state:{procs:{db:{transactionStorage:{getStore:()=>active?{active:true}:undefined}}}},fns:{goal:{},procs:{db:{}}}};
  ctx.fns.goal.enabled=async()=>enabled;
  ctx.fns.goal.read=async()=>({enabled:true,goal:identity?{goalId:identity,status}:null});
- for(const [name,fn] of Object.entries({delegationLock:lock,delegationAuthorize:authorize,delegationRegister:register,delegationRevoke:revoke}))ctx.fns.goal[name]=(opts:any)=>(fn as any)(ctx,null,opts);
+ for(const [name,fn] of Object.entries({delegationEndGrants:endGrants,delegationLock:lock,delegationAuthorize:authorize,delegationRegister:register,delegationRevoke:revoke}))ctx.fns.goal[name]=(opts:any)=>(fn as any)(ctx,null,opts);
  ctx.fns.procs.db.transaction=async({fn}:any)=>{if(active)throw Error('nested');active=true;try{return await fn();}finally{active=false;}};
  ctx.fns.procs.db.select=async({sql,params:p}:any)=>{
   calls.push(sql);
+  if(sql.startsWith('WITH RECURSIVE'))return []; // legacy capabilities have no reservations
   if(sql.includes('FROM agents'))return agents[p[0]]?[agents[p[0]]]:[];
   if(sql.includes('WHERE capability_id='))return caps.has(p[0])?[caps.get(p[0])]:[];
   if(sql.includes('WHERE root_agent_id='))return [...caps.values()].filter(c=>c.root_agent_id===p[0]&&c.goal_id===p[1]&&c.source_agent_id===p[2]&&c.source_run_id===p[3]);

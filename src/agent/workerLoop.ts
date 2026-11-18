@@ -305,7 +305,8 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
         });
         delegationBlocked = (result as { goalAdmissionBlocked?: boolean } | undefined)?.goalAdmissionBlocked === true;
         if (delegationBlocked) errorText = 'Delegated Goal authority could not bind; explicit renewal is unavailable';
-        consumedIdx = goalAuthority ? Math.min(goalAuthority.authorizedThroughIdx ?? -1, Number((result as any)?.consumedUserIdx ?? -1))
+        const admittedIdx = goalAuthority?.firingIdxs?.at(-1) ?? goalAuthority?.authorizedThroughIdx ?? -1;
+        consumedIdx = goalAuthority ? Math.min(admittedIdx, Number((result as any)?.consumedUserIdx ?? -1))
             : Math.max(frontierIdx, Number((result as any)?.consumedUserIdx ?? -1));
         const binding = (result as { goalContinuation?: { goalId?: string; revision?: number; allowContinuation?: boolean } } | undefined)?.goalContinuation;
         if (binding?.allowContinuation === true && typeof binding.goalId === 'string' && binding.goalId.length > 0
@@ -356,7 +357,7 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
         // pass (no auto-retry — a permanently-broken LLM call would burn the
         // worker in a loop).
         const finalize = () => ctx.fns.procs.db.run({
-            sql: `UPDATE agents
+            sql: `WITH released AS (UPDATE agents
                 SET run_state = 'idle',
                     run_started_at = NULL,
                     last_processed_msg_idx = CASE WHEN ? = 1 THEN ? ELSE last_processed_msg_idx END,
@@ -384,8 +385,12 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
                     run_token = NULL,
                     updated_at = ?
               WHERE id = ? AND run_token = ?
-              RETURNING next_run_at`,
-            params: [advanceCursor ? 1 : 0, consumedIdx, advanceCursor ? 1 : 0, consumedIdx, ts + 100, retryAt, errorText, advanceCursor ? 1 : 0, ts, agentId, runToken],
+              RETURNING next_run_at, id, last_processed_msg_idx),
+              acknowledged AS (UPDATE agent_trigger_deliveries d SET state='consumed', settled_at=?
+                  FROM released a WHERE ? AND d.agent_id=a.id AND d.message_idx<=a.last_processed_msg_idx
+                      AND d.reservation_id IS NULL AND d.state='pending')
+              SELECT next_run_at FROM released`,
+            params: [advanceCursor ? 1 : 0, consumedIdx, advanceCursor ? 1 : 0, consumedIdx, ts + 100, retryAt, errorText, advanceCursor ? 1 : 0, ts, agentId, runToken, ts, advanceCursor],
         });
         let finalized: Awaited<ReturnType<typeof finalize>>;
         if (goalAuthority) {
@@ -396,12 +401,18 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
                     goalId: goalAuthority.goalId, sourceAgentId: agentId, sourceRunToken: runToken });
                 const [source] = await ctx.fns.procs.db.select({ sql: 'SELECT next_run_at FROM agents WHERE id = ? AND run_token = ?', params: [agentId, runToken] });
                 if (!source) return { changes: 0, rows: [] };
-                const successful = advanceCursor && !!finalReceipt && consumedIdx >= (goalAuthority.authorizedThroughIdx ?? Infinity);
+                // New rows were never part of this claim's exact input grant. Even a
+                // firing that arrives during steering requires its own admission.
+                const admittedIdx = goalAuthority.firingIdxs?.at(-1) ?? goalAuthority.authorizedThroughIdx ?? Infinity;
+                const successful = advanceCursor && !!finalReceipt && consumedIdx >= admittedIdx;
+                // A drained failed firing may be explicitly retried on a fresh claim.
+                // Leave its delivery pending; do not schedule a tight error loop.
+                const retryFiring = !!goalAuthority.firingIdxs?.length && !aborted && !delegationBlocked && !!errorText;
                 const pendingSchedule = source.next_run_at;
                 await ctx.fns.procs.db.run({ sql: `UPDATE agents SET last_processed_msg_idx = CASE WHEN ? THEN ? ELSE last_processed_msg_idx END,
                     next_run_at = ? WHERE id = ? AND run_token = ?`,
                     params: [successful, consumedIdx, successful ? null : (pendingSchedule ?? retryAt), agentId, runToken] });
-                if (finalReceipt && (successful || retry)) {
+                if (finalReceipt && (successful || retryFiring || retry)) {
                     const receipt: Readonly<{ checkpointId: string; sequence: number }> = finalReceipt;
                     await ctx.fns.goal.delegationSettle({ sourceAgentId: agentId, sourceRunToken: runToken,
                         checkpointId: receipt.checkpointId, sequence: receipt.sequence, outcome: successful ? 'terminal' : 'retry' });
@@ -547,7 +558,8 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
         if (rescheduled) { try { ctx.fns.agent.wakeWorker?.({}); } catch {} }
         // compactContext requires the finalized idle row. Run it in the
         // background so compaction cannot change the outcome of a successful turn.
-        if (advanceCursor) {
+        // A background summarizer sees the raw transcript, not the task's input grant.
+        if (advanceCursor && !goalAuthority) {
             void ctx.fns.agent.autoCompactIfNeeded({ agent }).catch((error: any) => {
                 ctx.fns.procs.log.warn({ event: "agent.auto-compact.failed", agentId, msg: String(error?.message ?? error) });
             });

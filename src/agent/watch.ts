@@ -50,7 +50,10 @@ export default async function (
     const mode = opts.mode ?? "once";
     const triggerId = `tr_${Bun.randomUUIDv7()}`;
     const config = { predicate: opts.predicate, opts: opts.opts ?? {}, everyMs, ...(opts.onTimeoutPrompt ? { onTimeoutPrompt: String(opts.onTimeoutPrompt) } : {}) };
-    await ctx.fns.procs.db.run({ sql: "INSERT INTO agent_triggers(id,agent_id,kind,prompt,config,mode,status,next_at,timeout_at,created_at,updated_at) VALUES(?,?,'watch',?,?::jsonb,?,'active',?,?,?,?)", params: [triggerId, id, prompt, JSON.stringify(config), mode, now, timeoutAt, now, now] });
+    await ctx.fns.procs.db.transaction({fn:async()=>{
+        const reservationId = await ctx.fns.agent.triggerCreationBinding({agentId:id});
+        await ctx.fns.procs.db.run({ sql: "INSERT INTO agent_triggers(id,agent_id,task_reservation_id,kind,prompt,config,mode,status,next_at,timeout_at,created_at,updated_at) VALUES(?,?,?::uuid,'watch',?,?::jsonb,?,'active',?,?,?,?)", params: [triggerId, id, reservationId, prompt, JSON.stringify(config), mode, now, timeoutAt, now, now] });
+    }});
     ctx.fns.agent.wakeWorker({});
     return { id: triggerId, nextAt: now, timeoutAt };
 }

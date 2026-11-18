@@ -6,7 +6,7 @@
  * @param opts.sourceRunToken Still-live actual worker token.
  * @param opts.checkpointId Exact final committed checkpoint ID.
  * @param opts.sequence Exact final checkpoint sequence. @minimum 0
- * @param opts.outcome Retry permits a new claim on the same frontier; terminal closes task.
+ * @param opts.outcome Retry preserves the frontier; successful terminal settlement may wait on a bound trigger.
  */
 export default async function (
     ctx: Context,
@@ -20,7 +20,7 @@ export default async function (
         checkpointId: string;
         /** Exact final checkpoint sequence. @minimum 0 */
         sequence: number;
-        /** Retry permits a new claim on the same frontier; terminal closes task. */
+        /** Retry preserves the frontier; successful terminal settlement may wait on a bound trigger. */
         outcome: "retry" | "terminal";
     },
 ): Promise<void> {
@@ -37,12 +37,26 @@ export default async function (
     await ctx.fns.goal.delegationAuthorize({rootAgentId:r.root_agent_id,goalId:r.goal_id,sourceAgentId:opts.sourceAgentId,sourceRunId:opts.sourceRunToken,sourceRunToken:opts.sourceRunToken,capabilityId:cap.capability_id});
     const [receipt]=await ctx.fns.procs.db.select({sql:'SELECT checkpoint_id,sequence FROM goal_usage_checkpoints WHERE agent_id=? AND goal_id=?::uuid AND source_agent_id=? AND run_id=? ORDER BY id DESC LIMIT 1',params:[r.root_agent_id,r.goal_id,opts.sourceAgentId,opts.sourceRunToken]});
     if(!receipt||receipt.checkpoint_id!==opts.checkpointId||Number(receipt.sequence)!==opts.sequence) throw new Error('Final receipt mismatch');
+    const [source]=await ctx.fns.procs.db.select({sql:'SELECT * FROM agents WHERE id=?',params:[opts.sourceAgentId]});
+    if(!source) throw new Error('Task owner missing');
+    const scratch = typeof source.scratchpad === 'string' ? JSON.parse(source.scratchpad) : source.scratchpad;
+    const finished = scratch?.delegation?.status === 'ready' || scratch?.delegateTask?.status === 'finished';
+    let outcome: 'terminal' | 'retry' | 'waiting' = finished ? 'terminal' : opts.outcome;
+    if(opts.outcome==='terminal' && (source.next_run_at!=null || Number(source.last_processed_msg_idx)<Number(r.authorized_through_idx))) throw new Error('Authorized task work not settled');
     if(opts.outcome==='terminal'){
-     const [source]=await ctx.fns.procs.db.select({sql:'SELECT * FROM agents WHERE id=?',params:[opts.sourceAgentId]});
-     if(!source||source.next_run_at!=null||Number(source.last_processed_msg_idx)<Number(r.authorized_through_idx)) throw new Error('Authorized task work not settled');
+        // Include completed one-shots: their deliveries may still need an ACK.
+        const triggers = await ctx.fns.procs.db.select({sql:'SELECT id,status FROM agent_triggers WHERE task_reservation_id=?::uuid ORDER BY id FOR UPDATE',params:[r.reservation_id]});
+        await ctx.fns.procs.db.run({sql:`UPDATE agent_trigger_deliveries SET state='consumed',settled_at=?
+            WHERE reservation_id=?::uuid AND agent_id=? AND state='pending' AND message_idx<=?`,params:[Date.now(),r.reservation_id,opts.sourceAgentId,source.last_processed_msg_idx]});
+        const pending = await ctx.fns.procs.db.select({sql:"SELECT firing_key FROM agent_trigger_deliveries WHERE reservation_id=?::uuid AND state='pending' ORDER BY trigger_id,firing_key FOR UPDATE",params:[r.reservation_id]});
+        if(!finished && (triggers.some(t=>t.status==='active' || t.status==='checking') || pending.length)){
+            if(await ctx.fns.settings.get({module:'agent',scopeType:'global',key:'triggerTaskWait'}) === true) outcome='waiting';
+            else await ctx.fns.goal.delegationEndTriggers({reservationIds:[r.reservation_id]});
+        }
     }
     const now=Date.now();
-    await ctx.fns.procs.db.run({sql:'UPDATE goal_delegations SET closed_at=?,close_reason=?,settled_checkpoint_id=?,settled_sequence=? WHERE capability_id=?::uuid',params:[now,opts.outcome,opts.checkpointId,opts.sequence,cap.capability_id]});
-    if(opts.outcome==='retry') await ctx.fns.procs.db.run({sql:'UPDATE goal_delegation_reservations SET retry_from_run_id=? WHERE reservation_id=?::uuid',params:[opts.sourceRunToken,r.reservation_id]});
+    await ctx.fns.procs.db.run({sql:'UPDATE goal_delegations SET closed_at=?,close_reason=?,settled_checkpoint_id=?,settled_sequence=? WHERE capability_id=?::uuid',params:[now,outcome,opts.checkpointId,opts.sequence,cap.capability_id]});
+    if(outcome==='waiting') await ctx.fns.procs.db.run({sql:"UPDATE goal_delegation_reservations SET task_state='waiting',retry_from_run_id=NULL WHERE reservation_id=?::uuid",params:[r.reservation_id]});
+    else if(outcome==='retry') await ctx.fns.procs.db.run({sql:'UPDATE goal_delegation_reservations SET retry_from_run_id=? WHERE reservation_id=?::uuid',params:[opts.sourceRunToken,r.reservation_id]});
     else await ctx.fns.procs.db.run({sql:"UPDATE goal_delegation_reservations SET task_state='closed',closed_at=?,close_reason='terminal',retry_from_run_id=NULL WHERE reservation_id=?::uuid",params:[now,r.reservation_id]});
 }

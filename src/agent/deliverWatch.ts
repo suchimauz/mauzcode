@@ -91,7 +91,7 @@ export default async function (
 
     const summary = status === "ready" ? `Wake condition met: ${row.reason}` : `Wake condition timed out: ${row.reason}`;
     const body = status === "ready" ? `${summary}\n\nResult: ${JSON.stringify(result)}` : summary;
-    const message = await ctx.fns.session.appendMessage({ id: row.agent_id, message: { role: "user", content: body, message_type: "wake_up", excluded_from_cursor: true } });
+    const message = await ctx.fns.session.appendMessage({ id: row.agent_id, message: { role: "user", content: body, message_type: "wake_up", author: null, excluded_from_cursor: false } });
     await ctx.fns.session.appendEvent({ id: row.agent_id, event: { type: "wake_up", reason: row.reason, summary, result: status === "ready" ? result : null, messageIdx: message.idx, watchId: row.id, watchStatus: status } });
     await ctx.fns.procs.db.run({ sql: "UPDATE agents SET next_run_at = COALESCE(next_run_at, ?), updated_at = ? WHERE id = ?", params: [now, now, row.agent_id] });
     return { status, ...(status === "ready" ? { result } : {}) };

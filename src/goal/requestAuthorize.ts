@@ -14,6 +14,8 @@ export default async function (
     const deny = () => { throw Object.assign(new Error('Delegated model request authority denied before dispatch'), {goalRequestDenied:true}); };
     if (scope!.agentId !== a.sourceAgentId || !a.sourceRunId || !a.capabilityId || !Number.isSafeInteger(a.authorizedThroughIdx) || a.authorizedThroughIdx! < 0) deny();
     if (!await ctx.fns.goal.enabled({})) deny();
+    const firings = a.firingIdxs ?? [];
+    if (firings.length && await ctx.fns.settings.get({module:'agent',scopeType:'global',key:'triggerTaskWait'}) !== true) deny();
     const rows = await ctx.fns.procs.db.select({sql: `WITH RECURSIVE chain AS (
      SELECT d.*, ARRAY[d.capability_id] AS path, false AS cycle FROM goal_delegations d WHERE capability_id=?::uuid
      UNION ALL
@@ -31,8 +33,10 @@ export default async function (
      AND root.stopped_at IS NULL AND root.archived_at IS NULL
      AND g.status='active' AND (g.token_budget IS NULL OR g.tokens_used<g.token_budget)
      AND task.task_state='open' AND task.cancelled_at IS NULL AND task.authorized_through_idx=?
+     ${firings.length ? `AND (SELECT count(*) FROM agent_trigger_deliveries d WHERE d.reservation_id=task.reservation_id
+        AND d.agent_id=source.id AND d.state='pending' AND d.message_idx IN (SELECT value::bigint FROM jsonb_array_elements_text(?::jsonb)))=?` : ''}
      AND task.root_agent_id=leaf.root_agent_id AND task.goal_id=leaf.goal_id AND task.source_agent_id=leaf.source_agent_id
      AND NOT EXISTS (SELECT 1 FROM chain c WHERE c.revoked_at IS NOT NULL OR c.cycle OR c.root_agent_id<>leaf.root_agent_id OR c.goal_id<>leaf.goal_id OR (c.parent_capability_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM chain p WHERE p.capability_id=c.parent_capability_id)))
-    ) AS allowed`,params:[a.capabilityId,a.rootAgentId,a.goalId,a.sourceAgentId,a.sourceRunId,a.authorizedThroughIdx!]});
+    ) AS allowed`,params:[a.capabilityId,a.rootAgentId,a.goalId,a.sourceAgentId,a.sourceRunId,a.authorizedThroughIdx!,...(firings.length ? [JSON.stringify(firings),firings.length] : [])]});
     if (rows[0]?.allowed !== true) deny();
 }

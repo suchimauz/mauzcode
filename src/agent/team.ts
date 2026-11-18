@@ -13,15 +13,18 @@ export default async function (
         /** Whether to return archived direct children instead of active children. @default false */
         includeArchived?: boolean;
     },
-): Promise<Array<{ id: string; title: string; runState: string; status: string; todos: any; summary: string | null; updatedAt: number; archivedAt: number | null }>> {
+): Promise<Array<{ id: string; title: string; runState: string; status: string; taskState: string | null; blockedAt: number | null; blockedReason: string | null; armedTriggerCount: number; todos: any; summary: string | null; updatedAt: number; archivedAt: number | null }>> {
     const archivedClause = opts.includeArchived ? "archived_at IS NOT NULL" : "archived_at IS NULL";
-    const rows = (await ctx.fns.procs.db.select({ sql: `SELECT id, title, run_state, scratchpad, updated_at, archived_at FROM agents WHERE parent_id = ? AND visibility = 'team' AND ${archivedClause} ORDER BY created_at ASC`, params: [opts.agent.id] })) as any[];
-    const members: Array<{ id: string; title: string; runState: string; status: string; todos: any; summary: string | null; updatedAt: number; archivedAt: number | null }> = [];
+    const rows = (await ctx.fns.procs.db.select({ sql: `SELECT id, title, run_state, scratchpad, updated_at, archived_at, to_jsonb(a)->>'goal_delegation_required' AS required FROM agents a WHERE parent_id = ? AND visibility = 'team' AND ${archivedClause} ORDER BY created_at ASC`, params: [opts.agent.id] })) as any[];
+    const boundIds = rows.filter(r=>r.required === 'true').map(r=>String(r.id));
+    const tasks = await ctx.fns.goal.delegationTaskStates({sourceAgentIds:boundIds});
+    const members: Array<{ id: string; title: string; runState: string; status: string; taskState: string | null; blockedAt: number | null; blockedReason: string | null; armedTriggerCount: number; todos: any; summary: string | null; updatedAt: number; archivedAt: number | null }> = [];
     for (const row of rows) {
       const scratchpad = typeof row.scratchpad === "string" ? JSON.parse(row.scratchpad) : (row.scratchpad ?? {});
       const delegation = scratchpad.delegation ?? scratchpad.delegateTask ?? {};
       const allDone = Array.isArray(scratchpad.todos?.tasks) && scratchpad.todos.tasks.length > 0 && scratchpad.todos.tasks.every((task: any) => task.status === "done");
-      members.push({ id: String(row.id), title: String(row.title ?? ""), runState: String(row.run_state ?? "idle"), status: String(delegation.status ?? (allDone ? "ready" : "working")), todos: scratchpad.todos ?? null, summary: delegation.summary ?? delegation.result?.summary ?? null, updatedAt: Number(row.updated_at ?? 0), archivedAt: row.archived_at == null ? null : Number(row.archived_at) });
+      const task = (Object.hasOwn(tasks,row.id) ? tasks[row.id] : null) ?? {taskState:null,blockedReason:null,blockedAt:null,armedTriggerCount:0};
+      members.push({ ...task, id: String(row.id), title: String(row.title ?? ""), runState: String(row.run_state ?? "idle"), status: task.taskState==='waiting'?'working':task.taskState==='blocked'?'blocked':String(delegation.status ?? (allDone ? "ready" : "working")), todos: scratchpad.todos ?? null, summary: delegation.summary ?? delegation.result?.summary ?? null, updatedAt: Number(row.updated_at ?? 0), archivedAt: row.archived_at == null ? null : Number(row.archived_at) });
     }
     return members;
 }

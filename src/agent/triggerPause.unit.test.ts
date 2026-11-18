@@ -12,6 +12,7 @@ function fixture(stopped: number | null = null) {
             transaction: async ({ fn }: any) => { state.transaction = true; try { return await fn(); } finally { state.transaction = false; } },
             select: async ({ sql }: any) => {
                 state.queries.push(sql);
+                if (sql.includes('agent_trigger_deliveries')) return [];
                 if (sql.includes('WITH due')) return [];
                 if (sql.includes('FROM agents')) return [target];
                 if (sql.includes('FROM agent_triggers') && sql.includes('FOR UPDATE')) return state.claimed ? [trigger] : [];

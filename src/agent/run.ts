@@ -289,7 +289,9 @@ export default async function (
         await assertRunActive();
         let compacted;
         try {
-            compacted = await ctx.fns.agent.autoCompactIfNeeded({ agent, runToken, signal: ac.signal, checkOnly: compactionBlocked });
+            // The summarizer reads unfiltered history. A delegated claim may
+            // measure its budget, but must not dispatch that history to a model.
+            compacted = await ctx.fns.agent.autoCompactIfNeeded({ agent, runToken, signal: ac.signal, checkOnly: !!goalAuthority || compactionBlocked });
         } catch (error) {
             compactionBlocked = true;
             ctx.fns.procs.log?.warn?.({ event: 'agent.mid-turn-compaction.failed', msg: String(error), agentId: agent.id });
@@ -300,7 +302,7 @@ export default async function (
         ac.signal.throwIfAborted();
         // No retryable provider error: finish this run with a durable explanation,
         // preserving the cursor and every completed tool effect exactly once.
-        if (opts.omitGoalContinuationIdxs?.length || compactionBlocked || compacted?.status === 'compacted' || compacted?.status === 'already_compact') {
+        if (opts.omitGoalContinuationIdxs?.length || compactionBlocked || compacted?.status === 'over_threshold' || compacted?.status === 'compacted' || compacted?.status === 'already_compact') {
             const budget = opts.omitGoalContinuationIdxs?.length
                 ? await ctx.fns.agent.contextBudget({ agentId: agent.id })
                 : await ctx.fns.agent.autoCompactIfNeeded({ agent, runToken, signal: ac.signal, checkOnly: true });
@@ -887,6 +889,11 @@ export default async function (
 
         if (await ctx.fns.input.isWaiting({ agentId: agent.id, since: inputWaitSince })) {
             return Object.assign(goalReturn, { text: '', usage: null, consumedUserIdx, inputWaiting: true });
+        }
+        // finishTask already persisted and notified the parent. End this claim
+        // before another model request: its pending firing has been invalidated.
+        if (goalAuthority && (agent.scratchpad?.delegation?.status === 'ready' || agent.scratchpad?.delegateTask?.status === 'finished')) {
+            return Object.assign(goalReturn, { text: '', usage, consumedUserIdx });
         }
         if (!terminal && (nativeHandoffFailed || nativeMutationStopped || (goalRun && (goalResult?.kind !== 'committed' || goalResult.status !== 'active')))) {
             if (!nativeHandoffFailed && nativeMutationStopped && nativeSnapshot?.status === 'complete'

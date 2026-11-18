@@ -30,6 +30,19 @@ export default async function (
     const parentId = currentMeta.parentId ? String(currentMeta.parentId) : null;
     const finishedAt = Date.now();
     const updated: any = await ctx.fns.procs.db.transaction({ fn: async () => {
+    // Read the immutable required marker under the delivery lock. Ordinary
+    // delegations do not depend on Goal tables (including pre-migration installs).
+    const [owner] = await ctx.fns.procs.db.select({sql:"SELECT run_token,to_jsonb(a)->>'goal_delegation_required' AS required FROM agents a WHERE id=? FOR UPDATE",params:[agent.id]});
+    if (owner?.required === 'true') {
+        const [task] = await ctx.fns.procs.db.select({sql:'SELECT reservation_id,task_state FROM goal_delegation_reservations WHERE source_agent_id=? FOR UPDATE',params:[agent.id]});
+        if (!task || task.task_state === 'cancelled') throw new Error('finishTask: task missing or cancelled');
+        await ctx.fns.goal.delegationEndTriggers({reservationIds:[String(task.reservation_id)]});
+        // A running claim still needs its final accounting receipt. Settlement reads
+        // the committed completion below; a waiting/blocked task has no claim to settle.
+        if (owner.run_token == null || task.task_state === 'waiting' || task.task_state === 'blocked') {
+            await ctx.fns.procs.db.run({sql:"UPDATE goal_delegation_reservations SET task_state='closed',closed_at=COALESCE(closed_at,?),close_reason='terminal',retry_from_run_id=NULL,blocked_reason=NULL,blocked_at=NULL WHERE reservation_id=?::uuid",params:[finishedAt,task.reservation_id]});
+        }
+    }
     const saved: any = await ctx.fns.session.mutateScratchpad({ id: agent.id, mutate: (scratchpad: Record<string, any>) => {
         const delegated = !!scratchpad.delegation;
         const meta = scratchpad.delegation ?? scratchpad.delegateTask;

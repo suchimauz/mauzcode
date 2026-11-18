@@ -12,6 +12,7 @@ function fixture(){
  if(sql.includes('goal_delegation_reservations'))return [r];
  if(sql.includes('goal_usage_checkpoints'))return receipt?[receipt]:[];
  if(sql.includes('goal_delegations'))return [cap];
+ if(sql.includes('FROM agent_trigger'))return [];
  if(sql.includes('FROM agents'))return [child];
  if(sql.includes('FROM messages'))return [message];
  throw Error(sql);
@@ -22,6 +23,6 @@ function fixture(){
 }
 test('publish binds exact task row; arbitrary human provenance rejected',async()=>{const f=fixture();await f.p();expect(f.writes[0].params).toEqual([2,'r']);f.message.author='human';await expect(f.p()).rejects.toThrow('provenance');});
 test('publish rejects consumed, already open, scheduled and wrong type',async()=>{for(const kind of ['consumed','open','scheduled','type']){const f=fixture();if(kind==='consumed')f.r.consumed_at=1;if(kind==='open')f.r.task_state='open';if(kind==='scheduled')f.child.next_run_at=1;if(kind==='type')f.message.message_type='normal';await expect(f.p()).rejects.toThrow();expect(f.writes.length).toBe(0);}});
-test('terminal settles only exact final receipt and fully processed unscheduled frontier',async()=>{const f=fixture();f.r.task_state='open';await f.s();expect(f.writes.length).toBe(2);expect(f.writes[1].sql).toContain("task_state='closed'");for(const kind of ['missing','older','queued','cursor']){const g=fixture();g.r.task_state='open';if(kind==='missing')g.noReceipt();if(kind==='older')g.oldReceipt();if(kind==='queued')g.child.next_run_at=1;if(kind==='cursor')g.child.last_processed_msg_idx=1;await expect(g.s()).rejects.toThrow();expect(g.writes.length).toBe(0);}});
+test('terminal settles only exact final receipt and fully processed unscheduled frontier',async()=>{const f=fixture();f.r.task_state='open';await f.s();expect(f.writes.length).toBe(3);expect(f.writes[0].sql).toContain("state='consumed'");expect(f.writes[2].sql).toContain("task_state='closed'");for(const kind of ['missing','older','queued','cursor']){const g=fixture();g.r.task_state='open';if(kind==='missing')g.noReceipt();if(kind==='older')g.oldReceipt();if(kind==='queued')g.child.next_run_at=1;if(kind==='cursor')g.child.last_processed_msg_idx=1;await expect(g.s()).rejects.toThrow();expect(g.writes.length).toBe(0);}});
 test('retry settlement keeps task open and freezes frontier',async()=>{const f=fixture();f.r.task_state='open';await f.s('retry');expect(f.writes[1].sql).toContain('retry_from_run_id');expect(f.writes.every(w=>!w.sql.includes('authorized_through_idx='))).toBe(true);});
 test('publish and settle disabled or without transaction perform no writes',async()=>{for(const mode of ['disable','noTx'] as const){const f=fixture();f[mode]();await expect(f.p()).rejects.toThrow();await expect(f.s()).rejects.toThrow();expect(f.writes.length).toBe(0);}});

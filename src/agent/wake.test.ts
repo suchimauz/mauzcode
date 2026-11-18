@@ -10,10 +10,18 @@ describe("legacy wake compatibility", () => {
     expect(scheduled.reason).toBe("check build");
     const active = await ctx.fns.agent.triggers({ id: agent.id });
     expect(active[0]).toMatchObject({ kind: "at", prompt: "check build" });
+    const process = ctx.state.registry.agent.processTrigger;
+    const work: Promise<any>[] = [];
+    ctx.state.registry.agent.processTrigger = (c: any, s: any, o: any) => {
+      const delivery = process(c, s, o);
+      work.push(delivery);
+      return delivery;
+    };
     await ctx.fns.agent.pollTriggers({ now: now + 1001 });
-    await Bun.sleep(30);
+    expect(await Promise.all(work)).toMatchObject([{ outcome: 'fired' }]);
     const messages = await ctx.fns.session.getMessages({ id: agent.id });
-    expect(messages.at(-1)).toMatchObject({ role: "user", content: "check build", message_type: "trigger", excluded_from_cursor: true });
+    expect(messages.at(-1)).toMatchObject({ role: "user", content: "check build", message_type: "trigger" });
+    expect(await ctx.fns.procs.db.select({ sql: 'SELECT author, excluded_from_cursor FROM messages WHERE agent_id = ? AND idx = ?', params: [agent.id, messages.at(-1).idx] })).toEqual([{ author: null, excluded_from_cursor: 0 }]);
   });
 
   test("cancelWake cancels unified one-shot alarms", async () => {

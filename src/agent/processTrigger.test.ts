@@ -6,9 +6,9 @@ function fixture(result: unknown, ready=false, fail=false) {
     const runs: any[]=[]; const deliveries: any[]=[]; const writes:any[]=[];
     const ref={version:1,id:'11111111-1111-4111-8111-111111111111',ownerAgentId:'owner',bytes:20000,sha256:'a'.repeat(64),kind:'trigger:tr_test'};
     const row={id:'tr_test',agent_id:'owner',kind:'watch',config:{everyMs:5000},mode:'once',next_at:1};
-    const ctx:any={fns:{procs:{db:{transaction:async(o:any)=>o.fn(),select:async()=>[row],run:async(o:any)=>{if(o.sql.startsWith('INSERT'))runs.push(o.params);return{changes:1};}}},
+    const ctx:any={state:{},fns:{events:{refreshAgentMeta(){}},procs:{db:{transaction:async(o:any)=>o.fn(),select:async()=>[row],run:async(o:any)=>{if(o.sql.startsWith('INSERT'))runs.push(o.params);return{changes:1};}}},
         resultStore:{write:async(o:any)=>{writes.push(o);if(fail)throw Error('disk full');return ref;}},
-        agent:{watchPredicate:async()=>({result,ready}),deliverTriggerPrompt:async(o:any)=>{deliveries.push(o);return true;}}}};
+        agent:{wakeWorker(){},watchPredicate:async()=>({result,ready}),deliverTriggerPrompt:async(o:any)=>{deliveries.push(o);return true;}}}};
     ctx.fns.resultStore.prepare=(o:any)=>prepare(ctx,null,o);
     return {ctx,runs,deliveries,writes,ref,row};
 }

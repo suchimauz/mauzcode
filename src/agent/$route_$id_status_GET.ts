@@ -8,14 +8,16 @@ req: Request;
 params: Record<string, string> }) {
     const id = opts.params.id!;
     const row = ((await ctx.fns.procs.db.select({
-        sql: 'SELECT id, model, run_state, run_started_at, next_run_at, last_processed_msg_idx, last_error FROM agents WHERE id = ?',
+        sql: "SELECT id, model, run_state, run_started_at, next_run_at, last_processed_msg_idx, last_error, to_jsonb(a)->>'goal_delegation_required' AS required FROM agents a WHERE id = ?",
         params: [id],
     })) as any[])[0];
     if (!row) return Response.json({ error: 'not found' }, { status: 404 });
 
+    const task = row.required === 'true' ? (await ctx.fns.goal.delegationTaskStates({sourceAgentIds:[id]}))[id] : null;
     const now = Date.now();
     return Response.json({
         agent: {
+            ...(task ?? {taskState:null,blockedAt:null,blockedReason:null,armedTriggerCount:0}),
             id: row.id,
             model: row.model,
             runState: row.run_state,

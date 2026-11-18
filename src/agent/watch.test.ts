@@ -10,18 +10,26 @@ async function setup(predicate?: (opts: any) => any) {
     const ctx: any = await mkTestCtx();
     const agent = await ctx.fns.agent.start({ model: "mock:test" });
     if (predicate) ctx.state.registry.agent.watchPredicate = async (_c: any, _s: any, o: any) => predicate(o);
+    // Capture the real detached evaluations; the test can await the commit
+    // rather than guessing how quickly a busy test database will respond.
+    const process = ctx.state.registry.agent.processTrigger;
+    const jobs = new Map<string, Promise<unknown>>();
+    ctx.state.registry.agent.processTrigger = (c: Context, s: Session|null, o: {triggerId:string}) => {
+        const work = process(c,s,o);
+        jobs.set(o.triggerId,work);
+        return work;
+    };
+    ctx.triggerJobs = jobs;
     return { ctx, agent };
 }
 
 // pollTriggers starts processTrigger without awaiting it (the worker must not block);
 // wait until the trigger leaves 'checking'.
 async function settle(ctx: any, agentId: string, triggerId: string) {
-    for (let i = 0; i < 100; i++) {
-        const row = (await ctx.fns.agent.triggers({ id: agentId, status: "all" })).find((t: any) => t.id === triggerId);
-        if (row && row.status !== "checking") return row;
-        await Bun.sleep(10);
-    }
-    throw new Error(`trigger ${triggerId} still checking`);
+    const job = ctx.triggerJobs.get(triggerId);
+    if (!job) throw new Error(`trigger ${triggerId} was not claimed`);
+    await job;
+    return (await ctx.fns.agent.triggers({ id: agentId, status: 'all' })).find((t: any) => t.id === triggerId);
 }
 
 describe("wakeUpWhen", () => {
@@ -35,7 +43,7 @@ describe("wakeUpWhen", () => {
         expect(row.lastOutcome).toBe("fired");
         expect(row.lastResult).toEqual({ ok: 42 });
         const msg = (await ctx.fns.session.getMessages({ id: agent.id })).at(-1);
-        expect(msg.content).toBe("wait for x");
+        expect(msg.content).toBe('wait for x\n\nPredicate result: {"ok":42}');
         expect(msg.message_type).toBe("trigger");
     });
 
