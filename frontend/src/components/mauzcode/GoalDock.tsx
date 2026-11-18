@@ -7,7 +7,13 @@ import { IconButton } from '../ui/IconButton';
 import './queue-dock.css';
 import './goal-dock.css';
 
-export function GoalDock({ agentId, running, disabled, editor, onClose, onAccepted }: { agentId: string; running: boolean; disabled: boolean; editor: { text: string } | null; onClose: () => void; onAccepted: () => void }) {
+export function GoalDock(props: GoalDockProps) {
+  return <AgentGoalDock key={props.agentId} {...props} />;
+}
+
+type GoalDockProps = { agentId: string; running: boolean; disabled: boolean; editor: { text: string } | null; onClose: () => void; onAccepted: () => void };
+
+function AgentGoalDock({ agentId, running, disabled, editor, onClose, onAccepted }: GoalDockProps) {
   const [snapshot, setSnapshot] = useState<GoalSnapshot | null>(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
@@ -18,15 +24,16 @@ export function GoalDock({ agentId, running, disabled, editor, onClose, onAccept
   const locked = useRef(false);
   const objectiveInput = useRef<HTMLTextAreaElement>(null);
   useAutoGrow(objectiveInput, editing ? objective : '');
-  const refresh = useRef<() => Promise<void>>(async () => {});
+  const refresh = useRef<(force?: boolean) => Promise<void>>(async () => {});
   useEffect(() => {
-    const controller = new AbortController(); let reading = false;
-    const read = async () => {
-      if (reading || locked.current) return;
+    const controller = new AbortController(); let reading = false, generation = 0;
+    const read = async (force = false) => {
+      if ((reading && !force) || locked.current) return;
       reading = true;
-      try { const value = await getGoal(agentId, controller.signal); if (!controller.signal.aborted) setSnapshot(value); }
-      catch (reason) { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason)); }
-      finally { reading = false; }
+      const request = ++generation;
+      try { const value = await getGoal(agentId, controller.signal); if (!controller.signal.aborted && request === generation && !locked.current) setSnapshot(value); }
+      catch (reason) { if (!controller.signal.aborted && request === generation && !locked.current) setError(reason instanceof Error ? reason.message : String(reason)); }
+      finally { if (request === generation) reading = false; }
     };
     refresh.current = read; void read();
     const poll = () => { if (!document.hidden) void read(); };
@@ -35,15 +42,16 @@ export function GoalDock({ agentId, running, disabled, editor, onClose, onAccept
   }, [agentId]);
   useEffect(() => { if (editor) { setObjective(editor.text || snapshot?.goal?.objective || ''); setBudget(snapshot?.goal?.tokenBudget?.toString() || ''); setEditing(true); setExpanded(true); void refresh.current(); } }, [editor]);
   const goal = snapshot?.goal;
+  const idle = !running && snapshot?.owner?.runState === 'idle' && snapshot.owner.runToken === null;
   const close = () => { setEditing(false); onClose(); };
   const perform = async (action: GoalAction) => {
-    if (!snapshot || locked.current || disabled) return;
+    if (!snapshot || locked.current || disabled || (action === 'clear' && (!idle || !goal))) return;
     const tokens = budget.trim() ? Number(budget) : null;
     if ((action === 'create' || action === 'edit') && (!objective.trim() || (tokens !== null && (!Number.isSafeInteger(tokens) || tokens <= 0)))) { setError('Введите цель и положительный целый бюджет либо оставьте бюджет пустым.'); return; }
     locked.current = true; setBusy(true); setError('');
     try { await changeGoal(agentId, snapshot, action, action === 'create' || action === 'edit' ? { objective: objective.trim(), tokenBudget: tokens } : undefined); close(); onAccepted(); }
     catch (reason) { setError(`${reason instanceof Error ? reason.message : String(reason)} Обновите цель перед новой попыткой.`); }
-    finally { locked.current = false; setBusy(false); await refresh.current(); }
+    finally { locked.current = false; setBusy(false); await refresh.current(true); }
   };
   if (!goal && !editor && !editing) return null;
   return <section className="queue-dock goal-dock" aria-label="Цель агента">
@@ -57,6 +65,9 @@ export function GoalDock({ agentId, running, disabled, editor, onClose, onAccept
       </div>
     </div>
     {expanded && goal && !editing && <div className="goal-details"><p>{goal.objective}</p><span>Токены: {goal.tokensUsed.toLocaleString('ru-RU')}{goal.tokenBudget === null ? ' · без лимита' : ` / ${goal.tokenBudget.toLocaleString('ru-RU')}`} · Время: {Math.floor(goal.timeUsedSeconds / 60)} мин</span></div>}
+    {expanded && goal && !editing && (idle
+      ? <GoalRemoval key={`${goal.goalId}:${goal.revision}`} objective={goal.objective} disabled={disabled || busy} onConfirm={() => void perform('clear')} />
+      : <div className="goal-details"><Button size="compact" disabled>Удалить цель</Button><span>Цель можно удалить, когда агент не выполняет задачу.</span></div>)}
     {editing && <form className="goal-details goal-form" onSubmit={event => { event.preventDefault(); if (snapshot?.enabled && objective.trim()) void perform(goal ? 'edit' : 'create'); }} onKeyDown={event => {
       if (event.nativeEvent.isComposing) return;
       if (event.key === 'Escape') { event.preventDefault(); if (!busy) close(); return; }
@@ -71,4 +82,17 @@ export function GoalDock({ agentId, running, disabled, editor, onClose, onAccept
     </form>}
     {error && <div className="queue-error" role="alert">{error} <button type="button" disabled={busy} onClick={() => { setError(''); void refresh.current(); }}>Обновить цель</button></div>}
   </section>;
+}
+
+function GoalRemoval({ objective, disabled, onConfirm }: { objective: string; disabled: boolean; onConfirm: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const cancel = () => { setConfirming(false); trigger.current?.focus(); };
+  return <div className="goal-details">
+    <button type="button" ref={trigger} className="button button--secondary button--compact" disabled={disabled} aria-expanded={confirming} onClick={() => setConfirming(true)}>Удалить цель</button>
+    {confirming && <div role="group" aria-label={`Удалить цель «${objective}»?`} onKeyDown={event => { if (event.key === 'Escape') cancel(); }}>
+      <p>Удалить цель «{objective}»? История чата сохранится.</p>
+      <div className="goal-form-actions"><Button autoFocus size="compact" onClick={cancel}>Отмена</Button><Button size="compact" disabled={disabled} onClick={() => { setConfirming(false); onConfirm(); }}>Подтвердить удаление</Button></div>
+    </div>}
+  </div>;
 }

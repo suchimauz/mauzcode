@@ -6,7 +6,7 @@ export type Goal = {
   tokenBudget: number | null; tokensUsed: number; timeUsedSeconds: number;
 };
 export type GoalSnapshot = { version: 1; enabled: boolean; goal?: Goal | null; csrfToken?: string; owner?: { runToken: string | null; stoppedAt: number | null; runState: string } };
-export type GoalAction = 'create' | 'edit' | 'pause' | 'resume';
+export type GoalAction = 'create' | 'edit' | 'pause' | 'resume' | 'clear';
 const path = (id: string) => `/agent/${encodeURIComponent(id)}/persistent-goal`;
 export const getGoal = (id: string, signal?: AbortSignal) => requestJson<GoalSnapshot>(path(id), { signal });
 /** Mutate exactly the displayed revision; conflicts must be reviewed, never silently retried. */
