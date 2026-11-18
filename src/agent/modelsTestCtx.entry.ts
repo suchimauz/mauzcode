@@ -25,3 +25,25 @@ export async function mkModelsTestCtx() {
     };
     return ctx;
 }
+
+// Exercise agent.run directly with the same persisted and in-memory claim as the worker.
+export async function runClaimed(ctx: Context, agent: types.agent.Agent, userText = 'go') {
+    const token = crypto.randomUUID();
+    const claim = await ctx.fns.procs.db.run({
+        sql: "UPDATE agents SET run_state = 'running', run_token = ? WHERE id = ? AND run_state = 'idle'",
+        params: [token, agent.id],
+    });
+    if (claim.changes !== 1) throw new Error(`Could not claim test agent ${agent.id}`);
+    agent.currentJobId = token;
+    try {
+        const result = await ctx.fns.agent.run({ agent, userText });
+        if ('goalAdmissionBlocked' in result) throw new Error(`Test run blocked for claimed agent ${agent.id}`);
+        return result;
+    } finally {
+        await ctx.fns.procs.db.run({
+            sql: "UPDATE agents SET run_state = 'idle', run_token = NULL WHERE id = ? AND run_token = ?",
+            params: [agent.id, token],
+        });
+        if (agent.currentJobId === token) agent.currentJobId = null;
+    }
+}

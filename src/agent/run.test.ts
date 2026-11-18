@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
+import { mkModelsTestCtx as mkTestCtx, runClaimed } from './modelsTestCtx.entry';
 
 // The planning-mode context row is covered by its own tests; keep transcript
 // indices here about the tool-call protocol only.
@@ -25,7 +25,7 @@ describe('agent.run', () => {
             { text: 'Смотрю файл.', toolCalls: [{ name: 'read', args: { path: 'src/x.ts' } }] },
             { text: 'Там лежит контент.' },
         ]);
-        await ctx.fns.agent.run({ agent, userText: 'что в файле?' });
+        await runClaimed(ctx, agent, 'что в файле?');
 
         const msgs = await ctx.fns.session.getMessages({ id: agent.id });
         expect(msgs.map((m: any) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
@@ -54,7 +54,7 @@ describe('agent.run', () => {
             ] },
             { text: 'оба готовы' },
         ]);
-        await ctx.fns.agent.run({ agent, userText: 'go' });
+        await runClaimed(ctx, agent);
 
         const msgs = await ctx.fns.session.getMessages({ id: agent.id });
         expect(msgs.map((m: any) => m.role)).toEqual(['user', 'assistant', 'tool', 'tool', 'assistant']);
@@ -71,7 +71,7 @@ describe('agent.run', () => {
             { toolCalls: [{ name: 'read', args: { path: 'a.ts', maxLine: 3 } }] },
             { text: 'понял, опция называется maxLines' },
         ]);
-        await ctx.fns.agent.run({ agent, userText: 'go' });
+        await runClaimed(ctx, agent);
 
         const msgs = await ctx.fns.session.getMessages({ id: agent.id });
         expect(msgs[2]!.role).toBe('tool');
@@ -109,7 +109,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
             { text: 'готово' },
         ] };
         await ctx.fns.session.save({ agent });
-        await ctx.fns.agent.run({ agent, userText: 'go' });
+        await runClaimed(ctx, agent);
         return agent;
     }
 
@@ -171,7 +171,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
             ? { text: 'ok', usage: null, finishReason: 'stop', toolCalls: [] }
             : { text: '', usage: null, finishReason: 'length', toolCalls: [{ id: 'c1', name: 'read', args: { __unparsed: '{"path": "a.t' } }] };
 
-        await ctx.fns.agent.run({ agent, userText: 'go' });
+        await runClaimed(ctx, agent);
         const msgs = await ctx.fns.session.getMessages({ id: agent.id, includeExcluded: true });
         expect(ran).toBe(0);
         expect(msgs.some((m: any) => String(m.content).includes('cut off mid-call'))).toBe(true);
@@ -189,7 +189,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
                 { id: 'invalid', name: 'read', args: { __unparsed: '{' } },
             ] }
             : { text: 'recovered', usage: null, finishReason: 'stop', toolCalls: [] };
-        await ctx.fns.agent.run({ agent, userText: 'go' });
+        await runClaimed(ctx, agent);
         const msgs = await ctx.fns.session.getMessages({ id: agent.id, includeExcluded: true });
         expect(ran).toBe(0);
         expect(sampled).toBe(2);
@@ -215,7 +215,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
             return { text: '', usage: null, finishReason: sampled === 2 ? 'length' : 'stop',
                 toolCalls: [{ id: `bad${sampled}`, name: 'read', args: { __unparsed: '{' } }] };
         };
-        const result = await ctx.fns.agent.run({ agent, userText: 'go' });
+        const result = await runClaimed(ctx, agent);
         expect(sampled).toBe(3);
         expect(ran).toBe(0);
         expect(stopped).toBe(0);
@@ -240,7 +240,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
                 { id: `call${sampled}`, name: 'read', args: sampled === 3 ? { path: 'a.ts' } : { __unparsed: '{' } },
             ] };
         };
-        const result = await ctx.fns.agent.run({ agent, userText: 'go' });
+        const result = await runClaimed(ctx, agent);
         expect(sampled).toBe(6);
         expect(ran).toBe(1);
         expect(result.text).toBe('done');
@@ -259,7 +259,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
             { text: 'THIS TURN MUST NOT RUN' },
         ]);
 
-        const result = await ctx.fns.agent.run({ agent, userText: 'show sessions' });
+        const result = await runClaimed(ctx, agent, 'show sessions');
         const msgs = await ctx.fns.session.getMessages({ id: agent.id });
         expect(msgs.map((m: any) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
         expect(msgs[2]!.content).toContain('HTML response accepted');
@@ -278,7 +278,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
         const ctx: any = await mkCtx();
         const agent = await mkAgent(ctx, Array.from({ length: 4 }, () => ({ text: 'not finished' })));
         await ctx.fns.todo.create({ agent, tasks: [{ id: 'work', title: 'Work', instructions: 'Keep going' }] });
-        const result = await ctx.fns.agent.run({ agent, userText: 'start' });
+        const result = await runClaimed(ctx, agent, 'start');
         const msgs = await ctx.fns.session.getMessages({ id: agent.id, includeExcluded: true });
         const feedback = msgs.filter((m: any) => m.message_type === 'todo_feedback');
         expect(feedback).toHaveLength(2);
@@ -298,7 +298,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
             ? { status: 'continue', reason: 'continue once', nextStep: 'next' }
             : { status: 'achieved', reason: 'done' };
         await ctx.fns.session.save({ agent });
-        await ctx.fns.agent.run({ agent, userText: 'start' });
+        await runClaimed(ctx, agent, 'start');
         const msgs = await ctx.fns.session.getMessages({ id: agent.id, includeExcluded: true });
         expect(msgs.filter((m: any) => m.message_type === 'goal_feedback')).toHaveLength(2);
         expect(msgs.filter((m: any) => m.message_type === 'todo_feedback')).toHaveLength(2);
@@ -317,7 +317,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
             { toolCalls: [{ name: 'read', args: { path: 'a.ts' } }, { name: 'read', args: { path: 'b.ts' } }] },
             { text: 'готово' },
         ]);
-        await ctx.fns.agent.run({ agent, userText: 'go' });
+        await runClaimed(ctx, agent);
         const msgs = await ctx.fns.session.getMessages({ id: agent.id });
         expect(msgs[1]!.tool_calls[0].reasoning_content).toBe('checked the file');
         expect(msgs[1]!.tool_calls[1].reasoning_content).toBeUndefined();
@@ -339,7 +339,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
             { toolCalls: [{ name: 'read', args: { path: 'a.ts' } }, { name: 'read', args: { path: 'b.ts' } }] },
             { text: 'готово' },
         ]);
-        await ctx.fns.agent.run({ agent, userText: 'go' });
+        await runClaimed(ctx, agent);
         const msgs = await ctx.fns.session.getMessages({ id: agent.id });
         expect(msgs[1]!.tool_calls[0].reasoning_blocks).toEqual(blocks);
         expect(msgs[1]!.tool_calls[0].reasoning_origin).toEqual({ connectionId: 'mock/default', model: 'test' });
@@ -362,7 +362,7 @@ describe('transcript surgery keeps JSON pairs intact', () => {
             { toolCalls: [{ name: 'read', args: { path: 'a.ts' } }] },
             { text: 'готово' },
         ]);
-        await ctx.fns.agent.run({ agent, userText: 'go' });
+        await runClaimed(ctx, agent);
         const msgs = await ctx.fns.session.getMessages({ id: agent.id });
         expect(msgs[1]!.tool_calls[0].reasoning_blocks).toBeUndefined();
         expect(msgs[1]!.tool_calls[0].reasoning_content).toBe('kept text');

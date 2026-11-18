@@ -1,16 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
-
-// These direct runs bypass the worker, so mirror its persisted and in-memory claim.
-async function runClaimed(ctx: Context, agent: types.agent.Agent) {
-    const token = crypto.randomUUID();
-    await ctx.fns.procs.db.run({
-        sql: "UPDATE agents SET run_state = 'running', run_token = ? WHERE id = ? AND run_state = 'idle'",
-        params: [token, agent.id],
-    });
-    agent.currentJobId = token;
-    await ctx.fns.agent.run({ agent, userText: 'go' });
-}
+import { mkModelsTestCtx as mkTestCtx, runClaimed } from './modelsTestCtx.entry';
 
 describe("agent goal loop", () => {
     test("continues after an unmet goal and stops when achieved", async () => {

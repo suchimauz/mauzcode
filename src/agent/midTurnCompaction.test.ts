@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
+import { mkModelsTestCtx as mkTestCtx, runClaimed } from './modelsTestCtx.entry';
 
 async function owned(ctx: any) {
     // Isolate route resolution through the current provider-neutral facade.
@@ -72,7 +72,7 @@ describe('owned mid-turn compaction', () => {
             if (!o.checkOnly) attempts++;
             return { status: o.checkOnly ? 'over_threshold' : 'failed', estimatedTokens: 10000, contextWindow: 200000 };
         };
-        await ctx.fns.agent.run({ agent, userText: 'go' });
+        await runClaimed(ctx, agent);
         expect(effects).toBe(4);
         expect(attempts).toBe(1);
     });
@@ -82,7 +82,7 @@ describe('owned mid-turn compaction', () => {
         let calls = 0;
         ctx.state.registry.models.stream = () => { calls++; throw new Error('must not sample'); };
         ctx.state.registry.agent.autoCompactIfNeeded = (_c: any, _s: any, o: any) => ({ status: o.checkOnly ? 'over_threshold' : 'failed', estimatedTokens: 195000, contextWindow: 200000 });
-        await ctx.fns.agent.run({ agent, userText: 'go' });
+        await runClaimed(ctx, agent);
         expect(calls).toBe(0);
         expect((await ctx.fns.session.getMessages({ id: agent.id })).at(-1).content).toContain('Paused');
     });
