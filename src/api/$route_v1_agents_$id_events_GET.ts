@@ -111,11 +111,11 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
     // private forms (logins etc.) without the hook stay out of the transcript.
     const inputKinds = (ctx.state as Context['state'] & { input?: { kinds?: Record<string, types.input.Registered> } }).input?.kinds ?? {};
     const historyKind = (kind: unknown) => typeof kind === 'string' && (['choice', 'confirm', 'grid', 'secret', 'batch'].includes(kind) || typeof inputKinds[kind]?.history === 'function');
-    // Model changes show the shared display names (same as pickers); the raw routes stay in from/to.
-    const changedRoutes = [...new Set(events.filter((event: any) => event.type === 'model_changed').flatMap((event: any) => [event.from, event.to]).filter((route: unknown): route is string => typeof route === 'string' && !!route.trim()))];
+    // Model changes and delegation model choices show the shared display names (same as pickers); raw routes stay in from/to/model.
+    const changedRoutes = [...new Set(events.flatMap((event: any) => event.type === 'model_changed' ? [event.from, event.to] : event.type === 'child_model_selected' ? [event.model] : []).filter((route: unknown): route is string => typeof route === 'string' && !!route.trim()))];
     const modelNames: Record<string, string> = changedRoutes.length ? await ctx.fns.models.displayNames({ routes: changedRoutes }).catch(() => ({})) : {};
     const mobileEvents = events
-        .filter((event: any) => (event.type === 'input' && historyKind(event.kind) && typeof event.inputId === 'string') || ["user", "assistant", "error", "tool_call", "tool_result", "thinking", "stop", "agent_message_outgoing", "compaction_start", "compaction_completed", "compaction_failed", "planning_mode", "planning_proposal", "command_invocation", "command_result", "llm_retry", "tool_busy", "tool_aborted", "goal_transition", "parked", "unparked", "model_changed", "team_update", "wake_up", "canvas_ping", "plan_activation", "goal_activation", "goal_check", "attempt", "attachment_event", "user_message", "trigger_lifecycle"].includes(String(event.type)))
+        .filter((event: any) => (event.type === 'input' && historyKind(event.kind) && typeof event.inputId === 'string') || ["user", "assistant", "error", "tool_call", "tool_result", "thinking", "stop", "agent_message_outgoing", "compaction_start", "compaction_completed", "compaction_failed", "planning_mode", "planning_proposal", "command_invocation", "command_result", "llm_retry", "tool_busy", "tool_aborted", "goal_transition", "parked", "unparked", "model_changed", "team_update", "wake_up", "canvas_ping", "plan_activation", "goal_activation", "goal_check", "attempt", "attachment_event", "child_model_selected", "user_message", "trigger_lifecycle"].includes(String(event.type)))
         .map((event: any) => ({
             ...(event.type === 'input' ? { inputId: event.inputId, kind: event.kind, ...(['choice', 'confirm', 'grid', 'secret', 'batch'].includes(event.kind) ? {} : { pluginHistory: true }) } : {}),
             ...(event.type === 'llm_retry' ? {
@@ -147,6 +147,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
                     goal_activation: ['iterations'], goal_check: ['status', 'iteration', 'maxIterations', 'reason', 'nextStep'],
                     attempt: ['error'], attachment_event: ['source', 'eventType'],
                     trigger_lifecycle: ['transition', 'triggerId', 'triggerKind', 'purpose', 'cause', 'cronExpression', 'timezone', 'nextAt', 'creatorAgentId', 'creatorTitle'],
+                    child_model_selected: ['model', 'reasoningEffort', 'inheritedModel', 'explicitModel', 'explicitReasoningEffort'],
                 };
                 const scheduled = ['user', 'user_message'].includes(String(event.type)) && event.automationKind === 'scheduled';
                 const keys = scheduled ? ['automationKind', 'triggerKind', 'cronExpression', 'timezone', 'prompt', 'reason', 'summary', 'content', 'scheduleId', 'triggerId'] : fields[String(event.type)];
@@ -159,6 +160,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
                 }
                 if (event.type === 'wake_up' && typeof event.resultRef?.id === 'string') display.resultId = event.resultRef.id;
                 if (event.type === 'model_changed') for (const key of ['from', 'to'] as const) { const name = typeof event[key] === 'string' ? modelNames[event[key]] : undefined; if (name) display[key + 'Label'] = name; }
+                if (event.type === 'child_model_selected' && typeof event.model === 'string') { const name = modelNames[event.model]; if (name) display.modelLabel = name; }
                 // Canvas/watch data is intentionally a bounded inert text preview, not a new executable surface.
                 const data = event.type === 'canvas_ping' ? event.data : event.type === 'wake_up' ? event.result : undefined;
                 if (data != null) display.dataPreview = JSON.stringify(data).slice(0, 16000);

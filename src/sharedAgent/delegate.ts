@@ -1,10 +1,12 @@
 /**
  * Delegates one task to a published session's accumulated context
  *
- * Forks a published source session at its current transcript, creates a one-todo list, and queues a child agent. Use after sharedAgent.list identifies a context agent suited to the requested task.
+ * Forks a published source session at its current transcript, creates a one-todo list, and queues a child agent. Use after sharedAgent.list identifies a context agent suited to the requested task. An optional exact model route and reasoning effort are validated before the child exists; an omitted model inherits the source agent's route and an omitted effort means auto.
  * @param opts.agentId Published source agent identifier returned by sharedAgent.list.
  * @param opts.task Concrete task to execute using the published session context.
  * @param opts.requesterId Optional requesting agent identifier recorded for audit.
+ * @param opts.model Optional exact provider/accountName:modelId route for the child.
+ * @param opts.reasoningEffort Optional child reasoning preference; omitted means auto.
  */
 export default async function (
     ctx: Context,
@@ -18,6 +20,10 @@ export default async function (
         task: string;
         /** Optional requesting agent identifier recorded for audit. */
         requesterId?: string;
+        /** Optional exact provider/accountName:modelId route for the child; omitted inherits the source agent's model. */
+        model?: string;
+        /** Optional child reasoning preference; omitted means auto. */
+        reasoningEffort?: types.models.ReasoningLevel | "auto";
     },
 ): Promise<{ childId: string; sourceAgentId: string; status: 'working' }> {
     const sourceAgentId = String(opts.agentId ?? "").trim();
@@ -30,7 +36,13 @@ export default async function (
     const source = (ctx.state as any).agent?.[sourceAgentId] ?? await ctx.fns.session.load({ id: sourceAgentId });
     if (!source) throw new Error("sharedAgent.delegate: source agent not found");
     const title = String(card.name || source.title || sourceAgentId).slice(0, 80) + ": " + task.slice(0, 80);
-    const child = await ctx.fns.session.fork({ id: sourceAgentId, presetId: opts.presetId, title, visibility: "team" });
+    // Validate before the fork so a rejected choice leaves no child behind.
+    const resolved = await ctx.fns.agent.resolveChildModel({ model: opts.model, reasoningEffort: opts.reasoningEffort, parentModel: source.model });
+    const explicit = !!opts.model || !!opts.reasoningEffort;
+    const child = await ctx.fns.session.fork({ id: sourceAgentId, presetId: opts.presetId, title, visibility: "team", ...(opts.model ? { model: resolved.model } : {}), ...(explicit && opts.reasoningEffort ? { reasoningEffort: resolved.reasoningEffort } : {}) });
+    if (explicit) {
+        await ctx.fns.session.appendEvent({ id: child.id, event: { type: "child_model_selected", model: resolved.model, reasoningEffort: resolved.reasoningEffort, inheritedModel: source.model ?? null, explicitModel: !!opts.model, explicitReasoningEffort: !!opts.reasoningEffort } });
+    }
     child.scratchpad = { ...(child.scratchpad ?? {}), sharedAgentTask: { sourceAgentId, requesterId: String(opts.requesterId ?? "").trim() || null, task, createdAt: Date.now() }, delegation: { parentId: sourceAgentId, status: "working", title, createdAt: Date.now() } };
     await ctx.fns.session.updateScratchpad({ id: child.id, scratchpad: child.scratchpad });
     await ctx.fns.todo.create({ agent: child, title, tasks: [{ id: "task", title: task, instructions: "Use the inherited source-session context. Return only information needed by the requester." }] });

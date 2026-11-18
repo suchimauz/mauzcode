@@ -1,4 +1,5 @@
 /** Start for the runtime.  * @param opts.model Model identifier to use.
+ * @param opts.reasoningEffort Initial reasoning preference for the new agent; omitted means auto.
  * @param opts.title Human-readable agent title.
  * @param opts.workspaceDir Workspace directory assigned to the agent; a path on workspaceHost when that is set.
  * @param opts.workspaceHost SSH host alias the workspace lives on; empty or omitted means local.
@@ -13,6 +14,8 @@ export default async function (
     opts: {
         /** Model identifier. */
     model: string;
+        /** Initial reasoning preference; omitted or blank means auto. */
+    reasoningEffort?: types.models.ReasoningLevel | "auto";
         /** Human-readable title. */
     title?: string;
         /** Workspace directory; a path on workspaceHost when that is set. */
@@ -49,7 +52,7 @@ export default async function (
         id,
         model: opts.model,
         title: String(opts.title ?? "").trim().slice(0, 120),
-        reasoningEffort: "auto",
+        reasoningEffort: opts.reasoningEffort || "auto",
         workspaceDir,
         workspaceHost,
         systemPrompt: opts.systemPrompt ?? "",

@@ -31,3 +31,13 @@ test('scheduled user events are automation notices and team links encode identit
   rerender(<TranscriptMessage agentId="a" event={{ ...event, type: 'team_update', lifecycle: { event: 'todos.completed', memberId: 'a/b', summary: 'ok' } }} />);
   expect(screen.getByText('Задачи завершены')).toBeTruthy();
 });
+test('child_model_selected shows the chosen route, label and effort as inert text', () => {
+  const { container } = render(<TranscriptMessage agentId="a" event={{ ...event, type: 'child_model_selected', lifecycle: { model: 'claude/work:claude-opus-4-5', modelLabel: 'Claude Opus 4.5', reasoningEffort: 'high', inheritedModel: 'codex/main:gpt-5', explicitModel: true, explicitReasoningEffort: true } }} />);
+  const summary = screen.getByText('Модель делегированного агента').closest('summary');
+  expect(summary).toBeTruthy();
+  expect(container.querySelector('details')).toBeTruthy();
+  expect(screen.getByText('Claude Opus 4.5')).toBeTruthy();
+  expect(summary!.textContent).toContain('effort: high');
+  expect(container.textContent).toContain('codex/main:gpt-5');
+  expect(container.querySelector('script,img')).toBeNull();
+});
