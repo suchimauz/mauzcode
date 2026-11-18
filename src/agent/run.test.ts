@@ -90,7 +90,7 @@ describe('agent.run', () => {
         const wire = ctx.fns.agent.wireTools({ agent });
         // Native goal tools (create_goal/get_goal/update_goal) join when the goal feature is on;
         // finish_task appears only for delegated children.
-        expect(wire.map((t: any) => t.name).filter((n: string) => !n.endsWith('_goal')).sort()).toEqual(['bash', 'delegate_task', 'edit', 'eval', 'find', 'grep', 'read', 'read_result', 'request_input', 'respondHtml', 'show_artifact', 'todo_done', 'todo_update', 'tool_describe', 'tool_search', 'write']);
+        expect(wire.map((t: any) => t.name).filter((n: string) => !n.endsWith('_goal')).sort()).toEqual(['bash', 'delegate_task', 'edit', 'eval', 'find', 'grep', 'list_models', 'read', 'read_result', 'request_input', 'respondHtml', 'show_artifact', 'todo_done', 'todo_update', 'tool_describe', 'tool_search', 'write']);
 
         const narrowed = ctx.fns.agent.wireTools({ agent: { ...agent, tools: ['read'] } });
         expect(narrowed).toHaveLength(1);

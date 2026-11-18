@@ -32,6 +32,13 @@ parameters:
     presetId:
       type: string
       description: "Optional preset that narrows the child's access; never widens yours."
+    model:
+      type: string
+      description: "Exact child route from list_models; omitted inherits yours."
+    reasoningEffort:
+      type: string
+      enum: [auto, off, minimal, low, medium, high, xhigh]
+      description: "Child effort supported by its model; omitted means auto."
   required: [title, tasks]
   additionalProperties: false
 ---

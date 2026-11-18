@@ -5,6 +5,7 @@ import nativeTools from './$migration_20380103120000_native_agent_tools';
 import planDelegationTools from './$migration_20380104120000_native_plan_delegation_tools';
 import showArtifactTool from './$migration_20380105120000_native_show_artifact';
 import todoTools from './$migration_20380106120000_todo_tools';
+import listModelsTool from './$migration_20380107120000_native_list_models';
 
 // Every factory upgrade in order, as boot applies them.
 const migration = { up: async (ctx: Context) => { await expansion.up(ctx); await nativeTools.up(ctx); await planDelegationTools.up(ctx); await showArtifactTool.up(ctx); } };
@@ -71,8 +72,10 @@ describe('conservative Standard factory upgrade', () => {
         });
         const others = await ctx.fns.procs.db.select({ sql: "SELECT * FROM agent_presets WHERE id <> 'standard' ORDER BY id" });
         await migration.up(ctx);
-        // Factory upgrades end at the last pre-todo Standard; the todo rename then reaches today's defaults.
+        // Factory upgrades end at the last pre-todo Standard; the todo rename and the model-discovery
+        // adapter grant then reach today's defaults.
         await todoTools.up(ctx);
+        await listModelsTool.up(ctx);
         const upgraded = await read(ctx);
         const shipped = ctx.fns.agentPreset.defaults({})[0]!;
         expect({ ...upgraded, updated_at: Number(upgraded.updated_at) }).toEqual({ ...shipped, allow: expect.any(Array), updated_at: expect.any(Number) });
@@ -151,6 +154,7 @@ describe('native agent tools Standard upgrade', () => {
         await planDelegationTools.up(ctx);
         await showArtifactTool.up(ctx);
         await todoTools.up(ctx);
+        await listModelsTool.up(ctx);
         expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {
@@ -179,6 +183,7 @@ describe('native plan and delegation tools Standard upgrade', () => {
         // The next factory upgrades chain on top and land on today's shipped defaults.
         await showArtifactTool.up(ctx);
         await todoTools.up(ctx);
+        await listModelsTool.up(ctx);
         expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {
@@ -205,6 +210,7 @@ describe('native show_artifact Standard upgrade', () => {
         await showArtifactTool.up(ctx);
         expect(await read(ctx)).toEqual(upgraded);
         await todoTools.up(ctx);
+        await listModelsTool.up(ctx);
         expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {

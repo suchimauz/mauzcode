@@ -39,12 +39,12 @@ test("contract view accepts only added optional options", () => {
     expect(contractView("opts: { id: number; refresh?: boolean }", original)).not.toBe(normalizeParam(original));
 });
 
-test("root model procedures are exactly the minimal facade plus providers, disabledProviders and api", async () => {
+test("root model procedures are exactly the minimal facade plus providers, disabledProviders, selectable and api", async () => {
     const roots = [...new Bun.Glob("*.ts").scanSync(import.meta.dir)]
         .filter(file => !file.endsWith(".test.ts") && !file.startsWith("$") && /^[a-z]/.test(file))
         .map(file => file.slice(0, -3)).sort();
-    expect(roots).toEqual([...Object.keys(baseline.procedures), "disabledProviders", "displayNames", "resolveRoute", "setContextLimits", "tokenPrice"].sort());
-    expect(roots).toEqual(["action", "api", "call", "compact", "countTokens", "create", "disabledProviders", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "setContextLimits", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
+    expect(roots).toEqual([...Object.keys(baseline.procedures), "disabledProviders", "displayNames", "resolveRoute", "selectable", "setContextLimits", "tokenPrice"].sort());
+    expect(roots).toEqual(["action", "api", "call", "compact", "countTokens", "create", "disabledProviders", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "selectable", "setContextLimits", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
 });
 
 test("original public model signatures, async declarations, types and HTTP route contracts survive", async () => {

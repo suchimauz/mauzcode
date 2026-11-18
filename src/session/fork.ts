@@ -4,6 +4,10 @@ export default async function (ctx: Context, _session: Session | null, opts: {
 id: string;
         /** Optional preset to intersect with the parent's creation snapshot; omitted inherits unchanged. */
 presetId?: string;
+        /** Optional exact provider/accountName:modelId route for the child; omitted inherits the parent's model. Validating availability is the caller's responsibility. */
+model?: string;
+        /** Optional initial reasoning preference for the child; omitted means auto and is never inherited from the parent. */
+reasoningEffort?: types.models.ReasoningLevel | "auto";
         /** Human-readable title. */
 title?: string;
         /** Number of parent messages inherited by the child. */
@@ -45,7 +49,8 @@ deferPublication?: boolean }): Promise<types.agent.Agent> {
     const fullCount = (await ctx.fns.session.getFullMessages({ id })).length;
     const create = async () => {
     const agent = await ctx.fns.agent.start({
-        model: parent.model,
+        model: opts.model || parent.model,
+        reasoningEffort: opts.reasoningEffort ?? "auto",
         systemPrompt: parent.systemPrompt,
         tools: parent.tools,
         preset: await ctx.fns.agentPreset.resolve({ id: opts.presetId, parent: parent.preset }),

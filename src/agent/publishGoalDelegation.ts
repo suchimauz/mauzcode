@@ -1,13 +1,15 @@
 /**
  * Atomically reserve and queue the first turn of a Goal child
  *
- * Internal Goal-only publication path. Constructs an unpublished child through existing fork/start, reserves under captured live delegator authority, and persists task and schedule in one transaction. Publishes live state and notifications only after commit. One-shot reservation only: later turns remain blocked rather than clearing the required marker.
+ * Internal Goal-only publication path. Constructs an unpublished child through existing fork/start, reserves under captured live delegator authority, and persists task and schedule in one transaction. Publishes live state and notifications only after commit. One-shot reservation only: later turns remain blocked rather than clearing the required marker. An optional child model route and reasoning effort are validated through agent.resolveChildModel before the transaction, so a rejected choice leaves no reservation or child behind.
  * @param opts.parent Delegator matching the run-owned invocation scope.
  * @param opts.title Optional child title.
  * @param opts.forkContext Inherit full transcript when true; false constructs a fresh child. Omit for a zero-offset fork.
  * @param opts.prompt First delegated task message persisted with internal delegation_task provenance.
  * @param opts.scratchpad Delegation metadata persisted on the new child; never authority.
  * @param opts.tasks Optional native visible todos initialized inside the transaction.
+ * @param opts.model Optional exact provider/accountName:modelId route for the child; omitted inherits the parent's model.
+ * @param opts.reasoningEffort Optional child reasoning preference; omitted means auto.
  */
 export default async function (
     ctx: Context,
@@ -27,14 +29,22 @@ export default async function (
         scratchpad: Record<string, unknown>;
         /** Optional native visible todos initialized inside the transaction. */
         tasks?: Array<{id:string;title:string;instructions?:string}>;
+        /** Optional exact provider/accountName:modelId route for the child; omitted inherits the parent's model. */
+        model?: string;
+        /** Optional child reasoning preference; omitted means auto and never inherits the parent's level. */
+        reasoningEffort?: types.models.ReasoningLevel | "auto";
     },
 ): Promise<{id:string}> {
     const a=await ctx.fns.goal.delegationCapture({agentId:opts.parent.id});
     if(!a) throw new Error('Goal publication requires invocation authority');
+    // Validate before the transaction: a rejected route or effort must leave no reservation, child or schedule.
+    const resolved=await ctx.fns.agent.resolveChildModel({model:opts.model,reasoningEffort:opts.reasoningEffort,parentModel:opts.parent.model});
+    const explicit=!!opts.model||!!opts.reasoningEffort;
     const child = await ctx.fns.procs.db.transaction({fn:async()=>{
      const child=opts.forkContext===false
-     ? await ctx.fns.agent.start({preset:await ctx.fns.agentPreset.resolve({id:opts.presetId,parent:opts.parent.preset}),model:ctx.fns.agent.requireModel({model:opts.parent.model,agentId:opts.parent.id}),systemPrompt:opts.parent.systemPrompt,workspaceDir:opts.parent.workspaceDir,workspaceHost:opts.parent.workspaceHost,visibility:'team',deferPublication:true})
-     : await ctx.fns.session.fork({id:a.sourceAgentId,presetId:opts.presetId,title:opts.title,visibility:'team',...(opts.forkContext?{}:{offset:0}),deferPublication:true});
+     ? await ctx.fns.agent.start({preset:await ctx.fns.agentPreset.resolve({id:opts.presetId,parent:opts.parent.preset}),model:resolved.model,reasoningEffort:resolved.reasoningEffort,systemPrompt:opts.parent.systemPrompt,workspaceDir:opts.parent.workspaceDir,workspaceHost:opts.parent.workspaceHost,visibility:'team',deferPublication:true})
+     : await ctx.fns.session.fork({id:a.sourceAgentId,presetId:opts.presetId,title:opts.title,visibility:'team',model:resolved.model,reasoningEffort:resolved.reasoningEffort,...(opts.forkContext?{}:{offset:0}),deferPublication:true});
+     if(explicit) await ctx.fns.session.appendEvent({id:child.id,event:{type:'child_model_selected',model:resolved.model,reasoningEffort:resolved.reasoningEffort,inheritedModel:opts.parent.model??null,explicitModel:!!opts.model,explicitReasoningEffort:!!opts.reasoningEffort},deferPublication:true});
      const reservation=await ctx.fns.goal.delegationReserve({rootAgentId:a.rootAgentId,goalId:a.goalId,delegatorAgentId:a.sourceAgentId,delegatorRunToken:a.runToken,sourceAgentId:child.id,parentCapabilityId:a.parentCapabilityId});
      child.scratchpad={...opts.scratchpad};
      await ctx.fns.session.updateScratchpad({id:child.id,scratchpad:child.scratchpad});

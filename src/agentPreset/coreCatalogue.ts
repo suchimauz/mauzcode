@@ -195,8 +195,10 @@ export default function (
             "patterns": []
         },
         "models": {
-            "classification": "creator",
-            "patterns": []
+            "classification": "standard",
+            "patterns": [
+                "models.selectable"
+            ]
         },
         "nav": {
             "classification": "internal",
@@ -348,7 +350,8 @@ export default function (
                 "tools.todoDone",
                 "tools.delegateTask",
                 "tools.finishTask",
-                "tools.showArtifact"
+                "tools.showArtifact",
+                "tools.listModels"
             ]
         },
         "tsgo": {
