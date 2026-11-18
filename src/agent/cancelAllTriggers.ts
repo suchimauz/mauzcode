@@ -16,12 +16,14 @@ export default async function (
     const count = await ctx.fns.procs.db.transaction({fn:async()=>{
         await ctx.fns.procs.db.select({sql:'SELECT id FROM agents WHERE id=? FOR UPDATE',params:[opts.id]});
         await ctx.fns.procs.db.select({sql:'SELECT reservation_id FROM goal_delegation_reservations WHERE source_agent_id=? FOR UPDATE',params:[opts.id]});
-        const rows = await ctx.fns.procs.db.select({sql:"UPDATE agent_triggers SET status='cancelled',next_at=NULL,claim_token=NULL,claimed_at=NULL,updated_at=?,finished_at=? WHERE agent_id=? AND status IN ('active','checking') RETURNING task_reservation_id",params:[now,now,opts.id]});
+        const rows = await ctx.fns.procs.db.select({sql:"UPDATE agent_triggers SET status='cancelled',next_at=NULL,claim_token=NULL,claimed_at=NULL,updated_at=?,finished_at=? WHERE agent_id=? AND status IN ('active','checking') RETURNING id,kind,prompt,config,timezone,task_reservation_id",params:[now,now,opts.id]});
+        if (rows.length) await ctx.fns.agent.triggerLifecycleEvents({agentId:opts.id,transition:'cancelled',rows:rows as any[],cause:'bulk'});
         for (const reservationId of new Set(rows.map(row=>String(row.task_reservation_id??'')).filter(Boolean))) {
             await ctx.fns.agent.reconcileTriggerWait({reservationId,reason:'trigger_cancelled',now});
         }
         return rows.length;
     }}) as number;
     ctx.fns.agent.wakeWorker({});
+    if (count > 0) await ctx.fns.agent.publishTriggerChange({agentIds:[opts.id],reason:'trigger-cancelled'});
     return {cancelled:count};
 }

@@ -8,7 +8,7 @@ import { ThinkingRow } from './ThinkingRow';
 import { ActiveToolRow } from './ActiveToolRow';
 import { TranscriptMessage as Message } from './TranscriptMessage';
 import { ProcessGroup, WorkGroup } from './WorkGroups';
-import { processEntries, workTurns } from './transcriptGroups';
+import { isSystemNotice, processEntries, workTurns } from './transcriptGroups';
 import { coalesceCompactions } from './compactionEvents';
 import { coalesceCommands } from './commandEvents';
 import { captureTranscriptAnchor, restoreTranscriptAnchor, type TranscriptAnchor } from './transcriptScroll';
@@ -79,7 +79,7 @@ export function Transcript({ agentId, events, page, hasOlder, loadingOlder, load
     {hasOlder && <div className="load-older-row"><button type="button" className="load-older" disabled={loadingOlder} onClick={() => { void loadOlder(); }}>{loadingOlder ? 'Загрузка…' : 'Ранее в разговоре'}</button></div>}
     {workTurns(coalesceQuestionHistory(coalesceCommands(coalesceCompactions(events))), !!page?.isRunning, page?.runs).map((turn, turnIndex, turns) => <Fragment key={`${agentId}:${turn.key}`}>
       {turn.input && <Message event={turn.input} agentId={agentId} />}
-      <WorkGroup turn={turn}>
+      <WorkGroup turn={turn} pinned={turn.events.filter(isSystemNotice).map(event => <Message key={`pinned:${event.idx}`} event={event} agentId={agentId} />)}>
         {processEntries(turn.events.filter(event => !choiceResultId(event))).map((entry, entryIndex, entries) => entry.kind === 'message'
           ? <Message key={entry.event.idx} event={entry.event} agentId={agentId} latestIdx={events.at(-1)?.idx} />
           : <ProcessGroup key={entry.key} events={entry.events} live={!!page?.isRunning && turn.status === 'open' && turnIndex === turns.length - 1 && entryIndex === entries.length - 1}>

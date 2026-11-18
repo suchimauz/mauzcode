@@ -29,7 +29,7 @@ export function useCommandMenu(value: string, enabled: boolean, options: { plusO
   const rows: ComposerCommand[] = [
     ...(options.file ? [{ name: 'file', label: 'File', section: 'Add' as const, description: '', usage: [] }] : []),
     { name: 'goal', label: 'Goal', section: 'Commands', description: 'Открыть или изменить цель агента', inputHint: '/goal [цель]', usage: ['/goal', '/goal <цель>'] },
-    ...commands.filter(command => command.name !== 'goal').map(command => ({ ...command, label: command.name === 'plan' ? 'Plan' : command.name === 'compact' ? 'Compact' : command.name, section: command.name === 'plan' ? 'Add' as const : 'Commands' as const, disabled: !!options.running || (command.name === 'compact' && !options.compact) })),
+    ...commands.filter(command => command.name !== 'goal').map(command => ({ ...command, label: command.name === 'plan' ? 'Plan' : command.name === 'compact' ? 'Compact' : command.name === 'trigger' ? 'Trigger' : command.name, section: command.name === 'plan' ? 'Add' as const : 'Commands' as const, disabled: !!options.running || (command.name === 'compact' && !options.compact) })),
   ];
   const filter = options.plusOpen ? '' : query || '';
   const matches = rows.filter(command => command.name.toLowerCase().includes(filter.toLowerCase())).sort((a, b) => Number(a.section === 'Commands') - Number(b.section === 'Commands'));

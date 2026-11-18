@@ -62,6 +62,7 @@ export function ToolRow({ event, agentId, initialDetails }: { event: ChatEvent; 
       <span className="tool-row-title" title={name}>{shown.label}</span>
       {event.type === 'tool_result' && <span className="tool-row-kind">Результат</span>}
       {!file && shown.summary && <><span className="tool-row-dot" aria-hidden="true" /><span className="tool-row-description" title={shown.summary}>{shown.summary}</span></>}
+      {!!event.createdTriggers?.length && <span className="tool-row-badge" title={event.createdTriggers.map(trigger => trigger.id).join(', ')}>{event.createdTriggers.length > 1 ? `Создано триггеров: ${event.createdTriggers.length}` : 'Триггер создан'}</span>}
       {failed && <span className="sr-only">Ошибка выполнения</span>}
     </button>
     {file && <><span className="tool-row-dot" aria-hidden="true" /><button type="button" className="tool-row-file tool-row-description" title={`Открыть в Canvas: ${file.host ? file.host + ':' : ''}${shown.summary || file.path}`} aria-label={`Открыть в Canvas: ${file.path}`} disabled={openingFile} onClick={event => { event.stopPropagation(); void openFile(); }}>{shown.summary || file.path}</button></>}

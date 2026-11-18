@@ -834,11 +834,17 @@ export default async function (
             const accountingBlocked = nativeHandoffFailed || nativeMutationStopped || (goalRun && (goalResult?.kind !== 'committed' || goalResult.status !== 'active'));
             const dispatchTool = () => {
                 const binding = nativeBinding();
-                return typeof ctx.fns.goal.toolScope === 'function'
-                    ? ctx.fns.goal.toolScope({ action: binding ? 'with' : 'clear', binding, onMutation: binding ? onNativeMutation : undefined,
+                // The provider call id lets nested runtime calls (including inside eval) record their creator.
+                const invokeTool = () => typeof ctx.fns.agent.toolCallScope === 'function'
+                    ? ctx.fns.agent.toolCallScope({ action: 'with', binding: { agentId: agent.id, toolCallId: String(call.id ?? '') },
                         fn: () => ctx.fns.tools.call({ name: call.name, args: call.args, agent }),
                     }) as Promise<Awaited<ReturnType<typeof ctx.fns.tools.call>>>
                     : ctx.fns.tools.call({ name: call.name, args: call.args, agent });
+                return typeof ctx.fns.goal.toolScope === 'function'
+                    ? ctx.fns.goal.toolScope({ action: binding ? 'with' : 'clear', binding, onMutation: binding ? onNativeMutation : undefined,
+                        fn: invokeTool,
+                    }) as Promise<Awaited<ReturnType<typeof ctx.fns.tools.call>>>
+                    : invokeTool();
             };
             const inputBlocked = await ctx.fns.input.isWaiting({ agentId: agent.id, since: inputWaitSince });
             const r = inputBlocked
@@ -862,7 +868,7 @@ export default async function (
             // old calls too (including edit diff cards).
             await ctx.fns.session.appendToolCallEvent({ id: agent.id, payload: {
                 name: call.name, args: call.args, result: output, result_ref,
-                isError: r.isError,
+                isError: r.isError, ...(call.id ? { toolCallId: String(call.id) } : {}),
                 ...(r.details ? { details: r.details } : {}),
                 durationMs: toolDurationMs,
                 messageIdx: append.idx,
