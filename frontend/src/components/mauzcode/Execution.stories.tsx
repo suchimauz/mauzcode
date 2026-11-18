@@ -3,7 +3,7 @@ import { CurrentAction } from './CurrentAction';
 import { ActiveToolRow } from './ActiveToolRow';
 import { ToolRow } from './ToolRow';
 import type { EventPage } from '../../lib/mauzcode';
-const page = { isRunning: true, turnStartedAt: Date.now(), activityStartedAt: Date.now(), activeTools: [{ id: 'fixture', name: 'tools_eval', subject: 'Inspect runtime', startedAt: Date.now(), state: 'running', tail: '{\n  "status": "running",\n  "checked": 12\n}' }] } as EventPage;
+const page = { isRunning: true, turnStartedAt: Date.now(), activityStartedAt: Date.now(), activeTools: [{ id: 'fixture', name: 'bash', label: 'Bash', icon: 'terminal', category: 'commands', summary: 'set -euo pipefail', startedAt: Date.now(), state: 'running', tail: 'checked 12 packages\nbuilding…', args: { command: 'set -euo pipefail\nbun install --frozen-lockfile\nfor pkg in packages/*; do\n  (cd "$pkg" && bun run build)\ndone\nbun test --coverage', timeout: 600 } }] } as unknown as EventPage;
 const meta = { title: 'MauzCode/Execution', component: CurrentAction, args: { page }, decorators: [Story => <div style={{ maxWidth: 760, padding: 32 }}><Story /></div>] } satisfies Meta<typeof CurrentAction>;
 export default meta;
 type Story = StoryObj<typeof meta>;

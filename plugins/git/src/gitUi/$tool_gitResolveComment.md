@@ -1,6 +1,11 @@
 ---
 description: Resolve one of your workspace Git review comments after addressing it. Requires an open owned Git tab; repeated resolution is idempotent.
 fn: gitUi.gitResolveComment
+presentation:
+  label: Resolve comment
+  icon: comment-check
+  category: git
+  summary: "{note|first-line} || {id}"
 parameters:
   type: object
   additionalProperties: false

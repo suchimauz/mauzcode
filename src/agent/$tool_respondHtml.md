@@ -8,6 +8,11 @@ promptSnippet: "finish the turn with a sanitized HTML response visible to the us
 promptGuidelines:
   - "Use respondHtml only as the final tool call of a turn, after all data gathering is complete. Put the complete accessible answer in html and a concise plain-text fallback/history representation in text. Do not emit prose alongside the call, and do not call it together with other tools."
   - "respondHtml is terminal: after it succeeds, the runtime records the tool result, sanitizes through agent.sanitizeHtmlBody, publishes the HTML as the assistant answer, and does not ask the model for a follow-up final. Never use session.appendAssistantMessage/Event from a tool to imitate this flow."
+presentation:
+  label: Answer
+  icon: answer
+  category: agent
+  summary: "{text|first-line}"
 parameters:
   type: object
   properties:

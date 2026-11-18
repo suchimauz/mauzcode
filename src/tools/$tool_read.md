@@ -9,6 +9,11 @@ promptSnippet: "read files, whole or by line range"
 promptGuidelines:
   - "Read the target range before editing; pass its readId and use hashline for anchor edits. If the file changed, review fresh content before retrying; never overwrite concurrent changes."
   - "To look at a screenshot or any image, read its path: the image is attached to the result and you see it."
+presentation:
+  label: Read
+  icon: file
+  category: files
+  summary: "@read"
 parameters:
   type: object
   properties:

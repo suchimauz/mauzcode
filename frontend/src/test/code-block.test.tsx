@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ChatMarkdown } from '../components/mauzcode/ChatMarkdown';
 import { ToolBody } from '../components/mauzcode/ToolBody';
+import { ToolCallPanel } from '../components/mauzcode/ToolCallPanel';
 import { CodeBlock } from '../components/mauzcode/CodeBlock';
 import { codeLanguage } from '../lib/codeLanguage';
 import { highlightCode } from '../lib/highlightCode';
@@ -62,12 +63,13 @@ it('keeps streaming and unknown code readable before highlighting', () => {
 it('shows eval language headers and highlighted input/output, including Clojure nREPL', async () => {
   vi.stubGlobal('IntersectionObserver', undefined);
   const details = { idx: 1, type: 'tool_call', ts: 1, name: 'tools_eval', args: '{}', result: '{ ok: true, count: 42 }', isError: false, argsTruncated:false, resultTruncated:false };
-  const view = render(<ToolBody details={details} kind="tools_eval" args={{code:Array.from({length:20}, (_,i) => `const count${i} = ${i};`).join('\n')}} />);
+  const code = Array.from({length:20}, (_,i) => `const count${i} = ${i};`).join('\n');
+  const view = render(<ToolCallPanel args={{code}} output={<ToolBody details={details} kind="tools_eval" args={{code}} />} />);
   expect(screen.getByText('typescript')).toBeVisible(); expect(screen.getByText('javascript')).toBeVisible();
   expect(screen.queryByRole('button', {name:/Показать все/})).toBeNull();
   expect(view.container.querySelector('[data-language=typescript]')).toHaveTextContent('const count19 = 19;');
   await waitFor(() => expect(view.container.querySelectorAll('[data-highlighted="true"]')).toHaveLength(2));
-  view.rerender(<ToolBody details={{...details,name:'nrepl.eval',result:'42'}} kind="eval" args={{code:'(+ 20 22)'}} />);
+  view.rerender(<ToolCallPanel codeLanguage="clojure" args={{code:'(+ 20 22)'}} output={<ToolBody details={{...details,name:'nrepl.eval',result:'42'}} kind="eval" args={{code:'(+ 20 22)'}} />} />);
   expect(screen.getByText('clojure')).toBeVisible();
   await waitFor(() => expect(view.container.querySelector('[data-language="clojure"]')).toHaveAttribute('data-highlighted','true'));
 });

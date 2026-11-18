@@ -90,7 +90,7 @@ export function Transcript({ agentId, events, page, hasOlder, loadingOlder, load
       {turn.answer && <Message event={turn.answer} agentId={agentId} />}
     </Fragment>)}
     {page?.thinking && <ThinkingRow summary={page.thinking.publicSummary} />}
-    {page?.activeTools?.map((run, index, runs) => <ActiveToolRow key={run.id} run={run} autoOpen={index === runs.length - 1} />)}
+    {page?.activeTools?.map((run, index, runs) => <ActiveToolRow key={run.id} run={run} agentId={agentId} autoOpen={index === runs.length - 1} />)}
     {page?.partial && <article className="message message--assistant streaming-message"><div className="markdown"><ChatMarkdown>{page.partial.text}</ChatMarkdown></div></article>}
     {page?.compactionRetry && <CompactionRetrying status={page.compactionRetry} />}
     {page?.isRunning && <CurrentAction page={page} />}

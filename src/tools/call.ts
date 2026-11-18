@@ -158,7 +158,8 @@ export default async function (
         // decide what to do next instead of blindly retrying the same call.
         if (run.aborted) {
             const secs = Math.round((Date.now() - run.startedAt) / 1000);
-            const tail = run.tail.trimEnd();
+            // Only the end is useful to the model; the full output was live in the chat.
+            const tail = run.output.slice(-4000).trimEnd();
             output = `[stopped by the user after ${secs}s — the result is unknown, do not assume it failed]`
                 + (tail ? `\nOutput before it was stopped:\n${tail}` : "");
         } else {

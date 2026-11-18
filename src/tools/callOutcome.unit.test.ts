@@ -3,7 +3,7 @@ import call from './call';
 
 // Deliberately isolated from _testCtx and its database/runtime preload.
 function setup() {
-    const run = { id: 'unit', controller: new AbortController(), aborted: false, startedAt: Date.now(), tail: '' };
+    const run = { id: 'unit', controller: new AbortController(), aborted: false, startedAt: Date.now(), output: '', outputStart: 0 };
     const tool = { key: 'unit', name: 'unit', wireName: 'unit', fn: 'sample.handler', parameters: {}, validate: '' };
     let invocations = 0;
     let ended = 0;

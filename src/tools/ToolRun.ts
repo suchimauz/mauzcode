@@ -11,22 +11,32 @@
 // survive a restart is not running, and a stale row claiming otherwise would
 // be the same lie in a new place.
 export type ToolRun = {
-    /** Unique id of this execution, used by the abort route. */
+    /** Unique id of this execution, used by the abort and output routes. */
     id: string;
     /** Agent the call belongs to; empty when a tool is invoked outside a run. */
     agentId: string;
     /** Wire name of the tool, e.g. "bash". */
     name: string;
-    /** Short human subject of the call — the command, the path, the pattern. */
-    subject: string;
-    /** Phosphor icon name for the tool. */
+    /** Human label from the tool's presentation (tools.presentation). */
+    label: string;
+    /** Allow-listed icon id from the tool's presentation. */
     icon: string;
+    /** Presentation category: files, search, commands, agent, git or tools. */
+    category: string;
+    /** Full one-line summary of the call — never cut on the server. */
+    summary: string;
+    /** Complete call arguments with secret-bearing values redacted. */
+    args: unknown;
+    /** True when the redacted arguments exceed the live broadcast limit and are fetched on expand. */
+    argsLarge: boolean;
     /** Epoch ms when execution began. */
     startedAt: number;
     /** Declared deadline in ms, when the tool takes a timeout; null when open-ended. */
     timeoutMs: number | null;
-    /** Most recent output the tool has streamed so far (bash stdout/stderr tail). */
-    tail: string;
+    /** Output streamed so far, bounded by a per-run cap (oldest dropped first). */
+    output: string;
+    /** Stream offset (UTF-16 code units) of output[0]; equals the amount of dropped output. */
+    outputStart: number;
     /** Set once the user asks for this call to stop. */
     aborted: boolean;
     /** Cancels the call; bash kills the process, other tools stop being awaited. */

@@ -3,7 +3,7 @@ import call from './call';
 
 function fixture(signal: AbortSignal, invoke: () => Promise<string>) {
     let ended = 0;
-    const run = { id: 'test', controller: new AbortController(), aborted: false, startedAt: Date.now(), tail: '' };
+    const run = { id: 'test', controller: new AbortController(), aborted: false, startedAt: Date.now(), output: '', outputStart: 0 };
     const ctx: any = { runSignal: signal, fns: {
         tools: {
             list: () => [{ name: 'fixture', wireName: 'fixture', fn: 'fixture.invoke', parameters: {} }],

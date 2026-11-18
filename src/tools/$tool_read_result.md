@@ -6,6 +6,11 @@ description: >-
   {ok, text, totalChars, offset, truncated} or {ok:false, error}. Check truncated and read the next
   offset instead of rerunning the tool.
 promptSnippet: "read a range of a stored large tool result by UUID"
+presentation:
+  label: Read result
+  icon: archive
+  category: tools
+  summary: "{id}[ @{offset}]"
 parameters:
   type: object
   properties:

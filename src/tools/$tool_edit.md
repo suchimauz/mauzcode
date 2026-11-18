@@ -11,6 +11,11 @@ promptSnippet: "edit files in place"
 promptGuidelines:
   - "Read the target range before editing; pass its readId and use hashline for anchor edits. If the file changed, review fresh content before retrying; never overwrite concurrent changes."
   - "Copy literal oldText exactly and uniquely. Batch changes to one file in one edit; use its returned readId for the next edit."
+presentation:
+  label: Edit
+  icon: file-edit
+  category: files
+  summary: "@edit"
 parameters:
   type: object
   properties:

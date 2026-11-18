@@ -8,7 +8,7 @@ test('transcript message identities survive projection; UI notices stay unlinked
         { idx: 2, ts: 3, type: 'tool_call', name: 'read', messageIdx: 1 },
         { idx: 3, ts: 4, type: 'user', text: 'UI notice' },
     ];
-    const ctx: any = { state: { agent: {} }, fns: {
+    const ctx: any = { state: { agent: {} }, fns: { tools: { presentation: ({ name }: any) => ({ label: String(name), icon: 'wrench', category: 'tools', summary: '' }) }, 
         procs: { db: { select: async ({ sql }: { sql: string }) => sql.includes('FROM agent_runs') ? [{ id: 'r1', start_idx: '1', end_idx: '3', started_at: '100', ended_at: '900', status: 'completed', answer_idx: '1', has_interleaved_input: true }] : sql.includes('SELECT 1') ? [{}] : [{ run_state: 'idle', next_run_at: null }] } },
         session: { getMaxEventIdx: async () => 3, getEvents: async () => events },
     } };

@@ -8,6 +8,11 @@ marker: eval
 promptSnippet: "run JS/TS in-process, with ctx in scope"
 promptGuidelines:
   - "Prefer ONE eval that composes several ctx.fns calls (loops, Promise.all) for mechanical work — reading N files, a series of selects. Keep DECISIONS (edits, commits, anything a human should see) as separate calls."
+presentation:
+  label: Eval
+  icon: code
+  category: commands
+  summary: "@code"
 parameters:
   type: object
   properties:

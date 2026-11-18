@@ -6,6 +6,11 @@ description: >-
   Returns compact entries {name, kind: function|workflow, summary, source}. Only finds APIs: call
   a found function through an existing tool (eval), and use tool_describe for its schema.
 promptSnippet: "find allowed runtime functions and plugin workflows by intent"
+presentation:
+  label: Find tools
+  icon: compass
+  category: tools
+  summary: "{query}"
 parameters:
   type: object
   properties:

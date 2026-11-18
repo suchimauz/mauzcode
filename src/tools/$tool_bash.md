@@ -9,6 +9,11 @@ promptGuidelines:
   - "To work on another machine pass host (an alias from ~/.ssh/config, list with ctx.fns.remote.servers({})) to bash, read, write or edit — no ssh quoting needed; the connection is kept open between calls."
   - "Set a generous timeout for commands that may hang. Scope searches and bound output; prefer rg and rg --files -g '<glob>', preserving ignore rules. Avoid broad shell find walks."
   - "Summarize JSON with jq, not grep/sed. Check command -v before retrying missing utilities; use installed alternatives, never install without permission. rg exit 1 means no matches."
+presentation:
+  label: Bash
+  icon: terminal
+  category: commands
+  summary: "@command"
 parameters:
   type: object
   properties:

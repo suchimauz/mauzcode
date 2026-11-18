@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ToolRow } from '../components/mauzcode/ToolRow';
 import { toolFileTarget } from '../components/mauzcode/toolFileTarget';
-const event = { idx: 3, ts: 1, type: 'tool_call', name: 'read', text: null, preview: 'wrong guessed path' };
+const event = { idx: 3, ts: 1, type: 'tool_call', name: 'read', text: null, preview: 'wrong guessed path', toolLabel: 'Read', toolIcon: 'file', toolCategory: 'files', toolSummary: 'src/real.ts' };
 const detail = { ...event, args: '{"path":"src/real.ts","host":"home-dev"}', argsTruncated: false, result: '', resultTruncated: false, isError: false };
 afterEach(() => vi.unstubAllGlobals());
 it('only uses explicit read/edit/write paths and preserves host', () => {

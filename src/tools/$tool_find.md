@@ -5,6 +5,11 @@ description: >-
 promptSnippet: "find files by glob (respects .gitignore)"
 promptGuidelines:
   - "Use scoped glob patterns for file discovery; keep ignore rules unless ignored files are needed."
+presentation:
+  label: Find
+  icon: search
+  category: search
+  summary: "@search"
 parameters:
   type: object
   properties:

@@ -84,4 +84,9 @@ export type Tool = {
      *  file so a tool that is not loaded costs zero prompt tokens, and a tool
      *  that changes its body format cannot forget to say so. */
     doc?: string;
+
+    /** How calls of this tool appear in chat: label, allow-listed icon,
+     *  category and a summary template or `@formatter`. Validated by the loader
+     *  per field; see types.tools.ToolPresentation. */
+    presentation?: types.tools.ToolPresentation;
 };

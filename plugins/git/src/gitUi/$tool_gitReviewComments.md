@@ -1,6 +1,11 @@
 ---
 description: List your workspace Git review comments, including anchors, quoted lines, bodies, outdated and sent_at flags. Requires an open owned Git tab. Follow nextPage; restart pagination after changes.
 fn: gitUi.gitReviewComments
+presentation:
+  label: Review comments
+  icon: comment
+  category: git
+  summary: "{path}[ · {status}]"
 parameters:
   type: object
   additionalProperties: false

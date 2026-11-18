@@ -210,7 +210,7 @@ export default async function (
                 const busy: any = {
                     type: "tool_busy",
                     name: running.name,
-                    subject: running.subject,
+                    subject: running.summary,
                     runId: running.id,
                     elapsedSec: Math.round(elapsed / 1000),
                     timeoutMs: running.timeoutMs,
