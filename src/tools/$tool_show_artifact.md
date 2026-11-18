@@ -7,6 +7,11 @@ description: >-
   in your workspace; for another project pass an absolute path. Showing the same file again switches to
   its tab. Returns { itemId, title, path, host }.
 promptSnippet: "show a workspace file or directory on your canvas beside the chat"
+presentation:
+  label: Show
+  icon: canvas
+  category: agent
+  summary: "{title} || {path}"
 parameters:
   type: object
   properties:

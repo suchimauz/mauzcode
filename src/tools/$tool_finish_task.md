@@ -6,6 +6,11 @@ description: >-
   Finish your delegated work after every todo is done: deliver a concise summary and a required
   result object to the parent agent, once. Pass result as a JSON object, not a JSON-encoded string;
   wrap a scalar as {value: ...}. Fails while any todo is not done.
+presentation:
+  label: Finish task
+  icon: flag
+  category: agent
+  summary: "{summary|first-line}"
 parameters:
   type: object
   properties:

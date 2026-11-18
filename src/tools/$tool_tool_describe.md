@@ -6,6 +6,11 @@ description: >-
   plugin (workflow overview and its allowed functions). Exact function names win over plugin names.
   Never returns source code.
 promptSnippet: "show the schema and docs of one allowed function or plugin"
+presentation:
+  label: Describe tool
+  icon: book
+  category: tools
+  summary: "{name}"
 parameters:
   type: object
   properties:

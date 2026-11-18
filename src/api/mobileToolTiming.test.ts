@@ -12,9 +12,9 @@ test('projects measured tool durations and explicit timeouts without inventing a
         auth: { author: async () => null }, mentions: { parse: async () => [] },
         procs: { db: { select: async ({ sql }: { sql: string }) => sql.includes('SELECT 1') ? [{}] : [{ run_state: 'running' }] } },
         session: { getMaxEventIdx: async () => 3, getEvents: async () => events },
-        tools: { runs: () => [
-            { id: 'eval', name: 'tools_eval', subject: 'await task()', startedAt: 1000, timeoutMs: null, aborted: false, tail: '' },
-            { id: 'bash', name: 'bash', subject: 'sleep 10', startedAt: 1000, timeoutMs: 5000, aborted: true, tail: '' },
+        tools: { presentation: ({ name }: any) => ({ label: String(name), icon: 'wrench', category: 'tools', summary: '' }), runs: () => [
+            { id: 'eval', name: 'tools_eval', label: 'Eval', icon: 'code', category: 'commands', summary: 'await task()', args: { code: 'await task()' }, argsLarge: false, startedAt: 1000, timeoutMs: null, aborted: false, output: '', outputStart: 0 },
+            { id: 'bash', name: 'bash', label: 'Bash', icon: 'terminal', category: 'commands', summary: 'sleep 10', args: {}, argsLarge: true, startedAt: 1000, timeoutMs: 5000, aborted: true, output: 'x'.repeat(5000), outputStart: 7 },
         ] },
     } };
     const response = await route(ctx, null, { req: new Request('http://local/api/v1/agents/fixture/events'), params: { id: 'fixture' } });
@@ -24,7 +24,10 @@ test('projects measured tool durations and explicit timeouts without inventing a
         { durationMs: null, timeoutMs: null }, { durationMs: 0, timeoutMs: null },
     ]);
     expect(body.activeTools).toMatchObject([
-        { id: 'eval', startedAt: 1000, timeoutMs: null, state: 'running' },
-        { id: 'bash', startedAt: 1000, timeoutMs: 5000, state: 'stopping' },
+        { id: 'eval', label: 'Eval', icon: 'code', category: 'commands', summary: 'await task()', args: { code: 'await task()' }, startedAt: 1000, timeoutMs: null, state: 'running', outputStart: 0, outputEnd: 0 },
+        { id: 'bash', summary: 'sleep 10', argsLarge: true, startedAt: 1000, timeoutMs: 5000, state: 'stopping', outputStart: 7, outputEnd: 5007 },
     ]);
+    // The collapsed row gets a short tail; the full output is fetched by offset.
+    expect((body.activeTools[1] as any).tail.length).toBe(4096);
+    expect(body.activeTools[1]).not.toHaveProperty('args');
 });

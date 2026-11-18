@@ -20,6 +20,9 @@ export default function (
     const run = registry.get(opts.id);
     if (!run) return { ended: false };
     registry.delete(opts.id);
+    // Retained live output is released with the entry; the stored tool result
+    // is the complete record from here on.
+    run.output = "";
     if (run.agentId) ctx.fns.procs.events.refresh({ topic: `agent:${run.agentId}`, reason: "tool-run-end" });
     return { ended: true };
 }

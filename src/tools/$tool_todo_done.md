@@ -6,6 +6,11 @@ description: >-
   activates and returns the next pending one. Repeating it for a done todo is a no-op; a pending or
   unknown id fails. Returns {completed, active, next, complete, progress}.
 promptSnippet: "mark an active todo done and get the next one"
+presentation:
+  label: Todo done
+  icon: check
+  category: agent
+  summary: "{id}"
 parameters:
   type: object
   properties:

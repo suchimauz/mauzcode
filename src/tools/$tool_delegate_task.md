@@ -6,6 +6,11 @@ description: >-
   Returns {id, status:"working"} at once and never waits; the child's summary and result arrive later
   as a team update, so end your turn instead of polling. presetId can only narrow your own access.
 promptSnippet: "delegate an ordered todo list to a child agent; returns its id at once"
+presentation:
+  label: Delegate
+  icon: delegate
+  category: agent
+  summary: "{title}[ · {tasks|count} tasks]"
 parameters:
   type: object
   properties:

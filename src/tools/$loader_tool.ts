@@ -43,6 +43,13 @@ export default async function (ctx: Context, _session: Session | null, opts: { /
             continue;
         }
 
+        // Presentation is validated per field: a bad icon or template is a
+        // warning and a default, never a reason to drop the tool.
+        if (decl.presentation !== undefined) {
+            const checked = ctx.fns.tools.normalizePresentation({ presentation: decl.presentation });
+            for (const warning of checked.warnings) console.warn(`[tools] ${e.rel}: ${warning}`);
+        }
+
         const module = e.moduleDir === "." ? "" : String(e.moduleDir).replaceAll("/", ".");
         registry.set(`${module}.${e.name}`, {
             key: `${module}.${e.name}`,

@@ -4,7 +4,7 @@ import { CurrentAction } from '../components/mauzcode/CurrentAction';
 import { ActiveToolRow } from '../components/mauzcode/ActiveToolRow';
 import type { EventPage } from '../lib/mauzcode';
 it('uses a single sweep for the whole tool text group', () => {
-  const { container } = render(<ActiveToolRow run={{ id: 'one', name: 'bash', subject: 'bun test', startedAt: 1000, state: 'running', tail: '' }} />);
+  const { container } = render(<ActiveToolRow run={{ id: 'one', name: 'bash', label: 'Bash', icon: 'terminal', category: 'commands', summary: 'bun test', startedAt: 1000, state: 'running', tail: '' }} />);
   expect(container.querySelectorAll('.tool-sweep-band')).toHaveLength(1);
   expect(container.querySelector('.tool-row-words')).toHaveTextContent('Bash');
   expect(container.querySelector('.tool-row-words')).toHaveTextContent('bun test');

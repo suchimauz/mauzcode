@@ -3,10 +3,21 @@
 .tool-row { margin: 0; min-width: 0; color: var(--text-tertiary); }
 .tool-row-summary { display: flex; align-items: center; width: 100%; height: calc(24px + var(--tool-font-delta, 0px)); min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font-size: 13px; line-height: calc(24px + var(--tool-font-delta, 0px)); transition: color .1s; }
 .tool-row-summary:hover, .tool-row-summary[aria-expanded='true'] { color: var(--text-secondary); }
-.tool-row-icon { flex: none; }
-.tool-row-title { flex: none; font-weight: 400; white-space: nowrap; }
+.tool-row-icon { flex: none; color: var(--tool-tint, currentColor); }
+.tool-row-title { flex: none; font-weight: 500; white-space: nowrap; color: var(--text-secondary); }
 .tool-row-dot { background: var(--text-caption); border-radius: 1px; flex: none; width: 2px; height: 2px; margin: 0 8px; }
-.tool-row-description { flex: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-row-description { flex: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); }
+/* Paths, patterns and commands read as code; agent/tool summaries stay prose. */
+.tool-row:is([data-category='files'], [data-category='search'], [data-category='commands']) .tool-row-description { font-family: var(--font-mono); font-size: 12px; }
+/* Category tint from theme tokens only, so light/dark and high contrast follow the palette. */
+.tool-row[data-category='files'] { --tool-tint: var(--link); }
+.tool-row[data-category='search'] { --tool-tint: var(--link); }
+.tool-row[data-category='commands'] { --tool-tint: var(--success); }
+.tool-row[data-category='agent'] { --tool-tint: var(--accent); }
+.tool-row[data-category='git'] { --tool-tint: var(--tool-stopped); }
+.tool-row[data-category='tools'] { --tool-tint: var(--text-tertiary); }
+/* Errors are marked by icon shape, tint and a left accent, not by text colour alone. */
+.tool-row[data-state='error'] { --tool-tint: var(--tool-error); box-shadow: inset 2px 0 0 var(--tool-error); padding-left: 6px; border-radius: 0 4px 4px 0; }
 .tool-row-header { display: flex; align-items: center; min-width: 0; width: 100%; cursor: pointer; }
 .tool-row-header > .tool-row-summary { flex: 1 1 0%; width: auto; }
 .tool-row-header > .tool-row-timing { margin-left: auto; padding-left: 10px; }
@@ -55,7 +66,7 @@
 @keyframes tool-sweep-window { 0% { transform: translate(-100%); } 66.6667%, to { transform: translate(100%); } }
 @keyframes tool-sweep-glyphs { 0% { transform: translate(100%); } 66.6667%, to { transform: translate(-100%); } }
 .tool-row[data-state='stopping'] { color: var(--tool-stopped); }
-.tool-row[data-state='error'] .tool-row-description:not(.tool-row-path) { color: var(--tool-error); }
+
 @media (prefers-reduced-motion: reduce) { .tool-row-summary, .tool-row-icon, .tool-row-toggle { transition: none; } .tool-row[data-state='running'] .tool-sweep-band, .tool-sweep-glyphs { animation: none; display: none; } }
 @media (pointer: coarse) { .tool-row-summary { min-height: 44px; } }
 .thinking-body { padding: 4px 0 4px 22px; min-width: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
@@ -77,3 +88,31 @@
 .current-action-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .current-action-clock { flex: none; margin-left: 8px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-caption); }
 
+
+/* Expanded call: the complete arguments above the output, shared by finished, running and mobile rows. */
+.tool-call-panel { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface); color: var(--text); }
+.tool-call-section { padding: 8px 10px; min-width: 0; }
+.tool-call-section + .tool-call-section { border-top: 1px solid var(--line); }
+.tool-row-panel .tool-call-section > h4 { margin: 0 0 6px; color: var(--text-tertiary); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+.tool-call-section .code-block { margin: 4px 0; }
+.tool-row-panel .tool-call-section .code-block--tool pre { max-height: none; overflow: visible; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-call-section .tool-specialized-body { border: 0; border-radius: 0; margin: 0 -10px -8px; }
+.tool-call-args { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12px; }
+.tool-call-args > div { display: contents; }
+.tool-call-args dt { color: var(--text-tertiary); font-family: var(--font-mono); }
+.tool-call-args dd { margin: 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.tool-row-panel .tool-call-text, .tool-call-text { margin: 0; padding: 0; font: 12px/1.6 var(--font-mono); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; max-height: none; overflow: visible; background: transparent; }
+.tool-call-nested summary { cursor: pointer; color: var(--text-secondary); font-family: var(--font-mono); }
+.tool-call-open { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--text-secondary); font-size: 11px; line-height: 18px; cursor: pointer; }
+.tool-call-open:hover { color: var(--text); border-color: var(--text-tertiary); }
+.tool-call-open:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.tool-call-open:disabled { cursor: progress; opacity: .6; }
+.tool-call-error { color: var(--tool-error); font-size: 11px; }
+.tool-call-empty { margin: 0; color: var(--text-tertiary); }
+.tool-live-marker { margin: 0 0 4px; color: var(--tool-stopped); font: 11px/1.6 var(--font-mono); }
+.tool-row-panel pre.tool-live-text { max-height: 420px; overflow: auto; }
+.tool-modal-body .tool-row-panel pre.tool-live-text { max-height: none; }
+@media (prefers-contrast: more) { .tool-row-description { color: var(--text-secondary); } }
+.tool-row-summary:hover .tool-row-title, .tool-row-summary[aria-expanded='true'] .tool-row-title, .tool-row-header:hover .tool-row-title { color: var(--text); }
+.tool-row-summary:hover .tool-row-description, .tool-row-summary[aria-expanded='true'] .tool-row-description, .tool-row-header:hover .tool-row-description { color: var(--text-secondary); }
+.tool-row[data-state='stopping'] { --tool-tint: var(--tool-stopped); }

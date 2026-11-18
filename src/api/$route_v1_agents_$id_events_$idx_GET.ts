@@ -1,4 +1,8 @@
-/** Returns bounded tool-call details for a native mobile details sheet. */
+/** Returns tool-call details for expanded chat rows and the native mobile details sheet.
+ * Arguments are complete (never shortened) with secret-bearing values redacted; the result stays bounded.
+ * @param opts.req Incoming HTTP request.
+ * @param opts.params Route parameters containing the agent id and event index.
+ */
 export default async function (ctx: Context, _session: Session | null, opts: { req: Request; params: Record<string, string> }) {
     const id = opts.params.id!;
     const idx = Number(opts.params.idx);
@@ -14,12 +18,17 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
         const text = typeof value === "string" ? value : JSON.stringify(value ?? {}, null, 2);
         return { text: text.slice(0, max), truncated: text.length > max };
     };
-    const args = truncate(event.args, 40_000);
+    // Presentation and redaction come from the same resolver as the rows; the
+    // arguments are the model's own output, so they are shown in full.
+    const shown = ctx.fns.tools.presentation({ name: String(event.name ?? "tool"), args: event.args, redactArgs: true });
+    const redacted = event.args && typeof event.args === "object" ? shown.args : event.args;
+    const args = truncate(redacted, Number.POSITIVE_INFINITY);
     const result = truncate(event.result ?? event.text ?? "", 120_000);
     return Response.json({
         version: 1,
         event: {
             idx: Number(row.idx), ts: Number(row.ts), type: String(event.type), name: String(event.name ?? "tool"),
+            label: shown.label, icon: shown.icon, category: shown.category, summary: shown.summary,
             args: args.text, argsTruncated: args.truncated,
             result: result.text, resultTruncated: result.truncated,
             isError: event.isError === true,

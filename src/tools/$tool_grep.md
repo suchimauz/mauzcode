@@ -7,6 +7,11 @@ marker: grep
 promptSnippet: "search file contents (respects .gitignore)"
 promptGuidelines:
   - "Search results are locations, not edit receipts. Use literal:true for plain text containing regex characters."
+presentation:
+  label: Grep
+  icon: search
+  category: search
+  summary: "@search"
 parameters:
   type: object
   properties:

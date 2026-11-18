@@ -34,7 +34,7 @@ export default async function (
     const seconds = Math.round((Date.now() - run.startedAt) / 1000);
     await ctx.fns.session.appendEvent({
         id,
-        event: { type: "tool_aborted", runId, name: run.name, subject: run.subject, elapsedSec: seconds },
+        event: { type: "tool_aborted", runId, name: run.name, subject: run.summary, elapsedSec: seconds },
     });
     const agent = (ctx.state as any).agent?.[id];
     if (agent) await ctx.fns.session.syncAgentState({ agent });

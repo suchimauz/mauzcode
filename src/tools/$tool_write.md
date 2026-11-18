@@ -6,6 +6,11 @@ description: >-
   conflict, invalid, expired or busy — and carries a readId for the written file.
 marker: write
 promptSnippet: "create files or rewrite them whole"
+presentation:
+  label: Write
+  icon: file-plus
+  category: files
+  summary: "{path}"
 parameters:
   type: object
   properties:

@@ -10,6 +10,11 @@ description: >-
 promptSnippet: "open a structured chat form (confirm, choice, grid, batch, secret)"
 promptGuidelines:
   - "Call request_input last in a response; with waitForAnswer true the turn ends after it and later calls do not run."
+presentation:
+  label: Ask user
+  icon: form
+  category: agent
+  summary: "{title}[ · {kind}]"
 parameters:
   type: object
   properties:

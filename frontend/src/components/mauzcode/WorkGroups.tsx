@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Brain, Terminal, FileText, Search, Wrench, MessagesSquare } from 'lucide-react';
+import { ChevronDown, Brain, Terminal, FileText, Search, Wrench, MessagesSquare, GitBranch, Bot } from 'lucide-react';
+import { toolCategory } from './toolIcons';
 import type { ChatEvent } from '../../lib/mauzcode';
 import { isPeer, type WorkTurn } from './transcriptGroups';
 import './work-groups.css';
@@ -31,9 +32,10 @@ export function ProcessGroup({ events, children, live = false }: { events: ChatE
   const tools = events.filter(event => !isPeer(event) && (event.type === 'tool_call' || event.type === 'tool_result')).length;
   // A solitary thinking disclosure already has its own compact presentation.
   if (events.length === 1 && thoughts === 1) return children;
-  const names = events.map(event => event.name?.split('.').pop());
-  const category = names.includes('bash') ? 'commands' : names.some(name => ['grep', 'find', 'glob'].includes(name || '')) ? 'search' : names.some(name => ['read', 'write', 'edit'].includes(name || '')) ? 'files' : tools ? 'tools' : messages ? 'messages' : 'thinking';
-  const Icon = { commands: Terminal, search: Search, files: FileText, tools: Wrench, messages: MessagesSquare, thinking: Brain }[category];
+  // Category comes from the server presentation (toolCategory), never from tool names.
+  const categories = events.filter(event => !isPeer(event) && (event.type === 'tool_call' || event.type === 'tool_result')).map(event => toolCategory(event.toolCategory));
+  const category = (['commands', 'search', 'files', 'git', 'agent'] as const).find(item => categories.includes(item)) ?? (tools ? 'tools' : messages ? 'messages' : 'thinking');
+  const Icon = { commands: Terminal, search: Search, files: FileText, git: GitBranch, agent: Bot, tools: Wrench, messages: MessagesSquare, thinking: Brain }[category];
   const plural = (count: number, one: string, few: string, many: string) => count % 100 >= 11 && count % 100 <= 14 ? many : count % 10 === 1 ? one : count % 10 >= 2 && count % 10 <= 4 ? few : many;
   const label = [thoughts ? `${thoughts} ${plural(thoughts, 'обдумывание', 'обдумывания', 'обдумываний')}` : '', tools ? `${tools} ${plural(tools, 'вызов', 'вызова', 'вызовов')} инструментов` : '', messages ? `${messages} ${plural(messages, 'сообщение', 'сообщения', 'сообщений')} между агентами` : ''].filter(Boolean).join(', ');
   return <section className="process-group" data-step-process="true">

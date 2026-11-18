@@ -8,6 +8,11 @@ description: >-
   really parallel work; active todos must precede pending ones and never return to pending. Returns
   {created, title, tasks:[{id,title,status}], active:[ids]}.
 promptSnippet: "create or revise your visible todo list (ordered todos with stable ids)"
+presentation:
+  label: Todos
+  icon: checklist
+  category: agent
+  summary: "@todos"
 parameters:
   type: object
   properties:

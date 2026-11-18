@@ -147,7 +147,7 @@ test('lifecycle projection allowlists display fields without leaking arbitrary p
         {idx:7,ts:1,type:'user',html:'<p>untrusted</p>',htmlSource:'assistant-answer'},
         {idx:8,ts:1,type:'tool_result',html:'<p>untrusted</p>',htmlSource:'assistant-answer'},
     ];
-    const ctx:any={state:{},fns:{auth:{author:async()=>null},mentions:{parse:async()=>[]},procs:{db:{select:async({sql}:any)=>sql.includes('SELECT 1')?[{exists:1}]:[{run_state:'idle',next_run_at:null}]}},session:{getEvents:async()=>events,getMaxEventIdx:async()=>5}}};
+    const ctx:any={state:{},fns:{tools:{presentation:({name}:any)=>({label:String(name),icon:'wrench',category:'tools',summary:''})},auth:{author:async()=>null},mentions:{parse:async()=>[]},procs:{db:{select:async({sql}:any)=>sql.includes('SELECT 1')?[{exists:1}]:[{run_state:'idle',next_run_at:null}]}},session:{getEvents:async()=>events,getMaxEventIdx:async()=>5}}};
     const response=await route(ctx,null,{req:new Request('http://local/api/v1/agents/a/events'),params:{id:'a'}});
     const body:any=await response.json();
     expect(body.events[0].lifecycle).toEqual({provider:'p',account:'a',message:'limit',resetsAt:123});

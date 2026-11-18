@@ -22,10 +22,10 @@ const bashRuns = () => ctx.fns.tools.runs({}).filter((r: any) => r.name === "bas
 test("tools.runs exposes a running call, then forgets it", async () => {
     const before = ctx.fns.tools.runs({}).length;
     const call = ctx.fns.tools.call({ name: "bash", args: { command: "echo hello; sleep 5" } });
-    const live = await until(bashRuns, l => l.length === 1 && String(l[0]!.tail).includes("hello"));
+    const live = await until(bashRuns, l => l.length === 1 && String(l[0]!.output).includes("hello"));
     expect(live.length).toBe(1);
-    // The tail is the proof of life: output is visible before the call ends.
-    expect(live[0]!.tail).toContain("hello");
+    // The live output is the proof of life: output is visible before the call ends.
+    expect(live[0]!.output).toContain("hello");
 
     ctx.fns.tools.abortRun({ id: live[0]!.id });
     const result = await call;

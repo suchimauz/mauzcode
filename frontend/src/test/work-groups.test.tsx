@@ -71,7 +71,7 @@ it('standard mode resets local process disclosure when outer work closes', () =>
 });
 
 it('uses a leading category icon and hover chevron without a trailing process chevron', () => {
-  render(<Transcript {...props} events={[history[0], ev(1, 'tool_call', '', { name: 'bash' }), history[4]]} />);
+  render(<Transcript {...props} events={[history[0], ev(1, 'tool_call', '', { name: 'bash', toolCategory: 'commands' }), history[4]]} />);
   const button = screen.getByRole('button', { name: '1 вызов инструментов' });
   expect(button).toHaveAttribute('data-process-activity', 'commands');
   expect(button.querySelector('.process-group-leading [data-step-process-icon]')).not.toBeNull();

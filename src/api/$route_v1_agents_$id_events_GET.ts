@@ -30,42 +30,9 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
     const status = ((await ctx.fns.procs.db.select({ sql: "SELECT mascot, run_state, run_started_at, next_run_at, last_error, archived_at FROM agents WHERE id = ?", params: [id] })) as any[])[0];
     const isRunning = status?.run_state === "running" || status?.run_state === "claimed" || status?.next_run_at != null;
 
-    const toolPreview = (name: string, args: any): string => {
-        const value = args && typeof args === "object" ? args : {};
-        const first = (...keys: string[]) => keys.map((key) => value[key]).find((item) => typeof item === "string" && item.length > 0);
-        const basename = (path: string) => path.replace(/\\/g, "/").split("/").filter(Boolean).pop() || path;
-        switch (name) {
-            case "read": return `Read ${basename(first("path", "file") || "file")}`;
-            case "write": return `Write ${basename(first("path", "file") || "file")}`;
-            case "edit": return `Edit ${basename(first("path", "file") || "file")}`;
-            case "grep": return `Search ${first("pattern", "query") || "files"}`;
-            case "find": return `Find ${first("pattern", "query") || "files"}`;
-            case "bash": return `Run ${first("command")?.split("\n")[0] || "command"}`;
-            case "eval": return `Evaluate ${first("code")?.split("\n")[0] || "code"}`;
-            default: {
-                const subject = first("path", "file", "query", "name", "id", "url");
-                return subject ? `${name} ${subject}` : name;
-            }
-        }
-    };
-    // dsh deriveSummary priorities; separate from legacy mobile preview labels.
-    const toolSummary = (name: string, args: Record<string, unknown> | null): string => {
-        const value = args && typeof args === 'object' ? args : {};
-        const kind = name.split('.').pop() || name;
-        const firstLine = (text: string) => text.split(/\r?\n/, 1)[0] ?? '';
-        const search = ['grep', 'find', 'glob'].includes(kind);
-        if (search && Array.isArray(value.queries)) {
-            const queries = value.queries.filter((item): item is string => typeof item === 'string' && item.length > 0);
-            if (queries.length) return queries.map(firstLine).join(', ').slice(0, 1000);
-        }
-        const keys = kind === 'bash' ? ['description', 'command']
-            : ['read', 'edit', 'write'].includes(kind) ? ['path', 'file_path', 'file', ...(kind === 'read' ? ['url'] : [])]
-            : search ? ['query', 'pattern', 'url']
-            : ['eval', 'tools_eval'].includes(kind) ? ['description'] : [];
-        const picked = keys.map(key => value[key]).find(item => typeof item === 'string' && item.length > 0)
-            ?? Object.values(value).find(item => typeof item === 'string' && item.length > 0);
-        return (typeof picked === 'string' ? firstLine(picked) : Object.keys(value).length ? JSON.stringify(value) : '').slice(0, 1000);
-    };
+    // One resolver for every surface (tools.presentation): the running row and
+    // the finished row of a call cannot disagree, and nothing is cut here.
+    const present = (name: string, args: unknown) => ctx.fns.tools.presentation({ name, args });
 
     const authors = new Map<string, Awaited<ReturnType<typeof ctx.fns.auth.author>>>();
     for (const event of events) {
@@ -231,11 +198,16 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
                 elapsedSec: typeof event.elapsedSec === 'number' && Number.isFinite(event.elapsedSec) ? Math.max(0, event.elapsedSec) : null,
                 timeoutMs: typeof event.timeoutMs === 'number' && Number.isFinite(event.timeoutMs) && event.timeoutMs > 0 ? event.timeoutMs : null,
             } : {}),
-            toolSummary: event.type === 'tool_call' || event.type === 'tool_result'
-                ? toolSummary(String(event.name || 'tool'), event.args) : null,
-            preview: event.type === "tool_call"
-                ? toolPreview(String(event.name || "Tool"), event.args)
-                : (event.type !== 'thinking' && typeof event.text === "string" ? event.text.slice(0, 180) : null),
+            ...(event.type === 'tool_call' || event.type === 'tool_result' ? (() => {
+                const shown = present(String(event.name || 'tool'), event.args);
+                return {
+                    toolSummary: shown.summary, toolLabel: shown.label, toolIcon: shown.icon, toolCategory: shown.category,
+                    preview: event.type === 'tool_call' ? (shown.summary ? `${shown.label} ${shown.summary}` : shown.label) : (typeof event.text === 'string' ? event.text.slice(0, 180) : null),
+                };
+            })() : {
+                toolSummary: null,
+                preview: event.type !== 'thinking' && typeof event.text === "string" ? event.text.slice(0, 180) : null,
+            }),
             isError: event.isError === true,
             ...(event.type === 'tool_call' || event.type === 'tool_result' ? {
                 durationMs: typeof event.durationMs === 'number' && Number.isFinite(event.durationMs) && event.durationMs >= 0 ? event.durationMs : null,
@@ -331,10 +303,15 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
         agentId: id,
         mascot: status.mascot as 'crab' | 'deepy' | 'whalegirl' | 'desksprite' | 'bitty' | 'tmuxai' | 'planet' | 'rainbow-terminal-cat',
         events: mobileEvents,
+        // A short tail for the collapsed row and offsets for the expanded one,
+        // which loads the full retained output from the run output route.
         activeTools: (ctx.fns.tools?.runs?.({ agentId: id }) ?? []).map(run => ({
-            id: run.id, name: run.name, subject: run.subject.slice(0, 500), startedAt: run.startedAt,
+            id: run.id, name: run.name, label: run.label, icon: run.icon, category: run.category,
+            summary: run.summary, subject: run.summary, startedAt: run.startedAt,
             timeoutMs: run.timeoutMs,
-            state: run.aborted ? 'stopping' : 'running', tail: run.tail.slice(-12000),
+            state: run.aborted ? 'stopping' : 'running', tail: run.output.slice(-4096),
+            outputStart: run.outputStart, outputEnd: run.outputStart + run.output.length,
+            ...(run.argsLarge ? { argsLarge: true } : { args: run.args }),
         })),
         nextAfter: maxIdx + 1,
         olderBefore: events.length > 0 ? Number(events[0]?.idx ?? 0) : null,
