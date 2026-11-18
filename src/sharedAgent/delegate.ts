@@ -1,7 +1,7 @@
 /**
  * Delegates one task to a published session's accumulated context
  *
- * Forks a published source session at its current transcript, creates a one-task plan, and queues a child agent. Use after sharedAgent.list identifies a context agent suited to the requested task.
+ * Forks a published source session at its current transcript, creates a one-todo list, and queues a child agent. Use after sharedAgent.list identifies a context agent suited to the requested task.
  * @param opts.agentId Published source agent identifier returned by sharedAgent.list.
  * @param opts.task Concrete task to execute using the published session context.
  * @param opts.requesterId Optional requesting agent identifier recorded for audit.
@@ -33,8 +33,8 @@ export default async function (
     const child = await ctx.fns.session.fork({ id: sourceAgentId, presetId: opts.presetId, title, visibility: "team" });
     child.scratchpad = { ...(child.scratchpad ?? {}), sharedAgentTask: { sourceAgentId, requesterId: String(opts.requesterId ?? "").trim() || null, task, createdAt: Date.now() }, delegation: { parentId: sourceAgentId, status: "working", title, createdAt: Date.now() } };
     await ctx.fns.session.updateScratchpad({ id: child.id, scratchpad: child.scratchpad });
-    await ctx.fns.session.plan({ agent: child, title, tasks: [{ id: "task", title: task, instructions: "Use the inherited source-session context. Return only information needed by the requester." }] });
-    const prompt = ["You are a shared context agent executing a delegated task.", "Use the inherited session context as background, but do not reveal unrelated private transcript content.", "Complete the active plan task, call session.done({ agent, id: 'task' }), then call agent.finishTask({ agent, summary, result }) with a concrete JSON-compatible result.", "", "Task:", task].join("\n");
+    await ctx.fns.todo.create({ agent: child, title, tasks: [{ id: "task", title: task, instructions: "Use the inherited source-session context. Return only information needed by the requester." }] });
+    const prompt = ["You are a shared context agent executing a delegated task.", "Use the inherited session context as background, but do not reveal unrelated private transcript content.", "Complete the active todo, call todo.done({ agent, id: 'task' }), then call agent.finishTask({ agent, summary, result }) with a concrete JSON-compatible result.", "", "Task:", task].join("\n");
     await ctx.fns.session.appendUserMessage({ id: child.id, text: prompt, ...(opts.requesterId ? { author: "agent:" + opts.requesterId, eventExtra: { agentMessage: { from: opts.requesterId, body: prompt } } } : {}) });
     const now = Date.now();
     await ctx.fns.procs.db.run({ sql: "UPDATE agents SET next_run_at = COALESCE(next_run_at, ?), updated_at = ? WHERE id = ? AND archived_at IS NULL", params: [now, now, child.id] });

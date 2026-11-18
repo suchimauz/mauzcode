@@ -2,14 +2,14 @@ import { expect, test } from 'bun:test';
 import accept from './acceptMessage';
 import mobile from '../api/$route_v1_agents_$id_messages_POST';
 import submit from '../input/submit';
-import planRoute from './$route_$id_plan_POST';
+import resume from '../todo/resume';
 
 function fixture() {
-    const plan = { pausedAt: 123 as number | null, tasks: [{ id: 'fix', title: 'Fix', status: 'active', activeSince: null }] };
-    const live = { id: 'a', scratchpad: { plan }, events: [] };
+    const plan = { pausedAt: 123 as number | null, tasks: [{ id: 'fix', title: 'Fix', status: 'active', activeSince: null as number | null }] };
+    const live = { id: 'a', scratchpad: { todos: plan }, events: [] };
     const state = { tx: false, locked: false, resumed: false, appended: 0, queries: [] as string[], duplicate: false, claimed: true };
     const input = { id: 'i', agentId: 'a', kind: 'choice', title: 'Pick', state: 'submitted' };
-    const ctx: any = { state: { agent: { a: live }, input: { kinds: { choice: { submit: async () => ({ summary: 'yes', result: { value: 'yes' } }) } } } }, fns: {
+    const ctx: any = { state: { procs: { db: { transactionStorage: { getStore: () => state.tx ? { active: true } : undefined } } }, agent: { a: live }, input: { kinds: { choice: { submit: async () => ({ summary: 'yes', result: { value: 'yes' } }) } } } }, fns: {
         procs: { db: {
             transaction: async ({ fn }: any) => { state.tx = true; try { return await fn(); } finally { state.tx = false; state.locked = false; } },
             select: async ({ sql }: any) => {
@@ -42,18 +42,19 @@ function fixture() {
         session: {
             load: async () => live,
             scrubUnicode: async ({ text }: any) => text,
-            mutateScratchpad: async ({ mutate }: any) => { expect(state.tx).toBe(true); expect(state.locked).toBe(true); mutate(live.scratchpad, 999); },
-            updatePlan: async () => { expect(state.locked).toBe(true); return { plan }; },
+            mutateScratchpad: async ({ mutate }: any) => { expect(state.tx).toBe(true); expect(state.locked).toBe(true); const result = mutate(live.scratchpad, 999); return { scratchpad: live.scratchpad, result }; },
             appendMessage: async () => { expect(state.tx).toBe(true); expect(state.locked).toBe(true); state.appended++; return { idx: 0 }; },
             appendEvent: async () => ({ idx: 0 }),
             syncAgentState: async () => {},
         },
         agent: { renderEventHtml: async () => '', wakeWorker() {}, wakeWaiters: async () => {} },
+        events: { refreshAgentMeta: () => {}, emitAgentsChanged: () => {} },
+        todo: { resume: (opts: any) => resume(ctx, null, opts) },
     } };
     return { ctx, state, plan };
 }
 const chatRequest = () => new Request('http://local/agent/a', { method: 'POST', body: 'hello', headers: { 'idempotency-key': 'key' } });
-test('new chat turn resumes durable pause and plan inside scheduling transaction', async () => {
+test('new chat turn resumes durable pause and todos inside scheduling transaction', async () => {
     const f = fixture();
     expect((await accept(f.ctx, null, { req: chatRequest(), params: { id: 'a' } })).status).toBe(200);
     expect(f.state.resumed).toBe(true); expect(f.plan.pausedAt).toBeNull(); expect(f.state.appended).toBe(1);
@@ -79,14 +80,16 @@ test('replayed input submission cannot resume', async () => {
     await submit(f.ctx, null, { id: 'i', actor: 'person' });
     expect(f.state.resumed).toBe(false); expect(f.state.appended).toBe(0);
 });
-test('agent withdrawal does not resume durable or plan pause', async () => {
+test('agent withdrawal does not resume durable or todo pause', async () => {
     const f = fixture(); await submit(f.ctx, null, { id: 'i', actor: 'agent:a', cancel: true });
     expect(f.state.resumed).toBe(false); expect(f.plan.pausedAt).toBe(123);
     expect(f.state.queries.some(sql => sql.includes('AND stopped_at IS NULL'))).toBe(true);
 });
-test('explicit UI plan edit resumes pause and queues active task under same lock', async () => {
-    const f = fixture(); const form = new FormData();
-    for (const [key, value] of Object.entries({ action: 'update', title: 'Plan', task_id: 'fix', task_title: 'Fix', task_instructions: 'Do it' })) form.set(key, value);
-    const response = await planRoute(f.ctx, null, { req: new Request('http://local/plan', { method: 'POST', body: form }), params: { id: 'a' } });
-    expect(response.status).toBe(204); expect(f.state.resumed).toBe(true); expect(f.plan.pausedAt).toBeNull(); expect(f.state.appended).toBe(1);
+test('todo.resume restarts every paused active todo and is idempotent', async () => {
+    const f = fixture();
+    f.plan.tasks.push({ id: 'two', title: 'Two', status: 'active', activeSince: null });
+    f.state.tx = true; f.state.locked = true;
+    expect((await f.ctx.fns.todo.resume({ id: 'a' })).changed).toBe(true);
+    expect(f.plan.pausedAt).toBeNull(); expect(f.plan.tasks.map(task => task.activeSince)).toEqual([999, 999]);
+    expect((await f.ctx.fns.todo.resume({ id: 'a' })).changed).toBe(false);
 });

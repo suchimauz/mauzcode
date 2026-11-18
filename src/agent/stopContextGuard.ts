@@ -1,8 +1,8 @@
 /**
- * Stop an owned worker run at the context guard while preserving plan pause semantics.
+ * Stop an owned worker run at the context guard while preserving todo pause semantics.
  *
  * Internal context-boundary guard, never manual cancellation. Locks the owned row and
- * commits the paused plan and terminal state together, preserving concurrent queued
+ * commits the paused todos and terminal state together, preserving concurrent queued
  * user work. Captured controllers cannot cancel a replacement run. Only an unchanged,
  * unscheduled terminal state qualifies for error push delivery.
  * @param opts.agent Live agent reaching its context guard.
@@ -24,16 +24,8 @@ export default async function (ctx: Context, _session: Session | null, opts: {
         if (!rows.length || !owns()) return null;
         const now=Date.now();
         const scratchpad=JSON.parse(String(rows[0].scratchpad || '{}'));
-        const plan=scratchpad.plan;
-        if (plan && !plan.pausedAt) {
-            const task=Array.isArray(plan.tasks)?plan.tasks.find((t: {status?:string})=>t.status==='active'):null;
-            if (task?.activeSince) {
-                task.elapsedMs=Math.max(0,Number(task.elapsedMs??0))+Math.max(0,now-Number(task.activeSince));
-                task.activeSince=null;
-            }
-            plan.pausedAt=now;
-            plan.updatedAt=now;
-        }
+        // Pause the locked row in place so the paused todos commit with the stop.
+        await ctx.fns.todo.pause({scratchpad,now});
         const updated=await ctx.fns.procs.db.select({sql:"UPDATE agents SET scratchpad=?,run_state='idle',run_started_at=NULL,run_heartbeat_at=NULL,run_token=NULL,last_error='context limit guard stopped work',updated_at=? WHERE id=? AND run_token=? AND run_state='running' RETURNING id",params:[JSON.stringify(scratchpad),now,agent.id,runToken]});
         return updated.length ? {now,scratchpad} : null;
     }}) as {now:number;scratchpad:types.agent.Agent['scratchpad']} | null;

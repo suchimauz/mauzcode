@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test';
 import stop from './stop';
+import pausetodos from '../todo/pause';
 import pause from '../goal/lifecyclePause';
 
 function fixture({ enabled = true, replacement = false, idle = false } = {}) {
@@ -37,6 +38,7 @@ function fixture({ enabled = true, replacement = false, idle = false } = {}) {
         tools: { runs: () => [], abortRun: () => {} },
         session: { appendErrorEvent: async () => {}, syncAgentState: async () => {} },
         events: { refreshAgentMeta: () => {} },
+        todo: { pause: (opts: any) => pausetodos(ctx, null, opts) },
     } };
     return { ctx, agent, calls, status: () => goalStatus };
 }

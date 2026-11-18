@@ -61,7 +61,7 @@ export default async function (
       const content='<input-result id="'+attr(input.id)+'" kind="choice" state="submitted" title="'+attr(input.title)+'">\n'+outcome.summary+'\n'+JSON.stringify(outcome.result)+'\n</input-result>';
       await ctx.fns.session.appendMessage({id:opts.agentId,message:{role:'user',content,message_type:'input',author:opts.actor},ts:now});
      }
-     await ctx.fns.procs.db.run({sql:"UPDATE agents SET next_run_at=GREATEST(COALESCE(next_run_at,0),?), updated_at=? WHERE id=? AND archived_at IS NULL AND stopped_at IS NULL AND NOT EXISTS (SELECT 1 FROM inputs WHERE agent_id=? AND state IN ('open','processing') AND spec->>'_agentWait'='true') AND NOT (COALESCE(scratchpad::jsonb,'{}'::jsonb)->'plan'->>'pausedAt' IS NOT NULL)",params:[now,now,opts.agentId,opts.agentId]});
+     await ctx.fns.procs.db.run({sql:"UPDATE agents SET next_run_at=GREATEST(COALESCE(next_run_at,0),?), updated_at=? WHERE id=? AND archived_at IS NULL AND stopped_at IS NULL AND NOT EXISTS (SELECT 1 FROM inputs WHERE agent_id=? AND state IN ('open','processing') AND spec->>'_agentWait'='true') AND NOT (COALESCE(scratchpad::jsonb,'{}'::jsonb)->'todos'->>'pausedAt' IS NOT NULL)",params:[now,now,opts.agentId,opts.agentId]});
      return {revision:s.revision,inputIds:s.inputIds,state:'submitted'};
     }});
     const live=(ctx.state as any).agent?.[opts.agentId];if(live)await ctx.fns.session.syncAgentState({agent:live});

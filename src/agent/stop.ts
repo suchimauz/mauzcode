@@ -1,6 +1,6 @@
 /**
  * Stop an agent and durably pause all automatic restarts until a human resumes it.
- * Use for the Stop action, including agents without a plan or a loaded run.
+ * Use for the Stop action, including agents without todos or a loaded run.
  * Schedules remain configured but cannot execute while the stop marker is set.
  * @param opts.agent Agent whose current execution must be cancelled.
  * @param opts.clearQueue Discard the pending debounce window. Defaults to true; false retains it behind the durable pause.
@@ -65,16 +65,8 @@ export default async function (ctx: Context, _session: Session | null, opts: {
             diagnostic = '; final goal usage unavailable: no run snapshot';
         const now = Date.now();
         const scratchpad = typeof row.scratchpad === 'string' ? JSON.parse(row.scratchpad || '{}') : (row.scratchpad ?? {});
-        const plan = scratchpad.plan;
-        if (plan && !plan.pausedAt) {
-            const task = Array.isArray(plan.tasks) ? plan.tasks.find((item: { status?: string }) => item.status === 'active') : null;
-            if (task?.activeSince) {
-                task.elapsedMs = Math.max(0, Number(task.elapsedMs ?? 0)) + Math.max(0, now - Number(task.activeSince));
-                task.activeSince = null;
-            }
-            plan.pausedAt = now;
-            plan.updatedAt = now;
-        }
+        // Pause the locked row in place so the paused todos commit with the stop.
+        await ctx.fns.todo.pause({ scratchpad, now });
         if (row.llm_retry_pending) {
             await ctx.fns.session.appendEvent({ id: agent.id, event: {
                 type: 'llm_retry_cancelled',

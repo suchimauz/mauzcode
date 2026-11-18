@@ -2,7 +2,7 @@
  * Persist a submitted chat turn with attachments and schedule its agent.
  *
  * Shared existing chat HTTP submission pipeline; callers must authenticate and resolve the durable agent before calling.
- * A newly accepted human turn resumes a paused plan atomically with enqueueing. Duplicate retries do not resume it.
+ * A newly accepted human turn resumes paused todos atomically with enqueueing. Duplicate retries do not resume it.
  * Ordinary turns submitted during a durable input wait are queued with their exact attachments, without resuming a stopped agent.
  * Queue promotion returns input_waiting (409) while the gate remains active.
  * Archived chats return 409 before body processing; a row-lock recheck prevents concurrent archive from accepting uploads or a turn.
@@ -108,7 +108,7 @@ export default async function (
                         }
                     }
                     // Serialize human resumption with inbound delivery and scratchpad writes.
-                    // Only a NEW accepted human turn resumes a plan; retries return above.
+                    // Only a NEW accepted human turn resumes todos; retries return above.
                     const locked = (await ctx.fns.procs.db.select({ sql: 'SELECT id, archived_at, run_token, run_state, stopped_at, last_processed_msg_idx FROM agents WHERE id=? FOR UPDATE', params: [id] }))[0];
                     if (!locked) throw new Error('SUBMISSION_NOT_FOUND');
                     if (locked.archived_at != null) throw new Error('SUBMISSION_ARCHIVED');
@@ -142,14 +142,7 @@ export default async function (
                         try { uploads = await ctx.fns.attachments.saveUploads({ agentId: id, files }); uploadsSaved = true; }
                         catch (error) { throw new Error('SUBMISSION_UPLOAD_FAILED', { cause: error }); }
                     }
-                    await ctx.fns.session.mutateScratchpad({ id, mutate: (scratchpad: Record<string, any>, now: number) => {
-                        const plan = scratchpad.plan;
-                        if (!plan?.pausedAt) return;
-                        plan.pausedAt = null;
-                        plan.updatedAt = now;
-                        const active = Array.isArray(plan.tasks) ? plan.tasks.find((task: any) => task.status === 'active') : null;
-                        if (active && !active.activeSince) active.activeSince = now;
-                    } });
+                    await ctx.fns.todo.resume({ id });
                     const safeText = await ctx.fns.session.scrubUnicode({ text });
                     const content: types.tools.Content[] = safeText ? [{ type: 'text', text: safeText }] : [];
                     content.push(...uploads.map(item => item.ref));

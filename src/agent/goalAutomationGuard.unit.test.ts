@@ -8,7 +8,7 @@ function fixture(kind = 'bound', checkpoint = 'active', pending: boolean | 'unkn
  const messages: any[] = [], executed: string[] = [];
  let streams = 0, checks = 0, flushes = 0, inputReads = 0, idx = 0;
  const state: any = {binding:{rootAgentId:'a',goalId:'g',runToken:'token'},pendingRequests:new Set(),sealed:false};
- const agent: any = {id:'a',scratchpad:{plan:{tasks:[{id:'work',status:'active',title:'Work'}]}},messages:[],events:[],model:'openai:test',goal:{enabled:true,statement:'legacy'}};
+ const agent: any = {id:'a',scratchpad:{todos: {tasks:[{id:'work',status:'active',title:'Work'}]}},messages:[],events:[],model:'openai:test',goal:{enabled:true,statement:'legacy'}};
  const noop = async()=>{};
  const ctx: any = {state:{},fns:{
  input:{isWaiting:async()=>false},
@@ -29,13 +29,13 @@ function fixture(kind = 'bound', checkpoint = 'active', pending: boolean | 'unkn
  return {ctx,agent,state,messages,executed,counts:()=>({streams,checks,flushes,inputReads}),execute:(extra:any={})=>run(ctx,null,{agent,userText:'human question',...extra})};
 }
 for(const kind of ['bound','inactive','excluded']) test(`${kind} cannot use legacy or plan as a Goal bypass`,async()=>{
- const h=fixture(kind);const result=await h.execute();expect(result).toHaveProperty('text','human answer');expect(h.counts().streams).toBe(1);expect(h.counts().checks).toBe(0);expect(h.messages.some(m=>m.message_type==='plan_feedback')).toBe(false);
+ const h=fixture(kind);const result=await h.execute();expect(result).toHaveProperty('text','human answer');expect(h.counts().streams).toBe(1);expect(h.counts().checks).toBe(0);expect(h.messages.some(m=>m.message_type==='todo_feedback')).toBe(false);
 });
 for(const pending of [true,'unknown'] as const) test(`absent Goal plan/legacy stops at ${pending} pending-input boundary`,async()=>{
  const h=fixture('absent','active',pending);await h.execute();expect(h.counts().streams).toBe(1);expect(h.counts().checks).toBe(0);
 });
 for(const kind of ['disabled','absent']) test(`${kind} retains ordinary bounded plan and legacy`,async()=>{
- const h=fixture(kind);await h.execute();expect(h.counts().streams).toBe(3);expect(h.counts().checks).toBe(3);expect(h.messages.filter(m=>m.message_type==='plan_feedback')).toHaveLength(2);if(kind==='disabled')expect(h.counts().inputReads).toBe(0);
+ const h=fixture(kind);await h.execute();expect(h.counts().streams).toBe(3);expect(h.counts().checks).toBe(3);expect(h.messages.filter(m=>m.message_type==='todo_feedback')).toHaveLength(2);if(kind==='disabled')expect(h.counts().inputReads).toBe(0);
 });
 // Unknown accounting answers with a bounded summary; a committed non-active status stops
 // silently because the durable Goal status already explains the stop.
@@ -63,11 +63,11 @@ test('blocked provider usage refuses proposed tools after one request',async()=>
  const result=await h.execute();expect(formats).toEqual(['common-stream']);expect(calls).toBe(1);expect(h.executed).toEqual([]);expect(result).toHaveProperty('text',expect.stringContaining('Further automatic work stopped'));
 });
 test('blocked capture refuses human and automatic work before sampling',async()=>{
- const h=fixture('blocked');const result=await h.execute();expect(result).toHaveProperty('goalAdmissionBlocked',true);expect(h.counts().streams).toBe(0);expect(h.counts().checks).toBe(0);expect(h.executed).toEqual([]);expect(h.messages.some(m=>m.message_type==='plan_feedback')).toBe(false);
+ const h=fixture('blocked');const result=await h.execute();expect(result).toHaveProperty('goalAdmissionBlocked',true);expect(h.counts().streams).toBe(0);expect(h.counts().checks).toBe(0);expect(h.executed).toEqual([]);expect(h.messages.some(m=>m.message_type==='todo_feedback')).toBe(false);
 });
 
 function nativeFixture(kind = 'bound') {
- const h = fixture(kind); h.agent.currentJobId = 'token'; h.agent.goal = undefined; h.agent.scratchpad.plan = undefined;
+ const h = fixture(kind); h.agent.currentJobId = 'token'; h.agent.goal = undefined; h.agent.scratchpad.todos = undefined;
  h.state.revision = 1; h.state.binding.sourceAgentId = 'a';
  let snapshot: any = kind === 'bound' ? {goalId:'g',revision:1,status:'active'} : null;
  let invocation: any; let captures = 0;

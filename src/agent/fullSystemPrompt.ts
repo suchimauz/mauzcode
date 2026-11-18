@@ -40,9 +40,9 @@ export default async function (ctx: Context, _session: Session | null, opts: {
                 ? '\n\nBig tool results have a bounded preview and immutable result UUID. Read ranges with the read_result tool ({ id: "<uuid>", offset: 0, limit: 4000 }); inspect ok, text and truncated before reading more. Do not rerun a tool or read scratchpad.results to recover output. Old rN references are unavailable; a storage-failure preview has no full saved result.'
                 : '\n\nBig tool results have a bounded preview and immutable result UUID. Read ranges with await ctx.fns.agent.readResult({ id: "<uuid>", offset: 0, limit: 4000 }); inspect ok, text and truncated before reading more. Do not rerun a tool or read scratchpad.results to recover output. Old rN references are unavailable; a storage-failure preview has no full saved result.';
         }
-        // Native plan/delegation tools replace the eval recipes only when this agent can call them.
-        if (section.id === "plans" && nativeFns.has("tools.planUpdate") && nativeFns.has("tools.planDone")) {
-            body += '\n\nPrefer the plan_update tool to create or revise your plan and the plan_done tool to close the active task; they act on your own plan without eval.';
+        // Native todo/delegation tools replace the eval recipes only when this agent can call them.
+        if (section.id === "plans" && nativeFns.has("tools.todoUpdate") && nativeFns.has("tools.todoDone")) {
+            body += '\n\nPrefer the todo_update tool to create or revise your todos and the todo_done tool to close an active todo; they act on your own todos without eval.';
         }
         if (section.id === "delegation" && nativeFns.has("tools.delegateTask")) {
             body += '\n\nPrefer the delegate_task tool ({ title, tasks, presetId? }); it returns the child id at once. End your turn after delegating: the result arrives as a team update.';

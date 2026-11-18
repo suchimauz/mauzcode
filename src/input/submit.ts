@@ -8,7 +8,7 @@
  * Used by the POST /input/<id> route; callable directly to answer or withdraw an input
  * programmatically. Returns the new state and, on a validation failure, the message to show
  * under the still-open form. A second answer to the same input is a no-op.
- * Answers and cancellations preserve Stop and plan pauses atomically with
+ * Answers and cancellations preserve Stop and todo pauses atomically with
  * transcript delivery and scheduling; an `agent:<id>` withdrawal preserves pauses.
  * Protected kinds reject generic submission and require their dedicated authenticated handler.
  * @param opts.id Input identifier.
@@ -113,7 +113,7 @@ async function deliver(ctx: Context, input: types.input.Row, state: string, summ
         await finish(ctx, input, state, result, reason, actor);
         await ctx.fns.session.appendMessage({ id: input.agentId, message, ts: now });
         await ctx.fns.procs.db.run({
-            sql: "UPDATE agents SET next_run_at = GREATEST(COALESCE(next_run_at, 0), ?), updated_at = ? WHERE id = ? AND archived_at IS NULL AND stopped_at IS NULL AND NOT EXISTS (SELECT 1 FROM inputs i WHERE i.agent_id=agents.id AND i.spec->>'_agentWait'='true' AND i.state IN ('open','processing')) AND NOT (COALESCE(scratchpad::jsonb,'{}'::jsonb)->'plan'->>'pausedAt' IS NOT NULL)",
+            sql: "UPDATE agents SET next_run_at = GREATEST(COALESCE(next_run_at, 0), ?), updated_at = ? WHERE id = ? AND archived_at IS NULL AND stopped_at IS NULL AND NOT EXISTS (SELECT 1 FROM inputs i WHERE i.agent_id=agents.id AND i.spec->>'_agentWait'='true' AND i.state IN ('open','processing')) AND NOT (COALESCE(scratchpad::jsonb,'{}'::jsonb)->'todos'->>'pausedAt' IS NOT NULL)",
             params: [now, now, input.agentId],
         });
     };

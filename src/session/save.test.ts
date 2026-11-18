@@ -11,7 +11,7 @@ describe("session.save", () => {
     test("upserts agent state and plans without importing in-memory history", async () => {
         const ctx: any = await mkTestCtx();
         const agent = await ctx.fns.agent.start({ model: "m1", systemPrompt: "sp" });
-        agent.scratchpad = { x: 42, plan: { title: "Keep", tasks: [] } };
+        agent.scratchpad = { x: 42, todos: { title: "Keep", tasks: [] } };
         agent.functionRagEnabled = true;
         // A detached import object is not a live transcript mutation.
         await ctx.fns.session.save({ agent: { ...agent, messages: [{ role: "user", content: "not imported" }], events: [{ type: "user", text: "not imported" }] } });

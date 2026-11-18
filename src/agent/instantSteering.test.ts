@@ -9,6 +9,7 @@ function harness() {
     const agent: any = { id: "a", model: "mock/default:test", title: "a", workspaceDir: process.cwd(), systemPrompt: "", messages: [...rows], events, scratchpad: {}, isStreaming: true, abortController: null, samplingAbortController: null };
     let streamCalls = 0;
     const ctx: any = { state: { agent: { a: agent } }, fns: {
+        todo: { resume: async () => ({ ok: true, changed: false, scratchpad: agent.scratchpad }) },
         auth: { actorId: async () => null },
         session: {
             forAgent: () => null,

@@ -3,9 +3,9 @@ fn: tools.finishTask
 requires: [agent.finishTask]
 availableWhen: tools.isDelegatedChild
 description: >-
-  Finish your delegated work after every plan task is done: deliver a concise summary and a required
+  Finish your delegated work after every todo is done: deliver a concise summary and a required
   result object to the parent agent, once. Pass result as a JSON object, not a JSON-encoded string;
-  wrap a scalar as {value: ...}. Fails while any plan task is not done.
+  wrap a scalar as {value: ...}. Fails while any todo is not done.
 parameters:
   type: object
   properties:

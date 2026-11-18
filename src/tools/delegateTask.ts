@@ -1,20 +1,20 @@
 /**
- * Native `delegate_task` adapter: delegates an ordered task plan to a new child of the invoking agent.
+ * Native `delegate_task` adapter: delegates an ordered todo list to a new child of the invoking agent.
  *
  * Binds the parent only from the trusted tool invocation and delegates to `agent.delegate`, which intersects
  * the requested preset with the parent's snapshot (never widening it), handles goal-bound parents, and
  * starts the child asynchronously. Returns the child id at once and never waits for it.
- * @param opts.title Short title for the child and its plan.
- * @param opts.tasks Ordered, non-empty tasks in the plan format.
+ * @param opts.title Short title for the child and its todo list.
+ * @param opts.tasks Ordered, non-empty todos in the todo format.
  * @param opts.presetId Optional preset that can only narrow the parent's access.
  */
 export default async function (
     ctx: Context,
     session: Session | null,
     opts: {
-        /** Short title for the child and its plan. */
+        /** Short title for the child and its todo list. */
         title: string;
-        /** Ordered, non-empty tasks in the plan format. */
+        /** Ordered, non-empty todos in the todo format. */
         tasks: Array<{
             /** Stable task id. */
             id: string;
@@ -33,7 +33,7 @@ export default async function (
     if (!agent?.id) throw new Error("delegate_task: requires a trusted agent invocation");
     if (typeof opts.title !== "string" || !opts.title.trim()) throw new Error("delegate_task: title must be a non-empty string");
     if (!Array.isArray(opts.tasks) || opts.tasks.length === 0) throw new Error("delegate_task: tasks must not be empty");
-    // Validate the plan before any child exists: a bad task list must not leave an orphan fork behind.
+    // Validate the todos before any child exists: a bad task list must not leave an orphan fork behind.
     const ids = new Set<string>();
     opts.tasks.forEach((task, index) => {
         const id = typeof task?.id === "string" ? task.id.trim() : "";

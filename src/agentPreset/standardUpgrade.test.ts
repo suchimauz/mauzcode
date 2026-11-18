@@ -4,6 +4,7 @@ import expansion from './$migration_20380102120000_expand_standard_capabilities'
 import nativeTools from './$migration_20380103120000_native_agent_tools';
 import planDelegationTools from './$migration_20380104120000_native_plan_delegation_tools';
 import showArtifactTool from './$migration_20380105120000_native_show_artifact';
+import todoTools from './$migration_20380106120000_todo_tools';
 
 // Every factory upgrade in order, as boot applies them.
 const migration = { up: async (ctx: Context) => { await expansion.up(ctx); await nativeTools.up(ctx); await planDelegationTools.up(ctx); await showArtifactTool.up(ctx); } };
@@ -70,6 +71,8 @@ describe('conservative Standard factory upgrade', () => {
         });
         const others = await ctx.fns.procs.db.select({ sql: "SELECT * FROM agent_presets WHERE id <> 'standard' ORDER BY id" });
         await migration.up(ctx);
+        // Factory upgrades end at the last pre-todo Standard; the todo rename then reaches today's defaults.
+        await todoTools.up(ctx);
         const upgraded = await read(ctx);
         const shipped = ctx.fns.agentPreset.defaults({})[0]!;
         expect({ ...upgraded, updated_at: Number(upgraded.updated_at) }).toEqual({ ...shipped, allow: expect.any(Array), updated_at: expect.any(Number) });
@@ -79,14 +82,19 @@ describe('conservative Standard factory upgrade', () => {
         expect(newSnapshot.layers[0]?.plugins).toEqual(shipped.plugins);
         expect(newSnapshot.layers[0]?.allow).toContain('projects.list');
         expect(oldSnapshot.layers[0]?.plugins).toEqual([]);
-        expect((await ctx.fns.procs.db.select({ sql: "SELECT preset_snapshot FROM agents WHERE id = 'standard-before-upgrade'" }))[0]?.preset_snapshot).toEqual(oldSnapshot);
+        // Only the todo rename rewrites frozen snapshot grants; factory upgrades never touch them.
+        const renamed: Record<string, string> = { 'session.plan': 'todo.create', 'session.updatePlan': 'todo.update', 'session.done': 'todo.done', 'session.removePlan': 'todo.remove' };
+        const renamedSnapshot = { ...oldSnapshot, layers: [{ ...oldSnapshot.layers[0]!, allow: oldSnapshot.layers[0]!.allow.map((rule: string) => renamed[rule] ?? rule) }] };
+        expect((await ctx.fns.procs.db.select({ sql: "SELECT preset_snapshot FROM agents WHERE id = 'standard-before-upgrade'" }))[0]?.preset_snapshot).toEqual(renamedSnapshot);
         expect(await ctx.fns.procs.db.select({ sql: "SELECT * FROM agent_presets WHERE id <> 'standard' ORDER BY id" })).toEqual(others);
         await migration.up(ctx);
+        await todoTools.up(ctx);
         await ctx.fns.agentPreset.ensureBuiltins({});
         expect(await read(ctx)).toEqual(upgraded);
         await store(ctx, { ...upgraded, prompt: 'post-upgrade customization' });
         const customized = await read(ctx);
         await migration.up(ctx);
+        await todoTools.up(ctx);
         await ctx.fns.agentPreset.ensureBuiltins({});
         expect(await read(ctx)).toEqual(customized);
     });
@@ -142,6 +150,7 @@ describe('native agent tools Standard upgrade', () => {
         // The next factory upgrades chain on top and land on today's shipped defaults.
         await planDelegationTools.up(ctx);
         await showArtifactTool.up(ctx);
+        await todoTools.up(ctx);
         expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {
@@ -167,8 +176,9 @@ describe('native plan and delegation tools Standard upgrade', () => {
         expect([...upgraded.allow].sort()).toEqual([...p0.allow, ...P1].sort());
         await planDelegationTools.up(ctx);
         expect(await read(ctx)).toEqual(upgraded);
-        // The next factory upgrade chains on top and lands on today's shipped defaults.
+        // The next factory upgrades chain on top and land on today's shipped defaults.
         await showArtifactTool.up(ctx);
+        await todoTools.up(ctx);
         expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {
@@ -192,9 +202,10 @@ describe('native show_artifact Standard upgrade', () => {
         await showArtifactTool.up(ctx);
         const upgraded = await read(ctx);
         expect([...upgraded.allow].sort()).toEqual([...p1.allow, ...P2].sort());
-        expect([...upgraded.allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
         await showArtifactTool.up(ctx);
         expect(await read(ctx)).toEqual(upgraded);
+        await todoTools.up(ctx);
+        expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {
         const ctx = await testCtx();

@@ -1,6 +1,6 @@
 # Цикл агента: намерение → цель → skill → plan → задача
 
-**Статус:** частично реализовано. Durable goals/checks, `session.plan` tasks, delegation и function/skill retrieval существуют; единый instruction→intent→skill orchestration и разделённые потоки ниже остаются концептуальным дизайном.
+**Статус:** частично реализовано. Durable goals/checks, todos (`todo.*`), delegation и function/skill retrieval существуют; единый instruction→intent→skill orchestration и разделённые потоки ниже остаются концептуальным дизайном.
 
 Этот документ описывает упрощённую модель работы агента с тремя раздельными входными потоками:
 
@@ -1254,7 +1254,7 @@ flowchart TB
 | Идея PG | Как ложится на нашу модель |
 |---|---|
 | Условия на рёбрах (`condition` / `guidance` / `pitfalls`) | обогатить `Skill.todoTemplate`: переход между шагами получает свои условия вместо общего `applicableWhen` |
-| `locate` активного узла | ввести «текущую позицию» в Plan — сейчас её нет ни в `session.plan`, ни в модели §2.4 |
+| `locate` активного узла | ввести «текущую позицию» в Plan — сейчас её нет ни в todos (`todo.*`), ни в модели §2.4 |
 | Окрестность `h=2` вместо полного Plan в промпте | часть работы по управлению контекстом, смыкается с `continuous-context-compaction.md` |
 | Validation gate `S_val(new) ≥ S_val(old)` | операциональная замена «достаточных оснований» в §11.4; требует набора повторяемых задач-проверок |
 | `H_rejected` | недостающий элемент §11.3: к `add / rate / edit / split / merge / deprecate` добавляется `reject-and-remember` |
@@ -1333,7 +1333,7 @@ compiled  — после N успехов на разных задачах по�
 | World model | структурированная рабочая память с разделением фактов и допущений |
 | Skill | `.mauzcode/skill/*`: сохранённое Plan Definition с goalPattern, conditions, todoTemplate и helpers |
 | Plan | конкретный durable экземпляр Skill: Goal + conditions + todo list + helpers |
-| Task / Todo | существующий `session.plan.tasks` с task IDs и статусами |
+| Task / Todo | существующий `scratchpad.todos.tasks` (`todo.*`) с todo IDs и статусами |
 | Action | tool call с `tool_call_id` и ожидаемым исходом |
 | Observation | tool result и последующие проверки |
 | Progress analysis | отдельный структурированный результат после значимого шага |
@@ -1342,7 +1342,7 @@ compiled  — после N успехов на разных задачах по�
 
 | Plan episode | неизменяемая запись goal/context/skill/plan/tasks/outcome/evidence |
 | Memory consolidation | фоновый или завершающий проход, предлагающий add/rate/edit/split/merge/deprecate |
-Текущее `session.plan` ближе всего к уровню **tasks**. Оно не должно одновременно изображать intent, goal, skill и полноценный plan: иначе теряется причина смены плана и невозможно отличить «задачи плохие» от «выбран неправильный способ» или «изменилась сама цель».
+Текущий todo list (`todo.*`) ближе всего к уровню **tasks**. Оно не должно одновременно изображать intent, goal, skill и полноценный plan: иначе теряется причина смены плана и невозможно отличить «задачи плохие» от «выбран неправильный способ» или «изменилась сама цель».
 
 Skill memory целесообразно строить постепенно:
 

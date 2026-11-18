@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { ComposerFooter } from '../components/mauzcode/ComposerFooter';
 import { LiveComposer } from '../components/mauzcode/LiveComposer';
 vi.mock('../lib/goal', async importOriginal => ({ ...await importOriginal<typeof import('../lib/goal')>(), getGoal: vi.fn().mockResolvedValue({ version: 1, enabled: false }) }));
+vi.mock('../lib/todos', () => ({ getTodos: vi.fn().mockResolvedValue({ todos: null }) }));
+vi.mock('../sdk/live', () => ({ subscribeLive: () => () => {} }));
 vi.mock('../lib/queue', async importOriginal => ({ ...await importOriginal<typeof import('../lib/queue')>(), getQueue: vi.fn().mockResolvedValue({ items: [] }) }));
 const json = (body: object) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
 afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear(); });

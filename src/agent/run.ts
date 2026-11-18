@@ -232,18 +232,9 @@ export default async function (
     await assertRunActive();
 
     agent.scratchpad ??= {};
-    if (agent.scratchpad.plan?.pausedAt && userText.trim()) {
-        const updated: any = await ctx.fns.session.mutateScratchpad({ id: agent.id, mutate: (scratchpad: Record<string, any>, now: number) => {
-            const plan = scratchpad.plan;
-            if (!plan?.pausedAt) return;
-            plan.pausedAt = null;
-            plan.updatedAt = now;
-            const active = Array.isArray(plan.tasks) ? plan.tasks.find((task: any) => task.status === 'active') : null;
-            if (active && !active.activeSince) active.activeSince = now;
-        } });
+    if (agent.scratchpad.todos?.pausedAt && userText.trim()) {
+        await ctx.fns.todo.resume({ agent });
         await assertRunActive();
-        agent.scratchpad = updated.scratchpad;
-        ctx.fns.events.refreshAgentMeta({ agentId: agent.id, section: 'plan', reason: 'plan-resumed' });
     }
     const activeStatusLine = await ctx.fns.agent.statusLineForTurn({ agent });
     await assertRunActive();
@@ -335,8 +326,8 @@ export default async function (
     let goalIterations = 0;
     let lastGoalFeedback = "";
     const goalDeadline = Date.now() + 5 * 60_000;
-    const planAttempts: Record<string, number> = {};
-    let totalPlanInjections = 0;
+    const todoAttempts: Record<string, number> = {};
+    let totalTodoInjections = 0;
     while (true) {
         if (await ctx.fns.input.isWaiting({ agentId: agent.id, since: inputWaitSince })) {
             return Object.assign(goalReturn, { text: '', usage: null, consumedUserIdx, inputWaiting: true });
@@ -770,25 +761,28 @@ export default async function (
                 }
             }
 
-            const plan = agent.scratchpad?.plan;
-            const activeTask = Array.isArray(plan?.tasks) ? plan.tasks.find((task: any) => task.status === "active") : null;
-            const attempts = activeTask ? Number(planAttempts[activeTask.id] ?? 0) : 0;
-            // Native Goal capability is unavailable: a plan is not a substitute
+            const todos = agent.scratchpad?.todos;
+            const activeTodos = Array.isArray(todos?.tasks) ? todos.tasks.filter((task: any) => task.status === "active") : [];
+            const activeTask = activeTodos[0] ?? null;
+            const attempts = activeTask ? Number(todoAttempts[activeTask.id] ?? 0) : 0;
+            // Native Goal capability is unavailable: todos are not a substitute
             // continuation channel, including pending-input and unknown boundaries.
-            if (automationAllowed && activeTask && !plan.pausedAt && attempts < 2 && totalPlanInjections < 5) {
-                planAttempts[activeTask.id] = attempts + 1;
-                totalPlanInjections++;
+            if (automationAllowed && activeTask && !todos.pausedAt && attempts < 2 && totalTodoInjections < 5) {
+                todoAttempts[activeTask.id] = attempts + 1;
+                totalTodoInjections++;
                 const feedback = [
-                    `Continue the active plan task.`,
-                    `Task ID: ${activeTask.id}`,
-                    `Title: ${activeTask.title}`,
-                    activeTask.instructions ? `Instructions:\n${activeTask.instructions}` : "",
-                    `Call session.done({ agent, id: ${JSON.stringify(activeTask.id)} }) only after the task is complete.`,
+                    activeTodos.length > 1 ? `Continue the active todos.` : `Continue the active todo.`,
+                    ...activeTodos.map((task: any) => [
+                        `Todo ID: ${task.id}`,
+                        `Title: ${task.title}`,
+                        task.instructions ? `Instructions:\n${task.instructions}` : "",
+                    ].filter(Boolean).join("\n\n")),
+                    `Call todo_done (or todo.done({ agent, id })) for a todo only after it is complete.`,
                 ].filter(Boolean).join("\n\n");
                 await ctx.fns.session.appendMessage({ id: agent.id, message: {
                     role: "user",
                     content: feedback,
-                    message_type: "plan_feedback",
+                    message_type: "todo_feedback",
                     excluded_from_cursor: true,
                 } });
                 await assertRunActive();

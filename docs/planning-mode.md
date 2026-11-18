@@ -10,7 +10,7 @@ MauzCode planning is provider-neutral guidance, **not a sandbox or tool permissi
 - Command-shaped unknown slash names return an explicit error; absolute paths such as `/tmp/file` remain ordinary text.
 - Command attachments are rejected. Clients should supply a stable `requestId` or `Idempotency-Key`; retries of the same command return the recorded result. Reusing the key with different input returns 409.
 
-The scope is one session. `agent_planning` persists mode/revision/latest proposal separately from `scratchpad.plan`. Missing state means execute. Reload/resume reads durable state. Forks copy only mode, never a pending review or approval. Mode is appended freshly to each provider request outside compacted history. The `session.plan` task tracker is not planning mode: its legacy autorun is suppressed in plan mode and its HTTP activation editor refuses activation until execute mode.
+The scope is one session. `agent_planning` persists mode/revision/latest proposal separately from `scratchpad.todos`. Missing state means execute. Reload/resume reads durable state. Forks copy only mode, never a pending review or approval. Mode is appended freshly to each provider request outside compacted history. Todo tracking (`todo.*`, `todo_update`/`todo_done`) is not planning mode: its todo continuation is suppressed in plan mode, and todos are shown read-only in the chat dock.
 
 **MVP transition boundary:** commands and human review reject with `409 agent_running` when a run is active, claimed, or queued. Stop it first. There is no pending-mode queue, no cancellation of already executing tools, and no promise to preempt arbitrary in-process eval. `pending` is always null. Do not silently retry a rejected transition.
 

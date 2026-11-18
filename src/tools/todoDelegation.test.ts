@@ -1,10 +1,10 @@
-// FUNCTIONAL test: native plan_update, plan_done, delegate_task and finish_task on a real test database.
+// FUNCTIONAL test: native todo_update, todo_done, delegate_task and finish_task on a real test database.
 import { describe, expect, test } from "bun:test";
 import { mkTestCtx } from "../_testCtx.entry";
 
 const snapshot = (allow: string[], deny: string[] = []): types.agentPreset.Snapshot =>
     ({ presetId: "test", name: "TestPreset", layers: [{ id: "test", allow, deny, plugins: [], prompt: "", excludeSections: [] }] });
-const NAMES = ["plan_update", "plan_done", "delegate_task", "finish_task"];
+const NAMES = ["todo_update", "todo_done", "delegate_task", "finish_task"];
 
 async function setup(preset?: types.agentPreset.Snapshot) {
     const ctx: any = await mkTestCtx();
@@ -17,78 +17,92 @@ async function setup(preset?: types.agentPreset.Snapshot) {
     return { ctx, agent, call, stored };
 }
 
-const states = (plan: any) => plan.tasks.map((task: any) => `${task.id}:${task.status}`);
+const states = (todos: any) => todos.tasks.map((task: any) => `${task.id}:${task.status}`);
 
-describe("plan_update", () => {
-    test("creates a plan with the first task active", async () => {
+describe("todo_update", () => {
+    test("creates todos with the first todo active", async () => {
         const { call, stored } = await setup();
-        const result = await call("plan_update", { title: "Work", tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }, { id: "c", title: "C" }] });
+        const result = await call("todo_update", { title: "Work", tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }, { id: "c", title: "C" }] });
         expect(result.isError).toBe(false);
-        expect(JSON.parse(result.output)).toMatchObject({ created: true, title: "Work", active: "a" });
-        expect(states((await stored()).plan)).toEqual(["a:active", "b:pending", "c:pending"]);
+        expect(JSON.parse(result.output)).toMatchObject({ created: true, title: "Work", active: ["a"] });
+        expect(states((await stored()).todos)).toEqual(["a:active", "b:pending", "c:pending"]);
     });
 
-    test("revises a plan, keeping the state of kept ids", async () => {
+    test("revises todos, keeping the state of kept ids", async () => {
         const { call, stored } = await setup();
-        await call("plan_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }] });
-        await call("plan_done", { id: "a" });
-        const result = await call("plan_update", { tasks: [{ id: "a", title: "A again" }, { id: "b", title: "B" }, { id: "b2", title: "B2" }] });
+        await call("todo_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }] });
+        await call("todo_done", { id: "a" });
+        const result = await call("todo_update", { tasks: [{ id: "a", title: "A again" }, { id: "b", title: "B" }, { id: "b2", title: "B2" }] });
         expect(result.isError).toBe(false);
-        expect(JSON.parse(result.output)).toMatchObject({ created: false, active: "b" });
-        const plan = (await stored()).plan;
-        expect(states(plan)).toEqual(["a:done", "b:active", "b2:pending"]);
-        expect(plan.tasks[0].title).toBe("A again");
+        expect(JSON.parse(result.output)).toMatchObject({ created: false, active: ["b"] });
+        const todos = (await stored()).todos;
+        expect(states(todos)).toEqual(["a:done", "b:active", "b2:pending"]);
+        expect(todos.tasks[0].title).toBe("A again");
         // Removing the active task is refused by the shared rules, unchanged.
-        expect((await call("plan_update", { tasks: [{ id: "a", title: "A" }, { id: "c", title: "C" }] })).output).toMatch(/cannot be removed/);
-        // A completed plan extended with a new id activates it.
-        await call("plan_done", { id: "b" });
-        await call("plan_done", { id: "b2" });
-        await call("plan_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }, { id: "b2", title: "B2" }, { id: "c", title: "C" }] });
-        expect(states((await stored()).plan)).toEqual(["a:done", "b:done", "b2:done", "c:active"]);
+        expect((await call("todo_update", { tasks: [{ id: "a", title: "A" }, { id: "c", title: "C" }] })).output).toMatch(/cannot be removed/);
+        // A completed list extended with a new id activates it.
+        await call("todo_done", { id: "b" });
+        await call("todo_done", { id: "b2" });
+        await call("todo_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }, { id: "b2", title: "B2" }, { id: "c", title: "C" }] });
+        expect(states((await stored()).todos)).toEqual(["a:done", "b:done", "b2:done", "c:active"]);
     });
 
-    test("duplicate, empty and over-long ids leave the plan unchanged", async () => {
+    test("duplicate, empty and over-long ids leave the todos unchanged", async () => {
         const { call, stored } = await setup();
-        await call("plan_update", { tasks: [{ id: "a", title: "A" }] });
-        const before = JSON.stringify((await stored()).plan);
+        await call("todo_update", { tasks: [{ id: "a", title: "A" }] });
+        const before = JSON.stringify((await stored()).todos);
         for (const tasks of [[{ id: "x", title: "X" }, { id: "x", title: "Y" }], [{ id: "", title: "X" }], [{ id: "x".repeat(121), title: "X" }], [{ id: "x", title: "" }], []]) {
-            const result = await call("plan_update", { tasks });
+            const result = await call("todo_update", { tasks });
             expect(result.isError).toBe(true);
         }
-        expect(JSON.stringify((await stored()).plan)).toBe(before);
-        // Also a fresh agent: a rejected first plan is not created.
+        expect(JSON.stringify((await stored()).todos)).toBe(before);
+        // Also a fresh agent: a rejected first list is not created.
         const fresh = await setup();
-        expect((await fresh.call("plan_update", { tasks: [{ id: "x", title: "X" }, { id: "x", title: "Y" }] })).output).toMatch(/duplicate task id/);
-        expect((await fresh.stored()).plan).toBeUndefined();
+        expect((await fresh.call("todo_update", { tasks: [{ id: "x", title: "X" }, { id: "x", title: "Y" }] })).output).toMatch(/duplicate todo id/);
+        expect((await fresh.stored()).todos).toBeUndefined();
     });
 });
 
-describe("plan_done", () => {
-    test("completes the active task and returns the next one", async () => {
+describe("todo_update parallel start", () => {
+    test("status active starts pending todos in parallel and returns every active id", async () => {
         const { call, stored } = await setup();
-        await call("plan_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B", instructions: "do b" }] });
-        const out = JSON.parse((await call("plan_done", { id: "a" })).output);
+        await call("todo_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }, { id: "c", title: "C" }] });
+        const out = JSON.parse((await call("todo_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B", status: "active" }, { id: "c", title: "C" }] })).output);
+        expect(out.active).toEqual(["a", "b"]);
+        const bad = await call("todo_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }, { id: "c", title: "C", status: "pending" }] });
+        expect(bad.isError).toBe(true);
+        expect(states((await stored()).todos)).toEqual(["a:active", "b:active", "c:pending"]);
+        const done = JSON.parse((await call("todo_done", { id: "a" })).output);
+        expect(done).toMatchObject({ next: null, active: [{ id: "b" }], complete: false });
+    });
+});
+
+describe("todo_done", () => {
+    test("completes the active todo and returns the next one", async () => {
+        const { call, stored } = await setup();
+        await call("todo_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B", instructions: "do b" }] });
+        const out = JSON.parse((await call("todo_done", { id: "a" })).output);
         expect(out).toMatchObject({ completed: { id: "a" }, alreadyDone: false, next: { id: "b", instructions: "do b" }, complete: false, progress: { done: 1, total: 2 } });
-        expect(states((await stored()).plan)).toEqual(["a:done", "b:active"]);
+        expect(states((await stored()).todos)).toEqual(["a:done", "b:active"]);
     });
 
-    test("is idempotent for a done task and rejects pending or unknown ids without changes", async () => {
+    test("is idempotent for a done todo and rejects pending or unknown ids without changes", async () => {
         const { call, stored } = await setup();
-        await call("plan_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }, { id: "c", title: "C" }] });
-        await call("plan_done", { id: "a" });
-        expect(JSON.parse((await call("plan_done", { id: "a" })).output)).toMatchObject({ alreadyDone: true });
-        expect(states((await stored()).plan)).toEqual(["a:done", "b:active", "c:pending"]);
-        const before = JSON.stringify((await stored()).plan);
-        const pending = await call("plan_done", { id: "c" });
+        await call("todo_update", { tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }, { id: "c", title: "C" }] });
+        await call("todo_done", { id: "a" });
+        expect(JSON.parse((await call("todo_done", { id: "a" })).output)).toMatchObject({ alreadyDone: true });
+        expect(states((await stored()).todos)).toEqual(["a:done", "b:active", "c:pending"]);
+        const before = JSON.stringify((await stored()).todos);
+        const pending = await call("todo_done", { id: "c" });
         expect(pending.isError).toBe(true);
         expect(pending.output).toMatch(/not active/);
-        expect((await call("plan_done", { id: "zzz" })).output).toMatch(/unknown task id/);
-        expect(JSON.stringify((await stored()).plan)).toBe(before);
+        expect((await call("todo_done", { id: "zzz" })).output).toMatch(/unknown todo id/);
+        expect(JSON.stringify((await stored()).todos)).toBe(before);
     });
 });
 
 describe("delegate_task and finish_task", () => {
-    test("returns the child id at once; the child is a working member with that plan", async () => {
+    test("returns the child id at once; the child is a working member with those todos", async () => {
         const { ctx, call, agent } = await setup();
         ctx.fns.agent.run = async () => { throw new Error("delegate_task must not run the child inline"); };
         const result = await call("delegate_task", { title: "Count", tasks: [{ id: "count", title: "Count files", instructions: "count them" }] });
@@ -97,12 +111,12 @@ describe("delegate_task and finish_task", () => {
         expect(out).toEqual({ id: expect.any(String), status: "working" });
         const child = ctx.state.agent[out.id];
         expect(child.parentId).toBe(agent.id);
-        expect(states(child.scratchpad.plan)).toEqual(["count:active"]);
+        expect(states(child.scratchpad.todos)).toEqual(["count:active"]);
         const members = await ctx.fns.agent.team({ agent });
         expect(members.find((m: any) => m.id === out.id)).toMatchObject({ status: "working" });
         // The child is taught the native tools it can actually call.
         const prompt = (await ctx.fns.session.getMessages({ id: out.id })).map((m: any) => String(m.content)).join("\n");
-        expect(prompt).toContain("plan_done tool");
+        expect(prompt).toContain("todo_done tool");
         expect(prompt).toContain("finish_task tool");
     });
 
@@ -134,19 +148,19 @@ describe("delegate_task and finish_task", () => {
         expect(ctx.fns.agent.wireTools({ agent: child }).map((t: any) => t.name)).not.toContain("bash");
     });
 
-    test("finish_task: unfinished plan fails, completion delivers once, repeats do not redeliver", async () => {
+    test("finish_task: unfinished todos fail, completion delivers once, repeats do not redeliver", async () => {
         const { ctx, call, agent } = await setup();
         const { id } = JSON.parse((await call("delegate_task", { title: "x", tasks: [{ id: "a", title: "A" }, { id: "b", title: "B" }] })).output);
         const child = ctx.state.agent[id];
         const parentUpdates = async () => (await ctx.fns.procs.db.select({ sql: "SELECT payload FROM session_inbound_deliveries WHERE agent_id = ?", params: [agent.id] }))
-            .filter((r: any) => String(typeof r.payload === "string" ? r.payload : JSON.stringify(r.payload)).includes("plan.completed")).length
-            + (await ctx.fns.session.getMessages({ id: agent.id, includeExcluded: true })).filter((m: any) => String(m.content).includes("plan.completed")).length;
+            .filter((r: any) => String(typeof r.payload === "string" ? r.payload : JSON.stringify(r.payload)).includes("todos.completed")).length
+            + (await ctx.fns.session.getMessages({ id: agent.id, includeExcluded: true })).filter((m: any) => String(m.content).includes("todos.completed")).length;
         const early = await call("finish_task", { summary: "s", result: { count: 1 } }, child);
         expect(early.isError).toBe(true);
         expect(early.output).toMatch(/fully completed/);
         expect(await parentUpdates()).toBe(0);
-        await call("plan_done", { id: "a" }, child);
-        await call("plan_done", { id: "b" }, child);
+        await call("todo_done", { id: "a" }, child);
+        await call("todo_done", { id: "b" }, child);
         for (const result of [null, "{\"count\": 7}", 7, [7]]) {
             const rejected = await call("finish_task", { summary: "s", result }, child);
             expect(rejected.isError).toBe(true);
@@ -189,57 +203,68 @@ describe("delegate_task and finish_task", () => {
 describe("binding and gating", () => {
     test("rejects agent selectors and unknown arguments in all four tools; nothing changes", async () => {
         const { ctx, call, agent, stored } = await setup();
-        await call("plan_update", { tasks: [{ id: "a", title: "A" }] });
+        await call("todo_update", { tasks: [{ id: "a", title: "A" }] });
         const { id } = JSON.parse((await call("delegate_task", { title: "x", tasks: [{ id: "a", title: "A" }] })).output);
         const child = ctx.state.agent[id];
-        const before = JSON.stringify((await stored()).plan);
-        const valid: Record<string, any> = { plan_update: { tasks: [{ id: "a", title: "A" }, { id: "z", title: "Z" }] }, plan_done: { id: "a" }, delegate_task: { title: "y", tasks: [{ id: "a", title: "A" }] }, finish_task: { summary: "s", result: { value: 1 } } };
+        const before = JSON.stringify((await stored()).todos);
+        const valid: Record<string, any> = { todo_update: { tasks: [{ id: "a", title: "A" }, { id: "z", title: "Z" }] }, todo_done: { id: "a" }, delegate_task: { title: "y", tasks: [{ id: "a", title: "A" }] }, finish_task: { summary: "s", result: { value: 1 } } };
         for (const name of NAMES) for (const extra of [{ agent: "x" }, { agentId: child.id }, { parentId: "x" }, { owner: "x" }]) {
             const result = await call(name, { ...valid[name], ...extra }, name === "finish_task" ? child : agent);
             expect(result.isError).toBe(true);
             expect(result.output).toMatch(/invalid arguments|unknown argument/);
             expect(result.handlerExecuted).toBe(false);
         }
-        expect(JSON.stringify((await stored()).plan)).toBe(before);
+        expect(JSON.stringify((await stored()).todos)).toBe(before);
         expect(await ctx.fns.agent.team({ agent })).toHaveLength(1);
         // Direct calls without a trusted invocation fail instead of falling back to a current agent.
-        await expect(ctx.fns.tools.planUpdate({ tasks: [{ id: "a", title: "A" }] })).rejects.toThrow("trusted agent invocation");
-        await expect(ctx.fns.tools.planDone({ id: "a" })).rejects.toThrow("trusted agent invocation");
+        await expect(ctx.fns.tools.todoUpdate({ tasks: [{ id: "a", title: "A" }] })).rejects.toThrow("trusted agent invocation");
+        await expect(ctx.fns.tools.todoDone({ id: "a" })).rejects.toThrow("trusted agent invocation");
         await expect(ctx.fns.tools.delegateTask({ title: "x", tasks: [{ id: "a", title: "A" }] })).rejects.toThrow("trusted agent invocation");
         // Adapter-level selectors are rejected even when called directly with a session.
-        await expect(ctx.fns.tools.planDone({ id: "a", agent } as any)).rejects.toThrow("unknown argument agent");
+        await expect(ctx.fns.tools.todoDone({ id: "a", agent } as any)).rejects.toThrow("unknown argument agent");
     });
 
     test("denying an adapter removes the tool while the runtime function stays reachable", async () => {
-        const preset = snapshot(["*"], ["tools.planUpdate", "tools.delegateTask"]);
+        const preset = snapshot(["*"], ["tools.todoUpdate", "tools.delegateTask"]);
         const { ctx, call, agent, stored } = await setup(preset);
         const names = ctx.fns.agent.wireTools({ agent }).map((t: any) => t.name);
-        expect(names).not.toContain("plan_update");
+        expect(names).not.toContain("todo_update");
         expect(names).not.toContain("delegate_task");
-        expect(names).toContain("plan_done");
-        expect((await call("plan_update", { tasks: [{ id: "a", title: "A" }] })).output).toMatch(/unknown tool "plan_update"/);
+        expect(names).toContain("todo_done");
+        expect((await call("todo_update", { tasks: [{ id: "a", title: "A" }] })).output).toMatch(/unknown tool "todo_update"/);
         const allows = ctx.fns.agentPreset.predicate({ snapshot: preset });
-        expect(allows("session.plan")).toBe(true);
-        await ctx.fns.session.plan({ agent, tasks: [{ id: "a", title: "A" }] });
-        expect(states((await stored()).plan)).toEqual(["a:active"]);
+        expect(allows("todo.create")).toBe(true);
+        await ctx.fns.todo.create({ agent, tasks: [{ id: "a", title: "A" }] });
+        expect(states((await stored()).todos)).toEqual(["a:active"]);
         // And denying the wrapped capability removes the tool even when the adapter is allowed.
-        const { ctx: c2, agent: a2 } = await setup(snapshot(["*"], ["session.done", "agent.delegate"]));
+        const { ctx: c2, agent: a2 } = await setup(snapshot(["*"], ["todo.done", "agent.delegate"]));
         const visible = c2.fns.agent.wireTools({ agent: a2 }).map((t: any) => t.name);
-        expect(visible).not.toContain("plan_done");
+        expect(visible).not.toContain("todo_done");
         expect(visible).not.toContain("delegate_task");
-        expect(visible).toContain("plan_update");
+        expect(visible).toContain("todo_update");
+    });
+
+    test("the retired plan tools fail as unknown tools that list todo_update", async () => {
+        const { call } = await setup();
+        for (const name of ["plan_update", "plan_done"]) {
+            const result = await call(name, { tasks: [{ id: "a", title: "A" }], id: "a" });
+            expect(result.isError).toBe(true);
+            expect(result.output).toMatch(new RegExp(`unknown tool "${name}"`));
+            expect(result.output).toContain("todo_update");
+            expect(result.output).toContain("todo_done");
+        }
     });
 
     test("prompt guidance names the native tools only when the agent can call them", async () => {
         const { ctx, agent } = await setup(snapshot(["*"]));
         const full = await ctx.fns.agent.fullSystemPrompt({ agent });
-        expect(full).toContain("plan_update tool");
+        expect(full).toContain("todo_update tool");
         expect(full).toContain("delegate_task tool");
-        agent.preset = snapshot(["*"], ["tools.planUpdate", "tools.delegateTask"]);
+        agent.preset = snapshot(["*"], ["tools.todoUpdate", "tools.delegateTask"]);
         const narrowed = await ctx.fns.agent.fullSystemPrompt({ agent });
-        expect(narrowed).not.toContain("plan_update tool");
+        expect(narrowed).not.toContain("todo_update tool");
         expect(narrowed).not.toContain("delegate_task tool");
-        expect(narrowed).toContain("ctx.fns.session.plan");
+        expect(narrowed).toContain("ctx.fns.todo.create");
     });
 
     test("schemas are strict objects without agent selectors and survive every provider adapter", async () => {

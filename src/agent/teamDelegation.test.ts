@@ -4,7 +4,7 @@ import delegate from "./delegate";
 import team from "./team";
 import steer from "./steer";
 import ask from "./ask";
-import done from "../session/done";
+import done from "../todo/done";
 import archiveMember from "./archiveMember";
 import unarchiveMember from "./unarchiveMember";
 import archiveCompleted from "./archiveCompleted";
@@ -17,13 +17,13 @@ async function setup() {
     ctx.fns.agent.team = team;
     ctx.fns.agent.steer = steer;
     ctx.fns.agent.ask = ask;
-    ctx.fns.session.done = done;
+    ctx.fns.todo.done = done;
     ctx.fns.agent.wakeWorker = () => {};
     return ctx;
 }
 
 describe("team delegation", () => {
-    test("delegate forks a child and assigns the native session plan", async () => {
+    test("delegate forks a child and assigns the native todos", async () => {
         const ctx = await setup();
         const parent = await ctx.fns.agent.start({ model: "m", title: "Parent" });
         ctx.fns.agent.run = async () => { throw new Error("durable delegate must not run inline"); };
@@ -38,10 +38,10 @@ describe("team delegation", () => {
         const child = ctx.state.agent[member.id];
         expect(child.parentId).toBe(parent.id);
         expect(child.forkOffset).toBe(0);
-        expect(child.scratchpad.plan.tasks.map((task: any) => task.status)).toEqual(["active", "pending"]);
+        expect(child.scratchpad.todos.tasks.map((task: any) => task.status)).toEqual(["active", "pending"]);
         const members = await team(ctx, null, { agent: parent });
         expect(members[0]).toMatchObject({ id: child.id, status: "working" });
-        expect(members[0]!.plan.tasks).toHaveLength(2);
+        expect(members[0]!.todos.tasks).toHaveLength(2);
     });
 
     test("completing a child task steers one durable update and schedules idle parent", async () => {
@@ -50,7 +50,7 @@ describe("team delegation", () => {
         const child = await ctx.fns.session.fork({ id: parent.id, title: "Child" });
         child.scratchpad.delegation = { parentId: parent.id, status: "working" };
         await ctx.fns.session.updateScratchpad({ id: child.id, scratchpad: child.scratchpad });
-        await ctx.fns.session.plan({ agent: child, title: "Work", tasks: [
+        await ctx.fns.todo.create({ agent: child, title: "Work", tasks: [
             { id: "one", title: "First" }, { id: "two", title: "Second" },
         ] });
         await done(ctx, null, { agent: child, id: "one" });
@@ -75,25 +75,25 @@ describe("team delegation", () => {
         const child = await ctx.fns.session.fork({ id: parent.id, title: "Child", offset: 0 });
         child.scratchpad = { delegation: { parentId: parent.id, status: "working" } };
         await ctx.fns.session.updateScratchpad({ id: child.id, scratchpad: child.scratchpad });
-        await ctx.fns.session.plan({ agent: child, title: "Work", tasks: [{ id: "final", title: "Final" }] });
+        await ctx.fns.todo.create({ agent: child, title: "Work", tasks: [{ id: "final", title: "Final" }] });
         await done(ctx, null, { agent: child, id: "final" });
         const finishTask = (await import("./finishTask")).default;
         await expect(finishTask(ctx, null, { agent: child, summary: "done" } as any)).rejects.toThrow("result is required");
         await finishTask(ctx, null, { agent: child, summary: "done", result: { findings: ["x"] } });
-        expect(child.scratchpad.plan.tasks[0].result).toEqual({ findings: ["x"] });
-        expect(child.scratchpad.plan.tasks[0].resultSummary).toBe("done");
+        expect(child.scratchpad.todos.tasks[0].result).toEqual({ findings: ["x"] });
+        expect(child.scratchpad.todos.tasks[0].resultSummary).toBe("done");
     });
 
-    test("stopped parents retain all team updates without being restarted, with or without a plan", async () => {
+    test("stopped parents retain all team updates without being restarted, with or without todos", async () => {
         const ctx = await setup();
-        for (const withPlan of [false, true]) {
+        for (const withTodos of [false, true]) {
             const parent = await ctx.fns.agent.start({ model: "m" });
             const child = await ctx.fns.session.fork({ id: parent.id, offset: 0 });
-            if (withPlan) await ctx.fns.session.plan({ agent: parent, title: "Work", tasks: [{ id: "work", title: "Work" }] });
+            if (withTodos) await ctx.fns.todo.create({ agent: parent, title: "Work", tasks: [{ id: "work", title: "Work" }] });
             await ctx.fns.agent.stop({ agent: parent, clearQueue: true });
             // Deliberately stale live state: the scheduling guard must read the row.
             parent.scratchpad = {};
-            for (const event of ["task.completed", "plan.completed", "answer", "blocked", "failed"] as const) {
+            for (const event of ["task.completed", "todos.completed", "answer", "blocked", "failed"] as const) {
                 const delivered = await steer(ctx, null, { from: child, event, summary: "retained result" });
                 expect(delivered.delivered).toBe(true);
                 const row = (await ctx.fns.procs.db.select({ sql: "SELECT run_state, next_run_at FROM agents WHERE id = ?", params: [parent.id] }))[0];
@@ -103,8 +103,8 @@ describe("team delegation", () => {
             const messages = await ctx.fns.procs.db.select({ sql: "SELECT content FROM messages WHERE agent_id = ? AND message_type = 'team_update'", params: [parent.id] });
             expect(messages).toHaveLength(5);
             expect(messages.every((row: any) => row.content.includes("retained result"))).toBe(true);
-            if (withPlan) {
-                // A changed diagnostic must not override the durable plan pause.
+            if (withTodos) {
+                // A changed diagnostic must not override the durable todo pause.
                 await ctx.fns.procs.db.run({ sql: "UPDATE agents SET last_error = NULL WHERE id = ?", params: [parent.id] });
                 await steer(ctx, null, { from: child, event: "answer", summary: "still paused" });
                 const row = (await ctx.fns.procs.db.select({ sql: "SELECT next_run_at FROM agents WHERE id = ?", params: [parent.id] }))[0];
@@ -137,14 +137,14 @@ describe("team delegation", () => {
         const child = await ctx.fns.session.fork({ id: parent.id, offset: 0 });
         child.scratchpad = { delegation: { parentId: parent.id, status: "working" } };
         await ctx.fns.session.updateScratchpad({ id: child.id, scratchpad: child.scratchpad });
-        await ctx.fns.session.plan({ agent: child, title: "Work", tasks: [{ id: "final", title: "Final" }] });
+        await ctx.fns.todo.create({ agent: child, title: "Work", tasks: [{ id: "final", title: "Final" }] });
         await done(ctx, null, { agent: child, id: "final" });
         const finishTask = (await import("./finishTask")).default;
         await finishTask(ctx, null, { agent: child, summary: "first", result: { value: 1 } });
         await finishTask(ctx, null, { agent: child, summary: "second", result: { value: 2 } });
-        expect(child.scratchpad.plan.tasks[0].result).toEqual({ value: 1 });
+        expect(child.scratchpad.todos.tasks[0].result).toEqual({ value: 1 });
         const updates = (await ctx.fns.session.getMessages({ id: parent.id, includeExcluded: true }))
-            .filter((m: any) => m.message_type === "team_update" && String(m.content).includes('event="plan.completed"'));
+            .filter((m: any) => m.message_type === "team_update" && String(m.content).includes('event="todos.completed"'));
         expect(updates).toHaveLength(1);
     });
 
@@ -157,16 +157,16 @@ describe("team delegation", () => {
         const child = await ctx.fns.session.fork({ id: parent.id, offset: 0 });
         child.scratchpad = { delegation: { parentId: parent.id, status: "working" } };
         await ctx.fns.session.updateScratchpad({ id: child.id, scratchpad: child.scratchpad });
-        await ctx.fns.session.plan({ agent: child, title: "Work", tasks: [{ id: "one", title: "One" }] });
+        await ctx.fns.todo.create({ agent: child, title: "Work", tasks: [{ id: "one", title: "One" }] });
         await stopMember(ctx, null, { agent: parent, member: child.id });
         expect(child.scratchpad.delegation.status).toBe("blocked");
-        expect(child.scratchpad.plan.pausedAt).not.toBeNull();
+        expect(child.scratchpad.todos.pausedAt).not.toBeNull();
         // A durable stop fence must be cleared as well as the Team status.
         await ctx.fns.procs.db.run({ sql: "UPDATE agents SET stopped_at = ? WHERE id = ?", params: [Date.now(), child.id] });
         await retryMember(ctx, null, { agent: parent, member: child.id });
         const reloaded = await ctx.fns.session.load({ id: child.id });
         expect(reloaded!.scratchpad.delegation.status).toBe("working");
-        expect(reloaded!.scratchpad.plan.pausedAt).toBeNull();
+        expect(reloaded!.scratchpad.todos.pausedAt).toBeNull();
         const row = (await ctx.fns.procs.db.select({ sql: "SELECT next_run_at, stopped_at FROM agents WHERE id = ?", params: [child.id] }) as any[])[0];
         expect(row.stopped_at).toBeNull();
         expect(Number(row.next_run_at)).toBeGreaterThan(0);

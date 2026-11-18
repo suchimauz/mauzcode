@@ -27,4 +27,7 @@ test('scheduled user events are automation notices and team links encode identit
   rerender(<TranscriptMessage agentId="a" event={{ ...event, type: 'team_update', lifecycle: { event: 'plan.completed', memberId: 'a/b', summary: '<b>done</b>' } }} />);
   expect(screen.getByRole('link').getAttribute('href')).toBe('/agent/a%2Fb');
   expect(screen.getByText('<b>done</b>')).toBeTruthy();
+  expect(screen.getByText('Задачи завершены')).toBeTruthy();
+  rerender(<TranscriptMessage agentId="a" event={{ ...event, type: 'team_update', lifecycle: { event: 'todos.completed', memberId: 'a/b', summary: 'ok' } }} />);
+  expect(screen.getByText('Задачи завершены')).toBeTruthy();
 });
