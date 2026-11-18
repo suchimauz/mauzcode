@@ -29,7 +29,9 @@ export default async function (
     await ctx.fns.procs.db.transaction({fn:async()=>{
         const reservationId = await ctx.fns.agent.triggerCreationBinding({agentId:id});
         await ctx.fns.procs.db.run({sql:"INSERT INTO agent_triggers(id,agent_id,task_reservation_id,kind,prompt,config,timezone,mode,status,next_at,created_at,updated_at) VALUES(?,?,?::uuid,'cron',?,?::jsonb,?,'repeat','active',?,?,?)",params:[triggerId,id,reservationId,prompt,JSON.stringify({expression}),timezone,nextAt,now,now]});
+        await ctx.fns.agent.recordTriggerCreation({triggerId});
     }});
     ctx.fns.agent.wakeWorker({});
+    await ctx.fns.agent.publishTriggerChange({agentIds:[id],reason:'trigger-created'});
     return {id:triggerId,nextAt};
 }

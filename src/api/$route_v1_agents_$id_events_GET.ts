@@ -98,6 +98,16 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
         sql: "SELECT idx FROM messages WHERE agent_id = ? AND idx = ANY(?::integer[]) AND role = 'user' AND message_type = 'git_review_comments'",
         params: [id, `{${reviewEvents.map((event: any) => event.messageIdx).join(',')}}`],
     })).map((row: any) => Number(row.idx)) : []);
+    // Triggers created by a tool call shown in this chat badge that card (exact recorded call id, any owner).
+    const callIds = [...new Set(events.filter((event: any) => event.type === 'tool_call' && typeof event.toolCallId === 'string').map((event: any) => String(event.toolCallId)))];
+    const createdTriggers = new Map<string, { id: string; kind: string; ownerAgentId: string }[]>();
+    if (callIds.length) for (const row of await ctx.fns.procs.db.select({
+        sql: 'SELECT id,kind,agent_id,created_by_tool_call_id FROM agent_triggers WHERE created_by_agent_id=? AND created_by_tool_call_id = ANY(?::text[]) ORDER BY created_at,id',
+        params: [id, `{${callIds.map(value => JSON.stringify(value)).join(',')}}`],
+    })) {
+        const key = String(row.created_by_tool_call_id);
+        createdTriggers.set(key, [...(createdTriggers.get(key) ?? []), { id: String(row.id), kind: String(row.kind), ownerAgentId: String(row.agent_id) }]);
+    }
     const reviewRefs = new Map<number, types.session.ReviewReference>();
     for (const event of reviewEvents) {
         if (!reviewMessages.has(event.messageIdx)) continue;
@@ -138,7 +148,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
     const changedRoutes = [...new Set(events.filter((event: any) => event.type === 'model_changed').flatMap((event: any) => [event.from, event.to]).filter((route: unknown): route is string => typeof route === 'string' && !!route.trim()))];
     const modelNames: Record<string, string> = changedRoutes.length ? await ctx.fns.models.displayNames({ routes: changedRoutes }).catch(() => ({})) : {};
     const mobileEvents = events
-        .filter((event: any) => (event.type === 'input' && historyKind(event.kind) && typeof event.inputId === 'string') || ["user", "assistant", "error", "tool_call", "tool_result", "thinking", "stop", "agent_message_outgoing", "compaction_start", "compaction_completed", "compaction_failed", "planning_mode", "planning_proposal", "command_invocation", "command_result", "llm_retry", "tool_busy", "tool_aborted", "goal_transition", "parked", "unparked", "model_changed", "team_update", "wake_up", "canvas_ping", "plan_activation", "goal_activation", "goal_check", "attempt", "attachment_event", "user_message"].includes(String(event.type)))
+        .filter((event: any) => (event.type === 'input' && historyKind(event.kind) && typeof event.inputId === 'string') || ["user", "assistant", "error", "tool_call", "tool_result", "thinking", "stop", "agent_message_outgoing", "compaction_start", "compaction_completed", "compaction_failed", "planning_mode", "planning_proposal", "command_invocation", "command_result", "llm_retry", "tool_busy", "tool_aborted", "goal_transition", "parked", "unparked", "model_changed", "team_update", "wake_up", "canvas_ping", "plan_activation", "goal_activation", "goal_check", "attempt", "attachment_event", "user_message", "trigger_lifecycle"].includes(String(event.type)))
         .map((event: any) => ({
             ...(event.type === 'input' ? { inputId: event.inputId, kind: event.kind, ...(['choice', 'confirm', 'grid', 'secret', 'batch'].includes(event.kind) ? {} : { pluginHistory: true }) } : {}),
             ...(event.type === 'llm_retry' ? {
@@ -169,6 +179,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
                     canvas_ping: ['title'], plan_activation: ['title', 'taskId', 'instructions'],
                     goal_activation: ['iterations'], goal_check: ['status', 'iteration', 'maxIterations', 'reason', 'nextStep'],
                     attempt: ['error'], attachment_event: ['source', 'eventType'],
+                    trigger_lifecycle: ['transition', 'triggerId', 'triggerKind', 'purpose', 'cause', 'cronExpression', 'timezone', 'nextAt', 'creatorAgentId', 'creatorTitle'],
                 };
                 const scheduled = ['user', 'user_message'].includes(String(event.type)) && event.automationKind === 'scheduled';
                 const keys = scheduled ? ['automationKind', 'triggerKind', 'cronExpression', 'timezone', 'prompt', 'reason', 'summary', 'content', 'scheduleId', 'triggerId'] : fields[String(event.type)];
@@ -237,6 +248,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
                 ? toolPreview(String(event.name || "Tool"), event.args)
                 : (event.type !== 'thinking' && typeof event.text === "string" ? event.text.slice(0, 180) : null),
             isError: event.isError === true,
+            ...(event.type === 'tool_call' && typeof event.toolCallId === 'string' && createdTriggers.has(event.toolCallId) ? { createdTriggers: createdTriggers.get(event.toolCallId) } : {}),
             ...(event.type === 'tool_call' || event.type === 'tool_result' ? {
                 durationMs: typeof event.durationMs === 'number' && Number.isFinite(event.durationMs) && event.durationMs >= 0 ? event.durationMs : null,
                 // tools.call registers a deadline only from the tool's explicit seconds argument.

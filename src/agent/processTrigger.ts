@@ -89,6 +89,10 @@ export default async function (
         const final=await ctx.fns.procs.db.run({sql:"UPDATE agent_triggers SET status=?,next_at=?,last_ready=?,attempts=attempts+1,last_error=?,claim_token=NULL,claimed_at=NULL,updated_at=?,finished_at=CASE WHEN ? IN ('completed','timed_out') THEN ? ELSE finished_at END WHERE id=? AND status='checking' AND claim_token=?",params:[status,nextAt,lastReady,error,now,status,now,row.id,opts.claimToken]});
         if(final.changes===0)return{outcome:"cancelled"};
         await ctx.fns.procs.db.run({sql:"INSERT INTO agent_trigger_runs(trigger_id,scheduled_at,outcome,result,result_ref,error,created_at) VALUES(?,?,?,?::jsonb,?::jsonb,?,?) ON CONFLICT DO NOTHING",params:[row.id,Number(row.next_at??now),outcome,resultJson,resultRef?JSON.stringify(resultRef):null,error,now]});
+        // Expiry without a committed timeout delivery (silent, or coalesced behind a pending firing)
+        // gets one entry; a delivered timeout is shown by its wake_up snapshot only.
+        if (status === 'timed_out' && (!prompt || outcome === 'coalesced')) await ctx.fns.agent.triggerLifecycleEvents({agentId:String(row.agent_id),transition:'expired',rows:[row],cause:'timeout'});
+        if (outcome === 'invalidated') await ctx.fns.agent.triggerLifecycleEvents({agentId:String(row.agent_id),transition:'cancelled',rows:[row],cause:'task'});
         if (row.task_reservation_id && outcome === 'timed_out' && !prompt) {
             await ctx.fns.agent.reconcileTriggerWait({reservationId:row.task_reservation_id,reason:'watch_timed_out',now});
         }
@@ -99,6 +103,12 @@ export default async function (
         if (live) await ctx.fns.session.syncAgentState({agent:live});
         ctx.fns.events.refreshAgentMeta({agentId:row.agent_id,section:'wake',reason:'trigger-delivered'});
         ctx.fns.agent.wakeWorker({});
+    }
+    // Every committed check changes the armed projection (next check, status); only
+    // expiry/invalidation adds transcript entries. Paused or lost claims changed nothing visible.
+    if (committed.outcome !== 'paused' && committed.outcome !== 'cancelled') {
+        const entry = status === 'timed_out' && (!prompt || committed.outcome === 'coalesced') || committed.outcome === 'invalidated';
+        await ctx.fns.agent.publishTriggerChange({agentIds:[String(row.agent_id)],reason:'trigger-checked',transcript:entry});
     }
     return committed;
 }

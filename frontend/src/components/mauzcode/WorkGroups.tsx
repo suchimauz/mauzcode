@@ -46,7 +46,8 @@ export function ProcessGroup({ events, children, live = false }: { events: ChatE
 }
 
 /** Latest completed work remains open until next input; stop/error/live never fold. */
-export function WorkGroup({ turn, children }: { turn: WorkTurn; children: ReactNode }) {
+/** `pinned` (system notices such as trigger lifecycle entries) stays visible while the work is folded; when open they render in place among children. */
+export function WorkGroup({ turn, children, pinned }: { turn: WorkTurn; children: ReactNode; pinned?: ReactNode }) {
   const [choice, setChoice] = useState<{ answer: number | undefined; open: boolean } | null>(null);
   const id = useId();
   if (!turn.completeStart || !turn.events.length) return children;
@@ -59,6 +60,7 @@ export function WorkGroup({ turn, children }: { turn: WorkTurn; children: ReactN
     {canFold ? <button className="work-group-toggle work-group-heading" type="button" aria-expanded={open} aria-controls={id} onClick={() => setChoice({ answer: turn.answer?.idx, open: !open })}>
       <span>{label}</span><ChevronDown size={14} strokeWidth={1} aria-hidden="true" />
     </button> : turn.status !== 'open' ? <div className="work-group-heading">{label}</div> : null}
+    {!open && pinned}
     <OuterOpen.Provider value={open}><div id={id} hidden={!open}>{children}</div></OuterOpen.Provider>
   </section>;
 }

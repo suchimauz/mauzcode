@@ -31,7 +31,7 @@ function fixture(stopped: number | null = null) {
             appendEvent: async ({ event }: any) => { expect(state.transaction).toBe(true); state.events.push(event); },
         },
         events: { refreshAgentMeta() {} },
-        agent: { wakeWorker() {}, watchPredicate: async () => { state.predicates++; return { ready: true }; } },
+        agent: { wakeWorker() {}, publishTriggerChange: async () => {}, triggerLifecycleEvents: async () => {}, triggerPurpose: () => "", watchPredicate: async () => { state.predicates++; return { ready: true }; } },
     } };
     ctx.fns.agent.deliverTriggerPrompt = (opts: any) => deliver(ctx, null, opts);
     return { ctx, target, trigger, state };

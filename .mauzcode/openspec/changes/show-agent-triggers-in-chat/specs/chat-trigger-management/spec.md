@@ -79,7 +79,7 @@ Chat reads and writes SHALL enforce current-agent ownership. Every trigger UI wr
 - **THEN** the server rejects it without revealing foreign trigger data, mutating state, or scheduling work.
 
 ### Requirement: Request replay cannot duplicate work
-Chat commands SHALL deduplicate retries through the existing per-agent command request records; mutating row and conversational trigger actions SHALL deduplicate through a per-agent trigger action request record keyed by request ID that stores the normalized action, target and result, written in the same transaction as the action. An identical retry SHALL NOT schedule another command turn, create a second trigger or repeat an immediate action; a conflicting reuse SHALL be rejected. A lost race SHALL report the actual outcome, not success by dispatch alone.
+Chat commands SHALL deduplicate retries through the existing per-agent command request records. Mutating row and conversational trigger actions SHALL deduplicate through a per-agent trigger action request record keyed by request ID, storing the normalized action, target and result in the action's transaction. An identical retry SHALL NOT repeat a turn, creation or immediate action; a conflicting reuse SHALL be rejected. A lost race SHALL report the actual outcome.
 
 #### Scenario: Lost acknowledgement
 - **WHEN** an accepted command or row action is resent with the same request key after a lost response

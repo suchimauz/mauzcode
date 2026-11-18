@@ -7,6 +7,8 @@ const isHumanInput = (event: ChatEvent) => event.type === 'user' && event.messag
 export const isPeer = (event: ChatEvent) => !!(event.agentMessage || event.outgoingAgentMessage || event.author?.kind === 'agent' || event.type === 'agent_message_outgoing');
 /** A structured Git review delivery: its own card, never a human bubble or a tool-call group member. */
 export const isGitReview = (event: ChatEvent) => event.type === 'user' && event.messageIdx != null && !!event.gitReview && Array.isArray(event.gitReview.ids);
+/** Committed trigger lifecycle notices: system activity, never human input or part of a tool block. */
+export const isSystemNotice = (event: ChatEvent) => event.type === 'trigger_lifecycle';
 const isProcess = (event: ChatEvent) => isPeer(event) || ['thinking', 'tool_call', 'tool_result'].includes(event.type);
 
 /** dsh process-groups: contiguous work only; every assistant reply and input flushes it. */
@@ -63,7 +65,8 @@ export function workTurns(events: ChatEvent[], running: boolean, runs: RunMetada
   turns.forEach((turn, index) => {
     turn.latest = index === turns.length - 1;
     // Peer receipts belong inside the same work block, not after its answer.
-    const last = turn.events.filter(event => !isPeer(event) && !isGitReview(event)).at(-1);
+    // System notices (trigger lifecycle) never decide whether the work finished.
+    const last = turn.events.filter(event => !isPeer(event) && !isGitReview(event) && !isSystemNotice(event)).at(-1);
     // Tool failures are recoverable; only terminal event status marks the work.
     const interrupted = last?.type === 'stop';
     const failed = last?.type === 'error';

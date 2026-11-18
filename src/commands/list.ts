@@ -8,5 +8,5 @@ export default async function (
     session: Session | null,
     opts: {},
 ): Promise<{name:string;description:string;inputHint:string;attachments:boolean;usage:string[]}[]> {
-    return [{name:'plan',description:'Plan before executing; advisory, not a sandbox',inputHint:'/plan [task|off]',attachments:false,usage:['/plan','/plan <task>','/plan off']}, {name:'compact',description:'Compact context using the existing summarizer',inputHint:'/compact [instructions]',attachments:false,usage:['/compact','/compact <instructions>']}];
+    return [{name:'plan',description:'Plan before executing; advisory, not a sandbox',inputHint:'/plan [task|off]',attachments:false,usage:['/plan','/plan <task>','/plan off']}, {name:'compact',description:'Compact context using the existing summarizer',inputHint:'/compact [instructions]',attachments:false,usage:['/compact','/compact <instructions>']}, {name:'trigger',description:'Ask the agent to add, run/check now or cancel one trigger',inputHint:'/trigger [request]',attachments:false,usage:['/trigger','/trigger in 20 minutes check the build','/trigger cancel the daily report']}];
 }

@@ -23,6 +23,7 @@ export default async function (
     if(!opts.requestId || opts.requestId.length>200) throw Object.assign(new Error('Invalid requestId'),{status:400});
     const text=opts.text.trim(); if(text.length>200000) throw Object.assign(new Error('Command is too long'),{status:413});
     if(command.name==='compact') return ctx.fns.commands.compact({agentId:opts.agentId,text,requestId:opts.requestId});
+    if(command.name==='trigger') return ctx.fns.commands.trigger({agentId:opts.agentId,text,requestId:opts.requestId});
     const operationId=Bun.randomUUIDv7();
     const result=await ctx.fns.procs.db.transaction({fn:async()=>{
     await ctx.fns.procs.db.select({sql:'SELECT id FROM agents WHERE id=? FOR UPDATE',params:[opts.agentId]});

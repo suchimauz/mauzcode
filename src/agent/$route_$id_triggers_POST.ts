@@ -1,9 +1,10 @@
-/** Creates, cancels, or immediately fires unified agent triggers from the inspector. */
+/** Creates, cancels, or makes due unified agent triggers from the inspector form. Requires owner authorization and a cookie-bound CSRF token (`x-csrf-token` header or `csrf` form field); `run` uses the shared make-due operation. */
 export default async function (ctx: Context, _session: Session | null, opts: { req: Request; params: Record<string, string> }) {
   const id = String(opts.params.id ?? "");
-  const form = await opts.req.formData();
-  const action = String(form.get("action") ?? "");
   try {
+    const form = await opts.req.formData();
+    await ctx.fns.goal.surfaceAuthorize({ req: opts.req, agentId: id, csrfToken: opts.req.headers.get("x-csrf-token") ?? String(form.get("csrf") ?? "") });
+    const action = String(form.get("action") ?? "");
     if (action === "wake") {
       const minutes = Math.max(1, Math.min(10080, Number(form.get("minutes") ?? 5)));
       await ctx.fns.agent.wake({ id, inMs: minutes * 60_000, prompt: String(form.get("prompt") ?? "Continue scheduled work") });
@@ -20,13 +21,11 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
     } else if (action === "cancelAll") {
       await ctx.fns.agent.cancelAllTriggers({ id });
     } else if (action === "run") {
-      const triggerId = String(form.get("triggerId") ?? "");
-      await ctx.fns.procs.db.run({ sql: "UPDATE agent_triggers SET next_at=?, updated_at=? WHERE id=? AND agent_id=? AND status='active'", params: [Date.now(), Date.now(), triggerId, id] });
-      ctx.fns.agent.wakeWorker({});
+      await ctx.fns.agent.runTriggerNow({ id, triggerId: String(form.get("triggerId") ?? "") });
     } else throw new Error("Unsupported trigger action");
     ctx.fns.events.refreshAgentMeta({ agentId: id, section: "automation", reason: "trigger-changed" });
     return new Response(null, { status: 204, headers: { "HX-Trigger": "agent-meta-refresh" } });
   } catch (error: any) {
-    return new Response(String(error?.message ?? error), { status: 400 });
+    return new Response(String(error?.message ?? error), { status: typeof error?.status === "number" ? error.status : 400 });
   }
 }

@@ -35,7 +35,8 @@ export default function (
                 "agent.watch",
                 "agent.triggers",
                 "agent.cancelTrigger",
-                "agent.cancelAllTriggers"
+                "agent.cancelAllTriggers",
+                "agent.applyTriggerAction"
             ]
         },
         "agentPreset": {

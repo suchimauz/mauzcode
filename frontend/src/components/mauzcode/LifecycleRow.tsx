@@ -1,6 +1,6 @@
 import type { ChatEvent } from '../../lib/mauzcode';
 
-const types = new Set(['parked', 'unparked', 'model_changed', 'team_update', 'wake_up', 'canvas_ping', 'plan_activation', 'goal_activation', 'goal_check', 'attempt', 'attachment_event']);
+const types = new Set(['parked', 'unparked', 'model_changed', 'team_update', 'wake_up', 'canvas_ping', 'plan_activation', 'goal_activation', 'goal_check', 'attempt', 'attachment_event', 'trigger_lifecycle']);
 export function isLifecycleEvent(event: ChatEvent) {
   return types.has(event.type) || (['user', 'user_message'].includes(event.type) && event.lifecycle?.automationKind === 'scheduled');
 }
@@ -40,6 +40,17 @@ export function LifecycleRow({ event }: { event: ChatEvent }) {
       subtitle = data.maxIterations ? `Итерация ${text('iteration', '0')} из ${text('maxIterations')}` : '';
       body = [text('reason'), data.nextStep ? `Следующий шаг: ${text('nextStep')}` : ''].filter(Boolean).join('\n'); break;
     case 'attempt': title = 'Попытка исправлена · Только аудит'; subtitle = text('error'); break;
+    case 'trigger_lifecycle': {
+      const kind = ({ at: 'Разовый запуск', cron: 'Расписание', watch: 'Условие' } as Record<string, string>)[text('triggerKind')] ?? 'Триггер';
+      const transition = text('transition');
+      const cause = text('cause');
+      const neuter = kind !== 'Разовый запуск' && kind !== 'Триггер';
+      title = transition === 'created' ? `${kind} ${neuter ? 'добавлено' : 'добавлен'}` : transition === 'expired' ? `${kind}: срок истёк` : `${kind} ${neuter ? 'отменено' : 'отменён'}`;
+      if (transition === 'cancelled') title += cause === 'task' ? ' вместе с задачей' : cause === 'bulk' ? ' (все триггеры)' : '';
+      subtitle = [text('triggerId'), text('cronExpression'), text('timezone')].filter(Boolean).join(' · ');
+      body = [text('purpose'), transition === 'expired' ? 'Условие так и не выполнилось; агент не запускался.' : '', data.creatorAgentId ? `Создал агент ${text('creatorTitle', text('creatorAgentId'))}` : ''].filter(Boolean).join('\n');
+      break;
+    }
     case 'attachment_event':
       title = 'Внешнее сообщение'; subtitle = [text('source'), text('chatTitle', text('chatId', text('eventType')))].filter(Boolean).join(' · ');
       body = [text('senderName', text('senderId')), text('text', text('summary'))].filter(Boolean).join('\n'); break;
@@ -51,11 +62,12 @@ export function LifecycleRow({ event }: { event: ChatEvent }) {
       detail = [text('summary'), data.resultId ? `Сохранённый результат: ${text('resultId')}` : '', text('resultPreview'), text('dataPreview')].filter(Boolean).join('\n');
     }
   }
-  return <details className="lifecycle-event" data-event-idx={event.idx}>
+  return <details className="lifecycle-event" data-event-idx={event.idx} data-system-event={event.type === 'trigger_lifecycle' ? 'trigger' : undefined}>
     <summary><strong>{title}</strong>{subtitle && <span> · {subtitle}</span>}{event.excludedFromLlm && <span> · вне контекста</span>}</summary>
     {body && <p className="lifecycle-event-text">{body}</p>}
     {detail && <pre className="lifecycle-event-text">{detail}</pre>}
     {event.type === 'team_update' && data.memberId && <a href={`/agent/${encodeURIComponent(text('memberId'))}`}>Открыть чат агента</a>}
+    {event.type === 'trigger_lifecycle' && data.creatorAgentId && <a href={`/agent/${encodeURIComponent(text('creatorAgentId'))}`}>Открыть чат создателя</a>}
     <small>{event.type}{data.event ? ` · ${text('event')}` : ''}</small>
   </details>;
 }
