@@ -8,8 +8,8 @@ import { ApiError } from '../../lib/mauzcode';
 import { usePluginUi } from '../../extensions/pluginRuntime';
 import type { ExtensionContext } from '../../extensions/types';
 import {
-  connectionAction, connectionModels, connectionUsage, createConnection, setContextLimits, setModelEnabled, getModelsState, removeConnection, setConnectionEnabled, setProviderEnabled, testConnection, transportLabel, updateConnection,
-  type ConnectionInput, type ConnectionModels, type ModelContextLimit, type ModelConnectionView, type ModelFieldSpec, type ModelInfo, type ModelProviderView, type ModelsState, type ModelTransportSpec, type ModelUsageReport,
+  connectionAction, connectionClientVersion, connectionModels, connectionUsage, createConnection, setContextLimits, setModelEnabled, getModelsState, removeConnection, setConnectionEnabled, setProviderEnabled, testConnection, transportLabel, updateConnection,
+  type ConnectionInput, type ConnectionModels, type ModelClientVersion, type ModelContextLimit, type ModelConnectionView, type ModelFieldSpec, type ModelInfo, type ModelProviderView, type ModelsState, type ModelTransportSpec, type ModelUsageReport,
 } from '../../lib/modelConnections';
 import { SettingsField as Field } from './SettingsField';
 
@@ -74,7 +74,11 @@ function initialValue(field: ModelFieldSpec, connection?: ModelConnectionView): 
 /** Schema-driven connection form. Secret inputs are write-only: empty keeps the stored value, "clear" sends null. */
 export function SchemaConnectionForm({ provider, connection, state, onSubmit, onCancel, busy }: { provider: ModelProviderView; connection?: ModelConnectionView; state: Pick<ModelsState, 'proxies' | 'instances'>; onSubmit: (input: ConnectionInput) => Promise<boolean>; onCancel: () => void; busy: boolean }) {
   const [accountName, setAccountName] = useState(connection?.accountName ?? '');
-  const [values, setValues] = useState<Record<string, string | boolean>>(() => Object.fromEntries(provider.fields.map(f => [f.key, initialValue(f, connection)])));
+  const [values, setValues] = useState<Record<string, string | boolean>>(() => {
+    const initial = Object.fromEntries(provider.fields.map(f => [f.key, initialValue(f, connection)]));
+    if ('detectCliVersion' in initial && String(initial.clientVersion ?? '').trim()) initial.detectCliVersion = false;
+    return initial;
+  });
   const [clear, setClear] = useState<Record<string, boolean>>({});
   const manualStored = connection?.config.models;
   const [manual, setManual] = useState(Array.isArray(manualStored) ? manualStored.join('\n') : '');
@@ -82,7 +86,9 @@ export function SchemaConnectionForm({ provider, connection, state, onSubmit, on
   const [kind, setKind] = useState<ModelTransportSpec['kind']>(connection?.transport.kind && kinds.includes(connection.transport.kind) ? connection.transport.kind : kinds[0]);
   const [proxyId, setProxyId] = useState(connection?.transport.kind === 'socks' ? connection.transport.proxyId : state.proxies[0]?.id ?? '');
   const [instance, setInstance] = useState(connection?.transport.kind === 'ssh-tunnel' ? connection.transport.instance : state.instances[0] ?? '');
-  const set = (key: string, value: string | boolean) => setValues(previous => ({ ...previous, [key]: value }));
+  const hasDetectionField = provider.fields.some(f => f.key === 'detectCliVersion' && f.type === 'boolean');
+  const hasVersionOverride = hasDetectionField && String(values.clientVersion ?? '').trim().length > 0;
+  const set = (key: string, value: string | boolean) => setValues(previous => ({ ...previous, [key]: value, ...(hasDetectionField && key === 'clientVersion' && String(value).trim() ? { detectCliVersion: false } : {}) }));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const config: Record<string, unknown> = {}; const secrets: Record<string, string | null> = {};
@@ -94,6 +100,7 @@ export function SchemaConnectionForm({ provider, connection, state, onSubmit, on
       if (!text) continue;
       config[field.key] = field.type === 'number' ? Number(text) : text;
     }
+    if (hasVersionOverride) config.detectCliVersion = false;
     const models = manual.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
     if (models.length) config.models = models;
     const transport: ModelTransportSpec = kind === 'socks' ? { kind, proxyId } : kind === 'ssh-tunnel' ? { kind, instance } : { kind: 'direct' };
@@ -104,7 +111,7 @@ export function SchemaConnectionForm({ provider, connection, state, onSubmit, on
     {provider.fields.map(field => {
       const value = values[field.key];
       if (field.type === 'select') return <SelectField key={field.key} name={field.key} label={field.label} hint={field.help} required={field.required} value={String(value)} onChange={v => set(field.key, v)} options={field.options} />;
-      if (field.type === 'boolean') return <label key={field.key} className="settings-check"><input type="checkbox" name={field.key} checked={value === true} onChange={e => set(field.key, e.target.checked)} />{field.label}</label>;
+      if (field.type === 'boolean') return <label key={field.key} className="settings-check"><input type="checkbox" name={field.key} checked={value === true && !(field.key === 'detectCliVersion' && hasVersionOverride)} disabled={field.key === 'detectCliVersion' && hasVersionOverride} onChange={e => set(field.key, e.target.checked)} />{field.label}</label>;
       if (field.type === 'secret') {
         const stored = connection?.secrets[field.key] === true;
         return <div key={field.key} className="models-secret">
@@ -195,6 +202,35 @@ function ContextLimitControl({ model, limit, override, draft, error, saving, dis
   </div>;
 }
 
+/** Version lookup never blocks the overview or raises a toast on initial failure. */
+function ClientVersion({ connection, provider, actions }: { connection: ModelConnectionView; provider: ModelProviderView; actions: Actions }) {
+  const [report, setReport] = useState<ModelClientVersion | null>(null);
+  const [loading, setLoading] = useState(true);
+  const generation = useRef(0);
+  useEffect(() => {
+    const current = ++generation.current;
+    setReport(null); setLoading(true);
+    void connectionClientVersion(actions.csrf, connection.id).then(value => {
+      if (current === generation.current) setReport(value);
+    }).catch(() => {}).finally(() => { if (current === generation.current) setLoading(false); });
+    return () => { generation.current++; };
+  }, [actions.csrf, connection.id, connection.updatedAt]);
+  const detectField = provider.fields.find(f => f.key === 'detectCliVersion' && f.type === 'boolean');
+  const detection = connection.config.detectCliVersion ?? detectField?.default ?? false;
+  const canDetect = detection === true && !String(connection.config.clientVersion ?? '').trim();
+  const refresh = async () => {
+    const current = ++generation.current;
+    setLoading(true);
+    const result = await actions.run('Re-detect', () => connectionClientVersion(actions.csrf, connection.id, true));
+    if (current === generation.current) { setReport(result); setLoading(false); }
+  };
+  const source = report?.source === 'detected' ? `detected: ${provider.id} --version` : report?.source === 'override' ? 'connection override' : report?.source === 'fallback' ? 'built-in fallback' : 'built-in default';
+  return <>
+    <span aria-live="polite">{loading ? <span aria-label="Loading client version"> · v…</span> : report ? <span title={report.detail}> · v{report.version} ({source})</span> : null}</span>
+    {canDetect && <Button variant="ghost" size="compact" onClick={() => { void refresh(); }} disabled={loading || actions.busy || actions.context.readOnly}>Re-detect</Button>}
+  </>;
+}
+
 function ConnectionCard({ connection, provider, actions }: { connection: ModelConnectionView; provider?: ModelProviderView; actions: Actions }) {
   // Global provider switch gates network controls; the connection-level switch stays operable.
   const providerOff = provider?.enabled === false;
@@ -268,7 +304,7 @@ function ConnectionCard({ connection, provider, actions }: { connection: ModelCo
     <header className="ssh-card-header">
       <div className="ssh-card-title">
         <div className="ssh-card-name"><ProviderLogo logo={actions.state.providerLogos?.[connection.provider]} providerId={connection.provider} icon={provider?.icon} /><h3>{connection.accountName}</h3>{!connection.enabled && <span className="ssh-badge is-pending"><span aria-hidden="true" />Disabled</span>}</div>
-        <p className="ssh-card-target">{label}{!connection.providerRegistered && ' (provider not loaded)'} · {transportLabel(connection.transport, actions.state.proxies)}</p>
+        <p className="ssh-card-target">{label}{!connection.providerRegistered && ' (provider not loaded)'} · {transportLabel(connection.transport, actions.state.proxies)}{provider?.hasClientVersion && <ClientVersion connection={connection} provider={provider} actions={actions} />}</p>
       </div>
       <div className="models-card-buttons">
         <Button onClick={() => { void test(); }} disabled={actions.busy || !connection.enabled || !connection.providerRegistered || providerOff}><RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />Test</Button>

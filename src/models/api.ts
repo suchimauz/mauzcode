@@ -146,6 +146,7 @@ export default async function (
                 try { names = await ctx.fns.models.catalog.displayNames({ routes: list.models.map(m => route(m.id)), labels }); } catch { names = {}; /* fall back to provider labels */ }
                 return reply({ ...list, models: list.models.map(m => ({ ...m, label: names[route(m.id)] || m.label })), contextOverrides: overrides, contextLimits });
             }
+            case "clientVersion": return reply(await ctx.fns.models.connections.clientVersion({ id, refresh: data.refresh === true }));
             case "usage": return reply({ usage: await ctx.fns.models.connections.usage({ id, refresh: data.refresh === true }) });
             case "action": {
                 if (typeof data.name !== "string" || !data.name) return reply({ error: "Action name required" }, 400);

@@ -31,7 +31,7 @@ export default async function (
             authorization: `Bearer ${a.token}`,
             ...(a.accountId ? { "chatgpt-account-id": a.accountId } : {}),
             originator: "codex_cli_rs",
-            version: ctx.fns.models.provider.codex.codexVersion({ config: conn.config }),
+            version: await ctx.fns.models.provider.codex.codexVersion({ config: conn.config }),
             "OpenAI-Beta": "responses=experimental",
             accept: "text/event-stream",
             "content-type": "application/json",

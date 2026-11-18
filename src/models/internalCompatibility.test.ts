@@ -148,8 +148,22 @@ test("fresh discovery preserves callable providers, nested dynamic facades, miss
             if (original.id === 'custom') {
                 expect(affinityFields).toEqual([{ key: 'sessionAffinity', label: 'Send x-session-affinity header', type: 'boolean', default: true, help: 'Sends an x-session-affinity header with a stable, opaque per-conversation identifier on inference requests so the endpoint can keep a conversation on one backend and its prompt cache warm. It reveals no agent id but lets the endpoint group requests of one conversation. Turn off to stop sending it.' }]);
             } else expect(affinityFields).toEqual([]);
-            const fieldsPatch = original.id === 'custom' ? { fields: current.fields.filter(field => field.key !== 'sessionAffinity') } : {};
-            expect(registrationShape({ ...current, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch, ...pacePatch, ...fieldsPatch }), file).toEqual(registrationShape({ ...original, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch, ...pacePatch }));
+            const reportsVersion = ["claude", "codex"].includes(original.id);
+            expect(typeof current.clientVersion === "function").toBe(reportsVersion);
+            if (reportsVersion) {
+                expect(current.fields.filter(field => field.key === "detectCliVersion")).toEqual([{
+                    key: "detectCliVersion", label: "Detect CLI version", type: "boolean", default: original.id === "claude",
+                    ...(original.id === "codex" ? { help: "Use the local codex --version result instead of the SDK default. Cannot be combined with an override." } : {}),
+                }]);
+                if (original.id === "codex") expect(current.fields.find(field => field.key === "clientVersion")).toEqual({
+                    key: "clientVersion", label: "Client version", type: "text",
+                    help: "Optional Codex client version sent to the backend; defaults to the detected CLI version when enabled, otherwise the documented SDK version.",
+                });
+            }
+            const fields = current.fields.filter(field => field.key !== 'sessionAffinity' && !(reportsVersion && field.key === 'detectCliVersion'))
+                .map(field => original.id === 'codex' && field.key === 'clientVersion' ? { ...field, help: original.fields.find(f => f.key === 'clientVersion')?.help } : field);
+            const versionPatch = reportsVersion ? { clientVersion: undefined } : {};
+            expect(registrationShape({ ...current, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch, ...pacePatch, fields, ...versionPatch }), file).toEqual(registrationShape({ ...original, ...(expectedInference ? { inference: undefined } : {}), ...iconPatch, ...pacePatch, ...versionPatch }));
         }
         // Inspect real public facades and declaration bodies as they migrate. Every
         // nested implementation dispatch must exist in the freshly booted registry.

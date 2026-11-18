@@ -92,7 +92,23 @@ This integration uses an Anthropic public OAuth client and Claude Code-compatibl
 - use of subscription credentials by third-party clients;
 - rate limits, account enforcement, and terms of service.
 
-Keep `ANTHROPIC_OAUTH_CLIENT_ID`, `ANTHROPIC_OAUTH_AUTHORIZE_URL`, `ANTHROPIC_OAUTH_TOKEN_URL`, `ANTHROPIC_OAUTH_REDIRECT_URI`, `CLAUDE_CODE_CLI_VERSION`, `CLAUDE_CODE_USER_AGENT`, and `CLAUDE_CODE_ANTHROPIC_BETA` overrides available for controlled compatibility updates. Review Anthropic's current terms before production deployment.
+Keep `ANTHROPIC_OAUTH_CLIENT_ID`, `ANTHROPIC_OAUTH_AUTHORIZE_URL`, `ANTHROPIC_OAUTH_TOKEN_URL`, `ANTHROPIC_OAUTH_REDIRECT_URI`, and `CLAUDE_CODE_ANTHROPIC_BETA` overrides available for controlled compatibility updates. Review Anthropic's current terms before production deployment.
+
+**Breaking identity-setting change:** `CLAUDE_CODE_CLI_VERSION` and
+`CLAUDE_CODE_USER_AGENT` are removed and no longer affect Claude requests. Set
+`clientVersion` on the Claude connection instead; a custom full user agent is
+no longer supported. Set `detectCliVersion: false` with an override (explicit
+true plus an override is rejected). An older saved override without a detection
+key still works. Without an override, detection defaults to local
+`claude --version` on the MauzCode host; disabled or failed detection uses the
+built-in **2.1.260** fallback, including when the connection uses SSH transport.
+
+The Models connection card shows the effective version and source. Its
+**Re-detect** action clears the local detection cache; an override always wins.
+Owners can also POST `{ action: "clientVersion", id, refresh: true }` to
+`/models/api` with the normal CSRF token. The secret-free report contains only
+`{ clientVersion: { version, source, detail? } }`, never credentials or command
+output. See [provider client-version reporting](models-providers.md#client-version-reporting).
 
 ## Verification performed
 

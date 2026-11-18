@@ -18,7 +18,7 @@ export default async function (
             if (!state.loggedIn) return { status: "configured", reason: "login-required", message: "Log in to use this connection", checkedAt: Date.now() };
             try {
                 const a = await ctx.fns.models.provider.codex.codexWireAuth({ conn: conn });
-                const res = await conn.fetch(`${BASE}/codex/models?client_version=${encodeURIComponent(ctx.fns.models.provider.codex.codexVersion({ config: conn.config }))}`, { headers: { authorization: `Bearer ${a.token}`, originator: "codex_cli_rs" } });
+                const res = await conn.fetch(`${BASE}/codex/models?client_version=${encodeURIComponent(await ctx.fns.models.provider.codex.codexVersion({ config: conn.config }))}`, { headers: { authorization: `Bearer ${a.token}`, originator: "codex_cli_rs" } });
                 await (await ctx.fns.models.provider.codex.codexWireChecked({ conn: conn, res: res })).body?.cancel().catch(() => undefined);
                 return { status: "available", reason: "models-ok", message: "Logged in; model list available", checkedAt: Date.now() };
             } catch (error) {

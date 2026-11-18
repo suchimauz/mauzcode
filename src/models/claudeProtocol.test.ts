@@ -11,7 +11,7 @@ async function setup(handler: (call: Call) => Response = end) {
     const ctx = await mkTestCtx({ env: {} });
     const calls: Call[] = []; let marked = false;
     ctx.state.registry.models.provider.claude.claudeAuth = async (_c: unknown, _s: unknown, o: { op: string }) => { if (o.op === "markLogin") marked = true; return { loggedIn: true, needsLogin: false, accessToken: "test-token", expiresAt: null }; };
-    ctx.state.registry.models.provider.claude.claudeCodeCliVersion = async () => "2.0.0";
+    ctx.state.registry.models.provider.claude.claudeCliVersionDetection = async () => ({ value: "2.0.0", detected: true });
     // No model operation may reach the retiring legacy registry.
     ctx.state.registry.llm = new Proxy({}, { get() { throw new Error("Legacy runtime access is forbidden in models"); } }) as typeof ctx.state.registry.llm;
     const conn: types.models.ResolvedConnection = { id: crypto.randomUUID(), provider: "claude", accountName: "me", config: {}, secret: async () => null, fetch: async (url, init = {}) => { const c = { url, init }; calls.push(c); return handler(c); } };
@@ -40,7 +40,17 @@ describe("Claude protocol", () => {
         expect(body.messages[2].content[0].cache_control).toEqual({ type: "ephemeral" });
         ctx.env.CLAUDE_CODE_USER_AGENT = "custom-agent"; ctx.env.CLAUDE_CODE_ANTHROPIC_BETA = "custom-beta";
         await claude.stream(ctx, conn, req); const overridden = new Headers(calls[2]!.init.headers);
-        expect(overridden.get("user-agent")).toBe("custom-agent"); expect(overridden.get("anthropic-beta")).toBe("custom-beta");
+        expect(overridden.get("user-agent")).toBe("claude-cli/2.0.0 (external, sdk-cli)"); expect(overridden.get("anthropic-beta")).toBe("custom-beta");
+        expect(await claude.clientVersion(ctx, conn, {})).toEqual({ version: "2.0.0", source: "detected" });
+        ctx.env.CLAUDE_CODE_CLI_VERSION = "9.9.9";
+        conn.config = { detectCliVersion: false };
+        await claude.stream(ctx, conn, req);
+        expect(new Headers(calls[3]!.init.headers).get("user-agent")).toBe("claude-cli/2.1.260 (external, sdk-cli)");
+        expect(await claude.clientVersion(ctx, conn, {})).toEqual({ version: "2.1.260", source: "fallback" });
+        conn.config = { clientVersion: "3.0.0", detectCliVersion: false };
+        await claude.stream(ctx, conn, req);
+        expect(new Headers(calls[4]!.init.headers).get("user-agent")).toBe("claude-cli/3.0.0 (external, sdk-cli)");
+        expect(await claude.clientVersion(ctx, conn, {})).toEqual({ version: "3.0.0", source: "override" });
     });
     test("allow-list refuses methods, paths and non-https before transport", async () => {
         const { ctx, conn, calls } = await setup();

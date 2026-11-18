@@ -365,7 +365,8 @@ describe("architecture and transports", () => {
         for (const f of files) {
             const src = await Bun.file(`${import.meta.dir}/${f}`).text();
             expect({ f, hit: src.match(/ctx\.fns\.(llm|llms|agent|session|codexAccount|sshAccount)\b|types\.(llm|agent|session)\.|\bimport\s[^;]*from\s+["']\.\.?\//g) }).toEqual({ f, hit: null });
-            expect({ f, spawn: /Bun\.spawn|Bun\.\$|child_process/.test(src) }).toEqual({ f, spawn: false });
+            // Only the opt-in local version detector may spawn; protocol paths stay CLI-independent.
+            expect({ f, spawn: /Bun\.spawn|Bun\.\$|child_process/.test(src) }).toEqual({ f, spawn: f === "provider/codex/codexCliVersion.ts" });
         }
         const secrets = await Bun.file(`${import.meta.dir}/../secrets/decryptLocal.ts`).text() + await Bun.file(`${import.meta.dir}/../secrets/encryptLocal.ts`).text();
         expect(secrets).not.toMatch(/ctx\.fns\.llm\b/);

@@ -26,6 +26,8 @@ export type ProviderDefinition = {
     test: (ctx: Context, conn: types.models.ResolvedConnection) => Promise<types.models.TestResult>;
     listModels?: (ctx: Context, conn: types.models.ResolvedConnection) => Promise<types.models.ModelInfo[]>;
     usage?: (ctx: Context, conn: types.models.ResolvedConnection) => Promise<types.models.UsageReport>;
+    /** Secret-free effective request identity; refresh discards local CLI detection cache. */
+    clientVersion?: (ctx: Context, conn: types.models.ResolvedConnection, opts: { refresh?: boolean }) => Promise<{ version: string; source: string; detail?: string }>;
     /** Minimum interval between usage requests for one connection; available and unavailable reports are reused this long unless refresh is requested. Integer milliseconds. @default 60000 @minimum 10000 @maximum 3600000 */
     usageRefreshMs?: number;
     /** Additional provider-specific validation after core field validation. Throw to reject. */

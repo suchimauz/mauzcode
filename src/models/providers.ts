@@ -12,6 +12,7 @@ export default function (
     return entries.map(({ definition: def }) => ({
         id: def.id,
         label: def.label,
+        hasClientVersion: typeof def.clientVersion === "function",
         ...(def.description !== undefined ? { description: def.description } : {}),
         ...(def.icon !== undefined ? { icon: def.icon } : {}),
         fields: def.fields.map(field => {

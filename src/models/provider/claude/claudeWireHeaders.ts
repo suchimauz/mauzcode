@@ -18,8 +18,8 @@ export default async function (
     const { conn, compact = false, usage = false } = opts;
     
         const auth = await ctx.fns.models.provider.claude.claudeAuth({ conn, op: "token" });
-        const version = typeof conn.config.clientVersion === "string" && conn.config.clientVersion.trim() || await ctx.fns.models.provider.claude.claudeCodeCliVersion({});
-        const h: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${auth.accessToken}`, "user-agent": ctx.env.CLAUDE_CODE_USER_AGENT ?? `claude-cli/${version} (external, sdk-cli)` };
+        const { version } = await ctx.fns.models.provider.claude.claudeClientVersion({ conn });
+        const h: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${auth.accessToken}`, "user-agent": `claude-cli/${version} (external, sdk-cli)` };
         if (!usage) Object.assign(h, { "anthropic-version": "2023-06-01", "anthropic-beta": compact ? "claude-code-20250219,oauth-2025-04-20,compact-2026-09-04" : ctx.env.CLAUDE_CODE_ANTHROPIC_BETA ?? "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14", "x-app": "cli", "anthropic-dangerous-direct-browser-access": "true", "x-client-request-id": crypto.randomUUID() });
         return h;
 }
