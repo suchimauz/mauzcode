@@ -124,6 +124,12 @@ another tab, one minute and ten seconds left — never the recognized words; the
 moving through the panel. Opening dictation for the same chat in another tab stops this one with a
 visible notice; the text stays and you can continue.
 
+### Look up a dictation error
+
+If inline dictation or voice mode shows an **ID** beside a provider failure, copy it. As the instance owner, open **Settings → Voice → Errors**. The recent list shows the newest failures first. Paste the exact ID into **Error ID** and select **Look up** to see when it happened, the provider and model (when known), the failure stage and a safe cause. `unknown` means the cause could not be safely classified. A missing or expired ID shows **No matching error**; use **Show recent** to return to the list.
+
+Records expire after seven days and are automatically removed. The journal excludes audio, transcripts, credentials, raw provider responses and free-form messages. Browser and microphone errors are not journaled, and past incidents are not backfilled. If saving fails, dictation still shows the original error without an ID.
+
 ## Set up OpenAI Realtime
 
 ### 1. Create an API key at OpenAI

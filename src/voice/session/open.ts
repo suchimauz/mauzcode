@@ -127,13 +127,27 @@ export default async function (
 
     // Invalidate callbacks before aborting: a provider can report a failure synchronously on abort. Release does
     // not depend on the client seeing the error, nor on the provider respecting the AbortSignal.
-    const endWith = (code?: types.voice.ErrorCode): void => {
+    let diagnostic: Promise<string | null> | undefined;
+    const endWith = (code?: types.voice.ErrorCode, cause?: DiagnosticCause): void => {
         if (isClosed()) return;
+        const stage = !ready ? "opening" : state === "closing" ? "finishing" : "streaming";
         endCode = code ?? null;
         close();
         void releaseStream();
         controller.abort();
-        if (ready && code) deliver({ type: "error", code, message: ctx.fns.voice.session.message({ code }) });
+        if (!code) return;
+        const report = (errorId?: string | null) => deliver({ type: "error", code, message: ctx.fns.voice.session.message({ code }), ...(errorId ? { errorId } : {}) });
+        if (cause !== undefined) {
+            // Only identifiers from the resolved provider catalogue, never the raw route, reach storage.
+            const save = Promise.resolve().then(() => ctx.fns.voice.journal.record({ provider: route.provider, model: route.model.id, stage, cause }));
+            diagnostic = bounded(save, 1000).catch(() => null);
+            if (ready) void diagnostic.then(report);
+        } else if (ready) report();
+    };
+
+    const providerFailed = (error: unknown) => {
+        const code = codeOf(error);
+        endWith(code, causeOf(error, code));
     };
 
     /** Allocate a phrase for one commit and register it as unsettled. */
@@ -162,7 +176,7 @@ export default async function (
      */
     const onEmitFailure = (registeredGeneration: number, error: { code: types.voice.ErrorCode; message: string }): void => {
         if (registeredGeneration !== generation || state === "closed") return;
-        endWith(codeOf(error));
+        providerFailed(error);
     };
 
     const onEmit = (registeredGeneration: number, event: types.voice.PhraseEvent): void => {
@@ -175,7 +189,7 @@ export default async function (
                 providerOrders.has(event.turnId)) return;
             if (!Number.isSafeInteger(event.endByte) || event.endByte % 2 !== 0 ||
                 event.endByte <= serverCommittedBytes || event.endByte > sentBytes) {
-                endWith("provider");
+                endWith("provider", "unknown");
                 return;
             }
             serverCommittedBytes = event.endByte;
@@ -220,6 +234,7 @@ export default async function (
     });
 
     let voice: types.voice.VoiceStream;
+    let openingProvider = false;
     opts.signal?.addEventListener("abort", abortFromTransport, { once: true });
     try {
         const { definition, conn } = await withAbort(ctx.fns.voice.connections.resolve({
@@ -236,6 +251,7 @@ export default async function (
             emit: (event: types.voice.PhraseEvent) => onEmit(registeredGeneration, event),
             fail: (error: { code: types.voice.ErrorCode; message: string }) => onEmitFailure(registeredGeneration, error),
         };
+        openingProvider = true;
         const opening = definition.open(ctx, conn, streamSession).then(opened => {
             stream = opened;
             // A provider can call fail and only later return its handle. Release it even after open has rejected.
@@ -247,8 +263,9 @@ export default async function (
         ready = true;
     } catch (error) {
         const code = endCode ?? codeOf(error);
-        endWith(code);
-        throw ctx.fns.voice.session.failure({ code });
+        endWith(code, openingProvider ? causeOf(error, code) : undefined);
+        const errorId = await diagnostic;
+        throw Object.assign(ctx.fns.voice.session.failure({ code }), errorId ? { errorId } : {});
     }
 
     // Appends and commits share one chain, so provider calls happen in stream order even if a transport floods them.
@@ -260,7 +277,7 @@ export default async function (
             try {
                 return await work();
             } catch (error) {
-                endWith(codeOf(error));
+                providerFailed(error);
                 return undefined;
             }
         });
@@ -326,9 +343,12 @@ export default async function (
     };
 
     const finish = async (): Promise<{ ok: boolean; code?: types.voice.ErrorCode }> => {
-        if (state !== "open") return { ok: false, ...(endCode ? { code: endCode } : {}) };
+        if (state !== "open") {
+            await diagnostic;
+            return { ok: false, ...(endCode ? { code: endCode } : {}) };
+        }
         state = "closing";
-        const timer = setTimeout(() => endWith("timeout"), limits.finishTimeoutMs);
+        const timer = setTimeout(() => endWith("timeout", "timeout"), limits.finishTimeoutMs);
         try {
             // Inspect the remaining audio inside the chain, after any boundaries reported by queued appends.
             await enqueue(async () => {
@@ -347,14 +367,28 @@ export default async function (
                 return { ok: true };
             }
         } catch (error) {
-            endWith(codeOf(error));
+            providerFailed(error);
         } finally {
             clearTimeout(timer);
         }
+        await diagnostic;
         return { ok: false, ...(endCode ? { code: endCode } : {}) };
     };
 
     return { sessionId, route, append, commit: commitNow, finish, cancel, status };
+}
+
+type DiagnosticCause = "authentication" | "rateLimit" | "timeout" | "unknown";
+
+/** Discard unrecognized adapter values; never inspect upstream text, nested errors or stack traces. */
+function causeOf(error: unknown, code: types.voice.ErrorCode): DiagnosticCause {
+    if (code === "providerAuth") return "authentication";
+    if (code === "timeout") return "timeout";
+    try {
+        const cause = (error as { diagnosticCause?: unknown } | null)?.diagnosticCause;
+        if (cause === "authentication" || cause === "rateLimit" || cause === "timeout") return cause;
+    } catch { /* Treat malformed errors as unknown. */ }
+    return "unknown";
 }
 
 /** Map a thrown provider error onto the closed code set, never copying its message. */

@@ -53,7 +53,7 @@ const frame = (sequence: number, sample = 4096, size = 960) => {
 
 type Packet = { type: string; code?: string; message?: string; text?: string; final?: boolean };
 
-function fixture() {
+function fixture(record: (fields: unknown) => Promise<string | null> = async () => null) {
     const ctx = makeCtx();
     const user = { id: OWNER, role: "owner", disabledAt: null as number | null };
     const row = { created_by: OWNER as string | null, archived_at: null as number | null };
@@ -93,6 +93,7 @@ function fixture() {
             } },
         },
         voice: {
+            journal: { record: (_ctx: Context, _s: Session, fields: unknown) => record(fields) },
             effectiveRoute: async () => { counters.routes++; return { route: resolved.route }; },
             resolveRoute: async () => resolved,
             session: { open: normalize, limits, message, failure, vadState, vadPush, vadFlush },
@@ -377,16 +378,31 @@ test("disconnect during async provider open aborts immediately and releases its 
 });
 
 test("provider opening and streaming errors do not expose vendor payloads", async () => {
-    const f = fixture();
-    f.throwOnOpen(Object.assign(new Error(SECRET), { code: "providerAuth" }));
+    const rows: unknown[] = [];
+    const id = "abcdef0123456789";
+    const written = Promise.withResolvers<string>();
+    const f = fixture(async fields => { rows.push(fields); return rows.length === 1 ? id : written.promise; });
+    f.throwOnOpen(Object.assign(new Error(SECRET), { code: "providerAuth", errorId: SECRET }));
     const failed = await f.localSocket();
-    expect(last(failed.events)).toMatchObject({ type: "error", code: "providerAuth" });
+    expect(last(failed.events)).toMatchObject({ type: "error", code: "providerAuth", errorId: id });
     f.throwOnOpen(undefined);
     const listening = await f.localSocket();
+    const transcript = "private transcript fixture";
+    const hostile = { code: "provider" as const, message: `${SECRET} ${transcript}`, diagnosticCause: transcript };
+    f.streams[0]!.session()!.fail(hostile as Parameters<types.voice.StreamSession["fail"]>[0]);
     f.streams[0]!.fail("provider", SECRET);
     await turns();
-    expect(last(listening.events)).toMatchObject({ type: "error", code: "provider" });
-    expect(JSON.stringify([failed.events, listening.events, f.logs])).not.toContain(SECRET);
+    expect(listening.ended()).toBe(false);
+    expect(rows).toEqual([
+        { provider: "fixture", model: "pcm", stage: "opening", cause: "authentication" },
+        { provider: "fixture", model: "pcm", stage: "streaming", cause: "unknown" },
+    ]);
+    written.reject(new Error(SECRET));
+    await turns();
+    expect(last(listening.events)).toEqual({ type: "error", code: "provider", message: "The voice provider failed." });
+    const output = JSON.stringify([rows, failed.events, listening.events, f.logs]);
+    expect(output).not.toContain(SECRET);
+    expect(output).not.toContain(transcript);
     expect(f.ctx.state.voice.socketSessions?.size).toBe(0);
 });
 

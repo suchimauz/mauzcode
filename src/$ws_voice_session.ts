@@ -78,7 +78,7 @@ function createRelay(ctx: Context, ws: Socket) {
     let audioBytes = 0;
     let replyBytes = 0;
 
-    function stop(code?: Code, detail?: string, disconnect = false) {
+    function stop(code?: Code, detail?: string, disconnect = false, reference?: unknown) {
         if (closed()) return;
         phase = "closed";
         clearTimeout(idle);
@@ -94,7 +94,8 @@ function createRelay(ctx: Context, ws: Socket) {
         controller.abort();
         if (disconnect) return;
         try {
-            if (code) ws.send(JSON.stringify({ type: "error", code, message: detail ?? ctx.fns.voice.session.message({ code }) }));
+            const errorId = typeof reference === "string" && /^[0-9a-f]{16}$/.test(reference) ? reference : undefined;
+            if (code) ws.send(JSON.stringify({ type: "error", code, message: detail ?? ctx.fns.voice.session.message({ code }), errorId }));
             ws.close(code ? (code === "backpressure" ? 1013 : 1008) : 1000);
         } catch { /* The peer may have disconnected; resources were already released. */ }
     }
@@ -170,7 +171,7 @@ function createRelay(ctx: Context, ws: Socket) {
     function onEvent(event: types.voice.SessionEvent) {
         if (closed()) return;
         if (event.type === "error") {
-            stop(event.code, event.code === "timeout" && phase === "finishing" ? "Voice finalization timed out." : undefined);
+            stop(event.code, event.code === "timeout" && phase === "finishing" ? "Voice finalization timed out." : undefined, false, event.errorId);
         } else if (event.type === "completed") {
             checkAccess();
             pendingCompletion = true;
@@ -183,6 +184,8 @@ function createRelay(ctx: Context, ws: Socket) {
     function finish() {
         if (finishStarted || closed()) return;
         finishStarted = true;
+        // The session now owns the provider deadline and can correlate its timeout before the relay closes.
+        clearTimeout(finishTimer);
         void session!.finish().then(result => {
             if (!result.ok && !closed()) stop(result.code ?? "provider");
         }).catch(() => stop("provider"));
@@ -232,7 +235,12 @@ function createRelay(ctx: Context, ws: Socket) {
             const current = await access();
             if (closed()) return;
             if (current !== "edit") return stop("readOnly");
-            const opened = await ctx.fns.voice.session.open({ route, onEvent, signal: controller.signal });
+            let opened: types.voice.VoiceSession;
+            try {
+                opened = await ctx.fns.voice.session.open({ route, onEvent, signal: controller.signal });
+            } catch (error) {
+                return stop(publicCode(error), undefined, false, (error as { errorId?: unknown } | null)?.errorId);
+            }
             if (closed()) { await opened.cancel(); return; }
             session = opened;
             const { sampleRate, destination } = session.route;

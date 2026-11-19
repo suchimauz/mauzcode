@@ -242,7 +242,7 @@ describe("openai-realtime against the fake realtime server", () => {
         await conn.send(committed("item_1", "not-the-previous-item"));
         await sendingPause;
         expect(await session.finish()).toEqual({ ok: false, code: "provider" });
-        expect(events).toEqual([{ type: "error", code: "provider", message: "The voice provider failed." }]);
+        expect(events).toEqual([{ type: "error", errorId: expect.stringMatching(/^[0-9a-f]{16}$/), code: "provider", message: "The voice provider failed." }]);
         safeEvents(events);
         await conn.closed;
     });
@@ -266,6 +266,25 @@ describe("openai-realtime against the fake realtime server", () => {
         }
     });
 
+    for (const [wireCode, cause] of [["rate_limit_exceeded", "rateLimit"], [`unknown-${KEY}`, "unknown"]] as const) {
+        test(`the ${cause} diagnostic keeps no credential, transcript, or raw upstream code`, async () => {
+            const server = fake();
+            const { ctx, view } = await makeFixture(server);
+            const { events } = await openSession(ctx, routeOf(view));
+            const conn = await confirmSetup(server);
+            const transcript = "voice-journal-transcript-canary";
+            await conn.send({ type: "error", error: { code: wireCode, message: `${transcript} ${KEY}`, transcript } });
+            await until(() => events.some(event => event.type === "error"));
+            const event = events[0];
+            if (event?.type !== "error" || !event.errorId) throw new Error("Missing terminal reference");
+            const rows = await ctx.fns.procs.db.select({ sql: "SELECT * FROM voice_error_journal WHERE id = ?", params: [event.errorId] });
+            expect(rows).toMatchObject([{ provider: provider.id, model: "gpt-live-transcribe", stage: "streaming", cause }]);
+            const visible = JSON.stringify([rows, events]);
+            for (const forbidden of [KEY, transcript, wireCode]) expect(visible).not.toContain(forbidden);
+            await conn.closed;
+        });
+    }
+
     test("an in-band auth error and a mid-session disconnect end safely with closed codes", async () => {
         // Auth error event after acceptance.
         const authServer = fake();
@@ -276,7 +295,7 @@ describe("openai-realtime against the fake realtime server", () => {
         // Let the wire error reach the adapter before finish: a finish without pending phrases may close first.
         await until(() => a.events.some(e => e.type === "error"));
         expect(await a.session.finish()).toEqual({ ok: false, code: "providerAuth" });
-        expect(a.events).toEqual([{ type: "error", code: "providerAuth", message: "The voice provider rejected the connection credentials." }]);
+        expect(a.events).toEqual([{ type: "error", errorId: expect.stringMatching(/^[0-9a-f]{16}$/), code: "providerAuth", message: "The voice provider rejected the connection credentials." }]);
         safeEvents(a.events);
         await authConn.closed;
 
@@ -289,7 +308,7 @@ describe("openai-realtime against the fake realtime server", () => {
         dropConn.close(1011, "fake upstream failure");
         await dropConn.closed;
         expect(await d.session.finish()).toEqual({ ok: false, code: "provider" });
-        expect(d.events).toEqual([{ type: "error", code: "provider", message: "The voice provider failed." }]);
+        expect(d.events).toEqual([{ type: "error", errorId: expect.stringMatching(/^[0-9a-f]{16}$/), code: "provider", message: "The voice provider failed." }]);
         safeEvents(d.events);
     });
 

@@ -97,7 +97,7 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, canC
       <span className="voice-panel-state">{STATE_LABEL[state]}</span>
       {remainingMs != null && state === 'listening' && <span className="voice-panel-time">осталось <time>{clock(remainingMs)}</time></span>}
     </div>
-    {state === 'error' && error && <p className="voice-panel-error">{error.code === 'superseded' ? `${MOVED}.` : error.message} Текст сохранён; можно продолжить запись или вернуться к редактированию.</p>}
+    {state === 'error' && error && <p className="voice-panel-error">{error.code === 'superseded' ? `${MOVED}.` : error.message}{error.errorId && <> ID: <code>{error.errorId}</code></>} Текст сохранён; можно продолжить запись или вернуться к редактированию.</p>}
     {attachments}
     <div className="voice-panel-transcript" tabIndex={0} role="group" aria-label="Текст сообщения">
       {text ? text : <span className="voice-panel-placeholder">Говорите — текст появится здесь и в поле сообщения.</span>}

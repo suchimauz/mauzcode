@@ -36,4 +36,6 @@ export type SessionEvent =
         type: "error";
         code: types.voice.ErrorCode;
         message: string;
+        /** Opaque journal reference, only present after successful persistence. */
+        errorId?: string;
     };

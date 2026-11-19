@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { VoicePanel as VoiceSettings } from '../components/settings/VoicePanel';
 import { LiveComposer } from '../components/mauzcode/LiveComposer';
 import { flush, getUserMedia, install, nodes, ready, resetMedia, restoreMedia, sockets, streams } from './fixtures/voiceMedia';
 
@@ -39,6 +40,52 @@ async function mount(mode: 'inline' | 'panel', { files = true, running = false, 
   act(() => { ws.open(); ws.receive(ready); nodes[0].feed(130); });
   return { target: mode === 'panel' ? region() : editor(), entry, ws, accepted, view, file };
 }
+
+it.each([
+  ['inline', true], ['inline', false], ['panel', true], ['panel', false],
+] as const)('%s renders the provider failure with a reference only if saved (%s)', async (mode, saved) => {
+  const { ws } = await mount(mode, { files: false });
+  act(() => ws.receive({ type: 'error', code: 'provider', message: 'Provider unavailable.', ...(saved && { errorId: 'deadbeef1234abcd' }) }));
+  const surface = mode === 'inline' ? screen.getByRole('alert') : region().querySelector('.voice-panel-error');
+  expect(surface).toBeVisible();
+  expect(surface).toHaveTextContent('Provider unavailable.');
+  if (saved) expect(surface).toHaveTextContent('ID: deadbeef1234abcd');
+  else expect(surface).not.toHaveTextContent('ID:');
+});
+
+it('follows a fake session reference through Settings → Voice → Errors and a missing lookup', async () => {
+  const { ws, view } = await mount('inline', { files: false });
+  const record = { id: 'deadbeef1234abcd', createdAt: '2026-04-25T12:00:00.000Z', provider: 'fixture', model: 'test', stage: 'streaming', cause: 'unknown' };
+  act(() => ws.receive({ type: 'error', code: 'provider', message: 'Provider unavailable.', errorId: record.id }));
+  const visibleId = within(screen.getByRole('alert')).getByText(record.id).textContent!;
+  view.unmount();
+  const fetch = vi.fn(async (path: string) => {
+    if (path === '/voice/api') return json({ csrfToken: '', routes: [], providers: [], connections: [], defaultRoute: { route: '', fixed: false } });
+    if (path === '/api/voice/errors') return json({ errors: [record] });
+    if (path === `/api/voice/errors/${record.id}`) return json({ error: record });
+    return Response.json({ error: 'Not found' }, { status: 404 });
+  });
+  vi.stubGlobal('fetch', fetch);
+  render(<VoiceSettings />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Errors' }));
+  await screen.findByText('Recent errors');
+  const input = screen.getByRole('textbox', { name: 'Error ID' });
+  await userEvent.type(input, visibleId);
+  await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
+  await screen.findByText('Matching error');
+  const row = screen.getByRole('listitem');
+  expect(row).toHaveTextContent(visibleId);
+  expect(row.querySelector('time')).toHaveAttribute('datetime', record.createdAt);
+  expect(row).toHaveTextContent('Provider: fixture · Model: test');
+  expect(row).toHaveTextContent('Stage: streaming · Cause: unknown');
+  await userEvent.clear(input); await userEvent.type(input, 'beefdead4321dcba');
+  await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
+  expect(await screen.findByText('No matching error')).toBeVisible();
+  expect(screen.queryByText(visibleId)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Show recent' }));
+  expect(await screen.findByText(visibleId)).toBeVisible();
+  expect(fetch.mock.calls.map(([path]) => path)).toEqual(['/voice/api', '/api/voice/errors', `/api/voice/errors/${visibleId}`, '/api/voice/errors/beefdead4321dcba', '/api/voice/errors']);
+});
 
 function submission(index: number) {
   const [path, init] = post.mock.calls[index];

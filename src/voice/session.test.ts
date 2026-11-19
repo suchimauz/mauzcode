@@ -264,7 +264,7 @@ describe("bounds", () => {
             if (pending) await session.append(tone(RATE).speech(2));
             expect(await session.finish()).toEqual({ ok: false, code: "provider" });
             expect(session.status().committed).toBe(pending ? 1 : 0);
-            expect(events).toEqual([{ type: "error", code: "provider", message: "The voice provider failed." }]);
+            expect(events).toMatchObject([{ type: "error", code: "provider", message: "The voice provider failed." }]);
             expect(recorder.cancels).toBe(1);
             expect(recorder.session()?.signal.aborted).toBe(true);
         });
@@ -312,7 +312,7 @@ describe("bounds", () => {
             expect(recorder.finishes).toBe(0);
             expect(recorder.commits).toEqual(stage === "flush-commit" ? [0] : []);
             expect(recorder.cancels).toBe(1);
-            expect(events).toEqual([{ type: "error", code: "timeout", message: "Voice recognition timed out." }]);
+            expect(events).toMatchObject([{ type: "error", code: "timeout", message: "Voice recognition timed out." }]);
         }, 1500);
     }
 
@@ -340,7 +340,7 @@ describe("bounds", () => {
             recorder.fail("provider");
             await session.cancel("superseded");
             expect(recorder.cancels).toBe(1);
-            expect(events).toEqual(expectedCode ? [{
+            expect(events).toMatchObject(expectedCode ? [{
                 type: "error", code: expectedCode, message: "The voice provider rejected the connection credentials.",
             }] : []);
         }, 1500);

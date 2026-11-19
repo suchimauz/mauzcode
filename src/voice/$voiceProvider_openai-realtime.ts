@@ -261,7 +261,8 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
         // diagnostic format; classify the status without ever forwarding the diagnostic, URL or response body.
         const message = (event as ErrorEvent).message;
         const auth = !accepted && typeof message === "string" && /failed: Expected 101 status code: (?:401|403)$/.test(message);
-        cleanup(failure(auth ? "providerAuth" : "provider"));
+        const limited = !accepted && typeof message === "string" && /failed: Expected 101 status code: 429$/.test(message);
+        cleanup(Object.assign(failure(auth ? "providerAuth" : "provider"), { diagnosticCause: auth ? "authentication" : limited ? "rateLimit" : "unknown" }));
     }
 
     function onClose(): void { cleanup(failure("provider")); }
@@ -284,7 +285,8 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
         if (type === "error") {
             const error = message.error as { code?: string; type?: string } | undefined;
             const auth = AUTH_ERRORS.includes(error?.code ?? "") || AUTH_ERRORS.includes(error?.type ?? "");
-            cleanup(failure(auth ? "providerAuth" : "provider"));
+            const limited = error?.code === "rate_limit_exceeded" || error?.type === "rate_limit_error";
+            cleanup(Object.assign(failure(auth ? "providerAuth" : "provider"), { diagnosticCause: auth ? "authentication" : limited ? "rateLimit" : "unknown" }));
             return;
         }
         if (!accepted) {

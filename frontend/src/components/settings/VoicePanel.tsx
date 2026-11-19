@@ -6,6 +6,7 @@ import {
   createVoiceConnection, destinationText, getVoiceState, removeVoiceConnection, setVoiceDefaultRoute, testVoiceConnection, updateVoiceConnection,
   type VoiceConnectionInput, type VoiceConnectionView, type VoiceFieldSpec, type VoiceProviderView, type VoiceState, type VoiceTestResult, type VoiceTransportSpec,
 } from '../../lib/voice';
+import { VoiceErrors } from './VoiceErrors';
 import { SettingsField as Field } from './SettingsField';
 
 type Feedback = { tone: 'success' | 'error'; text: string } | null;
@@ -196,6 +197,7 @@ export function VoicePanel() {
         <DefaultRoute actions={actions} />
         <AddVoiceConnection actions={actions} first={state.connections.length === 0} />
         {state.connections.length > 0 && <div className="ssh-list">{state.connections.map(c => <VoiceConnectionCard key={c.id} connection={c} actions={actions} />)}</div>}
+        <VoiceErrors />
       </>}
   </div>;
 }

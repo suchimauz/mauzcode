@@ -25,6 +25,12 @@ export type VoiceConnectionInput = { accountName: string; config: Record<string,
 
 const PATH = '/voice/api';
 
+export type VoiceErrorRecord = { id: string; createdAt: string; provider: string | null; model: string | null; stage: string; cause: string };
+export const isVoiceErrorId = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{16}$/.test(value);
+const ERRORS_PATH = '/api/voice/errors';
+export const listVoiceErrors = (signal: AbortSignal) => requestJson<{ errors: VoiceErrorRecord[] }>(ERRORS_PATH, { signal }).then(r => r.errors);
+export const getVoiceError = (id: string, signal: AbortSignal) => requestJson<{ error: VoiceErrorRecord }>(`${ERRORS_PATH}/${encodeURIComponent(id)}`, { signal }).then(r => r.error);
+
 export async function getVoiceState(agentId?: string, signal?: AbortSignal): Promise<VoiceState> {
   const data = await requestJson<VoiceState>(agentId ? `${PATH}?agentId=${encodeURIComponent(agentId)}` : PATH, { signal });
   if (!Array.isArray(data.providers) || !Array.isArray(data.connections) || !Array.isArray(data.routes) || typeof data.csrfToken !== 'string') throw new Error('Не удалось загрузить настройки голоса');

@@ -146,7 +146,7 @@ export function runVoiceProviderContract(opts: ContractSuiteOptions): void {
             try {
                 await upstream.disconnect();
                 expect(await session.finish()).toEqual({ ok: false, code: "provider" });
-                expect(events).toEqual([{ type: "error", code: "provider", message: "The voice provider failed." }]);
+                expect(events).toMatchObject([{ type: "error", code: "provider", message: "The voice provider failed." }]);
                 await upstream.expectClosed();
             } finally {
                 await session.cancel();
@@ -177,7 +177,7 @@ export function runVoiceProviderContract(opts: ContractSuiteOptions): void {
             try {
                 await speak(session, upstream, 0);
                 expect(await session.finish()).toEqual({ ok: false, code: "timeout" });
-                expect(events).toEqual([{ type: "error", code: "timeout", message: "Voice recognition timed out." }]);
+                expect(events).toMatchObject([{ type: "error", code: "timeout", message: "Voice recognition timed out." }]);
                 await upstream.expectClosed();
             } finally {
                 await session.cancel();

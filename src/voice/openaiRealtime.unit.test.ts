@@ -128,6 +128,26 @@ test("wire setup is transcription-only and readiness requires session.updated", 
     } finally { controller.abort(); }
 }));
 
+for (const [upstream, code, cause] of [
+    ["invalid_api_key", "providerAuth", "authentication"],
+    ["rate_limit_exceeded", "provider", "rateLimit"],
+    [`unrecognized-${KEY}`, "provider", "unknown"],
+]) {
+    test(`upstream failure maps only to ${cause}`, () => withSocket(async next => {
+        const transcript = "private dictated sentence";
+        const opening = provider.open(context, connection(), sink().session).catch((error: Error) => error);
+        const socket = await next;
+        socket.open();
+        socket.receive({ type: "error", error: { code: upstream, message: `${KEY} ${transcript}`, transcript } });
+        const error = await opening;
+        expect(error).toBeInstanceOf(Error);
+        expect(error).toMatchObject({ code, diagnosticCause: cause });
+        const output = JSON.stringify(error, Object.getOwnPropertyNames(error));
+        expect(output).not.toContain(KEY);
+        expect(output).not.toContain(transcript);
+    }));
+}
+
 test("commit FIFO keeps full revisions by item and finish waits for earlier work", () => withSocket(async next => {
     const { session, controller, events, failures } = sink();
     try {

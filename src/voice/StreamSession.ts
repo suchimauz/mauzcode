@@ -14,5 +14,5 @@ export type StreamSession = {
     /** Report provider-selected boundaries, phrase updates and usage. Events after `cancel` are dropped. */
     emit: (event: types.voice.PhraseEvent) => void;
     /** Report a terminal, sanitized failure; core maps it to a `types.voice.ErrorCode` and closes the session. */
-    fail: (error: { code: types.voice.ErrorCode; message: string }) => void;
+    fail: (error: { code: types.voice.ErrorCode; message: string; diagnosticCause?: "authentication" | "rateLimit" | "timeout" | "unknown" }) => void;
 };

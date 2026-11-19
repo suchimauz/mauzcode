@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { VoiceDestination } from '../lib/voice';
+import { isVoiceErrorId, type VoiceDestination } from '../lib/voice';
 import {
   VOICE_PROCESSOR, VOICE_SESSION_MS, VOICE_SOCKET_PATH, encodeFrame, frameBounds, voiceCaptureSupport, voiceWorkletSource,
   type VoiceSupport,
@@ -9,7 +9,7 @@ export type VoiceCaptureState = 'idle' | 'connecting' | 'listening' | 'finalizin
 export type VoiceErrorCode =
   | 'unauthorized' | 'readOnly' | 'superseded' | 'unconfigured' | 'routeUnavailable' | 'providerAuth' | 'provider'
   | 'timeout' | 'backpressure' | 'protocol' | 'permission' | 'microphone' | 'connection';
-export type VoiceCaptureError = { code: VoiceErrorCode; message: string };
+export type VoiceCaptureError = { code: VoiceErrorCode; message: string; errorId?: string };
 /** Phrase events of the session that produced them; never delivered after cancel, navigation or a newer start. */
 export type VoicePhraseEvent =
   | { type: 'phrase'; generation: number; id: string; order: number; revision: number; text: string; final: boolean }
@@ -225,7 +225,8 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
       }
       case 'error': {
         const code = typeof message.code === 'string' && SERVER_CODES.has(message.code) ? message.code as VoiceErrorCode : 'provider';
-        return fail(r, { code, message: typeof message.message === 'string' && message.message ? message.message : MESSAGES[code] });
+        const errorId = isVoiceErrorId(message.errorId) ? message.errorId : undefined;
+        return fail(r, { code, message: typeof message.message === 'string' && message.message ? message.message : MESSAGES[code], ...(errorId && { errorId }) });
       }
     }
   };

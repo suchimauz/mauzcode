@@ -150,5 +150,6 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
     }} />
     <div><ComposerFooter planningBadge={planningBadge} onModelBusy={value => { lock.current = value; setBusy(value); }} onModelSaved={() => { setRevision(n => n + 1); onAccepted(); }} menuOpen={menuOpen} onMenuToggle={() => { if (!panel.open) setMenuOpen(open => !open); }} agentId={agentId} busy={busy || readOnly} running={running} revision={revision} voice={readOnly ? undefined : <VoiceEntryControls key={`voice:${agentId}`} agentId={agentId} busy={busy} handlers={voiceHandlers} hub={voice} />} /></div>
     {error && running && text.startsWith('/') && <button type="button" className="button button--secondary" disabled={busy || readOnly} onClick={() => { void stop(); }}>Остановить выполнение</button>}
+    {!readOnly && !panel.open && voice.owner === 'inline' && voice.capture.error && <p role="alert" className="connection-error">{voice.capture.error.message}{voice.capture.error.errorId && <> ID: <code>{voice.capture.error.errorId}</code></>}</p>}
     {notice && <p role="status" className="transcript-notice">{notice}</p>}{error && <p role="alert" className="connection-error">{error}</p>}</fieldset>;
 }
