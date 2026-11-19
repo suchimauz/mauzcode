@@ -15,6 +15,10 @@ import type { ContractUpstream } from "./providerContract.entry";
 /** Build a contract upstream driver over the first connection of one fake server. */
 export function realtimeUpstream(server: FakeRealtimeServer): ContractUpstream {
     const connection: Promise<FakeConnection> = server.next(0);
+    // Scenarios that never touch the upstream may close the socket before the wait sees it open. The lazy wait
+    // then rejects seconds later, after the test ended, and Bun charges that unhandled rejection to whatever
+    // test is running in another file. Mark it handled here; every awaiting step still receives the rejection.
+    connection.catch(() => {});
     const tails = new Map<string, string>();
     let acknowledged = 0;
     let closedObserved = false;
