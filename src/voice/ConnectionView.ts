@@ -15,6 +15,11 @@ export type ConnectionView = {
     accountName: string;
     /** Declared non-secret configuration with defaults applied; never contains a secret value. */
     config: Record<string, types.voice.ConfigValue>;
+    /**
+     * Saved network route: `direct`, or a reference to a saved SOCKS5 proxy or SSH instance, never credentials.
+     * A connection stored before transports existed reports `direct`.
+     */
+    transport: types.voice.TransportSpec;
     /** Declared secret fields reported only as present (`true`) or absent (`false`). */
     secrets: Record<string, boolean>;
     /**

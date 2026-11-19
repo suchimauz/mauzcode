@@ -4,12 +4,14 @@ import { requestJson } from './mauzcode';
 export type VoiceDestination = { kind: 'cloud' | 'host'; label: string };
 export type VoiceFieldSpec = { key: string; label: string; type: 'text' | 'url' | 'select' | 'secret' | 'number' | 'boolean'; required?: boolean; help?: string; placeholder?: string; default?: string | number | boolean; options?: { value: string; label: string }[] };
 export type VoiceModel = { id: string; label?: string; description?: string };
-export type VoiceProviderView = { id: string; label: string; description?: string; destination: VoiceDestination; fields: VoiceFieldSpec[]; models: VoiceModel[] };
+/** Network route of one voice connection; non-direct kinds only reference saved infrastructure. */
+export type VoiceTransportSpec = { kind: 'direct' } | { kind: 'socks'; proxyId: string } | { kind: 'ssh-tunnel'; instance: string };
+export type VoiceProviderView = { id: string; label: string; description?: string; destination: VoiceDestination; transports: VoiceTransportSpec['kind'][]; fields: VoiceFieldSpec[]; models: VoiceModel[] };
 /**
  * Secret-free connection: secret fields are only reported as stored (`true`) or not (`false`). `destination` is
  * where this connection actually sends audio (the provider's per-connection disclosure, else its declaration).
  */
-export type VoiceConnectionView = { id: string; provider: string; providerRegistered: boolean; accountName: string; config: Record<string, string | number | boolean>; secrets: Record<string, boolean>; destination?: VoiceDestination; createdAt: number; updatedAt: number };
+export type VoiceConnectionView = { id: string; provider: string; providerRegistered: boolean; accountName: string; config: Record<string, string | number | boolean>; transport: VoiceTransportSpec; secrets: Record<string, boolean>; destination?: VoiceDestination; createdAt: number; updatedAt: number };
 export type VoiceRouteOption = { route: string; provider: string; accountName: string; connectionId: string; modelId: string; label: string; description?: string; destination: VoiceDestination };
 export type VoiceTestResult = { status: 'available' | 'unavailable' | 'configured' | 'disabled'; reason: string; message: string; checkedAt: number };
 /** Effective voice route of one chat; `unavailable` keeps the selected route instead of falling back. */
@@ -17,9 +19,9 @@ export type VoiceChatRoute =
   | { agentId: string; route: ''; source: 'none'; status: 'unconfigured' }
   | { agentId: string; route: string; source: 'override' | 'default'; status: 'ready'; destination: VoiceDestination; model: VoiceModel }
   | { agentId: string; route: string; source: 'override' | 'default'; status: 'unavailable'; reason: string };
-export type VoiceState = { providers: VoiceProviderView[]; connections: VoiceConnectionView[]; routes: VoiceRouteOption[]; defaultRoute: { route: string; fixed: boolean }; chat?: VoiceChatRoute; csrfToken: string };
+export type VoiceState = { providers: VoiceProviderView[]; connections: VoiceConnectionView[]; routes: VoiceRouteOption[]; defaultRoute: { route: string; fixed: boolean }; chat?: VoiceChatRoute; proxies?: { id: string; name: string | null; host: string; port: number }[]; instances?: string[]; csrfToken: string };
 /** Create/update payload. Secrets: omitted key keeps the stored value, null clears it. */
-export type VoiceConnectionInput = { accountName: string; config: Record<string, unknown>; secrets: Record<string, string | null> };
+export type VoiceConnectionInput = { accountName: string; config: Record<string, unknown>; secrets: Record<string, string | null>; transport?: VoiceTransportSpec };
 
 const PATH = '/voice/api';
 

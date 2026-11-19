@@ -5,10 +5,11 @@
  * routes (every stored connection of a registered provider × its statically declared models, each with the
  * audio destination of that connection — the provider's per-connection disclosure such as the configured host and
  * port, else its static declaration), the global default route with `fixed: true` when an instance settings file pins
- * it, and a cookie-bound CSRF token. With `?agentId=` it also returns `chat`: the effective route of that owned
+ * it, the saved SOCKS5 proxies (`id`, `name`, `host`, `port`) and verified SSH instance names a connection transport
+ * may reference, and a cookie-bound CSRF token. With `?agentId=` it also returns `chat`: the effective route of that owned
  * chat, its source (`override`, `default`, `none`) and status — `unconfigured`, `ready` with the destination and
  * model, or `unavailable` with a closed reason; the selected route is never replaced by another one. POST takes one
- * JSON object `{ action, ... }`: `create`, `update`, `remove` (requires `confirmed: true`), `test`,
+ * JSON object `{ action, ... }`: `create` and `update` (both accept an optional `transport`), `remove` (requires `confirmed: true`), `test`,
  * `setDefaultRoute` (`{ route }`, empty string clears it), `setChatRoute` (`{ agentId, route }`) and
  * `clearChatRoute` (`{ agentId }`). Route writes accept only a route that resolves now. Chat reads and writes
  * require a chat created by this owner; chat writes also require it not to be archived. POST requires same
@@ -64,6 +65,17 @@ export default async function (
         }
         return { providers, connections, routes: out };
     };
+    // Saved route choices for the transport selector: names and endpoints only, never credentials.
+    const infrastructureView = async () => {
+        const [proxies, instances] = await Promise.all([
+            ctx.fns.socksProxy.list({}).catch(() => []),
+            ctx.fns.sshInstance.list({}).catch(() => []),
+        ]);
+        return {
+            proxies: proxies.map(p => ({ id: p.id, name: p.name, host: p.host, port: p.port })),
+            instances: instances.filter(i => !!i.pinnedHostKey).map(i => i.name),
+        };
+    };
     const defaultRoute = async () => {
         const fixed = !!(await ctx.fns.settings.files({})).values["voice.defaultRoute"];
         const value = await ctx.fns.settings.get({ module: "voice", scopeType: "global", key: "defaultRoute" });
@@ -103,9 +115,10 @@ export default async function (
         try {
             const agentId = new URL(req.url).searchParams.get("agentId") ?? "";
             if (agentId && !await chatAccess(agentId)) return reply({ error: "Chat not found" }, 404);
-            const [catalogue, fallback] = await Promise.all([routes(), defaultRoute()]);
+            const [catalogue, fallback, infrastructure] = await Promise.all([routes(), defaultRoute(), infrastructureView()]);
             return reply({
                 ...catalogue,
+                ...infrastructure,
                 defaultRoute: fallback,
                 ...(agentId ? { chat: await chatView(agentId) } : {}),
                 csrfToken: await ctx.fns.auth.csrfToken({ req }),
@@ -162,6 +175,7 @@ export default async function (
                     accountName: typeof data.accountName === "string" ? data.accountName : "",
                     config: record(data.config) ?? {},
                     secrets: (record(data.secrets) ?? {}) as Record<string, string | null>,
+                    ...(data.transport !== undefined ? { transport: data.transport as types.voice.TransportSpec } : {}),
                 });
                 return reply({ connection }, 201);
             }
@@ -171,6 +185,7 @@ export default async function (
                     ...(typeof data.accountName === "string" ? { accountName: data.accountName } : {}),
                     ...(record(data.config) ? { config: record(data.config) } : {}),
                     ...(record(data.secrets) ? { secrets: record(data.secrets) as Record<string, string | null> } : {}),
+                    ...(data.transport !== undefined ? { transport: data.transport as types.voice.TransportSpec } : {}),
                 });
                 return reply({ connection });
             }

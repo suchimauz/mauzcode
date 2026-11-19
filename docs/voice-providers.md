@@ -46,6 +46,9 @@ Available now:
 - explicit send from either entry point: stop capture, wait for the final words, then submit the
   draft and attachments using the ordinary send action (the ordinary queue when the chat is busy).
   Neither entry point sends on silence, pause, or stop.
+- per-connection **network routes**: a voice connection can reach its recognizer directly, through a
+  saved SOCKS5 proxy or through a pinned SSH tunnel, for model discovery, the connection check and
+  live dictation alike (see [Network route](#network-route)).
 
 ### Public facade and internal namespaces
 
@@ -53,8 +56,9 @@ The public surface is a minimal facade of root procedures: `voice.providers`, `v
 `voice.get`, `voice.create`, `voice.update`, `voice.remove`, `voice.test`, `voice.resolveRoute` and
 `voice.effectiveRoute`. Everything else lives in an implementation namespace and is called by full
 name — `voice.connections.*` (CRUD, resolution, the connection check, schema validation),
-`voice.route.*` (parsing, resolution, the per-chat override) and `voice.session.*` (the normalized
-session core and its segmentation). `src/$ws_voice_session.ts` is the single transport into the
+`voice.route.*` (parsing, resolution, the per-chat override), `voice.session.*` (the normalized
+session core and its segmentation) and `voice.transport.*` (route validation and the connection-bound
+HTTP and WebSocket clients providers receive on `conn`). `src/$ws_voice_session.ts` is the single transport into the
 session core; an ordinary consumer should not open a session core directly.
 
 ## How a dictation session runs
@@ -242,6 +246,20 @@ The adapter always opens a transcription-only session: `session.update` with `ty
 model plus configured options. It never requests a response, output audio, instructions or tools,
 and it reports ready only after the service confirms the update.
 
+### Network route
+
+Each voice connection selects one network route under **Network** in its Settings → Voice form:
+**Direct**, **SOCKS5 proxy** (a proxy saved in the SOCKS5 tab) or **SSH tunnel** (an SSH instance with
+a verified host key). The connection stores only the reference — `{ kind: "socks", proxyId }` or
+`{ kind: "ssh-tunnel", instance }` — never a proxy host, password or key. Both the no-audio test and
+every live session open their WSS handshake over that route, to the default endpoint or a custom
+Base URL alike: TLS is verified for the endpoint's host, redirects are refused, and a broken proxy or
+tunnel fails the check or the session with the usual sanitized error instead of connecting directly.
+The disclosed audio destination stays the recognizer endpoint, not the proxy or SSH host, and the
+browser `/voice/session` protocol is unchanged. Connections created before routes existed keep using
+**Direct**. If a saved proxy or instance is removed later, the connection keeps its selection, shows
+it as unavailable and fails until another one is chosen.
+
 ### 5. Test the connection without audio
 
 ```ts
@@ -315,6 +333,7 @@ to the built-in one.
 | `description` | Optional safe explanation; never a credential. |
 | `destination` | `{ kind: "cloud" \| "host", label }` — where audio is processed, disclosed before capture. |
 | `destinationFor` | Optional `(config) => Destination \| undefined`: the destination one stored connection actually uses, from its non-secret configuration (for example `Configured endpoint (host:port)`). Core shows it in Settings → Voice, in the chat route picker and in `ready`; it falls back to `destination` if absent, throwing, or if the label is blank, longer than 160 characters, or contains `/`, `@`, `?`, `#`, `\` or control characters. Name only a host and port — never userinfo, a path, a query, a fragment or other configuration. |
+| `transports` | Optional non-empty list of distinct route kinds the provider supports: `"direct"`, `"socks"`, `"ssh-tunnel"`. Absent means `["direct"]`. See [Network routes](#network-routes). |
 | `fields` | Connection field schema: `text`, `url`, `select`, `secret`, `number`, `boolean`; keys safe and unique; `secret` fields may declare no default. |
 | `models` and/or `listModels` | At least one source: static `VoiceModel[]` and/or `(ctx, conn) => Promise<VoiceModel[]>` discovery. |
 | `validateConfig` | Optional synchronous check of non-secret values; return `{ field, reason? }` with a reason from the closed set (`keywordList`, `languageList`, `httpsEndpoint`, `headerIdentifier`), never free text. |
@@ -335,6 +354,77 @@ A model declares `id`, optional `label`/`description`, and `capabilities`:
 nothing is stored or when the key is not a declared secret field. Providers must never log, return,
 embed or forward a secret value, and must never put one into an error message. Core stores secrets
 itself, so a provider never writes to the secret store.
+
+### Network routes
+
+A connection's route is chosen by the user from the kinds the provider declares in `transports`; the
+catalogue (`voice.providers`) reports them, `["direct"]` when undeclared, so existing providers and
+connections keep working unchanged. Declaring `socks` or `ssh-tunnel` is a promise: **every** upstream
+request and socket of `listModels`, `test` and `open` must go through the connection-bound clients
+on `conn`, never through `globalThis.fetch`, `new WebSocket` or another network client. Core cannot
+enforce this — a provider is trusted code, not a sandbox — so a provider that uses its own client must
+stay direct-only.
+
+- `conn.transport` — the saved route (`{ kind: "direct" }` for older connections), for diagnostics only.
+- `conn.fetch(url, init?)` — HTTP over the route. Non-direct routes require HTTPS, `GET`/`POST` and at
+  most eight MiB of body; they carry the whole exchange through the saved SOCKS5 proxy or a leased SSH
+  tunnel with remote DNS and a certificate verified for the destination host. Redirects fail. It aborts
+  with `conn.signal`; errors carry `code: "TRANSPORT"` and a fixed message.
+- `conn.openWebSocket(url, { headers?, protocols? })` — a `WebSocket`-like client (`readyState`,
+  `bufferedAmount`, `send`, `close`, `terminate`; `open`, `message`, `error`, `close` events) that
+  starts connecting immediately. Non-direct routes require `wss:`: the proxy or tunnel connects to the
+  destination host, TLS is verified for that host, and the upgrade and every later frame run on that
+  same stream. A refused or redirected upgrade fails with `Expected 101 status code: <status>`; the
+  socket ends with `conn.signal`.
+
+Routes are resolved again at use time, so a saved proxy or SSH instance removed after the connection
+was saved fails the operation safely. There is never a direct retry. Tunnel leases are released exactly
+once, when the response body or socket ends, fails, is cancelled or times out — including a lease that
+arrives after cancellation. Saving rejects a kind the provider does not declare, inline credentials
+(any property beyond the reference) and unknown references; an unrelated edit keeps the saved route.
+
+A provider that streams over WebSocket and discovers models over HTTP:
+
+```ts
+export default {
+    id: "acme-stream",
+    label: "Acme Stream",
+    destination: { kind: "cloud", label: "Acme (stream.acme.example)" },
+    transports: ["direct", "socks", "ssh-tunnel"],
+    fields: [{ key: "apiKey", label: "API key", type: "secret", required: true }],
+    async listModels(_ctx, conn) {
+        const response = await conn.fetch("https://stream.acme.example/v1/models", {
+            headers: { Authorization: `Bearer ${await conn.secret("apiKey")}` },
+        });
+        if (!response.ok) throw new Error("model list failed");
+        const { models } = await response.json() as { models: { id: string }[] };
+        return models.map(m => ({ id: m.id, capabilities: { turnDetection: "client", sampleRates: [16000] } }));
+    },
+    async test(_ctx, conn) {
+        const ws = conn.openWebSocket("wss://stream.acme.example/v1/live", {
+            headers: { Authorization: `Bearer ${await conn.secret("apiKey")}` },
+        });
+        const ok = await new Promise<boolean>(resolve => {
+            ws.addEventListener("open", () => { ws.close(1000); resolve(true); }, { once: true });
+            ws.addEventListener("close", () => resolve(false), { once: true });
+        });
+        return ok
+            ? { status: "available", reason: "voice-ok", message: "ok", checkedAt: Date.now() }
+            : { status: "unavailable", reason: "unreachable", message: "failed", checkedAt: Date.now() };
+    },
+    async open(_ctx, conn, session) {
+        const ws = conn.openWebSocket("wss://stream.acme.example/v1/live", {
+            headers: { Authorization: `Bearer ${await conn.secret("apiKey")}` },
+        });
+        // …wait for "open", stream PCM with ws.send(pcm), report session.emit(...) from "message" events…
+        return { async append(pcm) { ws.send(pcm); }, async commit() {}, async finish() { ws.close(1000); }, async cancel() { ws.terminate(); } };
+    },
+} satisfies types.voice.ProviderDefinition;
+```
+
+`src/voice/transport.it.test.ts` exercises both clients over direct, SOCKS5 and SSH-tunnel routes
+against a local TLS fixture, including the observed dial target, TLS and redirect failures, absence of
+a direct retry and lease cleanup.
 
 ### The stream contract
 

@@ -14,6 +14,7 @@ const KEY = 'sk-fixture-never-echoed-0123456789';
 const json = (body: object, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const provider = {
   id: 'openai-realtime', label: 'OpenAI Realtime transcription', description: 'Streams audio.', destination: { kind: 'cloud' as const, label: 'OpenAI Realtime (api.openai.com or the host of the configured Base URL)' },
+  transports: ['direct' as const, 'socks' as const, 'ssh-tunnel' as const],
   fields: [
     { key: 'apiKey', label: 'API key', type: 'secret' as const, required: true },
     { key: 'baseUrl', label: 'Base URL', type: 'url' as const, default: 'https://api.openai.com/v1' },
@@ -25,7 +26,7 @@ const provider = {
 // the endpoint it actually uses (standard vs. a custom Base URL), never its path, query or other configuration.
 const standard = { kind: 'cloud' as const, label: 'OpenAI Realtime (api.openai.com)' };
 const custom = { kind: 'cloud' as const, label: 'Configured endpoint (voice.example.test:8443)' };
-const connection = { id: 'c1', provider: 'openai-realtime', providerRegistered: true, accountName: 'work', config: { baseUrl: 'https://api.openai.com/v1' }, secrets: { apiKey: true }, destination: standard, createdAt: 1, updatedAt: 1 };
+const connection = { id: 'c1', provider: 'openai-realtime', providerRegistered: true, accountName: 'work', config: { baseUrl: 'https://api.openai.com/v1' }, transport: { kind: 'direct' as const }, secrets: { apiKey: true }, destination: standard, createdAt: 1, updatedAt: 1 };
 const homeConnection = { ...connection, id: 'c2', accountName: 'home', config: { baseUrl: 'https://voice.example.test:8443/private/v1' }, destination: custom };
 const route = { route: 'openai-realtime/work:gpt-live-transcribe', provider: 'openai-realtime', accountName: 'work', connectionId: 'c1', modelId: 'gpt-live-transcribe', label: 'GPT Live Transcribe', description: 'Metered per audio minute.', destination: standard };
 const home = { ...route, route: 'openai-realtime/home:gpt-live-transcribe', accountName: 'home', connectionId: 'c2', destination: custom };
@@ -81,7 +82,7 @@ it('unconfigured settings: explains, offers the add form and saves the key write
   const create = calls.find(c => c.body?.action === 'create')!;
   expect(create.init?.method).toBe('POST');
   expect((create.init?.headers as Record<string, string>)['X-CSRF-Token']).toBe('csrf-1');
-  expect(create.body).toEqual({ action: 'create', provider: 'openai-realtime', accountName: 'work', config: { baseUrl: 'https://api.openai.com/v1' }, secrets: { apiKey: KEY } });
+  expect(create.body).toEqual({ action: 'create', provider: 'openai-realtime', accountName: 'work', config: { baseUrl: 'https://api.openai.com/v1' }, secrets: { apiKey: KEY }, transport: { kind: 'direct' } });
   // The key is not kept in the DOM after a successful save.
   await waitFor(() => expect(document.body.innerHTML).not.toContain(KEY));
   expect(await screen.findByLabelText('Voice model for chats')).toBeEnabled();
@@ -204,4 +205,54 @@ it('chat picker: an unavailable selection is reported, not replaced; non-owners 
   server(() => json({ error: 'Only owners can manage voice dictation' }, 403), configured);
   const { container } = render(<VoiceRoutePicker agentId="chat-1" />);
   await waitFor(() => expect(container).toBeEmptyDOMElement());
+});
+
+it('transport: offers only declared kinds and saved references, round-trips them and flags an unavailable one', async () => {
+  const proxy = { id: '11111111-1111-4111-8111-111111111111', name: 'office', host: '127.0.0.1', port: 1080 };
+  const routed = { ...connection, transport: { kind: 'socks' as const, proxyId: proxy.id } };
+  const stale = { ...homeConnection, transport: { kind: 'socks' as const, proxyId: '22222222-2222-4222-8222-222222222222' } };
+  let state: VoiceState = { ...configured, connections: [routed, stale], proxies: [proxy], instances: ['builder'] };
+  const calls = server(call => {
+    if (call.body?.action === 'update') return json({ connection: { ...routed, transport: call.body.transport } });
+    return json(state);
+  }, state);
+  render(<VoicePanel />);
+  const work = await screen.findByRole('article', { name: 'OpenAI Realtime transcription · work' });
+  expect(within(work).getByText('Network: SOCKS5 · office')).toBeInTheDocument();
+  const homeCard = screen.getByRole('article', { name: 'OpenAI Realtime transcription · home' });
+  expect(within(homeCard).getByText('Network: SOCKS5 · saved proxy unavailable')).toBeInTheDocument();
+  // The stale reference stays selected and is explained, not silently replaced.
+  await userEvent.click(within(homeCard).getByRole('button', { name: 'Edit' }));
+  const staleForm = within(homeCard).getByRole('form', { name: 'Edit home' });
+  expect(within(staleForm).getByLabelText('Saved proxy')).toHaveValue(stale.transport.proxyId);
+  expect(within(staleForm).getByText(/no longer exists/)).toBeInTheDocument();
+  await userEvent.click(within(homeCard).getByRole('button', { name: 'Cancel' }));
+  // Reopening the routed connection shows the saved selection; an unrelated edit keeps it.
+  await userEvent.click(within(work).getByRole('button', { name: 'Edit' }));
+  const form = within(work).getByRole('form', { name: 'Edit work' });
+  const radios = within(form).getAllByRole('radio');
+  expect(radios.map(r => (r as HTMLInputElement).value)).toEqual(['direct', 'socks', 'ssh-tunnel']);
+  expect(within(form).getByRole('radio', { name: 'SOCKS5 proxy' })).toBeChecked();
+  expect(within(form).getByLabelText('Saved proxy')).toHaveValue(proxy.id);
+  await userEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(calls.some(c => c.body?.action === 'update')).toBe(true));
+  expect(calls.find(c => c.body?.action === 'update')!.body!.transport).toEqual({ kind: 'socks', proxyId: proxy.id });
+  // Switching to an SSH instance sends only the saved name, never credentials.
+  state = { ...state };
+  await userEvent.click(within(work).getByRole('button', { name: 'Edit' }));
+  const again = within(work).getByRole('form', { name: 'Edit work' });
+  await userEvent.click(within(again).getByRole('radio', { name: 'SSH tunnel' }));
+  expect(within(again).getByLabelText('SSH instance')).toHaveValue('builder');
+  await userEvent.click(within(again).getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(calls.filter(c => c.body?.action === 'update').length).toBe(2));
+  expect(calls.filter(c => c.body?.action === 'update')[1]!.body!.transport).toEqual({ kind: 'ssh-tunnel', instance: 'builder' });
+});
+
+it('transport: a direct-only provider offers no proxy or tunnel choice', async () => {
+  const legacy = { ...provider, id: 'legacy', label: 'Legacy recognizer', transports: ['direct' as const] };
+  server(() => undefined, { ...empty, providers: [legacy] });
+  render(<VoicePanel />);
+  const form = await screen.findByRole('form', { name: 'New Legacy recognizer connection' });
+  expect(within(form).getAllByRole('radio').map(r => (r as HTMLInputElement).value)).toEqual(['direct']);
+  expect(within(form).queryByLabelText('Saved proxy')).toBeNull();
 });

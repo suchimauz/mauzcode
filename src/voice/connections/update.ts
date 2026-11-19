@@ -7,11 +7,14 @@
  * configuration projects as empty. Secret fields: a string replaces the stored value, `null` clears it, an
  * omitted key keeps it. The provider cannot change. Validation and merging run against the row locked inside the
  * transaction, so two independent updates (a rename and a reconfiguration) both survive. A duplicate account
- * name fails validation without storing anything. Bumps `updatedAt`. Returns the secret-free view.
+ * name fails validation without storing anything. An omitted `transport` keeps the saved route (even a stale
+ * reference); a submitted one equal to the saved selection is accepted unchanged, any other is validated against the
+ * provider's declared kinds and saved infrastructure. Bumps `updatedAt`. Returns the secret-free view.
  * @param opts.id Connection UUID.
  * @param opts.accountName New display account name (1–100 characters).
  * @param opts.config Replacement non-secret configuration.
  * @param opts.secrets Secret changes: string sets, null clears, absent keeps.
+ * @param opts.transport Replacement network route; omitted keeps the saved one.
  */
 export default async function (
     ctx: Context,
@@ -25,6 +28,8 @@ export default async function (
         config?: Record<string, unknown>;
         /** Secret changes: string sets, null clears, absent keeps. */
         secrets?: Record<string, string | null>;
+        /** Replacement network route; omitted keeps the saved one. */
+        transport?: types.voice.TransportSpec;
     },
 ): Promise<types.voice.ConnectionView> {
     const invalid = (message: string, field?: string): never => { throw Object.assign(new Error(message), { code: "VALIDATION", status: 400, ...(field ? { field } : {}) }); };
@@ -72,8 +77,24 @@ export default async function (
                     presence[key] = true;
                 }
             }
+            let transport: types.voice.TransportSpec | undefined;
+            if (opts.transport !== undefined) {
+                const submitted: unknown = opts.transport;
+                const record = submitted && typeof submitted === "object" && !Array.isArray(submitted) ? submitted as Record<string, unknown> : undefined;
+                const saved = locked.transport as Record<string, string>;
+                const unchanged = !!record && Object.keys(record).length === Object.keys(saved).length && Object.keys(saved).every(key => record[key] === saved[key]);
+                // Re-saving the unchanged selection keeps it as is, even while its saved reference is unavailable.
+                if (!unchanged) {
+                    const allowed = ctx.fns.voice.providers({}).find(p => p.id === locked.provider)?.transports ?? ["direct"];
+                    transport = await ctx.fns.voice.transport.validate({ transport: submitted, allowed });
+                }
+            }
             const assignments = ["account_name=?", "secrets=?::jsonb"];
             const params: unknown[] = [nextName, JSON.stringify(presence)];
+            if (transport !== undefined) {
+                assignments.push("transport=?::jsonb");
+                params.push(JSON.stringify(transport));
+            }
             if (config !== undefined) {
                 assignments.push("config=?::jsonb");
                 params.push(JSON.stringify(config));

@@ -22,6 +22,13 @@ export type ProviderDefinition = {
      * secret or any other configuration value.
      */
     destinationFor?: (config: Readonly<Record<string, types.voice.ConfigValue>>) => types.voice.Destination | undefined;
+    /**
+     * Network routes this provider supports for a connection, as a nonempty list of distinct kinds. Absent means
+     * `["direct"]`. Declare `socks` or `ssh-tunnel` only when every upstream request and WebSocket of `listModels`,
+     * `test` and `open` goes through `conn.fetch` and `conn.openWebSocket`; this is a provider contract, not a
+     * sandbox.
+     */
+    transports?: types.voice.TransportSpec["kind"][];
     /** Connection field schema; secret fields are stored in the secret store and never returned. */
     fields: types.voice.FieldSpec[];
     /**

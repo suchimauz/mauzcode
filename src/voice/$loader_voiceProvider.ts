@@ -22,6 +22,7 @@ const KEBAB = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const FIELD_KEYS = ["__proto__", "constructor", "prototype"];
 const FIELD_TYPES = ["text", "url", "select", "secret", "number", "boolean"];
 const CAPABILITIES = ["turnDetection", "sampleRates", "languages", "keywords", "prompt", "delay"];
+const TRANSPORTS = ["direct", "socks", "ssh-tunnel"];
 const OPTION_FLAGS = ["languages", "keywords", "prompt", "delay"] as const;
 
 /**
@@ -136,6 +137,13 @@ function validate(id: string, value: unknown): string | null {
     if (typeof def.open !== "function") return "voiceProvider requires an open operation";
     const fieldProblem = validateFields(def.fields);
     if (fieldProblem) return fieldProblem;
+    if (def.transports !== undefined) {
+        const kinds = def.transports;
+        if (!Array.isArray(kinds) || !kinds.length || new Set(kinds).size !== kinds.length ||
+            kinds.some((kind: unknown) => !TRANSPORTS.includes(kind as string))) {
+            return "voiceProvider transports must be a nonempty list of distinct direct, socks or ssh-tunnel kinds";
+        }
+    }
     if (def.validateConfig !== undefined && typeof def.validateConfig !== "function") return "voiceProvider validateConfig must be a function";
     if (def.destinationFor !== undefined && typeof def.destinationFor !== "function") return "voiceProvider destinationFor must be a function";
     if (def.listModels !== undefined && typeof def.listModels !== "function") return "voiceProvider listModels must be a function";

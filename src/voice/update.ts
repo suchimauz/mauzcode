@@ -9,6 +9,7 @@
  * @param opts.accountName New display account name (1–100 characters).
  * @param opts.config Replacement non-secret configuration.
  * @param opts.secrets Secret changes: string sets, null clears, absent keeps.
+ * @param opts.transport Replacement network route; omitted keeps the saved one.
  */
 export default async function (
     ctx: Context,
@@ -22,6 +23,8 @@ export default async function (
         config?: Record<string, unknown>;
         /** Secret changes: string sets, null clears, absent keeps. */
         secrets?: Record<string, string | null>;
+        /** Replacement network route; omitted keeps the saved one. */
+        transport?: types.voice.TransportSpec;
     },
 ): Promise<types.voice.ConnectionView> {
     return ctx.fns.voice.connections.update(opts);

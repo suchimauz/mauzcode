@@ -11,6 +11,12 @@ const connection = (config: types.voice.ResolvedConnection["config"] = {}): type
         expect(key).toBe("apiKey");
         return KEY;
     },
+    transport: { kind: "direct" },
+    fetch: async () => { throw new Error("no HTTP in this adapter"); },
+    // Stands in for the connection-bound client: the adapter must open every socket through this hook.
+    openWebSocket: (url, options) => new globalThis.WebSocket(new URL(url) as unknown as string, {
+        headers: options?.headers ?? {}, tls: { rejectUnauthorized: true },
+    } as unknown as string[]) as unknown as types.voice.BoundWebSocket,
 });
 
 function sink(options: types.voice.RecognitionOptions = {}) {

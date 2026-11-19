@@ -2,7 +2,8 @@
  * Build the provider-facing ResolvedConnection for one stored voice connection
  *
  * Internal step before calling a provider operation. Exposes only this connection's non-secret configuration and
- * a lazy `secret(key)` reader limited to its own declared secret fields. Throws `NOT_FOUND` for unknown
+ * a lazy `secret(key)` reader limited to its own declared secret fields, and `fetch`/`openWebSocket` bound to the
+ * connection's saved transport (resolved again at use time, never falling back to direct). Throws `NOT_FOUND` for unknown
  * connections and `UNKNOWN_PROVIDER` when the provider is no longer registered. Never returns, logs or stores a
  * secret value itself.
  * @param opts.id Connection UUID.
@@ -33,6 +34,11 @@ export default async function (
             return (await ctx.fns.secrets.getLocal({ namespace: "voice", name: `${view.id}.${key}` })) ?? undefined;
         },
         ...(opts.signal ? { signal: opts.signal } : {}),
+        transport: structuredClone(view.transport),
+        fetch: (url: string, init?: RequestInit) => ctx.fns.voice.transport.fetch({ transport: view.transport, url, init, signal: opts.signal }),
+        openWebSocket: (url: string, options?: types.voice.WebSocketOptions) => ctx.fns.voice.transport.openWebSocket({
+            transport: view.transport, url, headers: options?.headers, protocols: options?.protocols, signal: opts.signal,
+        }),
     };
     return { view, definition, conn };
 }

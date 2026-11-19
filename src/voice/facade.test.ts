@@ -10,7 +10,7 @@ test("the public voice facade exposes only the minimal entry points", async () =
     const root = Object.entries(voice).filter(([, value]) => typeof value === "function").map(([name]) => name).sort();
     expect(root).toEqual(["create", "effectiveRoute", "get", "list", "providers", "remove", "resolveRoute", "test", "update"]);
     // The storage, route, live-session and settings-HTTP internals stay in their own namespaces.
-    expect(Object.keys(voice).filter(name => typeof voice[name] === "object").sort()).toEqual(["connections", "http", "route", "session"]);
+    expect(Object.keys(voice).filter(name => typeof voice[name] === "object").sort()).toEqual(["connections", "http", "route", "session", "transport"]);
     expect(Object.keys(voice.http as Record<string, unknown>)).toEqual(["api"]);
     expect(Object.keys(voice.connections as Record<string, unknown>).sort()).toEqual([
         "create", "get", "list", "remove", "resolve", "test", "toView", "update", "validateConfig",
@@ -22,4 +22,6 @@ test("the public voice facade exposes only the minimal entry points", async () =
     expect(Object.keys(voice.session as Record<string, unknown>).sort()).toEqual([
         "failure", "limits", "message", "open", "vadFlush", "vadPush", "vadState",
     ]);
+    // Connection-bound networking is internal too: providers reach it only through ResolvedConnection.
+    expect(Object.keys(voice.transport as Record<string, unknown>).sort()).toEqual(["acquire", "fetch", "openWebSocket", "validate"]);
 });

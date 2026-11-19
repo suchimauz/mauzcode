@@ -7,7 +7,8 @@
  * schema reload is never returned as plain configuration, and a field the provider no longer declares is dropped.
  * The audio destination comes from the provider's optional `destinationFor(config)` disclosure, accepted only as
  * a short single-line label without URL syntax (`/`, `@`, `?`, `#`) or control characters; otherwise, or when it
- * throws, the static declared destination is used.
+ * throws, the static declared destination is used. The transport is projected as a saved reference only; a row
+ * without one (stored before transports existed) reports `direct`.
  * @param opts.row Raw voice_connections row as returned by procs.db.select.
  */
 export default function (
@@ -50,12 +51,20 @@ export default function (
         try { destination = definition.destinationFor ? safe(definition.destinationFor(Object.freeze({ ...config }))) : undefined; } catch { destination = undefined; }
         destination ??= (() => { try { return { kind: definition.destination.kind, label: definition.destination.label }; } catch { return undefined; } })();
     }
+    // Project only the reference: a stored row never carries credentials, and anything unexpected reads as direct.
+    const storedTransport = parse<Record<string, unknown> | null>(row.transport, null);
+    const transport: types.voice.TransportSpec = storedTransport?.kind === "socks" && typeof storedTransport.proxyId === "string"
+        ? { kind: "socks", proxyId: storedTransport.proxyId }
+        : storedTransport?.kind === "ssh-tunnel" && typeof storedTransport.instance === "string"
+            ? { kind: "ssh-tunnel", instance: storedTransport.instance }
+            : { kind: "direct" };
     return {
         id: String(row.id),
         provider,
         providerRegistered: !!entry,
         accountName: String(row.account_name),
         config,
+        transport,
         secrets,
         ...(destination ? { destination } : {}),
         createdAt: Number(row.created_at),

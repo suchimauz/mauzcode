@@ -9,6 +9,7 @@
  * @param opts.accountName Display account name, unique within this provider; no slash or colon.
  * @param opts.config Non-secret configuration; unknown keys are rejected.
  * @param opts.secrets Secret field values keyed by field; null or absent means not set.
+ * @param opts.transport Network route referencing a saved proxy or SSH instance. @default { kind: "direct" }
  */
 export default async function (
     ctx: Context,
@@ -22,6 +23,8 @@ export default async function (
         config?: Record<string, unknown>;
         /** Secret field values keyed by field; null or absent means not set. */
         secrets?: Record<string, string | null>;
+        /** Network route referencing a saved proxy or SSH instance. @default { kind: "direct" } */
+        transport?: types.voice.TransportSpec;
     },
 ): Promise<types.voice.ConnectionView> {
     return ctx.fns.voice.connections.create(opts);

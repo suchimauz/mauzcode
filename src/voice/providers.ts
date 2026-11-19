@@ -2,7 +2,8 @@
  * List registered voice providers as a secret-free metadata catalogue
  *
  * Use this catalogue to build provider pickers and configuration forms. It carries only declared metadata: the
- * audio destination, the connection field schema and the statically declared transcription models. It never
+ * audio destination, the supported connection transports (`["direct"]` when undeclared), the connection field schema
+ * and the statically declared transcription models. It never
  * returns handlers, ownership internals, connection values or secret defaults.
  */
 export default function (
@@ -32,6 +33,7 @@ export default function (
             label: def.label,
             ...(def.description !== undefined ? { description: def.description } : {}),
             destination: def.destination,
+            transports: Array.isArray(def.transports) && def.transports.length ? [...def.transports] : ["direct" as const],
             fields: def.fields.map(field),
             models: [...(def.models ?? [])],
         }))

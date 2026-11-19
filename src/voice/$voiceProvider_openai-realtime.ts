@@ -6,6 +6,8 @@ const DELAYS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 const OPEN_TIMEOUT_MS = 5_000;
 const FINISH_TIMEOUT_MS = 10_000;
 const MAX_BUFFER_BYTES = 1024 * 1024;
+const SOCKET_OPEN = 1;
+const SOCKET_CLOSED = 3;
 const MAX_OPTION_CHARS = 4000;
 const INVALID_KEYWORD = /[<>\r\n\v\f\u0085\u2028\u2029]/;
 const AUTH_ERRORS = [
@@ -31,6 +33,8 @@ const provider: types.voice.ProviderDefinition = {
             ? { kind: "cloud", label: `OpenAI Realtime (${url.host})` }
             : { kind: "cloud", label: `Configured endpoint (${url.host})` };
     },
+    // Every upstream socket (check and live session) is opened through conn.openWebSocket, so all routes work.
+    transports: ["direct", "socks", "ssh-tunnel"],
     fields: [
         { key: "apiKey", label: "API key", type: "secret", required: true },
         { key: "baseUrl", label: "Base URL", type: "url", default: BASE_URL, help: "HTTPS API base URL, without a query or fragment." },
@@ -182,7 +186,7 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
     const signal = conn.signal && conn.signal !== session.signal ? AbortSignal.any([conn.signal, session.signal]) : session.signal;
     if (signal.aborted) throw failure("provider");
     const ready = Promise.withResolvers<void>();
-    let socket: WebSocket | undefined;
+    let socket: types.voice.BoundWebSocket | undefined;
     let setupSent = false;
     let accepted = false;
     let closed = false;
@@ -211,12 +215,12 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
             ws.removeEventListener("error", onError);
             ws.removeEventListener("close", onClose);
             const terminate = () => {
-                if (ws.readyState !== WebSocket.CLOSED) {
+                if (ws.readyState !== SOCKET_CLOSED) {
                     try { ws.terminate(); } catch { /* It may already be closing. */ }
                 }
             };
             if (error) terminate();
-            else if (ws.readyState !== WebSocket.CLOSED) {
+            else if (ws.readyState !== SOCKET_CLOSED) {
                 // Bound the close handshake too: a peer that ignores our close cannot retain the socket.
                 const closeTimer = setTimeout(terminate, 250);
                 ws.addEventListener("close", () => clearTimeout(closeTimer), { once: true });
@@ -235,7 +239,7 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
     function send(message: object): void {
         let code: types.voice.ErrorCode = "provider";
         try {
-            if (socket?.readyState === WebSocket.OPEN) {
+            if (socket?.readyState === SOCKET_OPEN) {
                 const body = JSON.stringify(message);
                 if (socket.bufferedAmount + Buffer.byteLength(body) > MAX_BUFFER_BYTES) code = "backpressure";
                 else { socket.send(body); return; }
@@ -266,7 +270,8 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
         if (finish && unsettled === 0) cleanup();
     }
 
-    function onMessage(event: MessageEvent): void {
+    function onMessage(incoming: Event): void {
+        const event = incoming as MessageEvent;
         if (closed) return;
         let message: Record<string, unknown>;
         try {
@@ -336,10 +341,8 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
             const key = await conn.secret("apiKey");
             if (closed) return;
             if (!isHeaderValue(key, 16_384)) { cleanup(failure("providerAuth")); return; }
-            const ws = new WebSocket(settings.url, {
-                headers: { ...settings.headers, Authorization: `Bearer ${key}` },
-                tls: { rejectUnauthorized: true },
-            });
+            // One connection-bound path for checks and live sessions: the saved route carries the upgrade and frames.
+            const ws = conn.openWebSocket(settings.url.href, { headers: { ...settings.headers, Authorization: `Bearer ${key}` } });
             socket = ws;
             ws.addEventListener("open", onOpen);
             ws.addEventListener("message", onMessage);

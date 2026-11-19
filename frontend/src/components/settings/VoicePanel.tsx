@@ -4,13 +4,24 @@ import { Button } from '../ui/Button';
 import { ApiError } from '../../lib/mauzcode';
 import {
   createVoiceConnection, destinationText, getVoiceState, removeVoiceConnection, setVoiceDefaultRoute, testVoiceConnection, updateVoiceConnection,
-  type VoiceConnectionInput, type VoiceConnectionView, type VoiceFieldSpec, type VoiceProviderView, type VoiceState, type VoiceTestResult,
+  type VoiceConnectionInput, type VoiceConnectionView, type VoiceFieldSpec, type VoiceProviderView, type VoiceState, type VoiceTestResult, type VoiceTransportSpec,
 } from '../../lib/voice';
 import { SettingsField as Field } from './SettingsField';
 
 type Feedback = { tone: 'success' | 'error'; text: string } | null;
 const message = (error: unknown, fallback: string) => error instanceof Error && error.message ? error.message : fallback;
 const STATUS_LABEL: Record<VoiceTestResult['status'], string> = { available: 'Available', unavailable: 'Unavailable', configured: 'Configured', disabled: 'Disabled' };
+const TRANSPORT_LABEL: Record<VoiceTransportSpec['kind'], string> = { direct: 'Direct', socks: 'SOCKS5 proxy', 'ssh-tunnel': 'SSH tunnel' };
+
+/** Short route label for a connection card; a missing saved reference is called out instead of hidden. */
+function transportText(transport: VoiceTransportSpec | undefined, state: VoiceState): string {
+  if (!transport || transport.kind === 'direct') return 'Network: direct';
+  if (transport.kind === 'socks') {
+    const proxy = state.proxies?.find(p => p.id === transport.proxyId);
+    return proxy ? `Network: SOCKS5 · ${proxy.name ?? `${proxy.host}:${proxy.port}`}` : 'Network: SOCKS5 · saved proxy unavailable';
+  }
+  return state.instances?.includes(transport.instance) ? `Network: SSH · ${transport.instance}` : `Network: SSH · ${transport.instance} (unavailable)`;
+}
 type Actions = {
   csrf: string; busy: boolean; state: VoiceState;
   run: <T>(label: string, task: () => Promise<T>, success?: (result: T) => string) => Promise<T | null>;
@@ -38,6 +49,18 @@ function VoiceConnectionForm({ provider, connection, actions, onDone, onCancel }
   const [accountName, setAccountName] = useState(connection?.accountName ?? '');
   const [values, setValues] = useState<Record<string, string | boolean>>(() => Object.fromEntries(provider.fields.map(f => [f.key, initialValue(f, connection)])));
   const [clear, setClear] = useState<Record<string, boolean>>({});
+  const proxies = actions.state.proxies ?? [];
+  const instances = actions.state.instances ?? [];
+  const kinds = provider.transports?.length ? provider.transports : ['direct' as const];
+  const saved = connection?.transport;
+  const [kind, setKind] = useState<VoiceTransportSpec['kind']>(saved && kinds.includes(saved.kind) ? saved.kind : kinds[0]!);
+  const [proxyId, setProxyId] = useState(saved?.kind === 'socks' ? saved.proxyId : proxies[0]?.id ?? '');
+  const [instance, setInstance] = useState(saved?.kind === 'ssh-tunnel' ? saved.instance : instances[0] ?? '');
+  // A saved reference that no longer exists stays selected (and visibly unavailable) until the user picks another.
+  const staleProxy = saved?.kind === 'socks' && !proxies.some(p => p.id === saved.proxyId) ? saved.proxyId : '';
+  const staleInstance = saved?.kind === 'ssh-tunnel' && !instances.includes(saved.instance) ? saved.instance : '';
+  const proxyOptions = [...proxies.map(p => ({ value: p.id, label: `${p.name ?? 'Proxy'} (${p.host}:${p.port})` })), ...(staleProxy ? [{ value: staleProxy, label: 'Saved proxy (unavailable)' }] : [])];
+  const instanceOptions = [...instances.map(n => ({ value: n, label: n })), ...(staleInstance ? [{ value: staleInstance, label: `${staleInstance} (unavailable)` }] : [])];
   const set = (key: string, value: string | boolean) => setValues(v => ({ ...v, [key]: value }));
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -49,7 +72,8 @@ function VoiceConnectionForm({ provider, connection, actions, onDone, onCancel }
       if (typeof value !== 'string' || value.trim() === '') continue;
       config[field.key] = field.type === 'number' ? Number(value) : value.trim();
     }
-    const input: VoiceConnectionInput = { accountName: accountName.trim(), config, secrets };
+    const transport: VoiceTransportSpec = kind === 'socks' ? { kind, proxyId } : kind === 'ssh-tunnel' ? { kind, instance } : { kind: 'direct' };
+    const input: VoiceConnectionInput = { accountName: accountName.trim(), config, secrets, transport };
     const saved = await actions.run(connection ? 'Save' : 'Add', () => connection ? updateVoiceConnection(actions.csrf, connection.id, input) : createVoiceConnection(actions.csrf, provider.id, input), c => connection ? `${c.accountName} saved` : `${c.accountName} added`);
     // Secret values never stay in component state after a successful save.
     if (saved) { setValues(v => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, provider.fields.find(f => f.key === k)?.type === 'secret' ? '' : x]))); setClear({}); onDone(); await actions.reload(); }
@@ -71,7 +95,12 @@ function VoiceConnectionForm({ provider, connection, actions, onDone, onCancel }
       }
       return <Field key={field.key} label={field.label} name={field.key} type={field.type === 'number' ? 'number' : field.type === 'url' ? 'url' : 'text'} required={field.required} placeholder={field.placeholder} hint={field.help} autoComplete="off" spellCheck={false} value={String(value)} onChange={e => set(field.key, e.target.value)} />;
     })}
-    <div className="ssh-form-actions">{onCancel && <Button variant="ghost" onClick={onCancel} disabled={actions.busy}>Cancel</Button>}<Button variant="primary" type="submit" disabled={actions.busy}>{connection ? 'Save changes' : 'Add connection'}</Button></div>
+    <fieldset className="models-transport"><legend className="settings-field-label">Network</legend>
+      <div className="models-transport-kinds" role="radiogroup" aria-label="Transport">{kinds.map(k => <label key={k} className="settings-check"><input type="radio" name="transport" value={k} checked={kind === k} onChange={() => setKind(k)} />{TRANSPORT_LABEL[k]}</label>)}</div>
+      {kind === 'socks' && (proxyOptions.length ? <SelectField name="proxyId" label="Saved proxy" value={proxyId} onChange={setProxyId} options={proxyOptions} hint={proxyId && proxyId === staleProxy ? 'This saved proxy no longer exists. Choose another one; there is no direct fallback.' : 'The recognizer is reached through this proxy; HTTPS/WSS endpoints only.'} /> : <p className="settings-note" role="note">No saved SOCKS5 proxies. Add one in the SOCKS5 tab.</p>)}
+      {kind === 'ssh-tunnel' && (instanceOptions.length ? <SelectField name="instance" label="SSH instance" value={instance} onChange={setInstance} options={instanceOptions} hint={instance && instance === staleInstance ? 'This SSH instance is unavailable. Choose another one; there is no direct fallback.' : 'Only instances with a verified host key. HTTPS/WSS endpoints only.'} /> : <p className="settings-note" role="note">No verified SSH instances. Verify one in the SSH Instances tab.</p>)}
+    </fieldset>
+    <div className="ssh-form-actions">{onCancel && <Button variant="ghost" onClick={onCancel} disabled={actions.busy}>Cancel</Button>}<Button variant="primary" type="submit" disabled={actions.busy || (kind === 'socks' && !proxyId) || (kind === 'ssh-tunnel' && !instance)}>{connection ? 'Save changes' : 'Add connection'}</Button></div>
   </form>;
 }
 
@@ -103,6 +132,7 @@ function VoiceConnectionCard({ connection, actions }: { connection: VoiceConnect
       <h3 className="ssh-card-name"><AudioLines size={16} strokeWidth={1.5} aria-hidden="true" /><span>{connection.accountName}</span></h3>
       <p className="ssh-card-target">{provider ? provider.label : `${connection.provider} — provider is not loaded`}</p>
       {provider && <p className="settings-field-hint">{destinationText(connection.destination ?? provider.destination)}</p>}
+      {provider && <p className="settings-field-hint">{transportText(connection.transport, actions.state)}</p>}
       {routes.map(r => <p key={r.route} className="ssh-card-target"><code>{r.route}</code></p>)}
     </div></header>
     {result && <p className="settings-note" role="status">{STATUS_LABEL[result.status]} — {result.message}</p>}
