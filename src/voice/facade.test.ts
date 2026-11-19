@@ -1,0 +1,24 @@
+import { expect, test } from "bun:test";
+import { mkTestCtx } from "../_testCtx.entry";
+
+// The Voice SDK exposes one minimal public facade. Everything else lives in an implementation namespace, so a
+// consumer never has to know the storage layout and never reaches the secret-handling internals by accident.
+// The route facade is exactly the two entries the design names: resolveRoute and effectiveRoute.
+test("the public voice facade exposes only the minimal entry points", async () => {
+    const ctx = await mkTestCtx();
+    const voice = ctx.state.registry.voice as Record<string, unknown>;
+    const root = Object.entries(voice).filter(([, value]) => typeof value === "function").map(([name]) => name).sort();
+    expect(root).toEqual(["create", "effectiveRoute", "get", "list", "providers", "remove", "resolveRoute", "test", "update"]);
+    // The storage, route and live-session internals stay in their own namespaces.
+    expect(Object.keys(voice).filter(name => typeof voice[name] === "object").sort()).toEqual(["connections", "route", "session"]);
+    expect(Object.keys(voice.connections as Record<string, unknown>).sort()).toEqual([
+        "create", "get", "list", "remove", "resolve", "test", "toView", "update", "validateConfig",
+    ]);
+    expect(Object.keys(voice.route as Record<string, unknown>).sort()).toEqual([
+        "clearOverride", "effectiveRoute", "failure", "formatRoute", "parseRoute", "resolveRoute", "setOverride",
+    ]);
+    // The session core is internal: a transport calls open, and the segmentation and error helpers stay here.
+    expect(Object.keys(voice.session as Record<string, unknown>).sort()).toEqual([
+        "failure", "limits", "message", "open", "vadFlush", "vadPush", "vadState",
+    ]);
+});
