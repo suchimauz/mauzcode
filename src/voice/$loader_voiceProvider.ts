@@ -136,6 +136,7 @@ function validate(id: string, value: unknown): string | null {
     if (typeof def.open !== "function") return "voiceProvider requires an open operation";
     const fieldProblem = validateFields(def.fields);
     if (fieldProblem) return fieldProblem;
+    if (def.validateConfig !== undefined && typeof def.validateConfig !== "function") return "voiceProvider validateConfig must be a function";
     if (def.listModels !== undefined && typeof def.listModels !== "function") return "voiceProvider listModels must be a function";
     if (def.models !== undefined && !Array.isArray(def.models)) return "voiceProvider models must be a list";
     // A provider with neither a catalogue nor discovery has no selectable model, so it is a declaration bug.

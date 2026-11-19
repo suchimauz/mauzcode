@@ -74,6 +74,22 @@ describe("voice connection validation", () => {
         await expect(ctx.fns.voice.create({ provider: "acme-voice", accountName: "a", secrets: { apiKey: "" } })).rejects.toMatchObject({ field: "apiKey" });
     });
 
+    test("configuration hooks cannot echo a submitted value in public validation errors", async () => {
+        const marker = "synthetic-config-token";
+        const { create } = await setup({
+            validateConfig: config => {
+                const submitted = String(config.baseUrl);
+                expect(submitted).toContain(marker);
+                // Simulate an untyped declaration returning both the old free-form message and an unknown reason.
+                return { field: "baseUrl", message: submitted, reason: submitted } as unknown as
+                    ReturnType<NonNullable<types.voice.ProviderDefinition["validateConfig"]>>;
+            },
+        });
+        const error = await create({ config: { baseUrl: `https://acme.invalid/v1?token=${marker}` } }).catch((error: unknown) => error);
+        expect(error).toMatchObject({ code: "VALIDATION", field: "baseUrl", message: "Invalid voice configuration value." });
+        expect(String(error)).not.toContain(marker);
+    });
+
     test("defaults are applied and unknown keys of the stored configuration stay out", async () => {
         const { ctx, create } = await setup();
         const created = await create({ config: {} });

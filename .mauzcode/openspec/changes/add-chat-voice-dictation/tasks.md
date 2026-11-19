@@ -10,9 +10,9 @@
 
 ## 2. OpenAI Realtime provider
 
-- [ ] 2.1 Implement `$voiceProvider_openai-realtime.ts`: fields, models, option validation, connect with transcription intent, session update, append/commit, commit acknowledgements bound to core order (`previous_item_id` only as an assertion), event mapping, sanitized errors. No own segmentation: commits come only from core.
-- [ ] 2.2 Test against a fake Realtime WebSocket server: setup, deltas/completed, out-of-order completion, failed item, bad key, disconnect, no response/audio/tool messages, connection test without audio; run the shared contract suite.
-- [ ] 2.3 Document setup (API key, models, options, billing, that audio goes from the MauzCode server to OpenAI) and the provider declaration guide for third parties.
+- [x] 2.1 Implement `$voiceProvider_openai-realtime.ts`: fields, models, option validation, connect with transcription intent, session update, append/commit, commit acknowledgements bound to core order (`previous_item_id` only as an assertion), event mapping, sanitized errors. No own segmentation: commits come only from core.
+- [x] 2.2 Test against a fake Realtime WebSocket server: setup, deltas/completed, out-of-order completion, failed item, bad key, disconnect, no response/audio/tool messages, connection test without audio; run the shared contract suite.
+- [x] 2.3 Document setup (API key, models, options, billing, that audio goes from the MauzCode server to OpenAI) and the provider declaration guide for third parties.
 
 ## 3. Settings and capture UI
 

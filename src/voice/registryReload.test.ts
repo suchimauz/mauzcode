@@ -5,7 +5,9 @@ import { expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { makeCtx } from "../$main";
-import load from "../procs/boot/load";
+import load, { apply } from "../procs/boot/load";
+import discover from "../procs/modules/discover";
+import scan from "../procs/project/scan";
 
 function declaration(label: string, updated = false): string {
     return `export default {
@@ -38,6 +40,8 @@ test("real boot discovers voiceProvider, isolates a broken file and namespace re
         ctx.state.registry.runtime.docs.index = async () => ({});
 
         const providers = () => ctx.state.voice?.providers ?? {};
+        const builtin = providers()["openai-realtime"];
+        expect(builtin).toMatchObject({ owner: "core", rel: "voice/$voiceProvider_openai-realtime.ts" });
         const before = providers()["reload-fixture"];
         expect(before?.definition.label).toBe("Before reload");
         expect(before?.definition.destination).toEqual({ kind: "cloud", label: "Fixture" });
@@ -45,7 +49,7 @@ test("real boot discovers voiceProvider, isolates a broken file and namespace re
         expect(before?.module).toBe("reloadFixture");
         // The broken file was rejected by validation and did not take the good one with it.
         expect(providers()["broken-fixture"]).toBeUndefined();
-        expect(Object.keys(providers())).toEqual(["reload-fixture"]);
+        expect(Object.keys(providers()).sort()).toEqual(["openai-realtime", "reload-fixture"]);
 
         await Bun.write(file, declaration("After reload", true));
         const reloaded = await ctx.fns.procs.repl.load({ name: "reloadFixture" });
@@ -56,6 +60,8 @@ test("real boot discovers voiceProvider, isolates a broken file and namespace re
         expect(after?.owner).toBe(before!.owner);
         expect(after?.rel).toBe(before!.rel);
         expect(after?.definition).not.toBe(before!.definition);
+        expect(providers()["openai-realtime"]).toBe(builtin);
+        expect(Object.keys(providers()).sort()).toEqual(["openai-realtime", "reload-fixture"]);
         expect(JSON.stringify({ ...after, definition: after!.definition.label })).not.toContain("Fixture handlers");
     } finally {
         await rm(root, { recursive: true, force: true });
@@ -86,16 +92,24 @@ test("a real re-boot after the last declaration disappears unloads it, and a bro
         ctx.env = { NODE_ENV: "test", WORKDIR: root, USER_PLUGINS: join(root, "user-plugins"), PROCS_PATH: "", PROCS_PLUGINS: "" };
         // Documentation indexing is unrelated to provider unload and requires a DB.
         ctx.state.registry.runtime = { docs: { index: async () => ({}) } };
+        const fixtureSrc = join(root, "src");
+        // Keep the real scan and boot apply pipeline, but scope this fixture's voice declarations to its
+        // own root. The core loader stays mounted; neither the builtin nor the live checkout is changed.
+        const bootFixture = async (strict = false) => {
+            const entries = (await scan(ctx, null, {})).filter(entry => entry.kind !== "voiceProvider" || entry.rootDir === fixtureSrc);
+            await apply(ctx, entries, await discover(ctx, null, {}), { strict });
+        };
+        const voiceDeclarations = () => (ctx.state.procs.boot.entries ?? []).filter(entry => entry.kind === "voiceProvider").map(entry => entry.abs);
         const lines: string[] = [];
         const realError = console.error, realWarn = console.warn;
         console.error = (line: unknown) => { lines.push(String(line)); };
         console.warn = (line: unknown) => { lines.push(String(line)); };
         try {
             // Strict mode reports import failures to its caller; it must not leak the thrown payload either.
-            await expect(load(ctx, null, { strict: true })).rejects.toThrow(
+            await expect(bootFixture(true)).rejects.toThrow(
                 /^\[load\] unloadFixture\/\$voiceProvider_broken-unload\.ts: declaration failed to import$/,
             );
-            await load(ctx, null, {});
+            await bootFixture();
         } finally {
             console.error = realError;
             console.warn = realWarn;
@@ -109,17 +123,18 @@ test("a real re-boot after the last declaration disappears unloads it, and a bro
         expect(logged).not.toContain(marker);
         expect(JSON.stringify(ctx.state.voice)).not.toContain(marker);
 
-        // The last declarations disappear; a real re-boot must unload the provider now, not at the next restart.
-        await rm(good, { force: true });
-        await rm(broken, { force: true });
-        console.error = (line: unknown) => { lines.push(String(line)); };
-        console.warn = (line: unknown) => { lines.push(String(line)); };
-        try {
-            await load(ctx, null, {});
-        } finally {
-            console.error = realError;
-            console.warn = realWarn;
-        }
+        await rm(broken);
+        await bootFixture(true);
+        expect(voiceDeclarations()).toEqual([good]);
+        const owner = ctx.state.voice?.providers?.["reload-fixture"]?.owner;
+        expect(owner).toBeDefined();
+
+        // The last declaration disappears while its owner stays mounted. Phase C must call the loader
+        // with an empty batch, not wait for a restart or drop the provider because its owner unmounted.
+        await rm(good);
+        await bootFixture(true);
+        expect(voiceDeclarations()).toEqual([]);
+        expect(ctx.state.procs.modules?.map(module => module.name)).toContain(owner!);
         expect(ctx.state.voice?.providers ?? {}).toEqual({});
     } finally {
         await rm(root, { recursive: true, force: true });

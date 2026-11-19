@@ -4,7 +4,8 @@
  * Use before storing a voice connection. Rejects an unknown provider, unknown keys, a secret field sent as
  * plain configuration, missing required fields, wrong value types, select values outside the declared options
  * and non-HTTP(S) or credential-bearing URLs, applies declared defaults and checks required secret fields
- * against the values that stay stored. Never stores, logs or returns secret values; errors carry
+ * against the values that stay stored. Runs any provider-specific configuration validation before storing values.
+ * Never stores, logs or returns secret values; errors carry
  * `code: "VALIDATION"` (or `UNKNOWN_PROVIDER`) and the offending `field`.
  * @param opts.provider Registered provider id.
  * @param opts.config Submitted non-secret configuration.
@@ -72,6 +73,29 @@ export default async function (
                 break;
         }
         config[field.key] = value as types.voice.ConfigValue;
+    }
+    if (def.validateConfig) {
+        let issue: ReturnType<NonNullable<typeof def.validateConfig>>;
+        try {
+            const result = def.validateConfig(Object.freeze({ ...config }));
+            if (result !== undefined) {
+                const { field, reason } = result;
+                const spec = fields.get(field);
+                if (!spec || spec.type === "secret") throw new Error("Invalid voice validation field");
+                issue = { field, reason };
+            }
+        } catch {
+            return fail("Voice provider could not validate the configuration");
+        }
+        if (issue) {
+            // Never forward a provider's free-form text, including extra properties or unknown reason values.
+            const message = issue.reason === "keywordList" ? "Keywords must be single-line terms without angle brackets."
+                : issue.reason === "languageList" ? "Languages must be two- or three-letter codes or zh-* language tags."
+                : issue.reason === "httpsEndpoint" ? "Base URL must be a credential-free HTTPS URL without a query or fragment (HTTP only on numeric loopback)."
+                : issue.reason === "headerIdentifier" ? "Use a single identifier with no whitespace."
+                : "Invalid voice configuration value.";
+            fail(message, issue.field);
+        }
     }
     const secrets: Record<string, string | null> = {};
     const stored = new Set(opts.stored ?? []);

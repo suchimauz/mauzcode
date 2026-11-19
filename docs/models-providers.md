@@ -7,6 +7,11 @@ their procedures, settings, hooks, compactors and HTTP routes are not loaded.
 There is no fallback to them. Applied migration records and legacy tables remain
 intact; retiring code is not a database rollback.
 
+This SDK is **inference only**. Live speech-to-text is the separate Voice SDK: it has its own
+provider declarations, its own `voice_connections` table and its own routes, and it reuses no Models
+code, table or facade entry. A key stored for Models is not reused for voice. See
+[voice providers](voice-providers.md).
+
 ## Internal implementation navigation
 
 The public surface is a **minimal facade** of root procedures

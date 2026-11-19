@@ -380,12 +380,10 @@ function narrowOptions(
     const out: types.voice.RecognitionOptions = {};
     if (!options) return out;
     const capabilities = route.model.capabilities;
-    if (capabilities.languages && Array.isArray(options.languages)) {
-        const languages = options.languages.filter(value => typeof value === "string" && value.trim());
-        if (languages.length) out.languages = languages;
-    }
-    if (capabilities.prompt && typeof options.prompt === "string" && options.prompt.trim()) out.prompt = options.prompt;
-    if (capabilities.delay && options.delay) out.delay = options.delay;
+    if (capabilities.languages && options.languages !== undefined) out.languages = options.languages;
+    if (capabilities.keywords && options.keywords !== undefined) out.keywords = options.keywords;
+    if (capabilities.prompt && options.prompt !== undefined) out.prompt = options.prompt;
+    if (capabilities.delay && options.delay !== undefined) out.delay = options.delay;
     return out;
 }
 

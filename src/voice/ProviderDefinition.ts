@@ -16,6 +16,14 @@ export type ProviderDefinition = {
     destination: types.voice.Destination;
     /** Connection field schema; secret fields are stored in the secret store and never returned. */
     fields: types.voice.FieldSpec[];
+    /**
+     * Check normalized non-secret fields before saving. Return the declared non-secret field that failed and,
+     * optionally, a closed reason for core to render. Never return field values or custom error text.
+     */
+    validateConfig?: (config: Readonly<Record<string, types.voice.ConfigValue>>) => {
+        field: string;
+        reason?: "keywordList" | "languageList" | "httpsEndpoint" | "headerIdentifier";
+    } | undefined;
     /** Fixed model catalogue; declare it, `listModels`, or both (the union of the two). */
     models?: types.voice.VoiceModel[];
     /** Discover additional models for one connection; never perform transcription here and never log secrets. */

@@ -1,8 +1,8 @@
 /**
  * Per-connection or per-chat recognition options, already narrowed to what the resolved model declares.
  *
- * Core validates these against `ModelCapabilities` before opening a provider, so a provider may send every
- * present field without re-checking support. A field absent here means "let the provider default apply".
+ * Core filters fields by `ModelCapabilities`; providers validate the remaining values before opening upstream.
+ * A field absent here means "let the connection or provider default apply".
  */
 export type RecognitionOptions = {
     /** Recognition language hints (BCP-47 or the provider's documented subset); only when `capabilities.languages`. */
