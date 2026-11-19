@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
+import { useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type KeyboardEvent, type Ref } from 'react';
 import { useCommandMenu } from '../../hooks/useCommandMenu';
 import { CommandMenu } from './CommandMenu';
 import type { ComposerCommand } from '../../hooks/useCommandMenu';
@@ -11,14 +11,42 @@ export type MessageInputProps = {
   focusRequest?: number;
   disabled?: boolean; sendDisabled?: boolean; running?: boolean; onStop?: () => void; onSteerAll?: () => void;
   commandMenuOpen?: boolean; onCommandMenuClose?: () => void; onFile?: () => void; onCompact?: () => void;
-  placeholder?: string; hasAttachments?: boolean; attachments?: ReactNode; onFiles?: (files: File[]) => void; commandsEnabled?: boolean;
+  placeholder?: string; hasAttachments?: boolean; pendingVoice?: boolean; attachments?: ReactNode; onFiles?: (files: File[]) => void; commandsEnabled?: boolean;
+  /** Caret access for inline dictation; works the same for `CommandEditor` and the plain `textarea`. */
+  caretRef?: Ref<DraftCaretHandle>;
 };
+/**
+ * Draft selection in plain-text offsets. `selection` returns the live selection while the editor is focused and the
+ * last one it had otherwise, so activating a footer button does not lose where the user was. `select` moves the
+ * caret only while the editor has focus; it never steals focus.
+ */
+export type DraftCaretHandle = { selection(): { start: number; end: number } | null; select(start: number, end: number): void };
 /** One-line controlled input; grows for wrapped lines, then scrolls at 180px. */
-export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, onCompact, value, onChange, onSend, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, attachments, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…' }: MessageInputProps) {
+export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, onCompact, value, onChange, onSend, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef }: MessageInputProps) {
   const input = useRef<HTMLTextAreaElement>(null);
   const menuId = useId();
   const editor = useRef<CommandEditorHandle>(null);
   const appliedFocus = useRef(0);
+  const lastSelection = useRef<{ start: number; end: number } | null>(null);
+  const liveSelection = () => {
+    if (commandsEnabled) return editor.current?.selection() ?? null;
+    const el = input.current; return el && document.activeElement === el ? { start: el.selectionStart, end: el.selectionEnd } : null;
+  };
+  const remember = () => { const current = liveSelection(); if (current) lastSelection.current = current; };
+  // Remember the editor selection while it is live, so focusing or clicking a footer control does not lose it.
+  useLayoutEffect(() => {
+    if (!caretRef) return;
+    document.addEventListener('selectionchange', remember);
+    return () => document.removeEventListener('selectionchange', remember);
+  });
+  useImperativeHandle(caretRef, () => ({
+    selection: () => liveSelection() ?? lastSelection.current,
+    select: (start, end) => {
+      lastSelection.current = { start, end };
+      if (commandsEnabled) editor.current?.select(start, end);
+      else if (input.current && document.activeElement === input.current) input.current.setSelectionRange(start, end);
+    },
+  }), [commandsEnabled]);
   useLayoutEffect(() => {
     if (!disabled && focusRequest > appliedFocus.current) {
       if (commandsEnabled) editor.current?.focus(); else input.current?.focus({ preventScroll: true });
@@ -43,6 +71,8 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
     if ((command.name === 'file' || command.name === 'compact') && window.matchMedia?.('(pointer: coarse)').matches) return;
     editor.current?.focus(); input.current?.focus();
   };
+  // A still-unrecognized phrase may be the entire message. The composer decides after finish.
+  const canSubmit = !!value.trim() || hasAttachments || pendingVoice;
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.nativeEvent.isComposing) return;
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && onSteerAll) { event.preventDefault(); if (!disabled) onSteerAll(); return; }
@@ -52,7 +82,7 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
       if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) { event.preventDefault(); if (menu.status === 'ready' && menu.matches[menu.index]) pick(menu.matches[menu.index]); return; }
       if (event.key === ' ') { const exact = menu.matches.find(c => value.trim() === `/${c.name}` && c.name !== 'file' && c.name !== 'compact'); if (exact) { event.preventDefault(); pick(exact); return; } }
     }
-    if (event.key === 'Enter' && !event.shiftKey && !window.matchMedia('(pointer: coarse)').matches) { event.preventDefault(); if (!disabled && !sendDisabled && (value.trim() || hasAttachments)) onSend(); }
+    if (event.key === 'Enter' && !event.shiftKey && !window.matchMedia('(pointer: coarse)').matches) { event.preventDefault(); if (!event.repeat && !disabled && !sendDisabled && canSubmit) onSend(); }
   };
   useLayoutEffect(() => {
     const el = input.current; if (!el) return;
@@ -62,8 +92,9 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
     const observer = new ResizeObserver(() => { if (el.clientWidth !== lastWidth) { lastWidth = el.clientWidth; fit(); } });
     observer.observe(el); return () => observer.disconnect();
   }, [value]);
-  const stop = !!running && !value.trim() && !hasAttachments && !!onStop;
-  return <form className="message-input" aria-label="Ввод сообщения" onSubmit={event => { event.preventDefault(); if (!disabled && !sendDisabled && (value.trim() || hasAttachments)) onSend(); }} aria-busy={disabled} onDragOver={event => { if (onFiles && !disabled && event.dataTransfer.types.includes('Files')) event.preventDefault(); }} onDrop={event => { if (onFiles && event.dataTransfer.files.length) { event.preventDefault(); if (!disabled) onFiles(Array.from(event.dataTransfer.files)); } }}>
+  const stop = !!running && !canSubmit && !!onStop;
+  const track = caretRef ? { onKeyUpCapture: remember, onPointerUpCapture: remember, onInputCapture: remember, onSelectCapture: remember, onFocusCapture: remember } : {};
+  return <form {...track} className="message-input" aria-label="Ввод сообщения" onSubmit={event => { event.preventDefault(); if (!disabled && !sendDisabled && canSubmit) onSend(); }} aria-busy={disabled} onDragOver={event => { if (onFiles && !disabled && event.dataTransfer.types.includes('Files')) event.preventDefault(); }} onDrop={event => { if (onFiles && event.dataTransfer.files.length) { event.preventDefault(); if (!disabled) onFiles(Array.from(event.dataTransfer.files)); } }}>
     {menu.open && <CommandMenu id={menuId} commands={menu.matches} index={menu.index} status={menu.status} error={menu.error} onPick={pick} onHover={menu.setIndex} onRetry={menu.retry} />}
     {attachments}
     {commandsEnabled ? <CommandEditor ref={editor} value={value} onChange={onChange} claimedCommand={activeClaim} onRelease={() => setClaimed(null)} disabled={disabled} placeholder={activeClaim?.name === 'plan' ? 'Опишите задачу для плана' : placeholder} onFiles={onFiles} onKeyDown={keyDown} aria-label="Сообщение агенту" aria-controls={menu.open ? menuId : undefined} aria-expanded={menu.open} aria-autocomplete="list" aria-haspopup="listbox" aria-activedescendant={menu.open && menu.status === 'ready' && menu.matches.length ? `${menuId}-${menu.index}` : undefined} onBlur={event => { if (!event.currentTarget.closest('.composer-readonly-boundary, .new-session-composer')?.contains(event.relatedTarget)) menu.dismiss(); }} /> : <textarea ref={input} aria-controls={menu.open ? menuId : undefined} aria-autocomplete={commandsEnabled ? 'list' : undefined} aria-haspopup={commandsEnabled ? 'listbox' : undefined} aria-activedescendant={menu.open && menu.status === 'ready' && menu.matches.length ? `${menuId}-${menu.index}` : undefined} aria-label="Сообщение агенту" placeholder={placeholder} rows={1} value={value} disabled={disabled} onPaste={event => { const files = Array.from(event.clipboardData.files); if (onFiles && files.length) { event.preventDefault(); if (!disabled) onFiles(files); } }} onChange={event => onChange(event.target.value)}
@@ -76,9 +107,9 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); const count = menu.matches.length; if (count) menu.setIndex((menu.index + (event.key === 'ArrowDown' ? 1 : -1) + count) % count); return; }
           if ((event.key === 'Enter' && !event.shiftKey) || (event.key === 'Tab' && !event.shiftKey && menu.status === 'ready' && menu.matches.length)) { event.preventDefault(); if (menu.status === 'ready' && menu.matches[menu.index]) pick(menu.matches[menu.index]); return; }
         }
-        if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !window.matchMedia('(pointer: coarse)').matches) { event.preventDefault(); if (!disabled && !sendDisabled && (value.trim() || hasAttachments)) onSend(); } }} />}
+        if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !window.matchMedia('(pointer: coarse)').matches) { event.preventDefault(); if (!event.repeat && !disabled && !sendDisabled && canSubmit) onSend(); } }} />}
     {!commandsEnabled && <InputCaret input={input} value={value} />}
-    <IconButton type={stop ? 'button' : 'submit'} className="message-input-send" label={stop ? 'Остановить выполнение' : running && !value.trim().startsWith('/') ? 'В очередь' : 'Отправить сообщение'} disabled={disabled || (!stop && (sendDisabled || (!value.trim() && !hasAttachments)))} onClick={stop ? onStop : undefined}>
+    <IconButton type={stop ? 'button' : 'submit'} className="message-input-send" label={stop ? 'Остановить выполнение' : running && !value.trim().startsWith('/') ? 'В очередь' : 'Отправить сообщение'} disabled={disabled || (!stop && (sendDisabled || !canSubmit))} onClick={stop ? onStop : undefined}>
       {stop ? <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><rect x="6" y="6" width="4" height="4" rx="1.2" fill="currentColor" /></svg> : <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="miter" aria-hidden="true"><path d="M8 3.75h5.25v7H3M6 7.75l-3 3 3 3" /></svg>}
     </IconButton>
   </form>;

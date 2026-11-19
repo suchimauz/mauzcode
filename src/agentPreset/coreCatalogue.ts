@@ -367,6 +367,10 @@ export default function (
             "classification": "creator",
             "patterns": []
         },
+        "voice": {
+            "classification": "creator",
+            "patterns": []
+        },
         "webPush": {
             "classification": "creator",
             "patterns": []

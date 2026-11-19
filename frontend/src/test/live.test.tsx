@@ -27,7 +27,7 @@ describe('Live MauzCode client', () => {
   });
   it('preserves draft after a failure and reuses its key after remount', async () => {
     const sends = vi.fn().mockRejectedValueOnce(new Error('Network failed')).mockImplementation(() => Promise.resolve(json({ ok: true, messageIdx: 1 })));
-    const fetcher = vi.fn((url: string, init?: RequestInit) => url.includes('/ui-lab-api/models') ? Promise.resolve(json({ models: [] })) : url.endsWith('/context') ? Promise.resolve(json({ budget: null })) : sends(url, init)); vi.stubGlobal('fetch', fetcher);
+    const fetcher = vi.fn((url: string, init?: RequestInit) => url.includes('/ui-lab-api/models') ? Promise.resolve(json({ models: [] })) : url.startsWith('/voice/api') ? Promise.resolve(json({ error: 'Only owners can manage voice dictation' }, 403)) : url.endsWith('/context') ? Promise.resolve(json({ budget: null })) : sends(url, init)); vi.stubGlobal('fetch', fetcher);
     const accepted = vi.fn(); const ui = render(<LiveComposer agentId="fixture" running={false} onAccepted={accepted} />);
     await userEvent.type(screen.getByRole('textbox'), 'Не потерять'); await userEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Network failed'); expect(screen.getByRole('textbox')).toHaveTextContent('Не потерять');

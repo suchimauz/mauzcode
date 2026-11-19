@@ -16,6 +16,8 @@ const catalogue = { version: 1, csrfToken: 'test-csrf', commands: [
   { name: 'compact', description: 'Compact', usage: ['/compact'], attachments: false },
 ] };
 const json = (value: object, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
+/** The editable composer reads its voice route (GET only); that read is never a send. */
+const voiceRead = (call: unknown[]) => String(call[0]).startsWith('/voice/api') && !(call[1] as RequestInit | undefined)?.method;
 afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear(); });
 function Editor({ send = vi.fn(), file = vi.fn(), compact = vi.fn(), running = false, initial = '' }: { send?: () => void; file?: () => void; compact?: () => void; running?: boolean; initial?: string }) {
   const [value, setValue] = useState(initial); const [open, setOpen] = useState(false);
@@ -81,7 +83,7 @@ it('never sends a slash as a prompt when catalogue loading fails, preserving dra
   render(<LiveComposer agentId="slash-test" running={false} onAccepted={vi.fn()} />); input('/plan задача');
   await userEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('offline'); expect(screen.getByRole('textbox').textContent).toBe('/plan задача');
-  expect(fetcher.mock.calls.every(call => String(call[0]) === '/commands' || String(call[0]).endsWith('/context'))).toBe(true);
+  expect(fetcher.mock.calls.every(call => String(call[0]) === '/commands' || String(call[0]).endsWith('/context') || voiceRead(call))).toBe(true);
 });
 it('validates unknown commands and attachments but does not load catalogue for ordinary text', async () => {
   const fetcher = vi.fn(async () => json(catalogue)); vi.stubGlobal('fetch', fetcher);
@@ -95,6 +97,7 @@ it('posts commands through the CSRF-protected endpoint, preserving the request I
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/commands') return json(catalogue);
     if (url.endsWith('/context')) return json({ budget: null });
+    if (url.startsWith('/voice/api')) return json({ error: 'forbidden' }, 403);
     expect(url).toBe('/agent/slash-test/commands'); expect(init?.method).toBe('POST'); expect(new Headers(init?.headers).get('X-CSRF-Token')).toBe('test-csrf');
     bodies.push(JSON.parse(init!.body as string)); if (bodies.length === 1) throw new Error('offline');
     return json({ ok: true, command: 'plan', status: 'completed', operationId: 'operation' });
@@ -115,5 +118,5 @@ it('rejects command while running and offers explicit stop, preserving draft', a
   render(<LiveComposer agentId="running" running onAccepted={vi.fn()} />); input('/plan задача');
   await userEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Сначала остановите'); expect(screen.getByRole('button', { name: 'Остановить выполнение' })).toBeEnabled();
-  expect(fetcher.mock.calls.every(call => String(call[0]).endsWith('/context'))).toBe(true); expect(screen.getByRole('textbox').textContent).toBe('/plan задача');
+  expect(fetcher.mock.calls.every(call => String(call[0]).endsWith('/context') || voiceRead(call))).toBe(true); expect(screen.getByRole('textbox').textContent).toBe('/plan задача');
 });

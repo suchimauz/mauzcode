@@ -74,7 +74,10 @@ export async function apply(ctx: Context, entries: any[], mounted: any[], opts: 
             (entry as any).mod = imported;
             (entry as any).fn = imported.default;
         } catch (error: any) {
-            const message = `[load] ${entry.rel}: ${error?.message ?? error}`;
+            // mauzcode: a voiceProvider declaration is untrusted plugin code, and its thrown text may
+            // echo declaration values. Neither logs nor strict-mode exceptions may expose that text.
+            const reason = entry.kind === "voiceProvider" ? "declaration failed to import" : error?.message ?? error;
+            const message = `[load] ${entry.rel}: ${reason}`;
             importErrors.push(message);
             console.error(message);
             // Remember the failure. A loader falls back to `entry.fn ?? await
@@ -173,8 +176,15 @@ export async function apply(ctx: Context, entries: any[], mounted: any[], opts: 
         (byKind.get(entry.kind) ?? byKind.set(entry.kind, []).get(entry.kind)!).push(entry);
     }
     for (const kind of [...Object.keys(loaders), ...byKind.keys()]) {
-        const files = byKind.get(kind);
-        if (!files) continue;
+        let files = byKind.get(kind);
+        if (!files) {
+            // mauzcode: when the last file of a kind disappears, its loader was skipped and a keyed
+            // registry kept stale entries until the next restart. A loader that opts in with a
+            // `collectEmpty` named export also sees the empty pass; other kinds keep skipping it.
+            const owner: any = entries.find((e: any) => e.kind === "loader" && e.loaderKind === kind);
+            if (owner?.mod?.collectEmpty !== true) continue;
+            files = [];
+        }
         byKind.delete(kind);
         const loader = loaders[kind];
         if (!loader) {

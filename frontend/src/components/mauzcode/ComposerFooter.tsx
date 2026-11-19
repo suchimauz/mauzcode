@@ -7,7 +7,8 @@ import { ModelPicker } from './ModelPicker';
 import { RollingNumber } from '../ui/RollingNumber';
 import { getContextBudget, type ContextBudget, type ContextDetails } from '../../lib/mauzcode';
 import './composer-footer.css';
-export function ComposerFooter({ agentId, running, busy, revision, onMenuToggle, menuOpen, onModelSaved, onModelBusy, planningBadge }: { planningBadge?: ReactNode; onModelSaved?: () => void; onModelBusy?: (busy: boolean) => void; menuOpen?: boolean; agentId: string; running: boolean; busy: boolean; revision: number; onMenuToggle: () => void }) {
+/** `voice` renders right after the context indicator (the voice entry points and route selector of an editable chat). */
+export function ComposerFooter({ agentId, running, busy, revision, onMenuToggle, menuOpen, onModelSaved, onModelBusy, planningBadge, voice }: { planningBadge?: ReactNode; voice?: ReactNode; onModelSaved?: () => void; onModelBusy?: (busy: boolean) => void; menuOpen?: boolean; agentId: string; running: boolean; busy: boolean; revision: number; onMenuToggle: () => void }) {
   const [contextOpen, setContextOpen] = useState(false);
   const contextId = useId();
   const [details, setDetails] = useState<ContextDetails | null>(null);
@@ -46,6 +47,6 @@ export function ComposerFooter({ agentId, running, busy, revision, onMenuToggle,
         <ContextPie percent={percent} /><span>{percent == null ? '—' : `${percent}%`}</span>
       </button>}>
       <ContextDetailsPanel budget={budget} details={details} />
-    </HoverPanel></div>
+    </HoverPanel>{voice}</div>
   <div className="composer-usage-line"><button type="button" className="composer-usage" aria-label={usageLabel} aria-haspopup="dialog" aria-expanded={contextOpen} aria-controls={contextOpen ? contextId : undefined} onClick={() => setContextOpen(value => !value)}>{usage?.costUsd != null && <span className="composer-cost" title={usage.price ? `≈ по API-прайсу: $${usage.price.input}/M in, $${usage.price.output}/M out` : undefined}><RollingNumber value={formatUsd(usage.costUsd)} /></span>}<span className="composer-token-count" data-usage="input"><span className="composer-token-arrow" aria-hidden="true">↑</span><RollingNumber value={`${formatTokens(usage?.inputTokens)} tok`} /></span><span className="composer-token-count" data-usage="output"><span className="composer-token-arrow" aria-hidden="true">↓</span><RollingNumber value={`${formatTokens(usage?.outputTokens)} tok`} /></span><span className="composer-cache-hit"><RollingNumber value={cache == null ? 'кэш —' : `${cache}%`} /></span></button></div></div>;
 }

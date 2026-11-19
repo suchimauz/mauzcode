@@ -1,0 +1,21 @@
+.voice-panel { display:flex; flex-direction:column; gap:8px; width:100%; min-height:38px; padding:10px 12px; border:1px solid var(--line); border-radius:14px; background:var(--input-bg); box-shadow:0 1px 3px #14141308; transition:border-color var(--duration-feedback); }
+.voice-panel:focus-within, .voice-panel:focus { border-color:var(--text-muted); }
+.voice-panel:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.voice-panel-status { display:flex; align-items:center; gap:8px; color:var(--text-secondary); font-size:12px; line-height:18px; }
+.voice-panel-dot { width:8px; height:8px; border-radius:50%; background:var(--text-tertiary); flex:none; }
+.voice-panel[data-state=listening] .voice-panel-dot { background:var(--accent); animation:voice-panel-pulse 1.4s ease-in-out infinite; }
+.voice-panel[data-state=error] .voice-panel-dot { background:var(--danger, var(--accent)); }
+.voice-panel-state { color:var(--text); font-weight:500; }
+.voice-panel-time { margin-left:auto; font-variant-numeric:tabular-nums; }
+.voice-panel-error { margin:0; color:var(--danger, var(--text)); font-size:12px; line-height:18px; }
+.voice-panel-transcript { max-height:164px; overflow-y:auto; color:var(--text); font-size:14px; line-height:24px; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:6px; }
+.voice-panel-transcript:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.voice-panel-placeholder { color:var(--text-muted); }
+.voice-panel-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.voice-panel-action { min-height:28px; font-size:12px; }
+.voice-panel-action[aria-disabled=true] { opacity:.5; cursor:default; }
+.voice-panel-action kbd { font-family:var(--font-sans); font-size:11px; color:var(--text-tertiary); }
+.voice-panel-action.button--primary kbd { color:inherit; opacity:.8; }
+@keyframes voice-panel-pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+@media (pointer:coarse) { .voice-panel-action { min-height:44px; } .voice-panel-action kbd { display:none; } }
+@media (prefers-reduced-motion:reduce) { .voice-panel, .voice-panel-dot { transition:none; animation:none !important; } }

@@ -8,7 +8,7 @@ vi.mock('../lib/todos', () => ({ getTodos: vi.fn().mockResolvedValue({ todos: nu
 vi.mock('../lib/triggers', async importOriginal => ({ ...await importOriginal<typeof import('../lib/triggers')>(), getArmedTriggers: vi.fn().mockResolvedValue({ agentId: '', counts: { at: 0, cron: 0, watch: 0 }, triggers: [] }) }));
 vi.mock('../sdk/live', () => ({ subscribeLive: () => () => {} }));
 vi.mock('../lib/queue', async importOriginal => ({ ...await importOriginal<typeof import('../lib/queue')>(), getQueue: vi.fn().mockResolvedValue({ items: [] }) }));
-const json = (body: object) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+const json = (body: object, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear(); });
 it('shows real context percentage and delegates the plus button to the shared menu', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => json({ budget: { estimatedTokens: 8000, contextWindow: 200000 } })));
@@ -37,6 +37,7 @@ it('sends a file-only turn and preserves the same request key on retry', async (
   let count = 0; const bodies: RequestInit[] = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
     if (url.includes('/ui-lab-api/models')) return json({ models: [] });
+    if (url.startsWith('/voice/api')) return json({ error: 'Only owners can manage voice dictation' }, 403);
     if (url.endsWith('/context')) return json({ budget: null });
     bodies.push(init); if (count++ === 0) throw new Error('Offline'); return json({ ok: true });
   }));
@@ -48,4 +49,28 @@ it('sends a file-only turn and preserves the same request key on retry', async (
   await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
   expect((bodies[0].body as FormData).get('files')).toBeInstanceOf(File);
   expect(new Headers(bodies[0].headers).get('Idempotency-Key')).toBe(new Headers(bodies[1].headers).get('Idempotency-Key'));
+});
+it('editable chats show the voice route selector right after the context meter; read-only chats do not', async () => {
+  const getUserMedia = vi.fn(); Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
+  const socket = vi.fn(); vi.stubGlobal('WebSocket', socket);
+  const fetcher = vi.fn(async (url: string) => {
+    if (url.startsWith('/voice/api')) return json({ providers: [], connections: [], routes: [], defaultRoute: { route: '', fixed: false }, chat: { agentId: 'voice', route: '', source: 'none', status: 'unconfigured' }, csrfToken: 't' });
+    if (url.includes('/ui-lab-api/models')) return json({ models: [] });
+    return json({ budget: null });
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const ui = render(<LiveComposer agentId="voice" running={false} onAccepted={vi.fn()} />);
+  const voice = await screen.findByRole('button', { name: /Маршрут голосового ввода\. Голосовой ввод не настроен/ });
+  const meter = screen.getByRole('button', { name: /Оценка контекста недоступна/ });
+  expect(meter.compareDocumentPosition(voice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // The voice group (inline input, voice mode, route selector) is the meter's immediate next sibling.
+  expect(meter.nextElementSibling).toBe(screen.getByRole('group', { name: 'Голос' }));
+  expect(screen.getByRole('group', { name: 'Голос' }).lastElementChild).toBe(voice);
+  ui.unmount(); fetcher.mockClear();
+  render(<LiveComposer agentId="voice" running={false} readOnly onAccepted={vi.fn()} />);
+  await screen.findByRole('button', { name: /Оценка контекста недоступна/ });
+  expect(screen.queryByRole('button', { name: /Маршрут голосового ввода/ })).toBeNull();
+  expect(screen.queryByRole('group', { name: 'Голос' })).toBeNull();
+  expect(fetcher.mock.calls.some(([url]) => String(url).startsWith('/voice/api'))).toBe(false);
+  expect(getUserMedia).not.toHaveBeenCalled(); expect(socket).not.toHaveBeenCalled();
 });

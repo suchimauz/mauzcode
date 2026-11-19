@@ -56,5 +56,6 @@ The primary shell is React/Vite; new trusted extensions use public `@mauzcode/ui
 - [Testing](docs/testing.md): test kinds, fixtures, current template/worker test DB and verification discipline.
 - [UI maintenance](docs/ui-maintenance.md): SDK contract and residual SSR/screen/tour guarantees without duplicated shell guidance.
 - [Agent presets](docs/agent-presets.md), [architecture](docs/architecture.md): snapshot/access and prompt composition contracts.
+- [Voice providers](docs/voice-providers.md): live dictation SDK, OpenAI Realtime setup and the third-party provider declaration contract.
 
 Use runtime Git helpers where available (`git.run/stage/commit/push/status/stageCommitPush`) for quoting `$` paths and explicit repo selection; honor action-specific approvals. No documentation grants permission to commit, push, restart or deploy.

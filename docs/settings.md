@@ -100,6 +100,20 @@ unregistered providers are stored and take effect when the provider loads. Fixin
 UI switch read-only (`enabledLocked`) and `settings.set` fail with `SETTING_FIXED`. Details:
 [models-providers.md](models-providers.md#global-provider-switch--modelsdisabledproviders).
 
+### Default voice route — `voice.defaultRoute`
+
+`voice.defaultRoute` (`src/voice/$setting_defaultRoute.ts`, `type: "string"`, default `""`) is the
+`provider/accountName:modelId` voice route a chat uses for live dictation when it has no saved
+override; an empty value means voice dictation is not configured. The descriptor validates syntax
+only (with fixed text, never echoing the value) — registration, the stored connection and the model
+are checked by `voice.resolveRoute`, which never falls back to another route. A chat's own override
+lives in its scratchpad key `voice.route` and is managed through `voice.route.setOverride` /
+`clearOverride`, not through settings. In the UI the owner sets the default in **Settings → Voice**
+(read-only there when an instance file fixes it) and a chat's override from the voice route button
+in its composer footer; both accept only a route that resolves when saved. This key is separate from `models.*`: a voice connection and
+a Models connection are distinct records even when they hold the same vendor key. Setup, options,
+billing and the provider declaration guide: [voice-providers.md](voice-providers.md).
+
 ### Model retries — `agent.retryPolicy`
 
 `agent.retryPolicy` (`src/agent/$setting_retryPolicy.ts`) decides how often a failed model request is
