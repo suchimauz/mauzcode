@@ -2,7 +2,8 @@ import { EditorCaret } from './EditorCaret';
 import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, type AriaAttributes, type FocusEventHandler, type KeyboardEventHandler } from 'react';
 import './command-editor.css';
 
-export type CommandEditorHandle = { focus(): void; selectionStart(): number };
+/** `selection` is the plain-text selection inside the editor, else null; `select` moves it only while focused. */
+export type CommandEditorHandle = { focus(): void; selectionStart(): number; selection(): { start: number; end: number } | null; select(start: number, end: number): void };
 export type CommandEditorProps = Pick<AriaAttributes, 'aria-label' | 'aria-controls' | 'aria-expanded' | 'aria-activedescendant' | 'aria-autocomplete' | 'aria-haspopup'> & {
   value: string;
   onChange(value: string): void;
@@ -37,18 +38,27 @@ function offsets(root: HTMLElement): [number, number] {
   const start = plain(before.cloneContents()).length;
   return [start, start + plain(range.cloneContents()).length];
 }
-function caret(root: HTMLElement, offset: number) {
+/** Place the range boundary at a plain-text offset; returns false past the end. */
+function boundary(root: HTMLElement, range: Range, offset: number, edge: 'start' | 'end') {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode();
-  const range = document.createRange();
   while (node) {
     const length = node.textContent?.length ?? 0;
     if (offset <= length) {
       const chip = node.parentElement?.closest('[data-composer-command]');
-      if (chip) range.setStartAfter(chip); else range.setStart(node, offset);
-      range.collapse(true); window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(range); return;
+      if (edge === 'start') { if (chip) range.setStartAfter(chip); else range.setStart(node, offset); }
+      else if (chip) range.setEndAfter(chip); else range.setEnd(node, offset);
+      return true;
     }
     offset -= length; node = walker.nextNode();
+  }
+  return false;
+}
+function caret(root: HTMLElement, offset: number, end = offset) {
+  const range = document.createRange();
+  if (boundary(root, range, offset, 'start')) {
+    if (end <= offset || !boundary(root, range, end, 'end')) range.collapse(true);
+    window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(range); return;
   }
   range.selectNodeContents(root); range.collapse(false);
   window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(range);
@@ -94,7 +104,16 @@ export const CommandEditor = forwardRef<CommandEditorHandle, CommandEditorProps>
     paint(text, claim, position);
     onChange(text);
   };
-  useImperativeHandle(ref, () => ({ focus: () => root.current?.focus({ preventScroll: true }), selectionStart: () => root.current ? offsets(root.current)[0] : 0 }));
+  useImperativeHandle(ref, () => ({
+    focus: () => root.current?.focus({ preventScroll: true }),
+    selectionStart: () => root.current ? offsets(root.current)[0] : 0,
+    selection: () => {
+      const el = root.current; const selection = window.getSelection();
+      if (!el || !selection?.rangeCount || !el.contains(selection.anchorNode) || !el.contains(selection.focusNode)) return null;
+      const [start, end] = offsets(el); return { start, end };
+    },
+    select: (start, end) => { if (root.current && document.activeElement === root.current) caret(root.current, start, end); },
+  }));
   useLayoutEffect(() => {
     if (composing.current || !root.current) return;
     const el = root.current;

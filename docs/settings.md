@@ -108,7 +108,9 @@ override; an empty value means voice dictation is not configured. The descriptor
 only (with fixed text, never echoing the value) — registration, the stored connection and the model
 are checked by `voice.resolveRoute`, which never falls back to another route. A chat's own override
 lives in its scratchpad key `voice.route` and is managed through `voice.route.setOverride` /
-`clearOverride`, not through settings. This key is separate from `models.*`: a voice connection and
+`clearOverride`, not through settings. In the UI the owner sets the default in **Settings → Voice**
+(read-only there when an instance file fixes it) and a chat's override from the voice route button
+in its composer footer; both accept only a route that resolves when saved. This key is separate from `models.*`: a voice connection and
 a Models connection are distinct records even when they hold the same vendor key. Setup, options,
 billing and the provider declaration guide: [voice-providers.md](voice-providers.md).
 

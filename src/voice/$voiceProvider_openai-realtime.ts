@@ -1,6 +1,7 @@
 const MODEL = "gpt-live-transcribe";
 const SAMPLE_RATE = 24_000;
 const BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_HOST = new URL(BASE_URL).host;
 const DELAYS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 const OPEN_TIMEOUT_MS = 5_000;
 const FINISH_TIMEOUT_MS = 10_000;
@@ -21,7 +22,15 @@ const provider: types.voice.ProviderDefinition = {
     id: "openai-realtime",
     label: "OpenAI Realtime transcription",
     description: "Streams audio from the MauzCode server to the configured OpenAI Realtime service.",
-    destination: { kind: "cloud", label: "OpenAI Realtime (or configured endpoint)" },
+    destination: { kind: "cloud", label: "OpenAI Realtime (api.openai.com or the host of the configured Base URL)" },
+    // The disclosure of one stored connection: host and port of the endpoint it actually uses, nothing else.
+    destinationFor(config) {
+        let url: URL;
+        try { url = connectionSettings(config).url; } catch { return undefined; }
+        return url.host === DEFAULT_HOST
+            ? { kind: "cloud", label: `OpenAI Realtime (${url.host})` }
+            : { kind: "cloud", label: `Configured endpoint (${url.host})` };
+    },
     fields: [
         { key: "apiKey", label: "API key", type: "secret", required: true },
         { key: "baseUrl", label: "Base URL", type: "url", default: BASE_URL, help: "HTTPS API base URL, without a query or fragment." },

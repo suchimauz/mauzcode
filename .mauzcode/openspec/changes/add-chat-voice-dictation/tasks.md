@@ -16,11 +16,11 @@
 
 ## 3. Settings and capture UI
 
-- [ ] 3.1 Add voice connections and the default route to settings, per-chat route selection/reset and destination disclosure; test persistence and the unconfigured state without microphone access.
-- [ ] 3.2 Build `useVoiceCapture`: secure-context and capability checks (disabled controls with explanation, no socket), getUserMedia, AudioWorklet resampling to the announced rate, PCM16 framing, remaining-time display, states and generation cleanup; test with synthetic tracks: insecure context (HTTP), missing AudioWorklet, permission denial, pause/resume, navigation, read-only transition, socket loss and late events.
-- [ ] 3.3 Place both accessible controls after the context meter in open editable chats; verify order, names, focus and absence in new-session and read-only composers.
-- [ ] 3.4 Implement inline dictation at the caret for both `CommandEditor` and `textarea`; test partial replacement, manual edits win, surrounding text and attachments preserved, stop without submission.
-- [ ] 3.5 Implement the voice panel with scoped shortcuts (ignored on buttons and editable targets), equivalent buttons, selective clear and Escape; test pause/resume, focus, live-region announcements limited to state changes (no phrase text) and preservation of text and attachments. Document controls in user help.
+- [x] 3.1 Add voice connections and the default route to settings, per-chat route selection/reset and destination disclosure; test persistence and the unconfigured state without microphone access.
+- [x] 3.2 Build `useVoiceCapture`: secure-context and capability checks (disabled controls with explanation, no socket), getUserMedia, AudioWorklet resampling to the announced rate, PCM16 framing, remaining-time display, states and generation cleanup; test with synthetic tracks: insecure context (HTTP), missing AudioWorklet, permission denial, pause/resume, navigation, read-only transition, socket loss and late events.
+- [x] 3.3 Place both accessible controls after the context meter in open editable chats; verify order, names, focus and absence in new-session and read-only composers.
+- [x] 3.4 Implement inline dictation at the caret for both `CommandEditor` and `textarea`; test partial replacement, manual edits win, surrounding text and attachments preserved, stop without submission.
+- [x] 3.5 Implement the voice panel with scoped shortcuts (ignored on buttons and editable targets), equivalent buttons, selective clear and Escape; test pause/resume, focus, live-region announcements limited to state changes (no phrase text) and preservation of text and attachments. Document controls in user help.
 
 ## 4. Submission and verification
 

@@ -17,6 +17,12 @@ export type ConnectionView = {
     config: Record<string, types.voice.ConfigValue>;
     /** Declared secret fields reported only as present (`true`) or absent (`false`). */
     secrets: Record<string, boolean>;
+    /**
+     * Where this connection sends captured audio: the provider's per-connection disclosure (for example the host
+     * and port of a configured endpoint) or, without one, its static declaration. Absent when the provider is
+     * not registered. Never contains userinfo, a path, a query, a fragment or a secret.
+     */
+    destination?: types.voice.Destination;
     /** Unix epoch milliseconds when the connection was created. */
     createdAt: number;
     /** Unix epoch milliseconds of the last accepted change. */

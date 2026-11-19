@@ -5,6 +5,9 @@
  * set/not set; never includes a secret value, a `secret://` reference or a stored secret name. The
  * configuration is projected through the current provider schema, so a field that became a secret field after a
  * schema reload is never returned as plain configuration, and a field the provider no longer declares is dropped.
+ * The audio destination comes from the provider's optional `destinationFor(config)` disclosure, accepted only as
+ * a short single-line label without URL syntax (`/`, `@`, `?`, `#`) or control characters; otherwise, or when it
+ * throws, the static declared destination is used.
  * @param opts.row Raw voice_connections row as returned by procs.db.select.
  */
 export default function (
@@ -32,6 +35,21 @@ export default function (
         const value = rawConfig[field.key];
         if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") config[field.key] = value;
     }
+    // Untrusted declaration: project only kind and a safe label; a throw or bad shape keeps the static disclosure.
+    const safe = (value: unknown): types.voice.Destination | undefined => {
+        try {
+            if (!value || typeof value !== "object") return undefined;
+            const { kind, label } = value as Record<string, unknown>;
+            if (kind !== "cloud" && kind !== "host") return undefined;
+            if (typeof label !== "string" || !label.trim() || label.length > 160 || /[/@?#\\\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(label)) return undefined;
+            return { kind, label };
+        } catch { return undefined; }
+    };
+    let destination: types.voice.Destination | undefined;
+    if (definition) {
+        try { destination = definition.destinationFor ? safe(definition.destinationFor(Object.freeze({ ...config }))) : undefined; } catch { destination = undefined; }
+        destination ??= (() => { try { return { kind: definition.destination.kind, label: definition.destination.label }; } catch { return undefined; } })();
+    }
     return {
         id: String(row.id),
         provider,
@@ -39,6 +57,7 @@ export default function (
         accountName: String(row.account_name),
         config,
         secrets,
+        ...(destination ? { destination } : {}),
         createdAt: Number(row.created_at),
         updatedAt: Number(row.updated_at),
     };

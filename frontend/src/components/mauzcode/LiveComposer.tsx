@@ -1,9 +1,14 @@
 import { createPortal } from 'react-dom';
 import { useRef, useState, type ReactNode } from 'react';
-import { MessageInput } from './MessageInput';
+import { DraftDictation } from '../../lib/inlineDictation';
+import { MessageInput, type DraftCaretHandle } from './MessageInput';
 import { sendMessage, stopAgent } from '../../lib/mauzcode';
 import { executeCommand, notifyPlanningChanged, validateCommand } from '../../lib/commands';
 import { ComposerFooter } from './ComposerFooter';
+import { VoiceEntryControls, useVoiceEntryHub, type VoiceEntryHandlers } from './VoiceEntryControls';
+import { VoicePanel } from './VoicePanel';
+import { useInlineDictation } from '../../hooks/useInlineDictation';
+import { useVoicePanel } from '../../hooks/useVoicePanel';
 import { PendingAttachments } from './PendingAttachments';
 import { useChatFileDrop } from '../../hooks/useChatFileDrop';
 import { attachmentLimitError } from '../../lib/attachments';
@@ -35,6 +40,7 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
   const anchor = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const filesKey = useRef<string | null>(null);
+  const caret = useRef<DraftCaretHandle>(null);
   const persist = (value: Pending) => { pending.current = value; try { sessionStorage.setItem(`mauzcode-ui-draft:${agentId}`, JSON.stringify(value)); } catch { /* Draft still survives retries while mounted. */ } };
   const addFiles = (added: File[]) => {
     if (lock.current || readOnly) return;
@@ -46,6 +52,18 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
     if (lock.current || readOnly) return;
     setFiles(files.filter((_, i) => i !== index)); filesKey.current = null; pending.current = null;
   };
+  /** One ordinary draft update for typing and dictation alike: new text, new request key, nothing sent. */
+  const changeText = (value: string) => {
+    setText(value); filesKey.current = null;
+    if (value.trim() !== pending.current?.text) persist({ text: value, key: crypto.randomUUID() });
+  };
+  // One capture controller for both voice entry points; both edit the same draft through `changeText`.
+  const voice = useVoiceEntryHub({ agentId, readOnly });
+  // Which dictated phrases of this draft are still unedited, for both entry points; forgotten once the draft is sent.
+  const [dictation] = useState(() => new DraftDictation());
+  const inline = useInlineDictation({ text, onText: changeText, caret, dictation, readOnly });
+  const panel = useVoicePanel({ text, onText: changeText, caret, capture: voice.capture, dictation, readOnly });
+  const voiceHandlers: VoiceEntryHandlers = { inline: inline.handler, panel: panel.handler };
   const dragging = useChatFileDrop({ anchor, onFiles: addFiles, disabled: busy || readOnly });
   const send = async () => {
     const value = text.trim(); if ((!value && !files.length) || lock.current || readOnly) return;
@@ -71,7 +89,7 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
       else { const ack = await sendMessage(agentId, value, submission.key, files); if (ack.queued) void queue.refresh(); }
       }
       setFiles([]); filesKey.current = null; setRevision(n => n + 1);
-      setText(''); pending.current = null;
+      setText(''); pending.current = null; dictation.reset();
       try { sessionStorage.removeItem(`mauzcode-ui-draft:${agentId}`); } catch { /* In-memory state has already cleared. */ }
       onAccepted();
     } catch (err) { setError(`${err instanceof Error ? err.message : String(err)}. Файлы сохраняются до закрытия этой страницы. Повторная отправка использует тот же ключ.`); }
@@ -94,13 +112,13 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
     catch (err) { setNotice(''); setError(err instanceof Error ? err.message : String(err)); }
     finally { lock.current = false; setBusy(false); }
   };
-  return <fieldset disabled={readOnly} className={`composer-readonly-boundary ${readOnly ? 'is-archived' : ''}`} aria-label={readOnly ? 'Ввод недоступен' : undefined}><div ref={anchor} className="composer-input-anchor">{dragging && anchor.current?.closest('.chat-panel') && createPortal(<div className="chat-file-drop-overlay" aria-hidden="true">Перетащите файлы, чтобы прикрепить к сообщению</div>, anchor.current.closest('.chat-panel')!)}{mascot}<TodoDock agentId={agentId} /><TriggerDock agentId={agentId} /><GoalDock agentId={agentId} running={running} disabled={readOnly || busy} editor={goalEditor} onClose={() => setGoalEditor(null)} onAccepted={onAccepted} /><QueueDock queue={queue} running={running} disabled={readOnly || busy} /><MessageInput focusRequest={focusRequest} onSteerAll={running && !queue.waitingForInput && queue.items.length ? () => { if (!busy && !readOnly && !queue.processing) void queue.perform(queue.items, 'steer'); } : undefined} commandsEnabled commandMenuOpen={menuOpen} onCommandMenuClose={() => setMenuOpen(false)} onFile={() => fileInput.current?.click()} onCompact={() => { void compact(); }} placeholder={running && queue.items.length ? 'Ctrl/Cmd+Enter — направить всю очередь агенту' : 'Сообщение или /команда…'} onFiles={addFiles} attachments={files.length ? <PendingAttachments files={files} disabled={busy || readOnly} onRemove={removeFile} /> : undefined} hasAttachments={files.length > 0} value={text} disabled={busy || readOnly} running={running && !readOnly} onStop={() => { void stop(); }} onSend={() => { void send(); }}
-    onChange={value => { setText(value); filesKey.current = null; if (value.trim() !== pending.current?.text) persist({ text: value, key: crypto.randomUUID() }); }}
-  /></div>
+  return <fieldset disabled={readOnly} className={`composer-readonly-boundary ${readOnly ? 'is-archived' : ''}`} aria-label={readOnly ? 'Ввод недоступен' : undefined}><div ref={anchor} className="composer-input-anchor">{dragging && anchor.current?.closest('.chat-panel') && createPortal(<div className="chat-file-drop-overlay" aria-hidden="true">Перетащите файлы, чтобы прикрепить к сообщению</div>, anchor.current.closest('.chat-panel')!)}{mascot}<TodoDock agentId={agentId} /><TriggerDock agentId={agentId} /><GoalDock agentId={agentId} running={running} disabled={readOnly || busy} editor={goalEditor} onClose={() => setGoalEditor(null)} onAccepted={onAccepted} /><QueueDock queue={queue} running={running} disabled={readOnly || busy} />{panel.open && <VoicePanel capture={voice.capture} text={text} attachments={files.length ? <PendingAttachments files={files} disabled={busy || readOnly} onRemove={removeFile} /> : undefined} onToggle={panel.toggle} onClear={panel.clear} canClear={panel.canClear} onExit={panel.exit} />}<div hidden={panel.open} className="voice-panel-editor"><MessageInput focusRequest={(focusRequest ?? 0) + panel.returns} onSteerAll={running && !queue.waitingForInput && queue.items.length ? () => { if (!busy && !readOnly && !queue.processing) void queue.perform(queue.items, 'steer'); } : undefined} commandsEnabled commandMenuOpen={menuOpen} onCommandMenuClose={() => setMenuOpen(false)} onFile={() => fileInput.current?.click()} onCompact={() => { void compact(); }} placeholder={running && queue.items.length ? 'Ctrl/Cmd+Enter — направить всю очередь агенту' : 'Сообщение или /команда…'} onFiles={addFiles} attachments={files.length && !panel.open ? <PendingAttachments files={files} disabled={busy || readOnly} onRemove={removeFile} /> : undefined} hasAttachments={files.length > 0} value={text} disabled={busy || readOnly} running={running && !readOnly} onStop={() => { void stop(); }} onSend={() => { void send(); }}
+    caretRef={caret} onChange={value => { inline.observe(value); changeText(value); }}
+  /></div></div>
     <input ref={fileInput} type="file" multiple hidden aria-label="Добавить файлы" onChange={event => {
       addFiles(Array.from(event.target.files || [])); event.target.value = '';
     }} />
-    <div><ComposerFooter planningBadge={planningBadge} onModelBusy={value => { lock.current = value; setBusy(value); }} onModelSaved={() => { setRevision(n => n + 1); onAccepted(); }} menuOpen={menuOpen} onMenuToggle={() => setMenuOpen(open => !open)} agentId={agentId} busy={busy || readOnly} running={running} revision={revision} /></div>
+    <div><ComposerFooter planningBadge={planningBadge} onModelBusy={value => { lock.current = value; setBusy(value); }} onModelSaved={() => { setRevision(n => n + 1); onAccepted(); }} menuOpen={menuOpen} onMenuToggle={() => { if (!panel.open) setMenuOpen(open => !open); }} agentId={agentId} busy={busy || readOnly} running={running} revision={revision} voice={readOnly ? undefined : <VoiceEntryControls key={`voice:${agentId}`} agentId={agentId} busy={busy} handlers={voiceHandlers} hub={voice} />} /></div>
     {error && running && text.startsWith('/') && <button type="button" className="button button--secondary" disabled={busy || readOnly} onClick={() => { void stop(); }}>Остановить выполнение</button>}
     {notice && <p role="status" className="transcript-notice">{notice}</p>}{error && <p role="alert" className="connection-error">{error}</p>}</fieldset>;
 }

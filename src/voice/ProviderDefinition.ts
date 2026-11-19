@@ -14,6 +14,14 @@ export type ProviderDefinition = {
     description?: string;
     /** Where the captured audio is processed, disclosed to the user before capture. */
     destination: types.voice.Destination;
+    /**
+     * Optional per-connection disclosure derived from one connection's normalized non-secret configuration, for
+     * example the host and port of a configured endpoint. Core shows it in settings, in the chat route picker and
+     * in the session `ready` event, and falls back to `destination` when this is absent, throws or returns an
+     * invalid label. The label may name a host and port only: never userinfo, a path, a query, a fragment, a
+     * secret or any other configuration value.
+     */
+    destinationFor?: (config: Readonly<Record<string, types.voice.ConfigValue>>) => types.voice.Destination | undefined;
     /** Connection field schema; secret fields are stored in the secret store and never returned. */
     fields: types.voice.FieldSpec[];
     /**

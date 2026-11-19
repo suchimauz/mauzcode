@@ -26,6 +26,7 @@ import { CanvasPanel } from './components/mauzcode/CanvasPanel';
 import { QuestionHistoryContext } from './components/mauzcode/QuestionHistory';
 import type { HistoryInput } from './lib/history';
 import { SettingsDialog, type SettingsTab } from './components/settings/SettingsDialog';
+import { OPEN_SETTINGS_EVENT } from './components/mauzcode/VoiceRoutePicker';
 import { SecureInputDialog } from './components/SecureInputDialog';
 import { AutomationTasks } from './components/mauzcode/AutomationTasks';
 import { PluginsPage } from './components/mauzcode/PluginsPage';
@@ -147,7 +148,7 @@ export function LiveApp() {
   const requestedSettings = new URLSearchParams(location.search).get('settings');
   // Legacy model settings links (LLM Connections, LLMs, policy) open the single Models tab.
   const legacyModelSettings = ['llm-connections', 'llms', 'llm-policy', 'model-policy'];
-  const linkedSettings = legacyModelSettings.includes(requestedSettings ?? '') ? 'models' as const : (['ssh-instances', 'models', 'push-notifications', 'updates'] as const).find(id => id === requestedSettings) ?? (/^plugin:[a-z][a-z0-9-]*\/[a-z][a-z0-9-]{0,63}$/.test(requestedSettings ?? '') ? requestedSettings as `plugin:${string}` : undefined);
+  const linkedSettings = legacyModelSettings.includes(requestedSettings ?? '') ? 'models' as const : (['ssh-instances', 'models', 'voice', 'push-notifications', 'updates'] as const).find(id => id === requestedSettings) ?? (/^plugin:[a-z][a-z0-9-]*\/[a-z][a-z0-9-]{0,63}$/.test(requestedSettings ?? '') ? requestedSettings as `plugin:${string}` : undefined);
   const [settingsOpen, setSettingsOpen] = useState(!!linkedSettings);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>(linkedSettings ?? 'ssh-instances');
   const changeSettingsOpen = (open: boolean) => {
@@ -156,6 +157,12 @@ export function LiveApp() {
   };
   const openSettings = useCallback(() => { setSheetOpen(false); setSettingsOpen(true); }, []);
   const openQuotas = useCallback(() => { setSheetOpen(false); setSettingsTab('models'); setSettingsOpen(true); }, []);
+  // Composer controls (the voice route selector) ask for a specific built-in settings tab.
+  useEffect(() => {
+    const open = (event: Event) => { const tab = (event as CustomEvent<{ tab?: unknown }>).detail?.tab; if (tab !== 'voice') return; setSheetOpen(false); setSettingsTab('voice'); setSettingsOpen(true); };
+    window.addEventListener(OPEN_SETTINGS_EVENT, open);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, open);
+  }, []);
   type PageView = 'automation' | 'plugins' | 'people' | 'applications' | 'pages' | `extension:${string}` | null;
   const readView = (): PageView => { const v = new URL(location.href).searchParams.get('view'); return v === 'automation' || v === 'plugins' || v === 'people' || v === 'applications' || v === 'pages' ? v : /^extension:[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/.test(v ?? '') ? v as PageView : null; }; // runtime plugins load after first render
   const [pageView, setPageViewState] = useState<PageView>(readView);

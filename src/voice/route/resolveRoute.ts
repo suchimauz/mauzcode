@@ -1,16 +1,17 @@
 /**
  * Resolve one voice route against current registrations and stored connections
  *
- * Use through voice.resolveRoute to obtain the connection identity, the provider destination disclosure, the
- * catalogued model with its capabilities and the sample rate core negotiates. Checks run in order without any
- * fallback: exact route grammar, then provider registration, then the stored connection of that provider with
- * this exact account name, then the model inside the provider catalogue (static declarations plus a contract
- * `listModels` discovery when the static list does not name it). A failure throws with `code: "unconfigured"`
- * only when nothing was selected — here always `code: "routeUnavailable"` — and a closed `reason`; the caller
- * must report that unavailability instead of trying another route. Reads no secrets and never opens a provider
- * session. Errors carry fixed text: a route string can embed a credential-bearing URL and provider payloads are
- * untrusted, so neither is ever echoed back. Every discovered model is validated against the SDK contract and
- * reduced to a known-fields projection before use; a discovery that throws becomes `catalogue-failed`.
+ * Use through voice.resolveRoute to obtain the connection identity, the destination disclosure of that exact
+ * connection, the catalogued model with its capabilities and the sample rate core negotiates. Checks run in order
+ * without any fallback: exact route grammar, then provider registration, then the stored connection of that
+ * provider with this exact account name, then the model inside the provider catalogue (static declarations plus a
+ * contract `listModels` discovery when the static list does not name it). A failure throws with
+ * `code: "unconfigured"` only when nothing was selected — here always `code: "routeUnavailable"` — and a closed
+ * `reason`; the caller must report that unavailability instead of trying another route. Reads no secrets and
+ * never opens a provider session. Errors carry fixed text: a route string can embed a credential-bearing URL and
+ * provider payloads are untrusted, so neither is ever echoed back. Every discovered model is validated against the
+ * SDK contract and reduced to a known-fields projection before use; a discovery that throws becomes
+ * `catalogue-failed`.
  * @param opts.route Exact provider/accountName:modelId route to resolve.
  */
 export default async function (
@@ -38,10 +39,14 @@ export default async function (
     const connections = await ctx.fns.voice.connections.list({ provider: parsed.provider });
     const connection = connections.find(view => view.accountName === parsed.accountName);
     if (!connection) throw fail("unknown-connection");
-    // Public destination projection: only the declared kind and label survive, and reading an untrusted
+    // Public destination projection of this exact connection (its per-connection disclosure, else the static
+    // declaration, already sanitized by toView): only kind and label survive, and reading an untrusted
     // declaration cannot escape this function with a throw.
     const destination = ((): types.voice.Destination => {
-        try { return { kind: definition!.destination.kind, label: definition!.destination.label }; }
+        try {
+            const source = connection!.destination ?? definition!.destination;
+            return { kind: source.kind, label: source.label };
+        }
         catch { throw fail("unknown-provider"); }
     })();
     // Model catalogue per the SDK contract: declared static models first, then provider discovery when the

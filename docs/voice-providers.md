@@ -27,17 +27,28 @@ Available now:
 - one authenticated WebSocket endpoint, `src/$ws_voice_session.ts` → `/voice/session`, that relays
   audio and normalized transcript events;
 - the `openai-realtime` adapter, with unit tests and integration tests against a fake Realtime
-  server.
+  server;
+- an owner-only **Settings → Voice** tab (`/voice/api`, `src/voice/http/api.ts`) to add, edit, test
+  and remove voice connections (the key is entered in a write-only password field and never sent
+  back), and to choose or clear the default route;
+- a per-chat voice route selector in the composer footer of open editable chats, right after the
+  context indicator: it states where the audio would be processed before anything is activated,
+  lets the owner pick a route for this chat or return to the default, reports an unavailable
+  selection without falling back, and links to the Voice tab when nothing is configured. The
+  selector itself never requests the microphone or opens `/voice/session`;
+- browser capture (`frontend/src/hooks/useVoiceCapture.ts`): secure-context and AudioWorklet
+  checks, microphone → AudioWorklet → mono PCM16 frames over one `/voice/session` socket per
+  generation, remaining-time countdown, pause/resume and cleanup on navigation, read-only loss and
+  socket loss;
+- two entry points next to the route selector of an open editable chat, sharing that one capture
+  controller: **inline voice input** at the caret of the ordinary editor and **voice mode**, a panel
+  that temporarily replaces the editor (see [Dictate in a chat](#dictate-in-a-chat)).
 
 Not implemented yet, and not claimed anywhere on this page:
 
-- settings UI for voice connections, the default route and the per-chat selection;
-- browser microphone capture and the composer dictation controls;
-- explicit-send finalization.
-
-So there is **no dictation button in the product yet**. Until that UI exists, a voice connection can
-only be created, tested and used from an owner-run runtime session — the safe shape for that is in
-[Set up OpenAI Realtime](#set-up-openai-realtime).
+- explicit-send finalization: sending from voice mode. The panel's **Send** button and Enter are
+  shown but unavailable; leave the panel and send from the ordinary editor. Neither entry point ever
+  sends by itself.
 
 ### Public facade and internal namespaces
 
@@ -74,9 +85,39 @@ browser  ──/voice/session (WebSocket)──▶  MauzCode server  ──wss�
 - Bounds: 5-minute session, 30-second idle timeout, 16 KiB frame, 1 MiB buffered upstream, 10-second
   finish deadline. Exceeding one ends the session with a visible error instead of dropping audio.
 
-The endpoint and the session core are covered by tests and usable as described, but **no browser client
-speaks this protocol yet**: the capture hook and the composer controls are the unimplemented part. Until
-they exist, opening `/voice/session` by hand is only useful for development.
+The browser client of this protocol is `useVoiceCapture`; the composer's entry points below are its
+only consumers. A resume opens a new socket with a new `generation`, so events of a paused or
+cancelled session can never reach the draft.
+
+## Dictate in a chat
+
+Dictation needs a configured route (Settings → Voice) and a page opened over HTTPS or on
+`localhost`; otherwise the controls stay visible but disabled and say what is missing. Nothing
+requests the microphone until you activate a control, and the footer tells you where the audio would
+be processed before you do. Neither control is shown in a new-session or read-only composer.
+
+**Inline voice input** (microphone icon after the context indicator). Click once to start dictating
+at the caret of the message field; click again to stop. The last phrase is finalized, the text stays
+editable and nothing is sent. Interim words are replaced in place as recognition improves; once you
+edit a recognized word yourself, later corrections of that phrase are ignored.
+
+**Voice mode** (waveform icon). Replaces the message field with a panel that shows the recording
+state, the remaining time of the five-minute session and the message text, and starts recording at
+the caret. It edits the same draft and keeps your attachments. While focus is inside the panel:
+
+| Key | Button | Effect |
+| --- | --- | --- |
+| Space | Pause / Continue recording | Pause finalizes the current phrase and releases the microphone; continue starts a new session after the dictated text. |
+| — | Clear dictation | Removes every phrase dictated into this draft that you have not edited — in voice mode or with inline input, including earlier visits; typed text, phrases you corrected and attachments stay. Sending the message starts a new draft. |
+| Enter | Send | Not available yet (see above); nothing is sent. |
+| Escape | Exit | Stops recording and returns focus to the message field with the visible text, without sending. Clicking the voice mode icon again does the same. |
+
+The shortcuts work only while focus is on the panel itself or its message text, never for typing
+elsewhere. A focused button inside the panel keeps its own keys — Space and Enter press it and Escape
+does nothing there; use the Exit button to leave. Text fields keep all their keys. Screen readers hear only state changes — recording, paused, an error, dictation moved to
+another tab, one minute and ten seconds left — never the recognized words; the text is readable by
+moving through the panel. Opening dictation for the same chat in another tab stops this one with a
+visible notice; the text stays and you can continue.
 
 ## Set up OpenAI Realtime
 
@@ -96,8 +137,16 @@ You also do not create a `secret://` reference by hand. That reference is what t
 returns *after* a protected input form accepted the value, so the person typing the key never hands
 it to the caller at all.
 
-There is no voice settings form yet: the settings UI is part of the not-yet-implemented work listed
-above. Until it exists, the key reaches a voice connection in two steps.
+**Recommended: Settings → Voice.** The owner opens Settings → Voice (or `/?settings=voice`), picks
+the provider, enters an account name and pastes the key into the **API key** password field, then
+chooses **Add connection**. The form posts the key once over the same-origin, CSRF-protected
+`/voice/api` request; the server stores it encrypted and answers with a secret-free view, and the
+field is emptied. Editing a connection never shows the stored key: an empty field keeps it, a new
+value replaces it. **Test** runs the provider's connection check without audio. This path is for a
+person at the browser; an agent must not ask for the key in chat.
+
+**Alternative for operators: from a runtime session.** The key then reaches a voice connection in
+two steps.
 
 **Step 1 — collect the key in a protected form.** The owner answers a `secret` input (the `secret`
 chat input kind, or `ctx.fns.secureInput.prompt({ title: "OpenAI API key", saveAs: "secret://voice/openai-key" })`). The value goes
@@ -148,12 +197,19 @@ The adapter offers exactly one model in this version: `gpt-live-transcribe`. A v
 openai-realtime/work:gpt-live-transcribe
 ```
 
-Select it globally with the declared setting `voice.defaultRoute`. There is no voice settings screen
-yet, but the generic owner-only **Declared settings** page (`/settings/declared`) already lists this
-key and stores it with validation, as do `settings.set` and the instance file
-`~/.mauzcode/settings/$settings_voice.json` as `{ "defaultRoute": "…" }`.
+Select it globally in Settings → Voice under **Default route** (the list shows each stored
+connection's models with where that connection sends the audio — for this adapter `OpenAI Realtime
+(api.openai.com)` with the default Base URL, or `Configured endpoint (host[:port])` with another one; "Not configured" clears it). The same
+declared setting `voice.defaultRoute` is also listed by the generic owner-only **Declared settings**
+page (`/settings/declared`) and can be stored by `settings.set` or the instance file
+`~/.mauzcode/settings/$settings_voice.json` as `{ "defaultRoute": "…" }`; a value fixed by that file
+is shown read-only in the Voice tab. The Voice tab and the chat selector accept only a route that
+resolves at the moment of saving.
 
-A single chat can override it with `voice.route.setOverride({ agentId, route })`;
+A single chat can override it from the voice route button in its composer footer (after the context
+indicator): choose a route for this chat or **По умолчанию** to inherit the default again. The button's
+accessible name and the menu state the model, whether it is the chat's own choice or the default,
+and where the audio would go. Programmatically the same is `voice.route.setOverride({ agentId, route })`;
 `voice.route.clearOverride({ agentId })` restores inheritance. `voice.effectiveRoute({ agentId })`
 reports the chosen route and its source. Resolution happens once at session start and never falls
 back to another route: a broken selection fails with `routeUnavailable` instead of silently using a
@@ -216,7 +272,8 @@ Guaranteed by the code documented here and covered by the tests under [Verificat
 
 - audio is relayed through the server in memory only — no file is written, no frame, transcript or
   key is logged, and nothing is added to chat history or the queue;
-- credentials never reach the browser, and browser traffic carries no key;
+- a saved key is never sent back to the browser, and dictation traffic between the browser and the
+  server carries no key (a key typed into the settings form travels once to the server to be stored);
 - origin, owner and chat editability are checked at start and re-checked while the session runs;
   losing edit access ends the session with `readOnly`;
 - vendor events are normalized (`phrase` revisions, single `final`, `phraseFailed`), and service
@@ -256,6 +313,7 @@ to the built-in one.
 | `label` | Human-readable provider name. |
 | `description` | Optional safe explanation; never a credential. |
 | `destination` | `{ kind: "cloud" \| "host", label }` — where audio is processed, disclosed before capture. |
+| `destinationFor` | Optional `(config) => Destination \| undefined`: the destination one stored connection actually uses, from its non-secret configuration (for example `Configured endpoint (host:port)`). Core shows it in Settings → Voice, in the chat route picker and in `ready`; it falls back to `destination` if absent, throwing, or if the label is blank, longer than 160 characters, or contains `/`, `@`, `?`, `#`, `\` or control characters. Name only a host and port — never userinfo, a path, a query, a fragment or other configuration. |
 | `fields` | Connection field schema: `text`, `url`, `select`, `secret`, `number`, `boolean`; keys safe and unique; `secret` fields may declare no default. |
 | `models` and/or `listModels` | At least one source: static `VoiceModel[]` and/or `(ctx, conn) => Promise<VoiceModel[]>` discovery. |
 | `validateConfig` | Optional synchronous check of non-secret values; return `{ field, reason? }` with a reason from the closed set (`keywordList`, `languageList`, `httpsEndpoint`, `headerIdentifier`), never free text. |
@@ -396,10 +454,26 @@ This page was checked against the code, not only against the design notes:
   refusals, read-only loss, frame and queue bounds, sequence gaps, idle and five-minute limits,
   takeover, sanitized provider errors);
 - `bun test src/voice/registryReload.test.ts` — 2 pass for real boot discovery, isolation of a broken
-  declaration in the same pass, and unload when the last declaration disappears.
+  declaration in the same pass, and unload when the last declaration disappears;
+- `bun test src/voice/httpApi.test.ts` — 10 pass for the settings API: owner/CSRF/origin refusals,
+  secret-free CRUD and test, default and per-chat route save/reset, an unavailable selection kept
+  rather than replaced, foreign and archived chats, no provider session opened, the built-in
+  adapter's per-connection destination (`api.openai.com` by default, `host:port` of a custom Base
+  URL, the same in the chat view and in `voice.resolveRoute`), fallback from an unsafe disclosure,
+  and a streamed body without `Content-Length` cut off at 64 KiB;
+- `bun run frontend:test -- frontend/src/test/settings-voice.test.tsx frontend/src/test/composer-footer.test.tsx`
+  — the Voice tab and chat selector, including the unconfigured state, with spies proving that
+  neither `getUserMedia` nor a `WebSocket` is called;
+- `bun run frontend:test -- frontend/src/test/voice-panel.test.tsx frontend/src/test/inline-dictation.test.ts`
+  — voice mode through the real `LiveComposer` with a fake capture controller (no microphone,
+  socket or network): one controller for both modes, focus into the panel and back to the editor,
+  pause/resume with Space, late events of paused or cancelled generations ignored, selective clear
+  keeping typed text, corrections and attachments, keys ignored outside the panel and on its
+  buttons and text fields, Enter not sending, one polite live region carrying only state changes and
+  the 1 min / 10 s thresholds, read-only loss and chat switch.
 
-The page does not claim a voice settings screen, microphone capture or a full project typecheck; those
-were not part of the code it documents.
+The page does not claim sending from voice mode, browser tests against a real microphone or a full
+project typecheck.
 
 ## Related
 
