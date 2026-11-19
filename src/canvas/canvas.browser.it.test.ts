@@ -29,6 +29,7 @@ beforeAll(async () => {
       { id: 'external', label: 'Forbidden external', href: 'https://example.com' },
     ] });
     if (req.method === 'GET' && path === '/fixture-document') return new Response('<!doctype html><html><body><h1>Isolated application document</h1></body></html>', { headers: { 'Content-Type': 'text/html' } });
+    if (req.method === 'GET' && path === '/auth/online') return json({ onlineIds: ['fixture-owner'] });
     if (req.method === 'GET' && path === '/auth/users') return json({ meId: 'fixture-owner', csrfToken: 'fixture-csrf', google: null, users: [{ id: 'fixture-owner', name: 'Fixture Owner', email: 'owner@example.invalid', role: 'owner', disabledAt: null, hasPassword: false, providers: [] }] });
     if (req.method === 'GET' && path === '/canvas/fixture/state') return json({ csrfToken: 'fixture-csrf', items: [1, 2].map(id => ({ id, title: `Fixture ${id}`, icon: 'file-text', active: id === activeItemId, kind: 'file', args: { path: `/fixture/${id}.txt` } })) });
     if (req.method === 'POST' && path === '/canvas/fixture') {
@@ -37,10 +38,12 @@ beforeAll(async () => {
     }
     if (req.method === 'POST' && /^\/canvas\/fixture\/item\/[12]$/.test(path)) {
       const body = await req.json() as {fileAction: string; content: string};
-      if (body.fileAction === 'read') return json({ path, content: path.endsWith('/1') ? content : 'second file' });
+      // Respond with the item's file path, as the real endpoint does, not the request URL.
+      const file = `/fixture/${path.slice(-1)}.txt`;
+      if (body.fileAction === 'read') return json({ path: file, content: path.endsWith('/1') ? content : 'second file' });
       if (body.fileAction === 'save' && path.endsWith('/1')) {
         saves.push({ body, csrf: req.headers.get('x-csrf-token') }); content = body.content;
-        return json({ path, content });
+        return json({ path: file, content });
       }
     }
     unexpected.push(`${req.method} ${path}`);
@@ -68,7 +71,8 @@ async function open(surface: string) {
     pending.set(ticket, { resolve, reject, timer }); ws.send(JSON.stringify({ id: ticket, method, params }));
   });
   const evaluate = async (expression: string) => (await command('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })).result?.value;
-  const wait = async (expression: string) => { for (let i = 0; i < 100; i++) { if (await evaluate(expression)) return; await Bun.sleep(50); } throw new Error(`DOM condition timed out: ${expression}; ${await evaluate('document.body.innerText')}`); };
+  // A condition may throw while the page is still parsing (no body yet): that counts as not yet true.
+  const wait = async (expression: string) => { for (let i = 0; i < 100; i++) { if (await evaluate(`(() => { try { return !!(${expression}); } catch { return false; } })()`)) return; await Bun.sleep(50); } throw new Error(`DOM condition timed out: ${expression}; ${await evaluate('document.body.innerText')}`); };
   return { evaluate, wait, command, close: async () => { for (const task of pending.values()) { clearTimeout(task.timer); task.reject(new Error('Tab closed')); } pending.clear(); ws.close(); await fetch(`${chrome!.url}/json/close/${target.id}`); } };
 }
 const click = (text: string) => `[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)}).click()`;
@@ -91,17 +95,22 @@ test('React Applications filters unsafe/native destinations and opens a themed f
 test('React Canvas retains unsaved draft across tabs and sends exact optimistic save with CSRF', async () => {
   const tab = await open('canvas');
   try {
-    await tab.wait(`document.querySelector('textarea')?.value === 'original fixture text'`);
-    await tab.evaluate(`window.fixtureEditor=document.querySelector('textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(window.fixtureEditor,'edited fixture text'); window.fixtureEditor.dispatchEvent(new Event('input',{bubbles:true}));`);
+    // The file editor is CodeMirror: type through real input events, as a person would.
+    await tab.wait(`document.querySelector('.cm-content')?.textContent === 'original fixture text'`);
+    await tab.evaluate(`window.fixtureEditor=document.querySelector('.cm-editor'); window.fixtureEditor.querySelector('.cm-content').focus()`);
+    await tab.command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 2 });
+    await tab.command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 2 });
+    await tab.command('Input.insertText', { text: 'edited fixture text' });
+    await tab.wait(`window.fixtureEditor.querySelector('.cm-content').textContent === 'edited fixture text'`);
     await tab.wait(`document.body.textContent.includes('Сохранить *')`);
     await tab.evaluate(click('Fixture 2'));
     await tab.wait(`document.querySelector('[data-tab-key="item-2"] [role=tab]').getAttribute('aria-selected')==='true'`);
-    await tab.wait(`document.querySelectorAll('textarea').length === 2`);
+    await tab.wait(`document.querySelectorAll('.cm-editor').length === 2`);
     await tab.evaluate(click('Fixture 1'));
     await tab.wait(`document.querySelector('[data-tab-key="item-1"] [role=tab]').getAttribute('aria-selected')==='true'`);
-    expect(await tab.evaluate(`document.querySelector('textarea')===window.fixtureEditor && window.fixtureEditor.value==='edited fixture text'`)).toBe(true);
-    await tab.evaluate(`document.querySelector('.canvas-content:not([hidden]) button').click()`);
-    await tab.wait(`document.querySelector('.canvas-content:not([hidden]) button').disabled && !document.body.textContent.includes('Сохранить *')`);
+    expect(await tab.evaluate(`document.querySelector('.canvas-content:not([hidden]) .cm-editor')===window.fixtureEditor && window.fixtureEditor.querySelector('.cm-content').textContent==='edited fixture text'`)).toBe(true);
+    await tab.evaluate(`document.querySelector('.canvas-content:not([hidden]) .cf-save').click()`);
+    await tab.wait(`document.querySelector('.canvas-content:not([hidden]) .cf-save').disabled && !document.body.textContent.includes('Сохранить *')`);
     expect(saves).toEqual([{ body: { fileAction: 'save', content: 'edited fixture text', expectedContent: 'original fixture text' }, csrf: 'fixture-csrf' }]);
     expect(await tab.evaluate(`document.querySelectorAll('[role=alert]').length`)).toBe(0);
     if (process.env.REACT_BROWSER_SCREENSHOT) { const image = await tab.command('Page.captureScreenshot', { format: 'png' }); await Bun.write(process.env.REACT_BROWSER_SCREENSHOT, Buffer.from(image.data, 'base64')); }

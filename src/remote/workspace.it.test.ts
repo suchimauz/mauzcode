@@ -59,9 +59,9 @@ describe.skipIf(!enabled)("remote workspace (agent.workspaceHost)", () => {
 
     test("tools without host act in the remote workspace", async () => {
         const T = actx.fns.tools;
-        expect(await T.write({ path: "src/a b.ts", content: "export const a = 1;\nexport const b = 2;\n" })).toStartWith(`wrote plain:${home}/proj/src/a b.ts`);
+        expect((await T.write({ mode: "create", path: "src/a b.ts", content: "export const a = 1;\nexport const b = 2;\n" })).output).toStartWith(`applied: created plain:${home}/proj/src/a b.ts`);
         await T.edit({ path: "src/a b.ts", edits: [{ oldText: "b = 2", newText: "b = 42" }] });
-        expect(await T.read({ path: "src/a b.ts" })).toBe("export const a = 1;\nexport const b = 42;\n");
+        expect(await T.read({ path: "src/a b.ts" })).toMatch(/^readId: \S+ · lines 1-2 of 2 · complete\nexport const a = 1;\nexport const b = 42;\n$/);
         expect(await T.bash({ command: "pwd" })).toEqual({ output: `${home}/proj\n`, isError: false });
         expect((await T.bash({ command: "pwd", cwd: "src" })).output).toBe(`${home}/proj/src\n`);
         expect(await T.grep({ pattern: "b = 42", literal: true })).toContain(`src/a b.ts:2:14:`);

@@ -18,6 +18,11 @@
 //   MAUZCODE_SKIP_DOCKER_TESTS=1  skip the suite
 //   docker compose -p <project> down -v   remove by hand (project printed on start)
 //
+// The containers, their homes and the ControlMaster sockets are shared, and every
+// start resets the homes while stop() closes the masters. Test files run in
+// parallel workers, so startSshFixture() holds an exclusive per-checkout lock
+// until stop(): two suites never wipe or disconnect each other mid-run.
+//
 // Returns null (and the suite should skip) when Docker is not available.
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -37,6 +42,42 @@ const CHECKOUT = join(HERE, "..", "..");
 const PROJECT = `mauzcode-ssh-${Bun.hash(CHECKOUT).toString(36).slice(0, 8)}`;
 const STATE = join(CHECKOUT, ".test-tmp", "ssh-fixture");
 const SERVICES = ["plain", "rg"] as const;
+const LOCK = join(STATE, "lock");
+const LOCK_WAIT_MS = 180_000;
+
+function alive(pid: number): boolean {
+    try { process.kill(pid, 0); return true; } catch (e: any) { return e?.code === "EPERM"; }
+}
+
+// Exclusive across worker processes: mkdir is atomic. A lock whose owner died is taken over.
+async function acquireLock(): Promise<() => void> {
+    mkdirSync(STATE, { recursive: true, mode: 0o700 });
+    const token = `${process.pid}:${crypto.randomUUID()}`;
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    for (;;) {
+        try {
+            mkdirSync(LOCK);
+            writeFileSync(join(LOCK, "owner"), token);
+            break;
+        } catch (e: any) {
+            if (e?.code !== "EEXIST") throw e;
+            let owner = "";
+            try { owner = readFileSync(join(LOCK, "owner"), "utf8"); } catch { /* being written or released */ }
+            const pid = Number(owner.split(":")[0]);
+            if (owner && !alive(pid)) { rmSync(LOCK, { recursive: true, force: true }); continue; }
+            if (Date.now() > deadline) throw new Error(`ssh fixture lock busy (${LOCK}, owner ${owner || "unknown"})`);
+            await Bun.sleep(100);
+        }
+    }
+    let released = false;
+    const release = () => {
+        if (released) return;
+        released = true;
+        try { if (readFileSync(join(LOCK, "owner"), "utf8") === token) rmSync(LOCK, { recursive: true, force: true }); } catch { /* already gone */ }
+    };
+    process.once("exit", release);
+    return release;
+}
 
 async function sh(cmd: string[], env?: Record<string, string>): Promise<{ code: number; out: string; err: string }> {
     const p = Bun.spawn({ cmd, cwd: HERE, env: { ...process.env, ...env }, stdout: "pipe", stderr: "pipe" });
@@ -55,6 +96,16 @@ function buildHash(): string {
 
 export async function startSshFixture(): Promise<SshFixture | null> {
     if (process.env.MAUZCODE_SKIP_DOCKER_TESTS === "1" || !(await dockerAvailable())) return null;
+    const release = await acquireLock();
+    try {
+        return await startLocked(release);
+    } catch (e) {
+        release();
+        throw e;
+    }
+}
+
+async function startLocked(release: () => void): Promise<SshFixture> {
 
     mkdirSync(STATE, { recursive: true, mode: 0o700 });
     const keys = join(STATE, "keys");
@@ -133,11 +184,15 @@ export async function startSshFixture(): Promise<SshFixture | null> {
         hosts: { plain: "plain", rg: "rg" },
         env: { MAUZCODE_SSH_CONFIG: config, MAUZCODE_SSH_CONTROL_DIR: controlDir },
         async stop() {
-            for (const h of SERVICES) await sh(["ssh", "-F", config, "-O", "exit", "-o", `ControlPath=${join(controlDir, "%C")}`, h]);
-            if (process.env.MAUZCODE_SSH_FIXTURE_DOWN === "1") {
-                await compose("down", "-v", "--remove-orphans");
-                rmSync(STATE, { recursive: true, force: true });
-                rmSync(controlDir, { recursive: true, force: true });
+            try {
+                for (const h of SERVICES) await sh(["ssh", "-F", config, "-O", "exit", "-o", `ControlPath=${join(controlDir, "%C")}`, h]);
+                if (process.env.MAUZCODE_SSH_FIXTURE_DOWN === "1") {
+                    await compose("down", "-v", "--remove-orphans");
+                    rmSync(controlDir, { recursive: true, force: true });
+                }
+            } finally {
+                release();
+                if (process.env.MAUZCODE_SSH_FIXTURE_DOWN === "1") rmSync(STATE, { recursive: true, force: true });
             }
         },
     };

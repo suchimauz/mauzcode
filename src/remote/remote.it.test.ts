@@ -99,7 +99,7 @@ describe.skipIf(!enabled)("remote over ssh (docker sshd)", () => {
     test("readFile / writeFile: odd paths, unicode, parent dirs, errors", async () => {
         const path = "~/x/a b/it's.txt";
         const content = "line1\nпривет 'q' $HOME `x`\n";
-        expect(await R().writeFile({ host: "plain", path, content })).toEqual({ bytes: Buffer.byteLength(content) });
+        expect(await R().writeFile({ host: "plain", path, content })).toMatchObject({ bytes: Buffer.byteLength(content), version: expect.stringMatching(/^[0-9a-f]{64}$/) });
         expect(await R().readFile({ host: "plain", path })).toBe(content);
         await expect(R().readFile({ host: "plain", path: "nope.txt" })).rejects.toThrow("not a file");
     });
@@ -119,8 +119,8 @@ describe.skipIf(!enabled)("remote over ssh (docker sshd)", () => {
 
     test("tools read/write/edit with host, literal and anchored edits", async () => {
         const path = "proj/demo.ts";
-        expect(await T().write({ host: "plain", path, content: "export const a = 1;\nexport const b = 2;\n" }))
-            .toStartWith("wrote plain:proj/demo.ts");
+        expect((await T().write({ host: "plain", mode: "create", path, content: "export const a = 1;\nexport const b = 2;\n" })).output)
+            .toStartWith("applied: created plain:proj/demo.ts");
         const hash = await T().read({ host: "plain", path, hashline: true });
         const anchor = hash.split("\n")[0].split("|")[0];
         await T().edit({ host: "plain", path, edits: [{ oldText: "b = 2", newText: "b = 42" }] });
