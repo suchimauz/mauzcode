@@ -40,7 +40,8 @@ function Journal() {
       <ul>{result.records.map(r => <li key={r.id}>
         <code>{r.id}</code> · <time dateTime={r.createdAt}>{new Date(r.createdAt).toLocaleString()}</time><br />
         Provider: {r.provider ?? 'unknown'} · Model: {r.model ?? 'unknown'}<br />
-        Stage: {r.stage} · Cause: {r.cause}
+        Stage: {r.stage} · Cause: {r.cause}<br />
+        Reason: {r.reason ?? 'unknown'} · Detail: {r.detail ?? '—'}
       </li>)}</ul>
     </>}
   </>;

@@ -126,7 +126,7 @@ visible notice; the text stays and you can continue.
 
 ### Look up a dictation error
 
-If inline dictation or voice mode shows an **ID** beside a provider failure, copy it. As the instance owner, open **Settings → Voice → Errors**. The recent list shows the newest failures first. Paste the exact ID into **Error ID** and select **Look up** to see when it happened, the provider and model (when known), the failure stage and a safe cause. `unknown` means the cause could not be safely classified. A missing or expired ID shows **No matching error**; use **Show recent** to return to the list.
+If inline dictation or voice mode shows an **ID** beside a provider failure, copy it. As the instance owner, open **Settings → Voice → Errors**. The recent list shows the newest failures first. Paste the exact ID into **Error ID** and select **Look up** to see when it happened, the provider and model (when known), the failure stage, a safe cause, the **reason** that ended the session and a **detail**. `unknown` means the cause could not be safely classified; the reason still tells what happened: `socketClosed` (the provider connection closed — detail is the WebSocket close code, e.g. `1006` for an abrupt drop of the network, proxy or SSH tunnel), `socketError` (detail `http_NNN` for a refused upgrade), `serviceError` (the provider reported an error — detail is its error code such as `session_expired`), `malformedMessage`, `sequenceMismatch`, `sendFailed`, `setupTimeout`, `finishTimeout` or `other`. Older records show the reason as `unknown`. A missing or expired ID shows **No matching error**; use **Show recent** to return to the list.
 
 Records expire after seven days and are automatically removed. The journal excludes audio, transcripts, credentials, raw provider responses and free-form messages. Browser and microphone errors are not journaled, and past incidents are not backfilled. If saving fails, dictation still shows the original error without an ID.
 
@@ -454,7 +454,13 @@ Report through `session.emit`:
   and then that turn's revisions/final with the same `turnId`.
 
 Terminal failures go through `session.fail({ code, message })` with a code from the closed set.
-Core sanitizes the message before any client sees it. Clean up the upstream socket on
+Core sanitizes the message before any client sees it. For the owner's error journal a failure (passed
+to `fail` or thrown from `open`/`append`/`commit`/`finish`) may also carry `diagnosticCause`
+(`authentication`, `rateLimit`, `timeout`), `diagnosticReason` (`socketClosed`, `socketError`,
+`serviceError`, `malformedMessage`, `sequenceMismatch`, `sendFailed`, `setupTimeout`, `finishTimeout`;
+anything else is stored as `other`) and `diagnosticDetail` — a WebSocket close code `1000`–`4999` or a
+lowercase identifier matching `^[a-z][a-z0-9_.]{0,63}$`. Any other detail is dropped; never put close
+reason text, upstream messages or payloads there. Clean up the upstream socket on
 `session.signal`, on `cancel`, and on `finish`; a provider that ignores the abort signal is still cut
 off by the session deadlines.
 

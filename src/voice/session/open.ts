@@ -128,7 +128,7 @@ export default async function (
     // Invalidate callbacks before aborting: a provider can report a failure synchronously on abort. Release does
     // not depend on the client seeing the error, nor on the provider respecting the AbortSignal.
     let diagnostic: Promise<string | null> | undefined;
-    const endWith = (code?: types.voice.ErrorCode, cause?: DiagnosticCause): void => {
+    const endWith = (code?: types.voice.ErrorCode, cause?: DiagnosticCause, detail: DiagnosticDetail = {}): void => {
         if (isClosed()) return;
         const stage = !ready ? "opening" : state === "closing" ? "finishing" : "streaming";
         endCode = code ?? null;
@@ -139,7 +139,7 @@ export default async function (
         const report = (errorId?: string | null) => deliver({ type: "error", code, message: ctx.fns.voice.session.message({ code }), ...(errorId ? { errorId } : {}) });
         if (cause !== undefined) {
             // Only identifiers from the resolved provider catalogue, never the raw route, reach storage.
-            const save = Promise.resolve().then(() => ctx.fns.voice.journal.record({ provider: route.provider, model: route.model.id, stage, cause }));
+            const save = Promise.resolve().then(() => ctx.fns.voice.journal.record({ provider: route.provider, model: route.model.id, stage, cause, ...detail }));
             diagnostic = bounded(save, 1000).catch(() => null);
             if (ready) void diagnostic.then(report);
         } else if (ready) report();
@@ -147,7 +147,7 @@ export default async function (
 
     const providerFailed = (error: unknown) => {
         const code = codeOf(error);
-        endWith(code, causeOf(error, code));
+        endWith(code, causeOf(error, code), detailOf(error));
     };
 
     /** Allocate a phrase for one commit and register it as unsettled. */
@@ -189,7 +189,7 @@ export default async function (
                 providerOrders.has(event.turnId)) return;
             if (!Number.isSafeInteger(event.endByte) || event.endByte % 2 !== 0 ||
                 event.endByte <= serverCommittedBytes || event.endByte > sentBytes) {
-                endWith("provider", "unknown");
+                endWith("provider", "unknown", { reason: "sequenceMismatch" });
                 return;
             }
             serverCommittedBytes = event.endByte;
@@ -263,7 +263,7 @@ export default async function (
         ready = true;
     } catch (error) {
         const code = endCode ?? codeOf(error);
-        endWith(code, openingProvider ? causeOf(error, code) : undefined);
+        endWith(code, openingProvider ? causeOf(error, code) : undefined, detailOf(error));
         const errorId = await diagnostic;
         throw Object.assign(ctx.fns.voice.session.failure({ code }), errorId ? { errorId } : {});
     }
@@ -348,7 +348,7 @@ export default async function (
             return { ok: false, ...(endCode ? { code: endCode } : {}) };
         }
         state = "closing";
-        const timer = setTimeout(() => endWith("timeout", "timeout"), limits.finishTimeoutMs);
+        const timer = setTimeout(() => endWith("timeout", "timeout", { reason: "finishTimeout" }), limits.finishTimeoutMs);
         try {
             // Inspect the remaining audio inside the chain, after any boundaries reported by queued appends.
             await enqueue(async () => {
@@ -379,6 +379,15 @@ export default async function (
 }
 
 type DiagnosticCause = "authentication" | "rateLimit" | "timeout" | "unknown";
+type DiagnosticDetail = { reason?: string; detail?: string };
+
+/** Copy only string reason/detail hints; the journal validates them against its closed set and pattern. */
+function detailOf(error: unknown): DiagnosticDetail {
+    try {
+        const { diagnosticReason: reason, diagnosticDetail: detail } = (error ?? {}) as { diagnosticReason?: unknown; diagnosticDetail?: unknown };
+        return { ...(typeof reason === "string" ? { reason } : {}), ...(typeof detail === "string" ? { detail } : {}) };
+    } catch { return {}; }
+}
 
 /** Discard unrecognized adapter values; never inspect upstream text, nested errors or stack traces. */
 function causeOf(error: unknown, code: types.voice.ErrorCode): DiagnosticCause {

@@ -20,10 +20,10 @@ export default async function (
     const missing = () => reply({ error: "Voice error not found" }, 404);
     if (id !== undefined && !/^[0-9a-f]{16}$/.test(id)) return missing();
     const cutoff = Date.now() - 7 * 86400000;
-    const select = "SELECT id, created_at, provider, model, stage, cause FROM voice_error_journal WHERE created_at > ?";
+    const select = "SELECT id, created_at, provider, model, stage, cause, reason, detail FROM voice_error_journal WHERE created_at > ?";
     try {
         const rows = await ctx.fns.procs.db.select({ sql: id === undefined ? select + " ORDER BY created_at DESC, id DESC LIMIT 100" : select + " AND id = ?", params: id === undefined ? [cutoff] : [cutoff, id] });
-        const errors = rows.map(row => ({ id: row.id, createdAt: new Date(Number(row.created_at)).toISOString(), provider: row.provider, model: row.model, stage: row.stage, cause: row.cause }));
+        const errors = rows.map(row => ({ id: row.id, createdAt: new Date(Number(row.created_at)).toISOString(), provider: row.provider, model: row.model, stage: row.stage, cause: row.cause, reason: row.reason ?? null, detail: row.detail ?? null }));
         return id === undefined ? reply({ errors }) : errors[0] ? reply({ error: errors[0] }) : missing();
     } catch { return reply({ error: "Voice diagnostics unavailable" }, 503); }
 }

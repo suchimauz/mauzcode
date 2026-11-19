@@ -6,7 +6,7 @@ import loadCron from "../cron/$loader_cron";
 import schedule from "./$cron_voiceErrorJournalExpiry";
 import openai from "./$voiceProvider_openai-realtime";
 
-type Diagnostic = { id: string; createdAt: string; provider: string | null; model: string | null; stage: string; cause: string };
+type Diagnostic = { id: string; createdAt: string; provider: string | null; model: string | null; stage: string; cause: string; reason?: string | null; detail?: string | null };
 const recentRows = async (response: Response) => ((await response.json()) as { errors: Diagnostic[] }).errors;
 const exactRow = async (response: Response) => ((await response.json()) as { error: Diagnostic }).error;
 
@@ -35,7 +35,7 @@ describe('voice error journal', () => {
         expect(res.status).toBe(200);
         expect(res.headers.get('cache-control')).toBe('no-store');
         const error = await exactRow(res);
-        expect(error).toEqual({ id, createdAt: new Date(error.createdAt).toISOString(), ...failure });
+        expect(error).toEqual({ id, createdAt: new Date(error.createdAt).toISOString(), ...failure, reason: null, detail: null });
         expect(await recentRows(await get('owner'))).toContainEqual(error);
         for (const role of [null, 'member']) for (const key of [undefined, id]) {
             const denied = await get(role, key);
@@ -48,6 +48,18 @@ describe('voice error journal', () => {
         expect(await ctx.fns.voice.journal.record({ ...failure, stage: canary })).toBeNull();
         expect((await get('owner', '0000000000000000')).status).toBe(404);
         expect((await get('owner', 'bad-format')).status).toBe(404);
+    });
+
+    test('reason and detail are normalized: unknown reasons become other and unsafe details are dropped', async () => {
+        const { ctx, get } = await fixture();
+        const read = async (opts: { reason?: string; detail?: string }) => exactRow(await get('owner', await ctx.fns.voice.journal.record({ ...failure, cause: 'unknown', ...opts })));
+        expect(await read({ reason: 'socketClosed', detail: '1006' })).toMatchObject({ reason: 'socketClosed', detail: '1006' });
+        expect(await read({ reason: 'serviceError', detail: 'session_expired' })).toMatchObject({ reason: 'serviceError', detail: 'session_expired' });
+        expect(await read({ reason: 'socketError', detail: 'http_502' })).toMatchObject({ reason: 'socketError', detail: 'http_502' });
+        expect(await read({ reason: 'sensitive-canary', detail: '999' })).toMatchObject({ reason: 'other', detail: null });
+        for (const detail of ['Session Expired', 'https://api.openai.com/v1', 'sk-' + 'A'.repeat(40), 'a'.repeat(65), '5000', 'x y']) {
+            expect(await read({ reason: 'serviceError', detail })).toMatchObject({ reason: 'serviceError', detail: null });
+        }
     });
 
     test('recent list is bounded and ordered; concurrent records have distinct exact references', async () => {

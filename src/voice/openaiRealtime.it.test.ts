@@ -266,8 +266,9 @@ describe("openai-realtime against the fake realtime server", () => {
         }
     });
 
-    for (const [wireCode, cause] of [["rate_limit_exceeded", "rateLimit"], [`unknown-${KEY}`, "unknown"]] as const) {
-        test(`the ${cause} diagnostic keeps no credential, transcript, or raw upstream code`, async () => {
+    // A lowercase service identifier is kept as the detail; a code carrying anything else is dropped entirely.
+    for (const [wireCode, cause, detail] of [["rate_limit_exceeded", "rateLimit", "rate_limit_exceeded"], [`unknown-${KEY}`, "unknown", null]] as const) {
+        test(`the ${cause} diagnostic keeps no credential, transcript, or unsafe upstream code`, async () => {
             const server = fake();
             const { ctx, view } = await makeFixture(server);
             const { events } = await openSession(ctx, routeOf(view));
@@ -278,9 +279,9 @@ describe("openai-realtime against the fake realtime server", () => {
             const event = events[0];
             if (event?.type !== "error" || !event.errorId) throw new Error("Missing terminal reference");
             const rows = await ctx.fns.procs.db.select({ sql: "SELECT * FROM voice_error_journal WHERE id = ?", params: [event.errorId] });
-            expect(rows).toMatchObject([{ provider: provider.id, model: "gpt-live-transcribe", stage: "streaming", cause }]);
+            expect(rows).toMatchObject([{ provider: provider.id, model: "gpt-live-transcribe", stage: "streaming", cause, reason: "serviceError", detail }]);
             const visible = JSON.stringify([rows, events]);
-            for (const forbidden of [KEY, transcript, wireCode]) expect(visible).not.toContain(forbidden);
+            for (const forbidden of [KEY, transcript, ...(detail ? [] : [wireCode])]) expect(visible).not.toContain(forbidden);
             await conn.closed;
         });
     }
@@ -310,6 +311,12 @@ describe("openai-realtime against the fake realtime server", () => {
         expect(await d.session.finish()).toEqual({ ok: false, code: "provider" });
         expect(d.events).toEqual([{ type: "error", errorId: expect.stringMatching(/^[0-9a-f]{16}$/), code: "provider", message: "The voice provider failed." }]);
         safeEvents(d.events);
+        const dropEvent = d.events[0];
+        if (dropEvent?.type !== "error" || !dropEvent.errorId) throw new Error("Missing terminal reference");
+        // The journal names the disconnect and its close code, never the peer's close reason text.
+        const dropRows = await dropped.ctx.fns.procs.db.select({ sql: "SELECT * FROM voice_error_journal WHERE id = ?", params: [dropEvent.errorId] });
+        expect(dropRows).toMatchObject([{ cause: "unknown", reason: "socketClosed", detail: "1011" }]);
+        expect(JSON.stringify(dropRows)).not.toContain("fake upstream failure");
     });
 
     test("connection test confirms the session without sending audio and releases the socket", async () => {

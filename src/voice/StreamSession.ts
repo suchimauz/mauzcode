@@ -13,6 +13,19 @@ export type StreamSession = {
     signal: AbortSignal;
     /** Report provider-selected boundaries, phrase updates and usage. Events after `cancel` are dropped. */
     emit: (event: types.voice.PhraseEvent) => void;
-    /** Report a terminal, sanitized failure; core maps it to a `types.voice.ErrorCode` and closes the session. */
-    fail: (error: { code: types.voice.ErrorCode; message: string; diagnosticCause?: "authentication" | "rateLimit" | "timeout" | "unknown" }) => void;
+    /**
+     * Report a terminal, sanitized failure; core maps it to a `types.voice.ErrorCode` and closes the session.
+     * Optional diagnostics go only to the owner's error journal: `diagnosticReason` names what ended the session
+     * (`socketClosed`, `socketError`, `serviceError`, `malformedMessage`, `sequenceMismatch`, `sendFailed`,
+     * `setupTimeout`, `finishTimeout`; anything else becomes `other`) and `diagnosticDetail` is a WebSocket close code
+     * (1000–4999) or a lowercase service identifier (`^[a-z][a-z0-9_.]{0,63}$`); any other detail is dropped.
+     * Thrown errors from `open`, `append`, `commit` and `finish` may carry the same fields.
+     */
+    fail: (error: {
+        code: types.voice.ErrorCode;
+        message: string;
+        diagnosticCause?: "authentication" | "rateLimit" | "timeout" | "unknown";
+        diagnosticReason?: string;
+        diagnosticDetail?: string;
+    }) => void;
 };

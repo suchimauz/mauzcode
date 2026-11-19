@@ -25,7 +25,7 @@ export type VoiceConnectionInput = { accountName: string; config: Record<string,
 
 const PATH = '/voice/api';
 
-export type VoiceErrorRecord = { id: string; createdAt: string; provider: string | null; model: string | null; stage: string; cause: string };
+export type VoiceErrorRecord = { id: string; createdAt: string; provider: string | null; model: string | null; stage: string; cause: string; reason?: string | null; detail?: string | null };
 export const isVoiceErrorId = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{16}$/.test(value);
 const ERRORS_PATH = '/api/voice/errors';
 export const listVoiceErrors = (signal: AbortSignal) => requestJson<{ errors: VoiceErrorRecord[] }>(ERRORS_PATH, { signal }).then(r => r.errors);

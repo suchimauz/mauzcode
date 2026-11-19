@@ -406,6 +406,26 @@ test("provider opening and streaming errors do not expose vendor payloads", asyn
     expect(f.ctx.state.voice.socketSessions?.size).toBe(0);
 });
 
+test("provider reason and detail reach the journal as plain strings only", async () => {
+    const rows: unknown[] = [];
+    const f = fixture(async fields => { rows.push(fields); return "abcdef0123456789"; });
+    const listening = await f.localSocket();
+    const failure = { code: "provider" as const, message: SECRET, diagnosticReason: "socketClosed", diagnosticDetail: "1006" };
+    f.streams[0]!.session()!.fail(failure);
+    await turns();
+    expect(last(listening.events)).toMatchObject({ type: "error", code: "provider", errorId: "abcdef0123456789" });
+    const second = await f.localSocket();
+    const hostile = { code: "provider" as const, message: SECRET, diagnosticReason: { SECRET }, diagnosticDetail: 1006 };
+    f.streams[1]!.session()!.fail(hostile as unknown as Parameters<types.voice.StreamSession["fail"]>[0]);
+    await turns();
+    expect(last(second.events)?.type).toBe("error");
+    expect(rows).toEqual([
+        { provider: "fixture", model: "pcm", stage: "streaming", cause: "unknown", reason: "socketClosed", detail: "1006" },
+        { provider: "fixture", model: "pcm", stage: "streaming", cause: "unknown" },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain(SECRET);
+});
+
 test("core remains compatible with callers that do not pass a transport signal", async () => {
     const f = fixture();
     const events: types.voice.SessionEvent[] = [];

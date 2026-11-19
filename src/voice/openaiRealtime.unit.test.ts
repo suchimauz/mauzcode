@@ -243,3 +243,68 @@ test("session setup and finish have independent deadlines and close their socket
         });
     } finally { vi.useRealTimers(); }
 });
+
+/** Open one accepted live stream on a local socket and collect the full failure objects it reports. */
+async function liveStream(next: Promise<LocalSocket>) {
+    const controller = new AbortController();
+    const failures: Record<string, unknown>[] = [];
+    const session: types.voice.StreamSession = {
+        sampleRate: 24_000, options: {}, signal: controller.signal,
+        emit: () => {}, fail: error => { failures.push({ ...error }); },
+    };
+    const opening = provider.open(context, connection(), session);
+    const socket = await next;
+    socket.open();
+    socket.accept();
+    return { stream: await opening, socket, failures, controller };
+}
+
+for (const code of [1006, 1011]) {
+    test(`a live disconnect reports socketClosed with close code ${code} and no close reason`, () => withSocket(async next => {
+        const { socket, failures, controller } = await liveStream(next);
+        try {
+            socket.readyState = 3;
+            socket.dispatchEvent(new CloseEvent("close", { code, reason: `${KEY} private reason` }));
+            expect(failures).toHaveLength(1);
+            expect(failures[0]).toMatchObject({ code: "provider", diagnosticReason: "socketClosed", diagnosticDetail: String(code) });
+            expect(JSON.stringify(failures)).not.toContain(KEY);
+        } finally { controller.abort(); }
+    }));
+}
+
+test("a live service error reports serviceError with only a safe identifier", () => withSocket(async next => {
+    const { socket, failures, controller } = await liveStream(next);
+    try {
+        socket.receive({ type: "error", error: { code: "session_expired", type: "invalid_request_error", message: `${KEY} private text` } });
+        expect(failures[0]).toMatchObject({ code: "provider", diagnosticCause: "unknown", diagnosticReason: "serviceError", diagnosticDetail: "session_expired" });
+        expect(JSON.stringify(failures)).not.toContain(KEY);
+    } finally { controller.abort(); }
+}));
+
+test("an unsafe service error code falls back to its type, then to no detail", () => withSocket(async next => {
+    const first = await liveStream(next);
+    try {
+        first.socket.receive({ type: "error", error: { code: "Not Safe Code", type: "server_error" } });
+        expect(first.failures[0]).toMatchObject({ diagnosticReason: "serviceError", diagnosticDetail: "server_error" });
+    } finally { first.controller.abort(); }
+}));
+
+test("malformed frames and unknown items are classified without detail", () => withSocket(async next => {
+    const { socket, failures, controller } = await liveStream(next);
+    try {
+        socket.dispatchEvent(new MessageEvent("message", { data: "not json" }));
+        expect(failures[0]).toMatchObject({ code: "provider", diagnosticReason: "malformedMessage" });
+        expect(failures[0]).not.toHaveProperty("diagnosticDetail");
+    } finally { controller.abort(); }
+}));
+
+test("a predecessor mismatch is classified as sequenceMismatch", () => withSocket(async next => {
+    const { stream, socket, failures, controller } = await liveStream(next);
+    try {
+        await stream.commit(0);
+        await stream.commit(1);
+        socket.receive(committed("first"));
+        socket.receive(committed("second", "other"));
+        expect(failures[0]).toMatchObject({ code: "provider", diagnosticReason: "sequenceMismatch" });
+    } finally { controller.abort(); }
+}));

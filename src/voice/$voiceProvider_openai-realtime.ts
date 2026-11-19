@@ -153,6 +153,16 @@ function failure(code: types.voice.ErrorCode, message?: string): StreamError {
     return Object.assign(new Error(message ?? fixed), { code });
 }
 
+/** Attach a closed-set diagnostic reason and a safe machine detail; core validates both again before storage. */
+function classified(error: StreamError, reason: string, detail?: string | number, cause?: "authentication" | "rateLimit" | "unknown"): StreamError {
+    return Object.assign(error, { diagnosticReason: reason, ...(detail !== undefined ? { diagnosticDetail: String(detail) } : {}), ...(cause ? { diagnosticCause: cause } : {}) });
+}
+
+/** Keep only a lowercase service identifier; anything else (free text, odd casing, long values) is dropped. */
+function serviceId(value: unknown): string | undefined {
+    return typeof value === "string" && /^[a-z][a-z0-9_.]{0,63}$/.test(value) ? value : undefined;
+}
+
 async function openRealtime(conn: types.voice.ResolvedConnection, session: types.voice.StreamSession): Promise<types.voice.VoiceStream> {
     let settings: ReturnType<typeof connectionSettings>;
     let options: types.voice.RecognitionOptions;
@@ -234,7 +244,7 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
         } else finish?.resolve();
     };
     const abort = () => cleanup(failure("provider"), false);
-    const openTimer = setTimeout(() => cleanup(failure("timeout", "OpenAI Realtime session setup timed out.")), OPEN_TIMEOUT_MS);
+    const openTimer = setTimeout(() => cleanup(classified(failure("timeout", "OpenAI Realtime session setup timed out."), "setupTimeout")), OPEN_TIMEOUT_MS);
 
     function send(message: object): void {
         let code: types.voice.ErrorCode = "provider";
@@ -245,7 +255,7 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
                 else { socket.send(body); return; }
             }
         } catch { /* Only report the local failure, never a transport exception. */ }
-        const error = failure(code);
+        const error = classified(failure(code), "sendFailed");
         cleanup(error);
         throw error;
     }
@@ -260,12 +270,17 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
         // Bun won't follow WebSocket redirects. For failed upgrades it exposes HTTP status only in this fixed
         // diagnostic format; classify the status without ever forwarding the diagnostic, URL or response body.
         const message = (event as ErrorEvent).message;
-        const auth = !accepted && typeof message === "string" && /failed: Expected 101 status code: (?:401|403)$/.test(message);
-        const limited = !accepted && typeof message === "string" && /failed: Expected 101 status code: 429$/.test(message);
-        cleanup(Object.assign(failure(auth ? "providerAuth" : "provider"), { diagnosticCause: auth ? "authentication" : limited ? "rateLimit" : "unknown" }));
+        const status = !accepted && typeof message === "string" ? /failed: Expected 101 status code: ([1-5][0-9]{2})$/.exec(message)?.[1] : undefined;
+        const auth = status === "401" || status === "403";
+        const limited = status === "429";
+        cleanup(classified(failure(auth ? "providerAuth" : "provider"), "socketError", status ? `http_${status}` : undefined, auth ? "authentication" : limited ? "rateLimit" : "unknown"));
     }
 
-    function onClose(): void { cleanup(failure("provider")); }
+    function onClose(event: Event): void {
+        // Only the numeric close code is kept; the close reason is peer-controlled free text and is never read.
+        const code = (event as CloseEvent).code;
+        cleanup(classified(failure("provider"), "socketClosed", Number.isInteger(code) && code >= 1000 && code <= 4999 ? code : undefined));
+    }
 
     function maybeFinish(): void {
         if (finish && unsettled === 0) cleanup();
@@ -280,19 +295,19 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
             const parsed: unknown = JSON.parse(event.data);
             if (!parsed || typeof parsed !== "object" || !("type" in parsed) || typeof parsed.type !== "string") throw failure("provider");
             message = parsed as Record<string, unknown>;
-        } catch { cleanup(failure("provider")); return; }
+        } catch { cleanup(classified(failure("provider"), "malformedMessage")); return; }
         const { type, item_id: id, previous_item_id: predecessor } = message;
         if (type === "error") {
             const error = message.error as { code?: string; type?: string } | undefined;
             const auth = AUTH_ERRORS.includes(error?.code ?? "") || AUTH_ERRORS.includes(error?.type ?? "");
             const limited = error?.code === "rate_limit_exceeded" || error?.type === "rate_limit_error";
-            cleanup(Object.assign(failure(auth ? "providerAuth" : "provider"), { diagnosticCause: auth ? "authentication" : limited ? "rateLimit" : "unknown" }));
+            cleanup(classified(failure(auth ? "providerAuth" : "provider"), "serviceError", serviceId(error?.code) ?? serviceId(error?.type), auth ? "authentication" : limited ? "rateLimit" : "unknown"));
             return;
         }
         if (!accepted) {
             if (type === "session.updated" && setupSent) {
                 const updated = message.session as { type?: unknown } | undefined;
-                if (updated?.type !== undefined && updated.type !== "transcription") { cleanup(failure("provider")); return; }
+                if (updated?.type !== undefined && updated.type !== "transcription") { cleanup(classified(failure("provider"), "malformedMessage")); return; }
                 clearTimeout(openTimer);
                 accepted = true;
                 ready.resolve();
@@ -303,7 +318,7 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
             // The ack always binds FIFO. The linked-list pointer can detect a broken stream but never picks an order.
             const order = pending.shift();
             if (typeof id !== "string" || !id || items.has(id) || order === undefined ||
-                (predecessor !== undefined && predecessor !== previous)) { cleanup(failure("provider")); return; }
+                (predecessor !== undefined && predecessor !== previous)) { cleanup(classified(failure("provider"), "sequenceMismatch")); return; }
             items.set(id, { order, text: "", settled: false });
             previous = id;
             return;
@@ -313,15 +328,15 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
         const failed = type === "conversation.item.input_audio_transcription.failed";
         if (!delta && !completed && !failed) return;
         const item = typeof id === "string" ? items.get(id) : undefined;
-        if (!item) { cleanup(failure("provider")); return; }
+        if (!item) { cleanup(classified(failure("provider"), "sequenceMismatch")); return; }
         if (item.settled) return; // Duplicate finals, failures and trailing deltas cannot change transcript or usage.
         if (delta) {
-            if (typeof message.delta !== "string" || item.text.length + message.delta.length > MAX_BUFFER_BYTES) { cleanup(failure("provider")); return; }
+            if (typeof message.delta !== "string" || item.text.length + message.delta.length > MAX_BUFFER_BYTES) { cleanup(classified(failure("provider"), "malformedMessage")); return; }
             item.text += message.delta;
             session.emit({ type: "revision", order: item.order, text: item.text });
             return;
         }
-        if (completed && typeof message.transcript !== "string") { cleanup(failure("provider")); return; }
+        if (completed && typeof message.transcript !== "string") { cleanup(classified(failure("provider"), "malformedMessage")); return; }
         item.settled = true;
         item.text = "";
         unsettled--;
@@ -376,7 +391,7 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
             if (!finish) {
                 if (terminalError) throw terminalError;
                 finish = Promise.withResolvers<void>();
-                finishTimer = setTimeout(() => cleanup(failure("timeout", "OpenAI Realtime did not finish transcribing in time.")), FINISH_TIMEOUT_MS);
+                finishTimer = setTimeout(() => cleanup(classified(failure("timeout", "OpenAI Realtime did not finish transcribing in time."), "finishTimeout")), FINISH_TIMEOUT_MS);
                 maybeFinish();
             }
             return finish.promise;

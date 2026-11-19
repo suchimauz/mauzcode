@@ -55,7 +55,7 @@ it.each([
 
 it('follows a fake session reference through Settings → Voice → Errors and a missing lookup', async () => {
   const { ws, view } = await mount('inline', { files: false });
-  const record = { id: 'deadbeef1234abcd', createdAt: '2026-04-25T12:00:00.000Z', provider: 'fixture', model: 'test', stage: 'streaming', cause: 'unknown' };
+  const record = { id: 'deadbeef1234abcd', createdAt: '2026-04-25T12:00:00.000Z', provider: 'fixture', model: 'test', stage: 'streaming', cause: 'unknown', reason: 'socketClosed', detail: '1006' };
   act(() => ws.receive({ type: 'error', code: 'provider', message: 'Provider unavailable.', errorId: record.id }));
   const visibleId = within(screen.getByRole('alert')).getByText(record.id).textContent!;
   view.unmount();
@@ -78,6 +78,7 @@ it('follows a fake session reference through Settings → Voice → Errors and a
   expect(row.querySelector('time')).toHaveAttribute('datetime', record.createdAt);
   expect(row).toHaveTextContent('Provider: fixture · Model: test');
   expect(row).toHaveTextContent('Stage: streaming · Cause: unknown');
+  expect(row).toHaveTextContent('Reason: socketClosed · Detail: 1006');
   await userEvent.clear(input); await userEvent.type(input, 'beefdead4321dcba');
   await userEvent.click(screen.getByRole('button', { name: 'Look up' }));
   expect(await screen.findByText('No matching error')).toBeVisible();

@@ -14,7 +14,7 @@ test('the owner can look up a failed fake-provider session by its displayed refe
     const lookup = await get('/' + failure.errorId);
     expect([lookup.status, lookup.ok ? '' : await lookup.clone().text()]).toEqual([200, '']);
     const { error } = await lookup.json();
-    expect(error).toEqual({ id: failure.errorId, provider: 'journal-fixture', model: 'fixture-live', stage: 'opening', cause: 'authentication', createdAt: expect.any(String) });
+    expect(error).toEqual({ id: failure.errorId, provider: 'journal-fixture', model: 'fixture-live', stage: 'opening', cause: 'authentication', reason: null, detail: null, createdAt: expect.any(String) });
     expect(await (await get('')).json()).toEqual({ errors: [error] });
     expect((await get('/' + (failure.errorId === '0000000000000000' ? '1111111111111111' : '0000000000000000'))).status).toBe(404);
 });
