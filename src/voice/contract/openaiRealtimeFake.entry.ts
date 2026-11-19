@@ -41,6 +41,8 @@ export type FakeConnection = {
     waitReceived: (type: string, count?: number) => Promise<void>;
     /** Whether the upstream socket is still open. */
     isOpen: () => boolean;
+    /** Event ids of commits the fake rejected as empty (only with `enforceCommitMinimum`). */
+    rejectedCommits: string[];
 };
 
 /** Scriptable behavior of the fake for new connections. */
@@ -51,6 +53,9 @@ export type FakeBehavior = {
     manualConfirm?: boolean;
     /** session.updated payload override; the default echoes a minimal transcription session. */
     confirm?: object;
+    /** Answer a commit with under 100 ms of appended audio as the live service does: an `invalid_request_error` /
+     * `input_audio_buffer_commit_empty` error that echoes the commit's `event_id`; the socket stays open. */
+    enforceCommitMinimum?: boolean;
 };
 
 /** One running fake server. */
@@ -72,6 +77,8 @@ export type FakeRealtimeServer = {
 };
 
 const WAIT_MS = 4000;
+/** 100 ms of PCM16 at 24 kHz: the live service's minimum for one commit. */
+const MIN_COMMIT_BYTES = 4800;
 
 /** Wait for a condition with a bounded deadline; never sleeps in a fixed-length loop. */
 async function until(what: string, predicate: () => boolean): Promise<void> {
@@ -123,6 +130,7 @@ export function startFakeRealtime(behavior: FakeBehavior = {}): FakeRealtimeServ
                     await until(`${count} ${type} message(s)`, () => conn.received.filter(m => m.type === type).length >= count);
                 },
                 isOpen: () => socket !== undefined && socket.readyState === 1,
+                rejectedCommits: [],
             };
             let socket: ServerWebSocket<Wire> | undefined;
             (conn as any).setSocket = (ws: ServerWebSocket<Wire>) => { socket = ws; };
@@ -153,6 +161,17 @@ export function startFakeRealtime(behavior: FakeBehavior = {}): FakeRealtimeServ
                 if (typeof data !== "string") throw new Error("fake realtime server: client sent a binary frame");
                 const message = JSON.parse(data) as Record<string, any>;
                 conn.received.push(message);
+                const wire = ws.data as Wire & { buffered?: number };
+                if (message.type === "input_audio_buffer.append") {
+                    wire.buffered = (wire.buffered ?? 0) + Buffer.from(String(message.audio), "base64").byteLength;
+                } else if (message.type === "input_audio_buffer.commit") {
+                    const buffered = wire.buffered ?? 0;
+                    wire.buffered = 0;
+                    if (state.enforceCommitMinimum && buffered < MIN_COMMIT_BYTES) {
+                        conn.rejectedCommits.push(String(message.event_id));
+                        ws.send(JSON.stringify(commitEmptyError(message.event_id)));
+                    }
+                }
                 wake();
                 if (message.type === "session.update" && !state.manualConfirm) {
                     ws.send(JSON.stringify(state.confirm ?? { type: "session.updated", session: { type: "transcription" } }));
@@ -207,4 +226,31 @@ export function committed(id: string, previous: string | null = null): object {
 /** Build one native transcription wire event (delta / completed / failed) for one item. */
 export function transcription(kind: "delta" | "completed" | "failed", id: string, extra: Record<string, unknown> = {}): object {
     return { type: `conversation.item.input_audio_transcription.${kind}`, item_id: id, ...extra };
+}
+
+/** Build the live service's recoverable answer to a commit under 100 ms; it echoes the commit's `event_id`. */
+export function commitEmptyError(eventId: unknown): object {
+    return {
+        type: "error",
+        error: {
+            type: "invalid_request_error", code: "input_audio_buffer_commit_empty",
+            message: "Error committing input audio buffer: buffer too small. Expected at least 100ms of audio.",
+            param: null, event_id: typeof eventId === "string" ? eventId : null,
+        },
+    };
+}
+
+/** Build an `invalid_request_error` that names no client event, as the service sends for append validation. */
+export function uncorrelatedError(code = "invalid_value"): object {
+    return { type: "error", error: { type: "invalid_request_error", code, message: "Invalid value.", param: "audio.audio", event_id: null } };
+}
+
+/** Send deltas for an item before its commit acknowledgement, as gpt-live-transcribe does while audio streams. */
+export async function earlyDeltas(conn: FakeConnection, id: string, deltas: string[]): Promise<void> {
+    for (const delta of deltas) await conn.send(transcription("delta", id, { delta }));
+}
+
+/** Build the completion the service sends for a silent commit: an empty transcript with metered usage. */
+export function emptyCompletion(id: string, seconds = 0.1): object {
+    return transcription("completed", id, { transcript: "", usage: { type: "duration", seconds } });
 }

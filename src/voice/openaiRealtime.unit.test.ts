@@ -61,6 +61,11 @@ class LocalSocket extends EventTarget {
 
 const committed = (item_id: string, previous_item_id?: string | null) => ({ type: "input_audio_buffer.committed", item_id, previous_item_id });
 const event = (suffix: string, item_id: string, body: object) => ({ type: `conversation.item.input_audio_transcription.${suffix}`, item_id, ...body });
+/** PCM16 at 24 kHz: 48 bytes per millisecond. */
+const audio = (ms: number) => new Uint8Array(ms * 48).fill(1);
+const commits = (socket: LocalSocket) => socket.sent.filter(m => (m as { type: string }).type === "input_audio_buffer.commit");
+const appended = (socket: LocalSocket) => (socket.sent as { type: string; audio?: string }[])
+    .filter(m => m.type === "input_audio_buffer.append").map(m => Buffer.from(m.audio!, "base64"));
 
 test("built-in catalogue registers and voice connection validation rejects unsafe configuration before saving", async () => {
     const file = import.meta.path.replace("openaiRealtime.unit.test.ts", "$voiceProvider_openai-realtime.ts");
@@ -115,7 +120,7 @@ test("wire setup is transcription-only and readiness requires session.updated", 
         socket.receive({ type: "session.created" });
         await Promise.resolve();
         expect(ready).toBe(false);
-        expect(socket.sent).toEqual([{ type: "session.update", session: { type: "transcription", audio: { input: {
+        expect(socket.sent).toEqual([{ type: "session.update", event_id: "mc_0", session: { type: "transcription", audio: { input: {
             format: { type: "audio/pcm", rate: 24000 }, turn_detection: null, noise_reduction: { type: "near_field" },
             transcription: { model: "gpt-live-transcribe", languages: ["zh-Hans"], keywords: ["alpha", "beta"], prompt: "Reference spelling", delay: "high" },
         } } } }]);
@@ -157,10 +162,12 @@ test("commit FIFO keeps full revisions by item and finish waits for earlier work
         socket.accept();
         const stream = await opening;
         expect(JSON.stringify(socket.sent)).not.toMatch(/"(?:languages|keywords|prompt|delay)"/);
+        await stream.append(audio(200));
         await stream.commit(8);
+        await stream.append(audio(200));
         await stream.commit(3);
         const finishing = stream.finish();
-        expect(socket.sent.slice(1)).toEqual([{ type: "input_audio_buffer.commit" }, { type: "input_audio_buffer.commit" }]);
+        expect(commits(socket)).toEqual([{ type: "input_audio_buffer.commit", event_id: "mc_1" }, { type: "input_audio_buffer.commit", event_id: "mc_2" }]);
         socket.receive(committed("first", null));
         socket.receive(event("delta", "first", { delta: "some" }));
         socket.receive(committed("second", "first"));
@@ -182,21 +189,149 @@ test("commit FIFO keeps full revisions by item and finish waits for earlier work
     } finally { controller.abort(); }
 }));
 
-test("a wrong predecessor is a safe session failure, not a way to choose a commit", () => withSocket(async next => {
-    const { session, controller, events, failures } = sink();
+test("previous_item_id never rejects an item: acks bind FIFO to pending commits", () => withSocket(async next => {
+    const { stream, socket, events, failures, controller } = await eventStream(next);
     try {
-        const opening = provider.open(context, connection(), session);
-        const socket = await next;
-        socket.open();
-        socket.accept();
-        const stream = await opening;
+        await stream.append(audio(200));
         await stream.commit(0);
+        await stream.append(audio(200));
         await stream.commit(1);
-        socket.receive(committed("first"));
+        socket.receive(committed("first", "unrelated"));
         socket.receive(committed("second", KEY));
-        expect(failures).toEqual([{ code: "provider", message: "OpenAI Realtime transcription failed." }]);
+        socket.receive(event("completed", "second", { transcript: "two" }));
+        socket.receive(event("completed", "first", { transcript: "one" }));
+        expect(failures).toEqual([]);
+        expect(events).toEqual([{ type: "final", order: 1, text: "two" }, { type: "final", order: 0, text: "one" }]);
+        expect(socket.readyState).toBe(LocalSocket.OPEN);
+    } finally { controller.abort(); }
+}));
+
+test("deltas before the commit acknowledgement are replayed into the bound phrase", () => withSocket(async next => {
+    const { stream, socket, events, failures, controller } = await eventStream(next);
+    try {
+        await stream.append(audio(200));
+        socket.receive(event("delta", "early", { delta: "hello" }));
+        socket.receive(event("delta", "early", { delta: " world" }));
         expect(events).toEqual([]);
-        expect(socket.readyState).toBe(LocalSocket.CLOSED);
+        await stream.commit(4);
+        socket.receive(event("completed", "early", { transcript: "Hello world." }));
+        expect(events).toEqual([]);
+        const finishing = stream.finish();
+        socket.receive(committed("early", null));
+        await finishing;
+        expect(events).toEqual([
+            { type: "revision", order: 4, text: "hello" },
+            { type: "revision", order: 4, text: "hello world" },
+            { type: "final", order: 4, text: "Hello world." },
+        ]);
+        expect(failures).toEqual([]);
+    } finally { controller.abort(); }
+}));
+
+test("an empty transcript settles a final empty phrase and the session continues", () => withSocket(async next => {
+    const { stream, socket, events, failures, controller } = await eventStream(next);
+    try {
+        await stream.append(audio(1000));
+        await stream.commit(0);
+        socket.receive(committed("silence"));
+        socket.receive(event("completed", "silence", { transcript: "", usage: { type: "duration", seconds: 1 } }));
+        expect(events).toEqual([{ type: "usage", audioSeconds: 1 }, { type: "final", order: 0, text: "" }]);
+        expect(failures).toEqual([]);
+        expect(socket.readyState).toBe(LocalSocket.OPEN);
+    } finally { controller.abort(); }
+}));
+
+test("an empty commit is settled locally and a short tail is padded to 100 ms", () => withSocket(async next => {
+    const { stream, socket, events, failures, controller } = await eventStream(next);
+    try {
+        await stream.commit(0);
+        expect(commits(socket)).toEqual([]);
+        expect(events).toEqual([{ type: "final", order: 0, text: "" }]);
+        await stream.append(audio(40));
+        await stream.commit(1);
+        expect(appended(socket).map(chunk => chunk.byteLength)).toEqual([1920, 2880]);
+        expect(appended(socket)[1]!.every(byte => byte === 0)).toBe(true);
+        expect(commits(socket)).toHaveLength(1);
+        // Exactly 100 ms needs no padding.
+        await stream.append(audio(100));
+        await stream.commit(2);
+        expect(appended(socket).map(chunk => chunk.byteLength)).toEqual([1920, 2880, 4800]);
+        await stream.commit(3);
+        expect(commits(socket)).toHaveLength(2);
+        expect(failures).toEqual([]);
+    } finally { controller.abort(); }
+}));
+
+test("odd-length frames reach the service as whole PCM16 samples", () => withSocket(async next => {
+    const { stream, socket, controller } = await eventStream(next);
+    try {
+        await stream.append(new Uint8Array([1, 2, 3]));
+        await stream.append(new Uint8Array([4]));
+        await stream.append(new Uint8Array([5, 6, 7]));
+        expect(appended(socket).map(chunk => [...chunk])).toEqual([[1, 2], [3, 4], [5, 6]]);
+    } finally { controller.abort(); }
+}));
+
+test("a correlated commit error fails only its phrase; later acks bind to later orders", () => withSocket(async next => {
+    const { stream, socket, events, failures, controller } = await eventStream(next);
+    try {
+        await stream.append(audio(200));
+        await stream.commit(0);
+        await stream.append(audio(200));
+        await stream.commit(1);
+        const [first] = commits(socket) as { event_id: string }[];
+        socket.receive({ type: "error", error: { type: "invalid_request_error", code: "input_audio_buffer_commit_empty", message: KEY, event_id: first!.event_id } });
+        expect(events).toEqual([{ type: "failed", order: 0, message: "OpenAI Realtime could not transcribe this phrase." }]);
+        const finishing = stream.finish();
+        socket.receive(committed("second", null));
+        socket.receive(event("completed", "second", { transcript: "kept" }));
+        await finishing;
+        expect(events.at(-1)).toEqual({ type: "final", order: 1, text: "kept" });
+        expect(failures).toEqual([]);
+        expect(JSON.stringify(events)).not.toContain(KEY);
+    } finally { controller.abort(); }
+}));
+
+test("uncorrelated and terminal-class errors still end the session with their classification", () => withSocket(async next => {
+    const uncorrelated = await liveStream(next);
+    try {
+        await uncorrelated.stream.append(audio(200));
+        await uncorrelated.stream.commit(0);
+        uncorrelated.socket.receive({ type: "error", error: { type: "invalid_request_error", code: "invalid_value", event_id: null } });
+        expect(uncorrelated.failures[0]).toMatchObject({ code: "provider", diagnosticReason: "serviceError", diagnosticDetail: "invalid_value", diagnosticCause: "unknown" });
+    } finally { uncorrelated.controller.abort(); }
+}));
+
+test("a rate limit naming a pending commit is still terminal", () => withSocket(async next => {
+    const { stream, socket, failures, controller } = await liveStream(next);
+    try {
+        await stream.append(audio(200));
+        await stream.commit(0);
+        const [first] = commits(socket) as { event_id: string }[];
+        socket.receive({ type: "error", error: { type: "rate_limit_error", code: "rate_limit_exceeded", event_id: first!.event_id } });
+        expect(failures[0]).toMatchObject({ code: "provider", diagnosticReason: "serviceError", diagnosticCause: "rateLimit" });
+    } finally { controller.abort(); }
+}));
+
+test("an invalid_request_error answering the setup update fails opening and sends no audio", () => withSocket(async next => {
+    const { session, controller } = sink();
+    const opening = provider.open(context, connection(), session).catch((error: Error) => error);
+    const socket = await next;
+    socket.open();
+    const update = socket.sent[0] as { event_id: string };
+    socket.receive({ type: "error", error: { type: "invalid_request_error", code: "invalid_value", event_id: update.event_id } });
+    expect(await opening).toMatchObject({ code: "provider", diagnosticReason: "serviceError", diagnosticDetail: "invalid_value" });
+    expect(socket.sent).toHaveLength(1);
+    expect(socket.readyState).toBe(LocalSocket.CLOSED);
+    controller.abort();
+}));
+
+test("overflowing the pre-acknowledgement buffer is a sequenceMismatch", () => withSocket(async next => {
+    const { socket, failures, controller } = await liveStream(next);
+    try {
+        for (let index = 0; index <= 8; index++) socket.receive(event("delta", `item_${index}`, { delta: "x" }));
+        expect(failures).toHaveLength(1);
+        expect(failures[0]).toMatchObject({ code: "provider", diagnosticReason: "sequenceMismatch" });
     } finally { controller.abort(); }
 }));
 
@@ -234,6 +369,7 @@ test("session setup and finish have independent deadlines and close their socket
             socket.open();
             socket.accept();
             const stream = await opening;
+            await stream.append(audio(200));
             await stream.commit(0);
             const rejection = stream.finish().catch(error => error);
             vi.advanceTimersByTime(10000);
@@ -298,13 +434,33 @@ test("malformed frames and unknown items are classified without detail", () => w
     } finally { controller.abort(); }
 }));
 
-test("a predecessor mismatch is classified as sequenceMismatch", () => withSocket(async next => {
+test("an ack with no pending commit or a repeated item is classified as sequenceMismatch", () => withSocket(async next => {
+    const unexpected = await liveStream(next);
+    try {
+        unexpected.socket.receive(committed("first"));
+        expect(unexpected.failures[0]).toMatchObject({ code: "provider", diagnosticReason: "sequenceMismatch" });
+    } finally { unexpected.controller.abort(); }
+}));
+
+test("a duplicate acknowledged item is classified as sequenceMismatch", () => withSocket(async next => {
     const { stream, socket, failures, controller } = await liveStream(next);
     try {
+        await stream.append(audio(200));
         await stream.commit(0);
+        await stream.append(audio(200));
         await stream.commit(1);
         socket.receive(committed("first"));
-        socket.receive(committed("second", "other"));
+        socket.receive(committed("first", "first"));
         expect(failures[0]).toMatchObject({ code: "provider", diagnosticReason: "sequenceMismatch" });
     } finally { controller.abort(); }
 }));
+
+/** Open one accepted live stream on a local socket and collect provider events and failures. */
+async function eventStream(next: Promise<LocalSocket>) {
+    const { session, controller, events, failures } = sink();
+    const opening = provider.open(context, connection(), session);
+    const socket = await next;
+    socket.open();
+    socket.accept();
+    return { stream: await opening, socket, events, failures, controller };
+}

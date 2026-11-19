@@ -6,6 +6,13 @@ const DELAYS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 const OPEN_TIMEOUT_MS = 5_000;
 const FINISH_TIMEOUT_MS = 10_000;
 const MAX_BUFFER_BYTES = 1024 * 1024;
+// The service rejects commits under 100 ms of audio (4800 bytes of PCM16 at 24 kHz) with input_audio_buffer_commit_empty.
+const MIN_COMMIT_BYTES = SAMPLE_RATE / 10 * 2;
+// gpt-live-transcribe streams deltas before the commit acknowledgement names their item; hold them, bounded.
+const MAX_EARLY_ITEMS = 8;
+const MAX_EARLY_BYTES = MAX_BUFFER_BYTES;
+// Service errors that end the session even when they name a pending commit.
+const TERMINAL_ERRORS = ["rate_limit_exceeded", "rate_limit_error", "server_error", "session_expired"];
 const SOCKET_OPEN = 1;
 const SOCKET_CLOSED = 3;
 const MAX_OPTION_CHARS = 4000;
@@ -19,6 +26,7 @@ type Config = Readonly<Record<string, types.voice.ConfigValue>>;
 type ConfigIssue = NonNullable<ReturnType<NonNullable<types.voice.ProviderDefinition["validateConfig"]>>>;
 type StreamError = Error & { code: types.voice.ErrorCode };
 type Item = { order: number; text: string; settled: boolean };
+type Pending = { order: number; eventId: string };
 
 const provider: types.voice.ProviderDefinition = {
     id: "openai-realtime",
@@ -203,10 +211,17 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
     let terminalError: StreamError | undefined;
     let finish: ReturnType<typeof Promise.withResolvers<void>> | undefined;
     let finishTimer: ReturnType<typeof setTimeout> | undefined;
-    const pending: number[] = [];
+    // Commits awaiting their acknowledgement, FIFO; each carries the event_id an error event can name.
+    const pending: Pending[] = [];
     const items = new Map<string, Item>();
-    let previous: string | null = null;
+    // Transcription events for items not acknowledged yet, in arrival order, bounded by item count and bytes.
+    const early = new Map<string, { message: Record<string, unknown>; bytes: number }[]>();
+    let earlyBytes = 0;
     let unsettled = 0;
+    let eventSeq = 0;
+    let bytesSinceCommit = 0;
+    let carry: number | undefined;
+    const nextEventId = () => `mc_${eventSeq++}`;
 
     const cleanup = (error?: StreamError, notify = true): void => {
         if (closed) return;
@@ -217,6 +232,8 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
         clearTimeout(finishTimer);
         pending.length = 0;
         items.clear();
+        early.clear();
+        earlyBytes = 0;
         const ws = socket;
         socket = undefined;
         if (ws) {
@@ -263,7 +280,7 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
     function onOpen(): void {
         if (closed || setupSent) return;
         setupSent = true;
-        try { send(update); } catch { /* send has already failed the session safely. */ }
+        try { send({ ...update, event_id: nextEventId() }); } catch { /* send has already failed the session safely. */ }
     }
 
     function onError(event: Event): void {
@@ -296,11 +313,23 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
             if (!parsed || typeof parsed !== "object" || !("type" in parsed) || typeof parsed.type !== "string") throw failure("provider");
             message = parsed as Record<string, unknown>;
         } catch { cleanup(classified(failure("provider"), "malformedMessage")); return; }
-        const { type, item_id: id, previous_item_id: predecessor } = message;
+        const { type, item_id: id } = message;
         if (type === "error") {
-            const error = message.error as { code?: string; type?: string } | undefined;
+            const error = message.error as { code?: string; type?: string; event_id?: unknown } | undefined;
             const auth = AUTH_ERRORS.includes(error?.code ?? "") || AUTH_ERRORS.includes(error?.type ?? "");
             const limited = error?.code === "rate_limit_exceeded" || error?.type === "rate_limit_error";
+            const terminal = auth || TERMINAL_ERRORS.includes(error?.code ?? "") || TERMINAL_ERRORS.includes(error?.type ?? "");
+            // An error that names a pending commit (for example input_audio_buffer_commit_empty) fails only that
+            // phrase: the service keeps the socket usable. Everything else, including setup errors, stays terminal.
+            const index = accepted && !terminal && typeof error?.event_id === "string"
+                ? pending.findIndex(entry => entry.eventId === error.event_id) : -1;
+            if (index >= 0) {
+                const [entry] = pending.splice(index, 1);
+                unsettled--;
+                session.emit({ type: "failed", order: entry!.order, message: "OpenAI Realtime could not transcribe this phrase." });
+                maybeFinish();
+                return;
+            }
             cleanup(classified(failure(auth ? "providerAuth" : "provider"), "serviceError", serviceId(error?.code) ?? serviceId(error?.type), auth ? "authentication" : limited ? "rateLimit" : "unknown"));
             return;
         }
@@ -315,28 +344,57 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
             return;
         }
         if (type === "input_audio_buffer.committed") {
-            // The ack always binds FIFO. The linked-list pointer can detect a broken stream but never picks an order.
-            const order = pending.shift();
-            if (typeof id !== "string" || !id || items.has(id) || order === undefined ||
-                (predecessor !== undefined && predecessor !== previous)) { cleanup(classified(failure("provider"), "sequenceMismatch")); return; }
-            items.set(id, { order, text: "", settled: false });
-            previous = id;
+            // The ack binds FIFO to the oldest pending commit. previous_item_id is optional and never decides anything.
+            const entry = pending.shift();
+            if (typeof id !== "string" || !id || items.has(id) || entry === undefined) { cleanup(classified(failure("provider"), "sequenceMismatch")); return; }
+            items.set(id, { order: entry.order, text: "", settled: false });
+            const queued = early.get(id);
+            if (queued) {
+                early.delete(id);
+                for (const held of queued) {
+                    earlyBytes -= held.bytes;
+                    if (closed) return;
+                    transcriptionEvent(held.message);
+                }
+            }
             return;
         }
-        const delta = type === "conversation.item.input_audio_transcription.delta";
-        const completed = type === "conversation.item.input_audio_transcription.completed";
-        const failed = type === "conversation.item.input_audio_transcription.failed";
-        if (!delta && !completed && !failed) return;
-        const item = typeof id === "string" ? items.get(id) : undefined;
-        if (!item) { cleanup(classified(failure("provider"), "sequenceMismatch")); return; }
-        if (item.settled) return; // Duplicate finals, failures and trailing deltas cannot change transcript or usage.
-        if (delta) {
+        if (!isTranscription(type)) return;
+        if (typeof id !== "string" || !id) { cleanup(classified(failure("provider"), "malformedMessage")); return; }
+        if (!items.has(id)) {
+            // gpt-live-transcribe streams text before our commit is acknowledged: hold it until the ack binds the item.
+            const bytes = Buffer.byteLength(event.data as string);
+            const queued = early.get(id);
+            if ((!queued && early.size >= MAX_EARLY_ITEMS) || earlyBytes + bytes > MAX_EARLY_BYTES) {
+                cleanup(classified(failure("provider"), "sequenceMismatch"));
+                return;
+            }
+            earlyBytes += bytes;
+            if (queued) queued.push({ message, bytes });
+            else early.set(id, [{ message, bytes }]);
+            return;
+        }
+        transcriptionEvent(message);
+    }
+
+    function isTranscription(type: unknown): boolean {
+        return type === "conversation.item.input_audio_transcription.delta" ||
+            type === "conversation.item.input_audio_transcription.completed" ||
+            type === "conversation.item.input_audio_transcription.failed";
+    }
+
+    /** Apply one delta, completed or failed event to an item that is already bound to its core order. */
+    function transcriptionEvent(message: Record<string, unknown>): void {
+        const item = items.get(message.item_id as string);
+        if (!item || item.settled) return; // Duplicate finals, failures and trailing deltas cannot change transcript or usage.
+        if (message.type === "conversation.item.input_audio_transcription.delta") {
             if (typeof message.delta !== "string" || item.text.length + message.delta.length > MAX_BUFFER_BYTES) { cleanup(classified(failure("provider"), "malformedMessage")); return; }
             item.text += message.delta;
             session.emit({ type: "revision", order: item.order, text: item.text });
             return;
         }
-        if (completed && typeof message.transcript !== "string") { cleanup(classified(failure("provider"), "malformedMessage")); return; }
+        const failed = message.type === "conversation.item.input_audio_transcription.failed";
+        if (!failed && typeof message.transcript !== "string") { cleanup(classified(failure("provider"), "malformedMessage")); return; }
         item.settled = true;
         item.text = "";
         unsettled--;
@@ -379,13 +437,31 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
             requireListening();
             if (!pcm.byteLength) return;
             if (pcm.byteLength > MAX_BUFFER_BYTES) throw failure("backpressure");
-            send({ type: "input_audio_buffer.append", audio: Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength).toString("base64") });
+            // The service rejects audio that is not whole PCM16 samples: carry an odd trailing byte to the next append.
+            let audio = Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+            if (carry !== undefined) audio = Buffer.concat([Buffer.of(carry), audio]);
+            carry = audio.byteLength % 2 ? audio[audio.byteLength - 1] : undefined;
+            if (carry !== undefined) audio = audio.subarray(0, audio.byteLength - 1);
+            if (!audio.byteLength) return;
+            send({ type: "input_audio_buffer.append", audio: audio.toString("base64") });
+            bytesSinceCommit += audio.byteLength;
         },
         async commit(order) {
             requireListening();
-            pending.push(order);
+            if (bytesSinceCommit === 0) {
+                // The service would answer input_audio_buffer_commit_empty: settle the empty phrase locally.
+                session.emit({ type: "final", order, text: "" });
+                return;
+            }
+            if (bytesSinceCommit < MIN_COMMIT_BYTES) {
+                // Pad a short tail with silence up to the service's 100 ms commit minimum.
+                send({ type: "input_audio_buffer.append", audio: Buffer.alloc(MIN_COMMIT_BYTES - bytesSinceCommit).toString("base64") });
+            }
+            const eventId = nextEventId();
+            pending.push({ order, eventId });
             unsettled++;
-            send({ type: "input_audio_buffer.commit" });
+            bytesSinceCommit = 0;
+            send({ type: "input_audio_buffer.commit", event_id: eventId });
         },
         async finish() {
             if (!finish) {

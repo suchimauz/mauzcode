@@ -9,7 +9,7 @@ import provider from "./$voiceProvider_openai-realtime";
 import { runVoiceProviderContract } from "./contract/providerContract.entry";
 import type { ContractFixture } from "./contract/providerContract.entry";
 import { pcmChunk, concatFrames } from "./contract/contractRecorder.entry";
-import { startFakeRealtime, confirmSetup, committed, transcription } from "./contract/openaiRealtimeFake.entry";
+import { startFakeRealtime, confirmSetup, committed, transcription, commitEmptyError, uncorrelatedError, earlyDeltas, emptyCompletion } from "./contract/openaiRealtimeFake.entry";
 import type { FakeRealtimeServer, FakeConnection } from "./contract/openaiRealtimeFake.entry";
 import { realtimeUpstream } from "./contract/openaiRealtimeDriver.entry";
 
@@ -131,6 +131,7 @@ describe("openai-realtime against the fake realtime server", () => {
         expect(conn.received).toHaveLength(1);
         expect(conn.received[0]).toEqual({
             type: "session.update",
+            event_id: expect.stringMatching(/^mc_\d+$/),
             session: { type: "transcription", audio: { input: {
                 format: { type: "audio/pcm", rate: 24000 },
                 noise_reduction: { type: "near_field" },
@@ -230,20 +231,102 @@ describe("openai-realtime against the fake realtime server", () => {
         await conn.closed;
     });
 
-    test("a wrong previous_item_id fails the session with a sanitized provider error", async () => {
+    test("previous_item_id never rejects an item: the ack binds the next pending commit", async () => {
         const server = fake();
         const { ctx, view } = await makeFixture(server);
         const { session, events } = await openSession(ctx, routeOf(view));
         const conn = await confirmSetup(server);
-        const first = await speak(session, conn, 0, null);
-        await session.append(speech());
-        const sendingPause = session.append(pause());
-        await conn.waitReceived("input_audio_buffer.commit", 2);
-        await conn.send(committed("item_1", "not-the-previous-item"));
-        await sendingPause;
-        expect(await session.finish()).toEqual({ ok: false, code: "provider" });
-        expect(events).toEqual([{ type: "error", errorId: expect.stringMatching(/^[0-9a-f]{16}$/), code: "provider", message: "The voice provider failed." }]);
+        const first = await speak(session, conn, 0, "not-the-previous-item");
+        const second = await speak(session, conn, 1, null);
+        await conn.send(transcription("completed", first, { transcript: "one" }));
+        await conn.send(transcription("completed", second, { transcript: "two" }));
+        expect(await session.finish()).toEqual({ ok: true });
+        expect(finals(events)).toEqual([{ order: 0, text: "one" }, { order: 1, text: "two" }]);
         safeEvents(events);
+        await conn.closed;
+    });
+
+    test("deltas streamed before the commit acknowledgement reach the phrase in order", async () => {
+        const server = fake();
+        const { ctx, view } = await makeFixture(server);
+        const { session, events } = await openSession(ctx, routeOf(view));
+        const conn = await confirmSetup(server);
+        // Live gpt-live-transcribe sends text while the user is still speaking, before our commit.
+        await session.append(speech());
+        await earlyDeltas(conn, "item_0", ["early", " words"]);
+        const sendingPause = session.append(pause());
+        await conn.waitReceived("input_audio_buffer.commit");
+        await sendingPause;
+        await conn.send(committed("item_0", null));
+        await conn.send(transcription("completed", "item_0", { transcript: "Early words." }));
+        expect(await session.finish()).toEqual({ ok: true });
+        const phrases = events.filter((e): e is Extract<types.voice.SessionEvent, { type: "phrase" }> => e.type === "phrase");
+        expect(phrases.map(({ order, text, final }) => ({ order, text, final }))).toEqual([
+            { order: 0, text: "early", final: false },
+            { order: 0, text: "early words", final: false },
+            { order: 0, text: "Early words.", final: true },
+        ]);
+        expect(events.at(-1)).toEqual({ type: "completed" });
+        safeEvents(events);
+        await conn.closed;
+    });
+
+    test("a commit-empty error with the commit's event_id fails only that phrase", async () => {
+        const server = fake();
+        const { ctx, view } = await makeFixture(server);
+        const { session, events } = await openSession(ctx, routeOf(view));
+        const conn = await confirmSetup(server);
+        await session.append(speech());
+        const firstPause = session.append(pause());
+        await conn.waitReceived("input_audio_buffer.commit");
+        await firstPause;
+        const commit = conn.received.find(m => m.type === "input_audio_buffer.commit")!;
+        expect(commit.event_id).toMatch(/^mc_\d+$/);
+        await conn.send(commitEmptyError(commit.event_id));
+        const second = await speak(session, conn, 1, null);
+        await conn.send(emptyCompletion(second));
+        expect(await session.finish()).toEqual({ ok: true });
+        expect(events.find(e => e.type === "phraseFailed")).toMatchObject({ order: 0, reason: "provider" });
+        expect(finals(events)).toEqual([{ order: 1, text: "" }]);
+        expect(events.some(e => e.type === "error")).toBe(false);
+        safeEvents(events);
+        await conn.closed;
+    });
+
+    test("the fake's 100 ms commit minimum is never hit and every commit carries an event_id", async () => {
+        const server = fake({ enforceCommitMinimum: true });
+        const { ctx, view } = await makeFixture(server);
+        const { session, events } = await openSession(ctx, routeOf(view));
+        const conn = await confirmSetup(server);
+        const first = await speak(session, conn, 0, null);
+        await conn.send(transcription("completed", first, { transcript: "kept" }));
+        // A short spoken tail at finish (one 20 ms window) is padded, not rejected.
+        await session.append(pcmChunk({ sampleRate: 24_000, windows: 1, amplitude: 0.5 }));
+        const finishing = session.finish();
+        await conn.waitReceived("input_audio_buffer.commit", 2);
+        await conn.send(committed("item_1", first));
+        await conn.send(emptyCompletion("item_1"));
+        expect(await finishing).toEqual({ ok: true });
+        expect(conn.rejectedCommits).toEqual([]);
+        const commits = conn.received.filter(m => m.type === "input_audio_buffer.commit");
+        expect(new Set(commits.map(m => m.event_id)).size).toBe(commits.length);
+        expect(finals(events)).toEqual([{ order: 0, text: "kept" }, { order: 1, text: "" }]);
+        safeEvents(events);
+        await conn.closed;
+    });
+
+    test("an uncorrelated invalid_request_error stays terminal and journals its code", async () => {
+        const server = fake();
+        const { ctx, view } = await makeFixture(server);
+        const { session, events } = await openSession(ctx, routeOf(view));
+        const conn = await confirmSetup(server);
+        await conn.send(uncorrelatedError("invalid_value"));
+        await until(() => events.some(event => event.type === "error"));
+        expect(await session.finish()).toEqual({ ok: false, code: "provider" });
+        const event = events[0];
+        if (event?.type !== "error" || !event.errorId) throw new Error("Missing terminal reference");
+        const rows = await ctx.fns.procs.db.select({ sql: "SELECT * FROM voice_error_journal WHERE id = ?", params: [event.errorId] });
+        expect(rows).toMatchObject([{ stage: "streaming", reason: "serviceError", detail: "invalid_value" }]);
         await conn.closed;
     });
 

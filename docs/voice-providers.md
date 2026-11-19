@@ -291,6 +291,26 @@ The session counts vendor-reported billable audio seconds in memory for the acti
 dictation itself. The WebSocket protocol has no usage message in this version, so that count stays
 inside the server process instead of being shown to the person dictating.
 
+### 7. How the adapter handles the Realtime stream
+
+These rules follow the OpenAI Realtime transcription behaviour observed with `gpt-live-transcribe`:
+
+- **Early text.** The service often streams transcription deltas for a phrase before it acknowledges
+  the commit for that phrase. The adapter holds such deltas (at most 8 items and 1 MiB per session)
+  and replays them once `input_audio_buffer.committed` binds the item to its phrase. You therefore
+  see a phrase's text right after its commit, not while you are still speaking.
+- **Binding.** Each acknowledgement binds to the oldest pending commit. `previous_item_id` is
+  ignored; only an acknowledgement with no pending commit, a repeated item ID or an overflowing
+  early buffer ends the session as `sequenceMismatch`.
+- **100 ms minimum.** The service rejects commits with less than 100 ms of audio. A shorter spoken
+  tail is padded with silence up to 100 ms; a commit with no audio sends nothing and settles an
+  empty phrase locally. Audio is always sent as whole PCM16 samples.
+- **Recoverable errors.** Every `session.update` and commit carries an `event_id`. An `error` that
+  names a pending commit (for example `input_audio_buffer_commit_empty`) fails only that phrase and
+  dictation continues. Authentication, rate-limit, server and `session_expired` errors, errors
+  during setup and errors that name no pending commit still end the session; the error journal
+  records their service code as detail.
+
 ## What stays local and what is the provider's
 
 Guaranteed by the code documented here and covered by the tests under [Verification](#verification):
