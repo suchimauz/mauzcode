@@ -63,7 +63,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => String(url).startsWith('/voice/api') ? json(state) : String(url).includes('/ui-lab-api/models') ? json({ models: [] }) : json({ budget: null })));
 });
 afterEach(() => {
-  // Voice mode never submits on its own (explicit send is task 4.1).
+  // These controls never submit on their own. Explicit sends run against synthetic media in voice-submission.test.tsx.
   expect(mauzcode.sendMessage).not.toHaveBeenCalled();
   expect(queueLib.enqueueMessage).not.toHaveBeenCalled();
   vi.unstubAllGlobals(); sessionStorage.clear();
@@ -251,18 +251,12 @@ describe('voice panel in the live composer', () => {
     expect(screen.queryByRole('region', { name: MODE })).toBeNull();
   });
 
-  it('Enter requests send only when a finalized send path exists; until then nothing is sent', async () => {
+  it('does not treat Shift+Enter, composing Enter or held Enter as a panel send', async () => {
     const { entry } = await mount('draft');
     await userEvent.click(entry);
-    say('a', 0, 0, 'spoken', true);
-    key(panel(), 'Enter');
-    key(panel(), 'Enter');
-    const send = within(panel()).getByRole('button', { name: /Отправить/ });
-    expect(send).toHaveAttribute('aria-disabled', 'true');
-    expect(send).toHaveAccessibleDescription(/пока недоступна/);
-    await userEvent.click(send);
-    expect(fake.current.finish).not.toHaveBeenCalled();
-    expect(editor()).toHaveTextContent(/^draft spoken$/);
+    for (const extra of [{ shiftKey: true }, { isComposing: true }, { repeat: true }]) fireEvent.keyDown(panel(), { key: 'Enter', ...extra });
+    expect(fake.current.pause).not.toHaveBeenCalled();
+    expect(within(panel()).getByRole('button', { name: /Отправить/ })).toBeEnabled();
   });
 
   it('announces only state changes and time thresholds, never phrase text', async () => {

@@ -24,6 +24,6 @@
 
 ## 4. Submission and verification
 
-- [ ] 4.1 Connect explicit send to finish and the existing send/queue action; test double Enter during finalization, enqueue while busy, retry after failure, nothing sent on finish error, paused after acknowledgement.
-- [ ] 4.2 End-to-end inline and panel flows against the fake Realtime server: no key in browser traffic, no audio file, no interim history or queue entry.
-- [ ] 4.3 Regression checks for editor/queue shortcuts and Models routing, project typecheck, `code.quality` and strict OpenSpec validation; record results.
+- [x] 4.1 Connect explicit send to finish and the existing send/queue action; test double Enter during finalization, enqueue while busy, retry after failure, nothing sent on finish error, paused after acknowledgement.
+- [x] 4.2 End-to-end inline and panel flows against the fake Realtime server: no key in browser traffic, no audio file, no interim history or queue entry.
+- [x] 4.3 Regression checks for editor/queue shortcuts and Models routing, project typecheck, `code.quality` and strict OpenSpec validation; record results.

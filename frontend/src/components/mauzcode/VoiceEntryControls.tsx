@@ -98,13 +98,14 @@ function EntryControls({ agentId, busy = false, handlers = {}, hub }: VoiceEntry
   const destination = view?.state ? voiceRouteSummary(chat, view.state) : '';
   const button = (mode: VoiceEntryMode, Icon: typeof Mic) => {
     const handler = handlers[mode];
-    // The running mode's own control stays operable so the user can always stop it, even while the composer is busy.
+    // A running mode can stop even after a route change, but not interrupt a locked submission.
     const stopping = active === mode && !!handler && !!lastReady.current;
-    const block = stopping ? null : voiceEntryBlock({ support: capture.support, view, handler, busy, otherActive: active !== null && active !== mode });
+    const block = stopping ? (busy ? 'Подождите завершения текущего действия.' : null) : voiceEntryBlock({ support: capture.support, view, handler, busy, otherActive: active !== null && active !== mode });
     const description = [block, block === destination ? '' : destination].filter(Boolean).join(' ');
     const activate = () => {
+      if (block) return;
       if (stopping) { handler!.onActivate(capture, lastReady.current!); return; }
-      if (block || !handler || chat?.status !== 'ready') return;
+      if (!handler || chat?.status !== 'ready') return;
       hub.claim(mode); lastReady.current = chat;
       handler.onActivate(capture, chat);
     };

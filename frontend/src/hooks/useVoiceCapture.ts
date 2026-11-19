@@ -78,6 +78,7 @@ type Run = {
   startTimer?: ReturnType<typeof setTimeout>;
   ready: boolean;
   sending: boolean;
+  phraseFailed?: boolean;
   sequence: number;
   timers: ReturnType<typeof setTimeout>[];
   ticker?: ReturnType<typeof setInterval>;
@@ -208,10 +209,15 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
         return;
       case 'phraseFailed':
         if (typeof message.id === 'string' && typeof message.order === 'number') {
+          // A transport-level completed event also follows failed items. Never authorize a partial
+          // submission, and keep a visible interim if this failure arrived while finishing.
+          r.phraseFailed = true;
+          if (r.settle) return fail(r, { code: 'provider', message: MESSAGES.provider });
           phrase.current?.({ type: 'phraseFailed', generation: r.generation, id: message.id, order: message.order, reason: String(message.reason ?? '') });
         }
         return;
       case 'completed': {
+        if (r.phraseFailed) return fail(r, { code: 'provider', message: MESSAGES.provider });
         const settle = r.settle;
         release(r, false, true);
         if (!settle) { setState('idle'); setRemainingMs(null); }
@@ -296,13 +302,18 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
 
   const end = useCallback(async (after: 'idle' | 'paused'): Promise<boolean> => {
     const r = run.current;
-    if (!r || r.released) return false;
-    if (!r.ready || !r.socket || r.socket.readyState !== 1) {
+    if (!r || r.released) {
+      // After a reviewed draft is sent from an errored/stopped panel it stays open on pause.
+      if (after === 'paused' && mounted.current) { setState('paused'); setError(null); }
+      return false;
+    }
+    if (!r.ready) {
       // Nothing was streamed yet: there is nothing to finalize.
       release(r, true);
       setState(after); setRemainingMs(null); setSession(null);
-      return after === 'paused';
+      return true;
     }
+    if (r.socket?.readyState !== 1) { fail(r, { code: 'connection', message: MESSAGES.connection }); return false; }
     if (r.settle) return new Promise(resolve => { const prior = r.settle!; r.settle = ok => { prior(ok); resolve(ok); }; });
     setState('finalizing');
     const done = new Promise<boolean>(resolve => { r.settle = resolve; });
@@ -310,8 +321,9 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     if (r.node) {
       await new Promise<void>(resolve => {
         r.flushed = resolve;
-        r.timers.push(setTimeout(resolve, FLUSH_TIMEOUT_MS));
-        r.node!.port.postMessage({ type: 'flush' });
+        r.timers.push(setTimeout(() => { if (r.flushed) fail(r, { code: 'timeout', message: MESSAGES.timeout }); }, FLUSH_TIMEOUT_MS));
+        try { r.node!.port.postMessage({ type: 'flush' }); }
+        catch { fail(r, { code: 'microphone', message: MESSAGES.audioStopped }); }
       });
     }
     releaseAudio(r);

@@ -36,11 +36,10 @@ export type VoicePanelProps = {
   onClear: () => void;
   canClear: boolean;
   onExit: () => void;
-  /**
-   * Explicit send. Must be the composer's own send path after capture finalization (task 4.1); while absent the send
-   * control explains why it is unavailable and Enter does nothing, so no partial draft can be submitted from here.
-   */
-  onSend?: () => void;
+  /** The ordinary composer send; no action on silence, pause, exit, or a recognition event. */
+  onSend: () => void;
+  canSubmit: boolean;
+  busy: boolean;
 };
 
 /**
@@ -49,7 +48,7 @@ export type VoicePanelProps = {
  * panel, and a focused button or text field inside it keeps its native keys. Every shortcut has a labelled button.
  * One polite live region announces state changes and the 1 min / 10 s thresholds; transcript text is never in it.
  */
-export function VoicePanel({ capture, text, attachments, onToggle, onClear, canClear, onExit, onSend }: VoicePanelProps) {
+export function VoicePanel({ capture, text, attachments, onToggle, onClear, canClear, onExit, onSend, busy, canSubmit }: VoicePanelProps) {
   const root = useRef<HTMLElement>(null);
   const id = useId();
   const [announcement, setAnnouncement] = useState('');
@@ -81,14 +80,13 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, canC
 
   const running = state === 'listening' || state === 'connecting';
   const toggleLabel = running ? 'Пауза' : 'Продолжить запись';
-  const toggleDisabled = state === 'finalizing';
-  const sendReason = onSend ? '' : 'Отправка из голосового режима пока недоступна: выйдите (Esc) и отправьте сообщение из поля ввода.';
+  const toggleDisabled = busy || state === 'finalizing';
 
   const keyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.defaultPrevented || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (busy || event.defaultPrevented || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (ownsKeys(event.target)) return;
     if (event.key === ' ' || event.key === 'Spacebar') { event.preventDefault(); if (!event.repeat && !toggleDisabled) onToggle(); }
-    else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!event.repeat) onSend?.(); }
+    else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!event.repeat && canSubmit) onSend(); }
     else if (event.key === 'Escape') { event.preventDefault(); onExit(); }
   };
 
@@ -108,14 +106,13 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, canC
       <button type="button" className="button button--secondary voice-panel-action" aria-keyshortcuts="Space" disabled={toggleDisabled} onClick={onToggle}>
         {running ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}<span>{toggleLabel}</span><kbd aria-hidden="true">Пробел</kbd>
       </button>
-      <button type="button" className="button button--secondary voice-panel-action" aria-disabled={canClear ? undefined : true} title={canClear ? undefined : 'Надиктованного текста нет'} onClick={() => { if (canClear) onClear(); }}>
+      <button type="button" className="button button--secondary voice-panel-action" disabled={busy} aria-disabled={canClear ? undefined : true} title={canClear ? undefined : 'Надиктованного текста нет'} onClick={() => { if (canClear) onClear(); }}>
         <Eraser size={14} aria-hidden="true" /><span>Очистить диктовку</span>
       </button>
-      <button type="button" className="button button--primary voice-panel-action" aria-keyshortcuts="Enter" aria-disabled={onSend ? undefined : true} aria-describedby={sendReason ? `${id}-send` : undefined} title={sendReason || undefined} onClick={() => onSend?.()}>
+      <button type="button" className="button button--primary voice-panel-action" aria-keyshortcuts="Enter" disabled={busy || !canSubmit} onClick={onSend}>
         <Send size={14} aria-hidden="true" /><span>Отправить</span><kbd aria-hidden="true">Enter</kbd>
       </button>
-      {sendReason && <span id={`${id}-send`} className="sr-only">{sendReason}</span>}
-      <button type="button" className="button button--ghost voice-panel-action" aria-keyshortcuts="Escape" onClick={onExit}>
+      <button type="button" className="button button--ghost voice-panel-action" aria-keyshortcuts="Escape" disabled={busy} onClick={onExit}>
         <X size={14} aria-hidden="true" /><span>Выйти</span><kbd aria-hidden="true">Esc</kbd>
       </button>
     </div>

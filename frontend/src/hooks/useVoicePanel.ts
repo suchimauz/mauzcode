@@ -39,8 +39,8 @@ export type VoicePanelController = {
  * Dedicated voice mode (task 3.5): replaces the editor while open but edits the same draft through the composer's
  * ordinary update. Each capture generation is one session of the draft's shared `DraftDictation` ledger; a resumed
  * session continues after the previous one's last phrase. Leaving closes the session, so late events change nothing,
- * but its unedited phrases stay owned by the draft and a later clear (after Escape → editing → re-entry) removes them. Nothing here sends:
- * explicit send with finalization is a separate step (4.1) and must go through the composer's own send path.
+ * but its unedited phrases stay owned by the draft and a later clear (after Escape → editing → re-entry) removes them.
+ * Explicit send and its finalization lock belong to the composer, not the panel.
  */
 export function useVoicePanel({ text, onText, caret, capture, dictation, readOnly = false }: UseVoicePanelOptions): VoicePanelController {
   const [open, setOpen] = useState(false);
@@ -101,7 +101,7 @@ export function useVoicePanel({ text, onText, caret, capture, dictation, readOnl
       startSession();
     },
     onPhrase: event => {
-      const current = session.current; if (!current || !isOpen.current) return;
+      const current = session.current; if (!current || !isOpen.current || readOnly) return;
       const result = dictation.apply(current, event, latestText.current, null);
       if (!result || result.text === latestText.current) return;
       latestText.current = result.text; update.current(result.text);

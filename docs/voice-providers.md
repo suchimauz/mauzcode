@@ -42,13 +42,10 @@ Available now:
   socket loss;
 - two entry points next to the route selector of an open editable chat, sharing that one capture
   controller: **inline voice input** at the caret of the ordinary editor and **voice mode**, a panel
-  that temporarily replaces the editor (see [Dictate in a chat](#dictate-in-a-chat)).
-
-Not implemented yet, and not claimed anywhere on this page:
-
-- explicit-send finalization: sending from voice mode. The panel's **Send** button and Enter are
-  shown but unavailable; leave the panel and send from the ordinary editor. Neither entry point ever
-  sends by itself.
+  that temporarily replaces the editor (see [Dictate in a chat](#dictate-in-a-chat));
+- explicit send from either entry point: stop capture, wait for the final words, then submit the
+  draft and attachments using the ordinary send action (the ordinary queue when the chat is busy).
+  Neither entry point sends on silence, pause, or stop.
 
 ### Public facade and internal namespaces
 
@@ -109,12 +106,16 @@ the caret. It edits the same draft and keeps your attachments. While focus is in
 | --- | --- | --- |
 | Space | Pause / Continue recording | Pause finalizes the current phrase and releases the microphone; continue starts a new session after the dictated text. |
 | — | Clear dictation | Removes every phrase dictated into this draft that you have not edited — in voice mode or with inline input, including earlier visits; typed text, phrases you corrected and attachments stay. Sending the message starts a new draft. |
-| Enter | Send | Not available yet (see above); nothing is sent. |
+| Enter | Send | Finishes the last phrase, then sends the text and attachments once. On acknowledgement the panel stays open on pause with an empty draft. |
 | Escape | Exit | Stops recording and returns focus to the message field with the visible text, without sending. Clicking the voice mode icon again does the same. |
+
+If recognition fails during send, nothing is submitted. Review the visible text (Exit to edit),
+then explicitly send again. If the message acknowledgement is lost, retrying the unchanged draft
+uses the same request key and endpoint, including its attachments while the page stays open.
 
 The shortcuts work only while focus is on the panel itself or its message text, never for typing
 elsewhere. A focused button inside the panel keeps its own keys — Space and Enter press it and Escape
-does nothing there; use the Exit button to leave. Text fields keep all their keys. Screen readers hear only state changes — recording, paused, an error, dictation moved to
+does nothing there; use the Exit button to leave. Text fields keep all their keys. Screen readers hear only state changes — recording, paused, a send acknowledgement, an error, dictation moved to
 another tab, one minute and ten seconds left — never the recognized words; the text is readable by
 moving through the panel. Opening dictation for the same chat in another tab stops this one with a
 visible notice; the text stays and you can continue.
@@ -469,11 +470,14 @@ This page was checked against the code, not only against the design notes:
   socket or network): one controller for both modes, focus into the panel and back to the editor,
   pause/resume with Space, late events of paused or cancelled generations ignored, selective clear
   keeping typed text, corrections and attachments, keys ignored outside the panel and on its
-  buttons and text fields, Enter not sending, one polite live region carrying only state changes and
-  the 1 min / 10 s thresholds, read-only loss and chat switch.
+  buttons and text fields, one polite live region carrying only state changes and
+  the 1 min / 10 s thresholds, read-only loss and chat switch;
+- `bun run frontend:test -- frontend/src/test/voice-submission.test.tsx` — both entry points through
+  `LiveComposer`, synthetic media, a local voice socket double and mocked HTTP: final words and
+  attachments, ordinary send vs queue, duplicate Enter, stale sessions, failed recognition, stable
+  retries and a paused panel after acknowledgement.
 
-The page does not claim sending from voice mode, browser tests against a real microphone or a full
-project typecheck.
+These frontend checks use neither a real microphone nor a live provider.
 
 ## Related
 
