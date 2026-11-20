@@ -31,7 +31,7 @@ export default async function (
     }
     const { width, height } = dimensions;
     if (!(width > 0 && height > 0)) throw new Error(`Invalid image dimensions. ${recovery}`);
-    const maxEdge = 2000;
+    const maxEdge = 3000;
     if (width > maxEdge || height > maxEdge) {
         throw new Error(`Image is ${width}x${height}; inline images must be at most ${maxEdge} px on each side. ${recovery}`);
     }

@@ -310,19 +310,34 @@ test("read returns an image path as model-visible image content", async () => {
             out.writeUInt32BE(crc32(out.subarray(4, -4)), out.length - 4);
             return out;
         };
-        const ihdr = Buffer.alloc(13);
-        ihdr.writeUInt32BE(765);
-        ihdr.writeUInt32BE(9340, 4);
-        ihdr[8] = 1;
-        const tall = Buffer.concat([png.slice(0, 8), chunk("IHDR", ihdr),
-            chunk("IDAT", deflateSync(Buffer.alloc((1 + Math.ceil(765 / 8)) * 9340))), chunk("IEND", Buffer.alloc(0))]);
-        expect(tall.length).toBeLessThan(1024);
-        await Bun.write(path, tall);
-        const rejected = await ctx.fns.tools.call({ name: "read", args: { path } });
-        expect(rejected.isError).toBe(true);
-        expect(rejected.output).toMatch(/765x9340.*fullPage: false/);
-        expect(rejected.content).toBeUndefined();
-        expect(Buffer.from(await Bun.file(path).arrayBuffer())).toEqual(tall);
+        const blankPng = (width: number, height: number) => {
+            const ihdr = Buffer.alloc(13);
+            ihdr.writeUInt32BE(width);
+            ihdr.writeUInt32BE(height, 4);
+            ihdr[8] = 1;
+            return Buffer.concat([png.slice(0, 8), chunk("IHDR", ihdr),
+                chunk("IDAT", deflateSync(Buffer.alloc((1 + Math.ceil(width / 8)) * height))), chunk("IEND", Buffer.alloc(0))]);
+        };
+        for (const [width, height] of [[2560, 1440], [3000, 3000]] as const) {
+            const image = blankPng(width, height);
+            await Bun.write(path, image);
+            const accepted = await ctx.fns.tools.read({ path });
+            if (typeof accepted === "string") throw new Error(`Expected a ${width}x${height} image attachment`);
+            expect(accepted.output).toBe(`[image: ${path}]`);
+            expect(accepted.content).toEqual([{ type: "image", mimeType: "image/png", data: image.toString("base64") }]);
+        }
+        for (const [width, height] of [[3001, 1], [1, 3001], [765, 9340]] as const) {
+            const image = blankPng(width, height);
+            expect(image.length).toBeLessThan(1024);
+            await Bun.write(path, image);
+            const rejected = await ctx.fns.tools.call({ name: "read", args: { path } });
+            expect(rejected.isError).toBe(true);
+            expect(rejected.output).toContain(`${width}x${height}`);
+            expect(rejected.output).toContain("at most 3000 px on each side");
+            expect(rejected.output).toContain("fullPage: false");
+            expect(rejected.content).toBeUndefined();
+            expect(Buffer.from(await Bun.file(path).arrayBuffer())).toEqual(image);
+        }
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
