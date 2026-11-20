@@ -38,7 +38,6 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
   const [text, setText] = useState(pending.current?.text || '');
   const [busy, setBusy] = useState(false); const lock = useRef(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const compactKey = useRef<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
@@ -78,7 +77,7 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
   const send = async () => {
     if (!canSubmit || lock.current || readOnly) return;
     const epoch = access.current;
-    lock.current = true; setBusy(true); setError(''); setNotice('');
+    lock.current = true; setBusy(true); setError('');
     try {
       if (capturing) {
         // Both actions flush the last audio and wait for recognition; only the panel stays paused.
@@ -112,7 +111,7 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
           const result = await executeCommand(agentId, value, submission.key);
           if (epoch !== access.current) return;
           if (result.status === 'failed' || result.status === 'interrupted') { persist({ text: value, key: crypto.randomUUID() }); throw new Error(result.error || 'Команда не выполнена. Новая отправка начнёт новую попытку.'); }
-          notifyPlanningChanged(agentId); setNotice('');
+          notifyPlanningChanged(agentId);
         } else if (queued) await queue.enqueue(value, submission.key, files);
         else { const ack = await sendMessage(agentId, value, submission.key, files); if (epoch === access.current && ack.queued) void queue.refresh(); }
       }
@@ -120,7 +119,6 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
       if (panel.open) {
         // An explicit retry after a capture error may have no live session left to finish.
         if (!capturing && voice.capture.state !== 'paused') void voice.capture.pause();
-        if (!value.startsWith('/')) setNotice(queued ? 'Сообщение добавлено в очередь.' : 'Сообщение принято.');
       }
       setFiles([]); fileSubmission.current = null; setRevision(n => n + 1);
       setText(''); pending.current = null; dictation.reset();
@@ -136,14 +134,14 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
   };
   const compact = async () => {
     if (lock.current || running || readOnly) return;
-    lock.current = true; setBusy(true); setError(''); setNotice('');
+    lock.current = true; setBusy(true); setError('');
     try {
       const result = await executeCommand(agentId, '/compact', compactKey.current ?? (compactKey.current = crypto.randomUUID()));
       if (result.status !== 'running') compactKey.current = null;
       if (result.status === 'failed' || result.status === 'interrupted') throw new Error(result.error || 'Сжатие не выполнено.');
       setRevision(n => n + 1); onAccepted();
     }
-    catch (err) { setNotice(''); setError(err instanceof Error ? err.message : String(err)); }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)); }
     finally { lock.current = false; setBusy(false); }
   };
   return <fieldset disabled={readOnly} className={`composer-readonly-boundary ${readOnly ? 'is-archived' : ''}`} aria-label={readOnly ? 'Ввод недоступен' : undefined}><div ref={anchor} className="composer-input-anchor">{dragging && anchor.current?.closest('.chat-panel') && createPortal(<div className="chat-file-drop-overlay" aria-hidden="true">Перетащите файлы, чтобы прикрепить к сообщению</div>, anchor.current.closest('.chat-panel')!)}{mascot && <div className="composer-pet-slot">{mascot}</div>}<TodoDock agentId={agentId} /><TriggerDock agentId={agentId} /><GoalDock agentId={agentId} running={running} disabled={readOnly || busy} editor={goalEditor} onClose={() => setGoalEditor(null)} onAccepted={onAccepted} /><QueueDock queue={queue} running={running} disabled={readOnly || busy} />{!panel.open && <ComposerStatusRow modes={planningBadge} />}{panel.open && <VoicePanel capture={voice.capture} text={text} attachments={files.length ? <PendingAttachments files={files} disabled={busy || readOnly} onRemove={removeFile} /> : undefined} busy={busy || readOnly} canSubmit={canSubmit} onSend={send} onToggle={panel.toggle} onClear={panel.clear} canClear={panel.canClear} onExit={panel.exit} sendError={error || undefined} />}<div hidden={panel.open} className="voice-panel-editor"><MessageInput leading={<ComposerAddButton open={!!menuOpen} disabled={busy || readOnly} onClick={() => { if (!panel.open) setMenuOpen(open => !open); }} />} focusRequest={(focusRequest ?? 0) + panel.returns} onSteerAll={running && !queue.waitingForInput && queue.items.length ? () => { if (!busy && !readOnly && !queue.processing) void queue.perform(queue.items, 'steer'); } : undefined} commandsEnabled commandMenuOpen={menuOpen} onCommandMenuClose={() => setMenuOpen(false)} onFile={() => fileInput.current?.click()} onCompact={() => { void compact(); }} placeholder={running && queue.items.length ? 'Ctrl/Cmd+Enter — направить всю очередь агенту' : 'Сообщение или /команда…'} onFiles={addFiles} attachments={files.length && !panel.open ? <PendingAttachments files={files} disabled={busy || readOnly} onRemove={removeFile} /> : undefined} hasAttachments={files.length > 0} pendingVoice={capturing} value={text} disabled={busy || readOnly} running={running && !readOnly} onStop={() => { void stop(); }} onSend={() => { void send(); }}
@@ -156,5 +154,5 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
     {!panel.open && <div><ComposerFooter onModelBusy={value => { lock.current = value; setBusy(value); }} onModelSaved={() => { setRevision(n => n + 1); onAccepted(); }} agentId={agentId} busy={busy || readOnly} running={running} revision={revision} voice={readOnly ? undefined : <VoiceEntryControls key={`voice:${agentId}`} agentId={agentId} busy={busy} handlers={voiceHandlers} hub={voice} />} /></div>}
     {!panel.open && error && running && text.startsWith('/') && <button type="button" className="button button--secondary" disabled={busy || readOnly} onClick={() => { void stop(); }}>Остановить выполнение</button>}
     {!readOnly && !panel.open && voice.owner === 'inline' && voice.capture.error && <p role="alert" className="connection-error">{voice.capture.error.message}{voice.capture.error.errorId && <> ID: <code>{voice.capture.error.errorId}</code></>}</p>}
-    {!panel.open && notice && <p role="status" className="transcript-notice">{notice}</p>}{!panel.open && error && <p role="alert" className="connection-error">{error}</p>}</fieldset>;
+    {!panel.open && error && <p role="alert" className="connection-error">{error}</p>}</fieldset>;
 }
