@@ -290,9 +290,40 @@ test("read returns an image path as model-visible image content", async () => {
     const { testCtx } = await import("../$test");
     const ctx = await testCtx();
     const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="), c => c.charCodeAt(0));
-    const path = `/tmp/read-image-${Date.now()}.png`;
-    await Bun.write(path, png);
-    const r: any = await ctx.fns.tools.read({ path });
-    expect(r.output).toBe(`[image: ${path}]`);
-    expect(r.content[0]).toMatchObject({ type: "image", mimeType: "image/png" });
+    const { mkdir, mkdtemp, rm } = await import("node:fs/promises");
+    await mkdir(".test-tmp", { recursive: true });
+    const dir = await mkdtemp(".test-tmp/read-image-");
+    const path = `${dir}/screen.png`;
+    try {
+        await Bun.write(path, png);
+        const r: any = await ctx.fns.tools.read({ path });
+        expect(r.output).toBe(`[image: ${path}]`);
+        expect(r.content[0]).toEqual({ type: "image", mimeType: "image/png", data: Buffer.from(png).toString("base64") });
+
+        // A valid blank 1-bit full-page capture compresses below 1 KiB: bytes alone cannot protect the request.
+        const { crc32, deflateSync } = await import("node:zlib");
+        const chunk = (name: string, data: Buffer) => {
+            const out = Buffer.alloc(data.length + 12);
+            out.writeUInt32BE(data.length);
+            out.write(name, 4);
+            data.copy(out, 8);
+            out.writeUInt32BE(crc32(out.subarray(4, -4)), out.length - 4);
+            return out;
+        };
+        const ihdr = Buffer.alloc(13);
+        ihdr.writeUInt32BE(765);
+        ihdr.writeUInt32BE(9340, 4);
+        ihdr[8] = 1;
+        const tall = Buffer.concat([png.slice(0, 8), chunk("IHDR", ihdr),
+            chunk("IDAT", deflateSync(Buffer.alloc((1 + Math.ceil(765 / 8)) * 9340))), chunk("IEND", Buffer.alloc(0))]);
+        expect(tall.length).toBeLessThan(1024);
+        await Bun.write(path, tall);
+        const rejected = await ctx.fns.tools.call({ name: "read", args: { path } });
+        expect(rejected.isError).toBe(true);
+        expect(rejected.output).toMatch(/765x9340.*fullPage: false/);
+        expect(rejected.content).toBeUndefined();
+        expect(Buffer.from(await Bun.file(path).arrayBuffer())).toEqual(tall);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
 });

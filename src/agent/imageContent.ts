@@ -1,28 +1,41 @@
 import { resolve } from "node:path";
+import sizeOf from "buffer-image-size";
 
-// Turn a local image into the provider-neutral content shape used by pi-mono:
-// base64 bytes plus a real MIME type. Paths are resolved in the agent workspace.
-/** Image content for the runtime.  * @param opts.path File path to read or render.
-*/
+/** Encodes a supported workspace image for inline model inspection, rejecting oversized images before attachment. */
 export default async function (
     _ctx: Context,
     session: Session | null,
     opts: {
-        /** Path to the target resource. */
-    path: string },
+        /** Local image path, absolute or relative to the agent workspace. */
+        path: string;
+    },
 ): Promise<types.tools.Content> {
     const base = session?.agent?.workspaceHost ? process.cwd() : (session?.agent?.workspaceDir || process.cwd());
     const path = resolve(base, opts.path);
     const file = Bun.file(path);
     if (!await file.exists()) throw new Error(`image not found: ${path}`);
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    // Keep the existing 4.5 MiB base64 ceiling without allocating an unbounded buffer.
+    const maxBytes = 4.5 * 1024 * 1024 * 3 / 4;
+    const recovery = "Capture just the viewport (fullPage: false), or crop/resize a copy and read that instead. The original is unchanged.";
+    const bytes = Buffer.from(await file.slice(0, maxBytes + 1).arrayBuffer());
+    if (bytes.length > maxBytes) throw new Error(`image exceeds the 4.5 MB inline limit. ${recovery}`);
     const mimeType = sniff(bytes);
     if (!mimeType) throw new Error("unsupported image (expected PNG, JPEG, GIF, or WebP)");
-    // Keep below Anthropic's 5 MB base64 limit. Resizing can be added later;
-    // screenshots at normal browser dimensions are generally well below this.
-    const data = Buffer.from(bytes).toString("base64");
-    if (Buffer.byteLength(data) > 4.5 * 1024 * 1024) throw new Error("image exceeds the 4.5 MB inline limit");
-    return { type: "image", data, mimeType };
+    // A tall, highly compressed screenshot can fit the byte limit but still
+    // invalidate later multi-image requests. Bound each axis independently.
+    let dimensions;
+    try {
+        dimensions = sizeOf(bytes);
+    } catch {
+        throw new Error(`Cannot determine image dimensions. ${recovery}`);
+    }
+    const { width, height } = dimensions;
+    if (!(width > 0 && height > 0)) throw new Error(`Invalid image dimensions. ${recovery}`);
+    const maxEdge = 2000;
+    if (width > maxEdge || height > maxEdge) {
+        throw new Error(`Image is ${width}x${height}; inline images must be at most ${maxEdge} px on each side. ${recovery}`);
+    }
+    return { type: "image", data: bytes.toString("base64"), mimeType };
 }
 
 function sniff(b: Uint8Array): string | null {

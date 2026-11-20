@@ -7,6 +7,8 @@ description: "Browser automation over Chrome DevTools Protocol (CDP) on :9222. U
 
 Drives the user's real Chrome through CDP. Chrome must expose a debugging endpoint at `CDP_BROWSER_URL` (default `http://127.0.0.1:9222`). The plugin attaches to existing tabs or creates named background tabs and keeps connection handles in runtime state.
 
+For visual inspection, use `browser.screenshot({ fullPage: false })` (the default is viewport only). Scroll to the section of interest and capture that viewport. Keep `fullPage: true` for saving a whole-page artifact; crop or resize a copy before reading a tall capture into model context.
+
 ## Starting Chrome
 
 The plugin attaches to a running Chrome; it does not assume one exists. Bring it
