@@ -6,7 +6,7 @@ Let users dictate and revise a draft in an existing chat without sending speech 
 ## Requirements
 
 ### Requirement: Two distinct entry points
-An editable open chat SHALL show two independently named, keyboard-accessible controls immediately to the right of the composer footer's context indicator: inline voice input and voice mode. Neither entry point SHALL be available on the new-session or read-only composer.
+An editable open chat SHALL show the voice controls as one group at the right edge of the composer's controls row, in this order: voice settings, voice mode, inline voice input. Each SHALL be independently named and keyboard-accessible. Voice settings SHALL use a settings (gear) icon, and inline voice input SHALL be the visually primary, accent-filled control. Neither entry point SHALL be available on the new-session or read-only composer.
 
 #### Scenario: Discover without activating
 - **WHEN** the user navigates the footer by keyboard or screen reader
@@ -15,6 +15,10 @@ An editable open chat SHALL show two independently named, keyboard-accessible co
 #### Scenario: Insecure context or unsupported browser
 - **WHEN** the page is opened over plain HTTP from a non-localhost address, or the browser lacks microphone capture or AudioWorklet
 - **THEN** both controls are shown disabled with an explanation of what is required, no microphone permission is requested and no voice socket is opened.
+
+#### Scenario: Fixed order and emphasis
+- **WHEN** the user tabs through the voice group
+- **THEN** focus reaches voice settings, then voice mode, then inline voice input, and only inline voice input has the accent fill.
 
 ### Requirement: Inline voice input at the caret
 The first click SHALL start dictation in the ordinary editor. The next click SHALL stop capture, finalize the last phrase and leave an editable draft. Interim hypotheses SHALL appear at the insertion point and be replaced, not appended, by revisions of the same phrase. Neither silence nor stopping SHALL send.
