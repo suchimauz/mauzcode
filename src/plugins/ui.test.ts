@@ -44,6 +44,10 @@ test('builds ESM against host shims and rejects forbidden imports, foreign kinds
         expect((await compile(ctx, null, { name: 'demo' })).build?.error).toMatch(/namespace of this plugin/);
         await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'demo', procs: { ui: { entry: '../escape.tsx' } } }));
         expect((await compile(ctx, null, { name: 'demo' })).build?.error).toMatch(/safe plugin-relative/);
+        // The rejected entry must not make the fingerprint walk the plugin's parent directory.
+        await writeFile(join(dir, '..', `${dir.split('/').pop()}-outside.txt`), 'x');
+        try { expect((await compile(ctx, null, { name: 'demo' })).changed).toBe(false); }
+        finally { await rm(join(dir, '..', `${dir.split('/').pop()}-outside.txt`), { force: true }); }
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

@@ -65,7 +65,8 @@ export default async function (
             else if (e.isFile()) { const s = await fs.stat(p); parts.push(`${path.relative(root, p)}:${s.size}:${s.mtimeMs}`); }
         }
     }
-    await walk(uiRoot, 0);
+    // An invalid entry (e.g. '../x.tsx') is already an error; never fingerprint a directory outside the plugin.
+    if (uiRoot === root || uiRoot.startsWith(root + path.sep)) await walk(uiRoot, 0);
     const fingerprint = new Bun.CryptoHasher('sha256').update(parts.join('\n')).digest('hex');
     const previous = builds[opts.name];
     if (!opts.force && previous && previous.fingerprint === fingerprint) return { name: opts.name, changed: false, build: previous };
