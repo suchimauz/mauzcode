@@ -1,5 +1,5 @@
 /* 288×184 design canvas scaled to the perch; the art's feet sit on the input's top edge. */
-.tokibean-mascot { position: absolute; right: -20px; bottom: calc(100% - 14px); width: 288px; height: 184px; transform: scale(.42); transform-origin: bottom right; pointer-events: none; z-index: 5; }
+.tokibean-mascot { position: absolute; right: 0; bottom: calc(100% - 6px); width: 288px; height: 184px; transform: scale(.3); transform-origin: bottom right; pointer-events: none; z-index: 5; }
 .tokibean-canvas { display: block; width: 288px; height: 184px; image-rendering: pixelated; }
 .tokibean-hit { position: absolute; left: 84px; top: 40px; width: 120px; height: 140px; border: 0; padding: 0; background: transparent; pointer-events: auto; cursor: pointer; border-radius: 16px; }
 .tokibean-hit:disabled { pointer-events: none; }
