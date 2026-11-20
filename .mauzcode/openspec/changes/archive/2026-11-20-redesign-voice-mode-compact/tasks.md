@@ -16,5 +16,5 @@
 ## 4. Checks
 
 - [x] 4.1 Run the frontend voice tests (`voice-panel`, `voice-entry-controls`, `inline-dictation-composer`) and the frontend typecheck; all pass.
-- [ ] 4.2 Manual check on a phone: dictate, pause, clear, send and exit; nothing appears under the panel; buttons are reachable with one thumb.
+- [x] 4.2 Manual check on a phone: dictate, pause, clear, send and exit; nothing appears under the panel; buttons are reachable with one thumb.
 - [x] 4.3 Run `openspec validate redesign-voice-mode-compact --strict`.
