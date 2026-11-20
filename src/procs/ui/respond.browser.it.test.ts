@@ -3,7 +3,7 @@
 // header and fires `mauzcode-toast`, the real ui.controlScript shows the toast.
 // Before the fix `new Response` threw on the Cyrillic header: 500, no toast.
 // Runs in the suite's headless Chrome (test/chrome/headless.ts) — never the
-// developer's browser; skipped when no Chrome is installed.
+// developer's browser; Chrome runs in Docker and the test is skipped without it.
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkTestCtx } from "../../_testCtx.entry";
 import { testChrome } from "../../../test/chrome/headless";

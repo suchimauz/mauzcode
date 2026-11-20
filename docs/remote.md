@@ -61,6 +61,7 @@ Watch a job live: `ssh <host> -t tmux attach -t mauzcode-<name>`.
 
 - `MAUZCODE_SSH_CONFIG` — use this ssh_config instead of `~/.ssh/config` (passed as `-F`).
 - `MAUZCODE_SSH_CONTROL_DIR` — where master sockets live (default `~/.ssh/mauzcode-cm`).
+- `MAUZCODE_RSYNC_BIN` — local rsync client for `remote.rsync` (default `rsync` on PATH).
 
 ## Tests
 
@@ -70,7 +71,9 @@ first use and **stay running** (compose project `mauzcode-ssh-<hash of checkout>
 so later runs connect in under a second; a change to the Dockerfile rebuilds
 them. Each run resets the remote home. The throwaway key and a private
 ssh_config live in `.test-tmp/ssh-fixture/`, and the ctx is pointed at them via
-the two env vars above — the developer's `~/.ssh` is never touched. No Docker →
+the env vars above — the developer's `~/.ssh` is never touched. The local
+rsync client also runs from the `plain` image (`MAUZCODE_RSYNC_BIN` points at a
+generated wrapper), so the host needs no rsync. No Docker →
 the suite is skipped. `MAUZCODE_SSH_FIXTURE_DOWN=1` removes the containers after
 the run. Run it by path: `bun test ./src/remote/`.
 

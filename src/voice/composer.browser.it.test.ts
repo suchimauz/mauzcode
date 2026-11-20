@@ -7,14 +7,14 @@ import { mkModelsTestCtx } from '../agent/modelsTestCtx.entry';
 import { testDatabaseUrl } from '../$test';
 import { makeRequestCtx } from '../procs/boot/requestCtx';
 import { confirmSetup, startFakeRealtime, committed, transcription, type FakeConnection } from './contract/openaiRealtimeFake.entry';
-import { startHeadlessChrome, type HeadlessChrome } from '../../test/chrome/headless';
+import { browserTestsEnabled, startHeadlessChrome, type HeadlessChrome } from '../../test/chrome/headless';
 import { openVoiceTab } from '../../test/chrome/voice-tab';
 
 const KEY = 'fake-voice-e2e-server-only-129dee';
 const root = resolve(import.meta.dir, '../..');
 // Explicit opt-out for hosts without the fixtures; missing/broken setup otherwise fails the run.
-const skipFixture = process.env.MAUZCODE_SKIP_VOICE_BROWSER_TESTS === '1';
-if (skipFixture) console.warn('[voice browser] Skipping private Chromium + test Postgres scenarios (MAUZCODE_SKIP_VOICE_BROWSER_TESTS=1)');
+// Chrome runs from the pinned Docker image (test/chrome/headless.ts): without Docker the suite is skipped.
+const skipFixture = !(await browserTestsEnabled());
 let chrome: HeadlessChrome | null;
 let bundle: Blob;
 let css: Blob | undefined;
@@ -24,7 +24,7 @@ beforeAll(async () => {
   const db = new URL(testDatabaseUrl(process.env));
   if (db.hostname !== '127.0.0.1' || db.port !== '54399') throw new Error('Expected disposable Postgres on 127.0.0.1:54399');
   chrome = await startHeadlessChrome();
-  if (!chrome) throw new Error('A private Chromium is required: set CHROME_BIN to an installed Chromium executable');
+  if (!chrome) throw new Error('test Chrome container did not start (see test/chrome/headless.ts)');
   const build = await Bun.build({ entrypoints: [join(root, 'test/chrome/voice-composer.fixture.tsx')], target: 'browser', tsconfig: join(root, 'frontend/tsconfig.json') });
   if (!build.success) throw new Error(build.logs.join('\n'));
   bundle = build.outputs.find(asset => asset.path.endsWith('.js'))!;

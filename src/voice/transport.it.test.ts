@@ -1,27 +1,21 @@
 // Routed voice transports end to end, in a child process that trusts a throwaway CA (NODE_EXTRA_CA_CERTS is read
 // at startup, so the production verifier of this process stays untouched). A local SOCKS5 proxy records every
-// destination it is asked to dial; a fake SSH tunnel counts its leases. Skipped without openssl.
+// destination it is asked to dial; a fake SSH tunnel counts its leases. Certificates come from test/tls (openssl
+// in Docker); skipped without Docker.
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { issueServerCert, tlsFixtureEnabled } from "../../test/tls/certs";
 
-const openssl = Bun.which("openssl");
+const openssl = tlsFixtureEnabled();
 let dir = "";
 let r: Record<string, any> = {};
-
-function sh(args: string[]) {
-    const out = Bun.spawnSync(args, { cwd: dir, stdout: "ignore", stderr: "pipe" });
-    if (out.exitCode !== 0) throw new Error(`${args[0]} failed: ${out.stderr.toString()}`);
-}
 
 beforeAll(async () => {
     if (!openssl) return;
     dir = mkdtempSync(join(tmpdir(), "voice-route-it-"));
-    sh([openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-days", "1", "-subj", "/CN=mauzcode-voice-test-ca"]);
-    sh([openssl, "req", "-newkey", "rsa:2048", "-nodes", "-keyout", "srv.key", "-out", "srv.csr", "-subj", "/CN=voice.test"]);
-    writeFileSync(join(dir, "ext"), "subjectAltName=DNS:voice.test,DNS:localhost\n");
-    sh([openssl, "x509", "-req", "-in", "srv.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-out", "srv.pem", "-days", "1", "-extfile", "ext"]);
+    issueServerCert(dir, "voice.test", ["voice.test", "localhost"]);
     const child = Bun.spawn([process.execPath, join(import.meta.dir, "transport/routeHarness.entry.ts"), join(dir, "srv.key"), join(dir, "srv.pem")], {
         env: { ...process.env, NODE_EXTRA_CA_CERTS: join(dir, "ca.pem") }, stdout: "pipe", stderr: "pipe",
     });

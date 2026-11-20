@@ -1,7 +1,8 @@
 // Real Chrome regression for React surfaces, with an isolated allowlisted fixture server.
 // No mkTestCtx, DB, real auth, messages, approval endpoints, or developer browser.
-import { afterAll, beforeAll, expect, test } from 'bun:test';
-import { startHeadlessChrome, type HeadlessChrome } from '../../test/chrome/headless';
+// Chrome runs from the pinned Docker image (test/chrome/headless.ts): without Docker the suite is skipped.
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { browserTestsEnabled, startHeadlessChrome, type HeadlessChrome } from '../../test/chrome/headless';
 import { resolve } from 'node:path';
 
 let chrome: HeadlessChrome | null;
@@ -11,6 +12,8 @@ const unexpected: string[] = [];
 const saves: { body: any; csrf: string | null }[] = [];
 let content = 'original fixture text';
 let activeItemId = 1;
+const enabled = await browserTestsEnabled();
+describe.skipIf(!enabled)('React surfaces in Chrome', () => {
 beforeAll(async () => {
   const build = await Bun.build({ entrypoints: [resolve(import.meta.dir, '../../test/chrome/react-surfaces.fixture.tsx')], target: 'browser', minify: false, tsconfig: resolve(import.meta.dir, '../../frontend/tsconfig.json'), loader: { '.woff2': 'file' } });
   if (!build.success) throw new Error(build.logs.join('\n'));
@@ -50,7 +53,7 @@ beforeAll(async () => {
     return new Response('Fixture route not allowlisted', { status: 404 });
   } });
   chrome = await startHeadlessChrome();
-  if (!chrome) throw new Error('Chrome required: set CHROME_BIN to an installed Chromium binary (never silently skip this regression)');
+  if (!chrome) throw new Error('test Chrome container did not start (see test/chrome/headless.ts)');
 }, 30_000);
 afterAll(async () => { server?.stop(true); await chrome?.stop(); });
 
@@ -127,3 +130,4 @@ test('React People renders isolated owner account without issuing mutations', as
     expect(unexpected).toEqual([]);
   } finally { await tab.close(); }
 }, 20_000);
+});

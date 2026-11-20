@@ -9,7 +9,7 @@
 //   - mauzCodeLive.subscribe refuses a state subscriber without resync.
 // Hidden is emulated the way the browser signals it (visibilityState + visibilitychange); HTTP/2 is
 // emulated by reporting `h2` as the page's nextHopProtocol before any script runs. Runs in the suite's
-// headless Chrome (test/chrome/headless.ts); skipped when no Chrome is installed.
+// headless Chrome (test/chrome/headless.ts, a Docker container); skipped without Docker.
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkTestCtx } from "../../_testCtx.entry";
 import { testChrome } from "../../../test/chrome/headless";

@@ -1,27 +1,21 @@
 // sshProvider.request end to end: a local SOCKS5 listener forwards to a local TLS
 // server whose certificate is issued for chatgpt.com by a throwaway CA. The CA is
 // trusted only inside a child bun process (NODE_EXTRA_CA_CERTS is read at
-// startup), so the production verifier stays untouched. Skipped without openssl.
+// startup), so the production verifier stays untouched. Certificates come from test/tls (openssl in Docker);
+// skipped without Docker.
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { issueServerCert, tlsFixtureEnabled } from "../../test/tls/certs";
 
-const openssl = Bun.which("openssl");
+const openssl = tlsFixtureEnabled();
 let dir = "";
-
-function sh(args: string[]) {
-    const r = Bun.spawnSync(args, { cwd: dir, stdout: "ignore", stderr: "pipe" });
-    if (r.exitCode !== 0) throw new Error(`${args[0]} failed: ${r.stderr.toString()}`);
-}
 
 beforeAll(() => {
     if (!openssl) return;
     dir = mkdtempSync(join(tmpdir(), "ssh-request-it-"));
-    sh([openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-days", "1", "-subj", "/CN=mauzcode-test-ca"]);
-    sh([openssl, "req", "-newkey", "rsa:2048", "-nodes", "-keyout", "srv.key", "-out", "srv.csr", "-subj", "/CN=chatgpt.com"]);
-    writeFileSync(join(dir, "ext"), "subjectAltName=DNS:chatgpt.com\n");
-    sh([openssl, "x509", "-req", "-in", "srv.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-out", "srv.pem", "-days", "1", "-extfile", "ext"]);
+    issueServerCert(dir, "chatgpt.com", ["chatgpt.com"]);
     writeFileSync(join(dir, "harness.ts"), `
 import tls from "node:tls";
 import net from "node:net";

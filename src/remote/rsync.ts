@@ -9,6 +9,8 @@
  * @param opts.exclude rsync --exclude patterns, e.g. node_modules or .git.
  * @param opts.delete Delete destination files missing from the source (mirror). @default false
  * @param opts.dryRun Report what would transfer without copying. @default false
+ *
+ * The local client is `rsync` on PATH, or MAUZCODE_RSYNC_BIN when set (like MAUZCODE_SSH_BIN for ssh).
  */
 export default async function (
     ctx: Context,
@@ -35,7 +37,7 @@ export default async function (
     const shq0 = (s: string) => /^[A-Za-z0-9_./=%:@-]+$/.test(s) ? s : ctx.fns.remote.quote({ value: s });
     const so = await ctx.fns.remote.sshOptions({});
     const ssh = [so.bin, "-T", ...so.args].map(shq0).join(" ");
-    const args = ["rsync", "-az", "--stats", "-e", ssh];
+    const args = [String(ctx.env.MAUZCODE_RSYNC_BIN ?? "").trim() || "rsync", "-az", "--stats", "-e", ssh];
     if (opts.delete) args.push("--delete");
     if (opts.dryRun) args.push("--dry-run");
     for (const e of opts.exclude ?? []) args.push("--exclude", e);
