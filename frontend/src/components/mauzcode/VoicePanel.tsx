@@ -55,6 +55,10 @@ export type VoicePanelProps = {
   busy: boolean;
   /** The composer's last send failure, shown in the panel's single error line when there is no capture error. */
   sendError?: string;
+  /** The model picker, shown at the left of the input bar (icon only on a touch device). */
+  model?: ReactNode;
+  /** The add button, kept in place on the first line but disabled. */
+  leading?: ReactNode;
 };
 
 /**
@@ -62,10 +66,12 @@ export type VoicePanelProps = {
  * resumes, Enter requests send, Escape stops capture and returns to the editor. They never fire for typing outside the
  * panel, and a focused button or text field inside it keeps its native keys. Every shortcut has a labelled button.
  * One polite live region announces state changes and the 1 min / 10 s thresholds; transcript text is never in it.
- * Compact layout: the state is conveyed by the waveform, the toggle icon and the time label (the label is screen-reader
- * only); CSS picks the desktop row or the mobile stack, see voice-panel.css.
+ * It reuses the ordinary input frame: the transcript replaces the text, the add button stays disabled on the first line,
+ * and the bar holds the model, waveform with time, clear, pause/resume, exit and send. The state is conveyed by the
+ * waveform, the toggle icon, the time and the accent frame (the state label is screen-reader only). Tooltips name the
+ * shortcuts; there is no hint line. See voice-panel.css.
  */
-export function VoicePanel({ capture, text, attachments, onToggle, onClear, canClear, onExit, onSend, busy, canSubmit, sendError }: VoicePanelProps) {
+export function VoicePanel({ capture, text, attachments, onToggle, onClear, canClear, onExit, onSend, busy, canSubmit, sendError, model, leading }: VoicePanelProps) {
   const root = useRef<HTMLElement>(null);
   const id = useId();
   const coarse = useCoarsePointer();
@@ -115,37 +121,36 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, canC
   const ToggleIcon = running ? Pause : state === 'error' ? RotateCcw : Play;
   const clearTitle = canClear ? 'Очистить диктовку' : 'Надиктованного текста нет';
 
-  return <section ref={root} className="voice-panel" tabIndex={-1} aria-label="Голосовой режим" aria-describedby={`${id}-state ${id}-keys`} data-state={state} data-error={errorText ? true : undefined} data-can-clear={canClear || undefined} onKeyDown={keyDown}>
+  // The ordinary input frame: transcript in the text area, controls in the bar, the error line inside the frame.
+  return <section ref={root} className={`voice-panel message-input has-bar${leading ? ' has-leading' : ''}`} tabIndex={-1} aria-label="Голосовой режим" aria-describedby={`${id}-state ${id}-keys`} data-state={state} data-error={errorText ? true : undefined} data-can-clear={canClear || undefined} onKeyDown={keyDown}>
     <p id={`${id}-keys`} className="sr-only">Пробел — пауза или продолжение, Enter — отправить, Escape — выйти в поле ввода. Клавиши работают, пока фокус на самой панели или в тексте сообщения; на кнопках действуют их собственные клавиши.</p>
     <span id={`${id}-state`} className="sr-only">{STATE_LABEL[state]}</span>
-    {/* A capture error is announced by the live region below; a send failure has no announcement there. */}
-    {errorText && <p className="voice-panel-error" role={state === 'error' && error ? undefined : 'alert'}>{errorText}</p>}
     {attachments}
-    <div className="voice-panel-body">
-      <div className="voice-panel-transcript-wrap">
-        <div className="voice-panel-transcript" tabIndex={0} role="group" aria-label="Текст сообщения">
-          {text ? text : <span className="voice-panel-placeholder">Говорите — текст появится здесь и в поле сообщения.</span>}
-        </div>
-      </div>
-      <div className="voice-panel-controls" role="group" aria-label="Управление голосовым режимом">
-        <button type="button" className="voice-panel-button voice-panel-exit" aria-label="Выйти" title="Выйти (Esc)" aria-keyshortcuts="Escape" disabled={busy} onClick={onExit}>
-          <X size={16} aria-hidden="true" />
-        </button>
-        <span className="voice-panel-wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>
-        <span className="voice-panel-time">{remainingMs != null && state === 'listening' && <>осталось <time>{clock(remainingMs)}</time></>}</span>
-        <span className="voice-panel-spacer" />
-        <button type="button" className="voice-panel-button voice-panel-clear" aria-label="Очистить диктовку" title={clearTitle} hidden={coarse && !canClear} disabled={busy} aria-disabled={canClear ? undefined : true} onClick={() => { if (canClear) onClear(); }}>
-          <Delete size={16} aria-hidden="true" />
-        </button>
-        <button type="button" className="voice-panel-button voice-panel-toggle" aria-label={toggleLabel} title={`${toggleLabel} (Пробел)`} aria-keyshortcuts="Space" disabled={toggleDisabled} onClick={onToggle}>
-          <ToggleIcon size={16} aria-hidden="true" />
-        </button>
-        <button type="button" className="voice-panel-button voice-panel-send" aria-label="Отправить" title="Отправить (Enter)" aria-keyshortcuts="Enter" disabled={busy || !canSubmit} onClick={onSend}>
-          <Send size={16} aria-hidden="true" />
-        </button>
+    <div className="message-input-row">{leading && <span className="message-input-leading">{leading}</span>}
+      <div className="voice-panel-transcript" tabIndex={0} role="group" aria-label="Текст сообщения">
+        {text ? text : <span className="voice-panel-placeholder">Говорите — текст появится здесь и в поле сообщения.</span>}
       </div>
     </div>
-    <p className="voice-panel-hints" aria-hidden="true"><span><kbd>Пробел</kbd> пауза</span><span><kbd>Enter</kbd> отправить</span><span><kbd>Esc</kbd> выйти</span></p>
+    {/* A capture error is announced by the live region below; a send failure has no announcement there. */}
+    {errorText && <p className="voice-panel-error" role={state === 'error' && error ? undefined : 'alert'}>{errorText}</p>}
+    <div className="composer-inbar voice-panel-controls" role="group" aria-label="Управление голосовым режимом">
+      {model}
+      <span className="composer-inbar-spacer" />
+      <span className="voice-panel-wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>
+      <span className="voice-panel-time">{remainingMs != null && state === 'listening' && <><span className="sr-only">осталось </span><time>{clock(remainingMs)}</time></>}</span>
+      <button type="button" className="voice-panel-button voice-panel-clear" aria-label="Очистить диктовку" title={clearTitle} hidden={coarse && !canClear} disabled={busy} aria-disabled={canClear ? undefined : true} onClick={() => { if (canClear) onClear(); }}>
+        <Delete size={16} aria-hidden="true" />
+      </button>
+      <button type="button" className="voice-panel-button voice-panel-toggle" aria-label={toggleLabel} title={coarse ? toggleLabel : `${toggleLabel} (Пробел)`} aria-keyshortcuts="Space" disabled={toggleDisabled} onClick={onToggle}>
+        <ToggleIcon size={16} aria-hidden="true" />
+      </button>
+      <button type="button" className="voice-panel-button voice-panel-exit" aria-label="Выйти" title={coarse ? 'Выйти' : 'Выйти (Esc)'} aria-keyshortcuts="Escape" disabled={busy} onClick={onExit}>
+        <X size={16} aria-hidden="true" />
+      </button>
+      <button type="button" className="voice-panel-button voice-panel-send" aria-label="Отправить" title={coarse ? 'Отправить' : 'Отправить (Enter)'} aria-keyshortcuts="Enter" disabled={busy || !canSubmit} onClick={onSend}>
+        <Send size={16} aria-hidden="true" />
+      </button>
+    </div>
     <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</p>
   </section>;
 }

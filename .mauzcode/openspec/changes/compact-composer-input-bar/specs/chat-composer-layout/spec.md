@@ -46,6 +46,17 @@ The message input SHALL end with one bar inside its frame, below the text: the m
 - **WHEN** the composer is 320 CSS pixels wide
 - **THEN** the model picker, the voice controls and send stay on one bar line without overlap, and the model label is truncated with an ellipsis.
 
+### Requirement: Empty input area focuses the editor
+A primary press on any part of the input frame that is not a control (the gaps and spacer of the input bar, the frame padding) SHALL focus the message editor, keeping its previous caret or, if it had none, placing the caret at the end of the draft. Presses on controls (add, model picker, voice controls, send, attachments) SHALL keep their own behaviour and SHALL NOT move focus to the editor. Secondary-button presses and presses while the input is disabled SHALL do nothing.
+
+#### Scenario: Click between the model and the voice controls
+- **WHEN** the editor is not focused and the user clicks the empty space in the input bar
+- **THEN** the editor receives focus with the caret at the end of the draft, and typing continues the draft.
+
+#### Scenario: Click on a control in the bar
+- **WHEN** the user clicks the model picker in the input bar
+- **THEN** the model menu opens as before and the editor does not take focus.
+
 ### Requirement: New-session composer matches the chat composer
 The new-session composer SHALL use the same input frame and input bar as an existing chat: the add button on the first line, the model picker at the left of the bar and send at its right. Its chip row SHALL stay above the input. Below the input it SHALL show the metrics row with the draft title at the left and an empty context meter at the right.
 

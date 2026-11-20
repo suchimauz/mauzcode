@@ -1,20 +1,21 @@
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { HoverPanel } from '../ui/HoverPanel';
 import { ContextDetailsPanel } from './ContextDetailsPanel';
 import { ContextPie } from './ContextPie';
-import { ModelPicker } from './ModelPicker';
 import { RollingNumber } from '../ui/RollingNumber';
 import { getContextBudget, type ContextBudget, type ContextDetails } from '../../lib/mauzcode';
 import { formatCompactTokens } from '../../lib/formatCompactTokens';
 import './composer-footer.css';
 /**
- * Two rows below the input: controls (model picker left, `voice` group right) and one metrics control (context on the
- * left; cost, tokens and cache on the right) that opens the context details panel. Container queries hide the cache
- * hit, then used/total tokens, on narrow composers; nothing scrolls sideways.
+ * Metrics row below the input: usage at the left (cost, input/output tokens, cache hit) and the context meter at the
+ * right. They are two controls with their own hover and focus state that open one shared context details panel,
+ * anchored to the row's right edge. As the composer narrows only the used/total tokens hide; nothing wraps or scrolls.
+ * The model picker and voice controls live in the input bar (see `LiveComposer`).
  */
-export function ComposerFooter({ agentId, running, busy, revision, onModelSaved, onModelBusy, voice }: { voice?: ReactNode; onModelSaved?: () => void; onModelBusy?: (busy: boolean) => void; agentId: string; running: boolean; busy: boolean; revision: number }) {
+export function ComposerFooter({ agentId, running, revision }: { agentId: string; running: boolean; busy?: boolean; revision: number }) {
   const [contextOpen, setContextOpen] = useState(false);
   const contextId = useId();
+  const row = useRef<HTMLDivElement>(null);
   const [details, setDetails] = useState<ContextDetails | null>(null);
   const [budget, setBudget] = useState<ContextBudget | null>(null);
   useEffect(() => {
@@ -43,24 +44,26 @@ export function ComposerFooter({ agentId, running, busy, revision, onModelSaved,
   const cache = usage?.cacheHitRatio == null ? null : Math.round(usage.cacheHitRatio * 100);
   const formatUsd = (n: number | null | undefined) => n == null ? '$—' : n > 0 && n < 0.01 ? '<$0.01' : `$${n.toLocaleString('en-US', n < 10 ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumFractionDigits: 0 })}`;
   const costLabel = usage?.costUsd == null ? 'Цена неизвестна' : `Примерная цена по API-прайсу ${formatUsd(usage.costUsd)}`;
-  const metricsLabel = `${label}. ${detail} Input: ${formatTokens(usage?.inputTokens)} tok. Output: ${formatTokens(usage?.outputTokens)} tok. ${cache == null ? 'Нет замера кэша' : `Попадание в кэш ${cache}%`}. ${costLabel}. Открыть статистику контекста`;
+  const contextLabel = `${label}. ${detail} Открыть статистику контекста`;
+  const usageLabel = `Input: ${formatTokens(usage?.inputTokens)} tok. Output: ${formatTokens(usage?.outputTokens)} tok. ${cache == null ? 'Нет замера кэша' : `Попадание в кэш ${cache}%`}. ${costLabel}. Открыть статистику контекста`;
   const level = percent == null ? 'unknown' : percent >= 80 ? 'high' : percent >= 48 ? 'medium' : 'low';
   return <div className="composer-footer">
-    <div className="composer-controls">
-      <div className="composer-controls-model">{onModelSaved && onModelBusy && <ModelPicker key={agentId} agentId={agentId} running={running} busy={busy} revision={revision} onSaved={onModelSaved} onBusyChange={onModelBusy} />}</div>
-      {voice && <div className="composer-controls-voice">{voice}</div>}
+    <div ref={row} className="composer-metrics-row">
+      <HoverPanel id={contextId} anchor={row} open={contextOpen} onOpenChange={setContextOpen} label="Context usage" className="context-panel" trigger={[
+        <button key="usage" type="button" className="composer-metrics composer-metrics--usage" aria-label={usageLabel} aria-haspopup="dialog">
+          <span className="composer-metrics-usage">
+            {usage?.costUsd != null && <span className="composer-cost" title={usage.price ? `≈ по API-прайсу: $${usage.price.input}/M in, $${usage.price.output}/M out` : undefined}><RollingNumber value={formatUsd(usage.costUsd)} /></span>}
+            <span className="composer-token-count" data-usage="input"><span className="composer-token-arrow" aria-hidden="true">↑</span><RollingNumber value={formatCompactTokens(usage?.inputTokens)} /></span>
+            <span className="composer-token-count" data-usage="output"><span className="composer-token-arrow" aria-hidden="true">↓</span><RollingNumber value={formatCompactTokens(usage?.outputTokens)} /></span>
+            <span className="composer-cache-hit" title={cache == null ? 'Попадание в кэш: нет замера' : `Попадание в кэш ${cache}%`}><RollingNumber value={cache == null ? '—' : `${cache}%`} /></span>
+          </span>
+        </button>,
+        <button key="context" type="button" className="composer-metrics composer-metrics--context" aria-label={contextLabel} aria-haspopup="dialog">
+          <span className="composer-metrics-context" data-level={level}><ContextPie percent={percent} /><RollingNumber value={percent == null ? '—' : `${percent}%`} />{budget && windowSize && <span className="composer-metrics-window">· {exact ? '' : '~'}{formatCompactTokens(used)} / {formatCompactTokens(windowSize)}</span>}</span>
+        </button>,
+      ]}>
+        <ContextDetailsPanel budget={budget} details={details} />
+      </HoverPanel>
     </div>
-    <HoverPanel id={contextId} open={contextOpen} onOpenChange={setContextOpen} label="Context usage" className="context-panel" trigger={
-      <button type="button" className="composer-metrics" aria-label={metricsLabel} aria-haspopup="dialog">
-        <span className="composer-metrics-context" data-level={level}><ContextPie percent={percent} /><RollingNumber value={percent == null ? '—' : `${percent}%`} />{budget && windowSize && <span className="composer-metrics-window">· {exact ? '' : '~'}{formatCompactTokens(used)} / {formatCompactTokens(windowSize)}</span>}</span>
-        <span className="composer-metrics-usage">
-          {usage?.costUsd != null && <span className="composer-cost" title={usage.price ? `≈ по API-прайсу: $${usage.price.input}/M in, $${usage.price.output}/M out` : undefined}><RollingNumber value={formatUsd(usage.costUsd)} /></span>}
-          <span className="composer-token-count" data-usage="input"><span className="composer-token-arrow" aria-hidden="true">↑</span><RollingNumber value={formatCompactTokens(usage?.inputTokens)} /></span>
-          <span className="composer-token-count" data-usage="output"><span className="composer-token-arrow" aria-hidden="true">↓</span><RollingNumber value={formatCompactTokens(usage?.outputTokens)} /></span>
-          <span className="composer-cache-hit"><RollingNumber value={cache == null ? 'кэш\u00a0—' : `кэш\u00a0${cache}%`} /></span>
-        </span>
-      </button>}>
-      <ContextDetailsPanel budget={budget} details={details} />
-    </HoverPanel>
   </div>;
 }

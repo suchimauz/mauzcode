@@ -8,13 +8,11 @@
 .question-pet-perch:has(+ .composer-readonly-boundary > .composer-input-anchor > .composer-status-row:first-child),
 .composer-input-anchor > .composer-pet-slot:has(+ .composer-status-row) { transform:translateY(calc(var(--composer-status-row) + 6px)); }
 .composer-pet-slot { position:relative; height:0; }
-/* Footer: controls row (model left, voice right), then one metrics control. Container queries, not viewport. */
-.composer-footer { container-type:inline-size; display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:2px; margin:6px 0 0; padding:0 4px; width:100%; box-sizing:border-box; }
-.composer-controls { display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
-.composer-controls-model { display:flex; flex:1 1 auto; min-width:0; }
-.composer-controls-model .model-picker-trigger { max-width:100%; }
-.composer-controls-voice { display:flex; flex:none; }
-.composer-metrics { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; min-width:0; min-height:24px; padding:0 4px; border:0; border-radius:6px; background:transparent; color:var(--text-secondary); font:500 12px/20px var(--font-sans,inherit); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; cursor:pointer; text-align:left; }
+/* Footer: one metrics row below the input — usage left, context right; two hover targets, one shared panel.
+   Container queries, not viewport. */
+.composer-footer { container-type:inline-size; display:block; margin:6px 0 0; padding:0 4px; width:100%; box-sizing:border-box; }
+.composer-metrics-row { display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
+.composer-metrics { display:flex; align-items:center; justify-content:space-between; gap:10px; width:auto; flex:0 1 auto; min-width:0; min-height:24px; padding:0 4px; border:0; border-radius:6px; background:transparent; color:var(--text-secondary); font:500 12px/20px var(--font-sans,inherit); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; cursor:pointer; text-align:left; }
 .composer-metrics:hover, .composer-metrics[aria-expanded=true] { background:var(--hover); color:var(--text); }
 .composer-metrics:focus-visible { outline:2px solid var(--focus-ring); outline-offset:1px; }
 .composer-metrics-context { --context-rest: rgba(20, 20, 19, .14); display:inline-flex; align-items:center; gap:6px; flex:none; min-width:0; color:#46784e; }
@@ -29,9 +27,10 @@
 .composer-metrics-usage { display:inline-flex; align-items:center; gap:10px; flex:none; }
 .composer-token-count { display:inline-flex; align-items:center; gap:3px; }
 .composer-token-arrow { color:var(--text-tertiary); }
-/* Hide order as the composer narrows: cache hit first, then used/total tokens. */
+/* As the composer narrows only the used/total tokens hide; cost, tokens, cache hit and percent always stay. */
+.composer-metrics--context { flex:none; }
 @container(max-width:460px) { .composer-metrics-window { display:none; } .composer-metrics-usage { gap:8px; } }
-@container(max-width:400px) { .composer-cache-hit { display:none; } }
+@container(max-width:340px) { .composer-metrics-usage { gap:6px; } .composer-metrics { gap:6px; padding:0 2px; } }
 @media(pointer:coarse) { .composer-metrics { min-height:44px; } }
 .composer-add { display:inline-flex; align-items:center; justify-content:center; border:0; background:transparent; font:inherit; cursor:pointer; border-radius:8px; }
 .composer-cache-hit { color:#b38a51; }

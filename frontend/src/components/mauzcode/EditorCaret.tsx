@@ -10,15 +10,23 @@ export function EditorCaret({ input, value }: { input: RefObject<HTMLDivElement 
       const selection = window.getSelection(), style = getComputedStyle(el);
       if (document.activeElement !== el || composing || el.getAttribute('aria-disabled') === 'true' || !selection?.isCollapsed || !selection.rangeCount || !el.contains(selection.anchorNode) || style.direction === 'rtl' || /[\u0590-\u08ff]/u.test(el.textContent || '') || matchMedia('(forced-colors: active)').matches) { hide(); return; }
       const range = selection.getRangeAt(0).cloneRange();
-      let point = range.getClientRects?.()[0];
-      const tail = el.querySelector('[data-editor-tail]');
-      if (!point?.height && tail) {
-        const before = range.cloneRange(); before.selectNodeContents(el); before.setEnd(range.startContainer, range.startOffset);
-        if (before.toString().length === el.textContent?.length) point = tail.getBoundingClientRect();
+      let point: { left: number; top: number; height: number } | undefined = range.getClientRects?.()[0];
+      // At a line start (right after a newline, or before the tail break) a collapsed range has no rect or reports the
+      // end of the previous line, depending on timing. Measure the next character there, or the tail break at the end.
+      const before = range.cloneRange(); before.selectNodeContents(el); before.setEnd(range.startContainer, range.startOffset);
+      const head = before.toString(), lineStart = head.endsWith('\n');
+      if (lineStart || !point?.height) {
+        const node = range.startContainer, offset = range.startOffset, text = node.textContent ?? '';
+        if (node.nodeType === Node.TEXT_NODE && offset < text.length && text[offset] !== '\n') {
+          const next = document.createRange(); next.setStart(node, offset); next.setEnd(node, offset + 1);
+          const rect = next.getClientRects?.()[0]; if (rect?.height) point = { left: rect.left, top: rect.top, height: rect.height };
+        }
       }
+      const tail = el.querySelector('[data-editor-tail]');
+      if (tail && head.length === el.textContent?.length && (lineStart || !point?.height)) point = tail.getBoundingClientRect();
       const box = el.getBoundingClientRect();
       let x = point?.left, y = point?.top, height = point?.height;
-      if (!point && !el.textContent) { x = box.left + parseFloat(style.paddingLeft || '0'); height = parseFloat(style.fontSize) * 1.2857; y = box.top + (parseFloat(style.lineHeight) - height) / 2; }
+      if (!point && !el.textContent) { x = box.left + parseFloat(style.paddingLeft || '0') + (parseFloat(style.textIndent) || 0); height = parseFloat(style.fontSize) * 1.2857; y = box.top + (parseFloat(style.lineHeight) - height) / 2; }
       if (x == null || y == null || !height || y < box.top || y + height > box.bottom + 1 || x < box.left || x > box.right) { hide(); return; }
       const parent = caret.offsetParent as HTMLElement | null; if (!parent) { hide(); return; }
       const origin = parent.getBoundingClientRect();
@@ -29,6 +37,8 @@ export function EditorCaret({ input, value }: { input: RefObject<HTMLDivElement 
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
     const start = () => { composing = true; hide(); }, end = () => { composing = false; schedule(); };
     const observer = new ResizeObserver(schedule); observer.observe(el);
+    // After a repaint (e.g. a line break) layout settles only after commit: measure again on the next frame.
+    schedule();
     document.addEventListener('selectionchange', schedule);
     for (const name of ['input', 'focus', 'keyup', 'pointerup', 'scroll']) el.addEventListener(name, schedule);
     el.addEventListener('blur', hide); el.addEventListener('compositionstart', start); el.addEventListener('compositionend', end);

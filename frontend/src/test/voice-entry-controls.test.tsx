@@ -67,16 +67,17 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
-describe('voice entry points in the composer footer', () => {
-  it('sit at the right of the controls row in a capsule; DOM and Tab order: settings, voice mode, inline input', async () => {
+describe('voice entry points in the input bar', () => {
+  it('sit in the input bar as flat icons before send; DOM and Tab order: settings, voice mode, inline input', async () => {
     serve(readyChat);
     render(<LiveComposer agentId="chat-1" running={false} onAccepted={vi.fn()} />);
     const inline = await screen.findByRole('button', { name: INLINE });
     const panel = screen.getByRole('button', { name: PANEL });
     const picker = await screen.findByRole('button', { name: /Маршрут голосового ввода/ });
     const group = screen.getByRole('group', { name: 'Голос' });
-    expect(group).toHaveClass('voice-capsule');
-    expect(group.closest('.composer-controls')!.lastElementChild).toContainElement(group);
+    expect(group).toHaveClass('is-flat'); expect(group).not.toHaveClass('voice-capsule');
+    expect(group.closest('.composer-inbar')).not.toBeNull();
+    expect(group.nextElementSibling).toBe(screen.getByRole('button', { name: 'Отправить сообщение' }));
     expect([...group.querySelectorAll('button')]).toEqual([picker, panel, inline]);
     // Only inline voice input is the accent-filled primary control.
     expect([...group.querySelectorAll('[data-primary]')]).toEqual([inline]);

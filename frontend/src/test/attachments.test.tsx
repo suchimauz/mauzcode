@@ -6,6 +6,9 @@ import { PendingAttachments } from '../components/mauzcode/PendingAttachments';
 import { LiveComposer } from '../components/mauzcode/LiveComposer';
 import { attachmentLimitError, imagePreviewSize, isPreviewImage } from '../lib/attachments';
 vi.mock('../components/mauzcode/ComposerFooter', () => ({ ComposerFooter: () => null }));
+vi.mock('../components/mauzcode/ModelPicker', () => ({ ModelPicker: () => null }));
+// The input bar's voice group reads voice settings on mount; this suite asserts only attachment requests.
+vi.mock('../components/mauzcode/VoiceEntryControls', async importOriginal => ({ ...await importOriginal<typeof import('../components/mauzcode/VoiceEntryControls')>(), VoiceEntryControls: () => null }));
 vi.mock('../lib/goal', async importOriginal => ({ ...await importOriginal<typeof import('../lib/goal')>(), getGoal: vi.fn().mockResolvedValue({ version: 1, enabled: false }) }));
 vi.mock('../lib/todos', () => ({ getTodos: vi.fn().mockResolvedValue({ todos: null }) }));
 vi.mock('../lib/triggers', async importOriginal => ({ ...await importOriginal<typeof import('../lib/triggers')>(), getArmedTriggers: vi.fn().mockResolvedValue({ agentId: '', counts: { at: 0, cron: 0, watch: 0 }, triggers: [] }) }));

@@ -22,3 +22,6 @@
 .voice-entry[data-primary][aria-disabled=true],.voice-entry[data-primary][aria-disabled=true]:hover { color:var(--text-secondary); background:color-mix(in srgb, var(--text) 10%, transparent); opacity:1; }
 .voice-capsule .voice-route-trigger:focus-visible { outline-offset:2px; }
 @media (forced-colors: active) { .voice-entry[data-primary] { border:1px solid ButtonText; } }
+/* Flat group in the input bar: same order and accent mic, no shared background. */
+.voice-entry-group.is-flat { gap:0; padding:0; background:transparent; }
+.voice-entry-group.is-flat .voice-route-trigger { border-radius:999px; }

@@ -17,17 +17,25 @@ export type CommandEditorProps = Pick<AriaAttributes, 'aria-label' | 'aria-contr
   className?: string;
 };
 
-// Only text and explicit line breaks cross the editor boundary, never clipboard HTML.
-function plain(node: Node): string {
+// Browsers add placeholder breaks so an empty block has a line box: the last child of a block
+// (`<div><br></div>` from a native paragraph) or the lone break left by select-all + delete. They are not text.
+const placeholderBreak = (node: Node) => !node.nextSibling && node.parentNode instanceof Element && /^(DIV|P)$/.test(node.parentNode.nodeName) && node.parentNode.getAttribute('role') !== 'textbox';
+function walk(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
   if (node instanceof Element && node.hasAttribute('data-editor-tail')) return '';
-  if (node.nodeName === 'BR') return '\n';
+  if (node.nodeName === 'BR') return placeholderBreak(node) ? '' : '\n';
   let text = '';
   node.childNodes.forEach((child, index) => {
     if (index && /^(DIV|P)$/.test(child.nodeName) && !text.endsWith('\n')) text += '\n';
-    text += plain(child);
+    text += walk(child);
   });
   return text;
+}
+// Only text and explicit line breaks cross the editor boundary, never clipboard HTML.
+// An editor or fragment without any text content is always the empty draft.
+function plain(node: Node): string {
+  if (node.nodeType !== Node.TEXT_NODE && !node.textContent) return '';
+  return walk(node);
 }
 function offsets(root: HTMLElement): [number, number] {
   const selection = window.getSelection();
@@ -46,7 +54,10 @@ function boundary(root: HTMLElement, range: Range, offset: number, edge: 'start'
     const length = node.textContent?.length ?? 0;
     if (offset <= length) {
       const chip = node.parentElement?.closest('[data-composer-command]');
-      if (edge === 'start') { if (chip) range.setStartAfter(chip); else range.setStart(node, offset); }
+      // At the very end after a final newline, sit before the tail break: that position is on the new line.
+      const next = node.nextSibling;
+      const tail = offset === length && node.textContent?.endsWith('\n') && next instanceof Element && next.hasAttribute('data-editor-tail') ? next : null;
+      if (edge === 'start') { if (chip) range.setStartAfter(chip); else if (tail) range.setStartBefore(tail); else range.setStart(node, offset); }
       else if (chip) range.setEndAfter(chip); else range.setEnd(node, offset);
       return true;
     }
@@ -135,6 +146,20 @@ export const CommandEditor = forwardRef<CommandEditorHandle, CommandEditorProps>
     selectChip(false);
     commit(current.slice(0, start) + text + current.slice(end), start + text.length);
   };
+  // React's onBeforeInput is synthetic and has no inputType. Touch keyboards send Enter as keyCode 229, so the
+  // keydown path skips it and the browser would insert a native paragraph (`<div><br></div>`) instead.
+  const lineBreak = useRef<(event: InputEvent) => void>(() => {});
+  lineBreak.current = event => {
+    if (disabled || composing.current || event.isComposing) return;
+    if (event.inputType !== 'insertParagraph' && event.inputType !== 'insertLineBreak') return;
+    event.preventDefault(); insert('\n');
+  };
+  useLayoutEffect(() => {
+    const el = root.current; if (!el) return;
+    const listener = (event: Event) => lineBreak.current(event as InputEvent);
+    el.addEventListener('beforeinput', listener);
+    return () => el.removeEventListener('beforeinput', listener);
+  }, []);
   const removeChip = () => {
     const current = plain(root.current!);
     release(); selectChip(false);
@@ -150,7 +175,16 @@ export const CommandEditor = forwardRef<CommandEditorHandle, CommandEditorProps>
       if (disabled || composing.current) return;
       const el = root.current!; const text = plain(el);
       if (validClaim && (!text.startsWith(token) || el.firstChild !== el.querySelector('[data-composer-command]'))) release();
-      selectChip(false); el.dataset.empty = String(!text); onChange(text);
+      selectChip(false);
+      // Clearing everything leaves browser placeholder nodes (a lone `<br>`); drop them so the draft is truly empty.
+      if (!text && el.childNodes.length) el.replaceChildren();
+      // A native paragraph that slipped through (`hi<div><br></div>`) is repainted from the canonical text at once,
+      // so the new line and its caret are visible before any further typing.
+      else if (el.querySelector('div, p')) {
+        const [position] = offsets(el); const claim = validClaim && !released.current && text.startsWith(token) && el.firstChild === el.querySelector('[data-composer-command]');
+        commit(text, position, claim); return;
+      }
+      el.dataset.empty = String(!text); onChange(text);
     }}
     onBeforeInput={event => {
       if (disabled || composing.current || (event.nativeEvent as InputEvent).isComposing) return;

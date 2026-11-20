@@ -13,8 +13,31 @@
 @media (prefers-reduced-motion: reduce) { .input-caret { transition: none; animation: none; } }
 @media (forced-colors: active) { .input-caret { display: none; } .message-input textarea[data-visual-caret] { caret-color: auto; } }
 @media (pointer: coarse) { .message-input { padding-right: 52px; min-height: 46px; } .message-input textarea { font-size: 16px; } .message-input .message-input-send { right: 1px; bottom: 0; width: 44px; min-width: 44px; height: 44px; min-height: 44px; } }
-/* Optional leading control (the composer's add button) sits inside the input, before the text. */
-.message-input-row { display: flex; align-items: flex-end; gap: 4px; min-width: 0; }
-.message-input-field { flex: 1; min-width: 0; }
-.message-input-leading { display: flex; flex: none; align-items: center; margin: -2px 0 -2px -8px; }
-@media (pointer: coarse) { .message-input-leading { margin: -6px 0 -6px -12px; } }
+/* Optional leading control (the composer's add button) sits on the first line only: the slot is absolute and the
+   text reserves room with text-indent, so wrapped and later lines use the full width under the button. */
+.message-input-row { position: relative; display: block; min-width: 0; }
+.message-input-field { min-width: 0; }
+.message-input-leading { position: absolute; z-index: 1; left: -8px; top: -2px; display: flex; align-items: center; }
+.message-input.has-leading .command-editor, .message-input.has-leading textarea, .message-input.has-leading .voice-panel-transcript { text-indent: 26px; }
+.message-input.has-leading .command-editor[data-empty="true"]::before { left: 26px; text-indent: 0; }
+@media (pointer: coarse) {
+  .message-input-leading { left: -12px; top: -10px; }
+  .message-input.has-leading .command-editor, .message-input.has-leading textarea, .message-input.has-leading .voice-panel-transcript { text-indent: 34px; }
+  .message-input.has-leading .command-editor[data-empty="true"]::before { left: 34px; }
+}
+/* Bar inside the frame, below the text: model picker left, voice controls and send right. */
+.message-input.has-bar { padding: 7px 8px 6px 14px; }
+.composer-inbar { container-type: inline-size; display: flex; align-items: center; gap: 4px; min-width: 0; min-height: 28px; margin: 6px -2px 0 -8px; }
+.composer-inbar-spacer { flex: 1 1 auto; min-width: 0; }
+.composer-inbar > * { flex: none; }
+.composer-inbar > .composer-inbar-spacer { flex: 1 1 auto; }
+.composer-inbar .model-picker-trigger { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.composer-inbar > :has(> .model-picker-trigger) { display: flex; flex: 0 1 auto; min-width: 0; }
+.message-input.has-bar .composer-inbar .message-input-send { position: static; flex: none; }
+@container (max-width: 340px) { .composer-inbar .model-picker-effort { display: none; } }
+@media (pointer: coarse) {
+  .message-input.has-bar { padding: 8px 8px 8px 16px; min-height: 0; }
+  .composer-inbar { min-height: 44px; margin: 4px -4px 0 -12px; }
+  .composer-inbar .model-picker-trigger { min-height: 44px; }
+  .message-input.has-bar .composer-inbar .message-input-send { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+}

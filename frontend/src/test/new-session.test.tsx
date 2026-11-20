@@ -183,6 +183,14 @@ it('puts the add button first inside the input; it opens the add menu and keeps 
   expect(screen.getByRole('form',{name:'Ввод сообщения'})).toContainElement(plus);
   expect(plus.compareDocumentPosition(draft) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(document.querySelector('.new-session-footer')).not.toContainElement(plus);
+  // Same frame as a chat: the model picker sits in the input bar, the draft title and empty context meter below.
+  const bar = document.querySelector('.composer-inbar')!;
+  expect(screen.getByRole('form',{name:'Ввод сообщения'})).toContainElement(bar as HTMLElement);
+  expect(bar).toContainElement(screen.getByRole('button', { name: 'Choose model' }));
+  expect(bar.lastElementChild).toBe(screen.getByRole('button', { name: 'Отправить сообщение' }));
+  expect(document.querySelector('.new-session-footer .composer-metrics-row')).toHaveTextContent('New Session');
+  expect(document.querySelector('.new-session-footer .new-session-context')).not.toBeNull();
+  expect(document.querySelector('.new-session-chips')!.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   await userEvent.click(plus);
   expect(plus).toHaveAttribute('aria-expanded', 'true');
   expect(await screen.findByRole('listbox')).toBeInTheDocument();

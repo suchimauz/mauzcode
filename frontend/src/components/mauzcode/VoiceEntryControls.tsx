@@ -76,7 +76,8 @@ export function voiceEntryBlock({ support, view, handler, busy, otherActive }: {
  * blocked activation requests the microphone or opens a socket. Disabled entry points stay focusable
  * (`aria-disabled`) so keyboard and screen-reader users hear the reason and the audio destination before activating.
  */
-type VoiceEntryControlsProps = { agentId: string; busy?: boolean; handlers?: VoiceEntryHandlers; hub?: VoiceEntryHub };
+/** `flat`: plain icon buttons for the input bar; `capsule` keeps the shared grey background. */
+type VoiceEntryControlsProps = { agentId: string; busy?: boolean; handlers?: VoiceEntryHandlers; hub?: VoiceEntryHub; variant?: 'capsule' | 'flat' };
 export function VoiceEntryControls(props: VoiceEntryControlsProps) {
   return props.hub ? <EntryControls {...props} hub={props.hub} /> : <OwnHubControls {...props} />;
 }
@@ -84,7 +85,7 @@ function OwnHubControls(props: VoiceEntryControlsProps) {
   const hub = useVoiceEntryHub({ agentId: props.agentId });
   return <EntryControls {...props} hub={hub} />;
 }
-function EntryControls({ agentId, busy = false, handlers = {}, hub }: VoiceEntryControlsProps & { hub: VoiceEntryHub }) {
+function EntryControls({ agentId, busy = false, handlers = {}, hub, variant = 'capsule' }: VoiceEntryControlsProps & { hub: VoiceEntryHub }) {
   const [view, setView] = useState<VoiceRouteView | null>(null);
   /** Route of the session started through an entry point; a stop must not depend on the selector's later state. */
   const lastReady = useRef<ReadyVoiceRoute | null>(null);
@@ -115,8 +116,8 @@ function EntryControls({ agentId, busy = false, handlers = {}, hub }: VoiceEntry
       <span id={`${id}-${mode}`} className="sr-only">{description}</span>
     </button>;
   };
-  // Fixed order in one capsule: settings, voice mode, then the accent-filled inline input.
-  return <div className="voice-entry-group voice-capsule" role="group" aria-label="Голос">
+  // Fixed order: settings, voice mode, then the accent-filled inline input (in a capsule or as flat icons).
+  return <div className={`voice-entry-group ${variant === 'flat' ? 'is-flat' : 'voice-capsule'}`} role="group" aria-label="Голос">
     <VoiceRoutePicker key={agentId} agentId={agentId} disabled={busy || active !== null} onState={setView} />
     {button('panel', AudioWaveform)}
     {button('inline', Mic)}

@@ -102,13 +102,23 @@ describe('voice panel in the live composer', () => {
     expect(fake.controllers).toBe(1);
     expect(panel()).toHaveFocus();
     expect(editor().closest('[hidden]')).not.toBeNull();
-    // The footer with both entry points is unmounted while voice mode is open.
+    // The editor's bar with both entry points is unmounted while voice mode is open.
     expect(entry).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: INLINE })).toBeNull();
     // The state is not a visible heading but stays the panel's description for assistive technology.
     expect(panel()).toHaveAccessibleDescription(/Идёт запись/);
     expect(panel()).toHaveTextContent('осталось 5:00');
     for (const name of ['Пауза', 'Очистить диктовку', 'Отправить', 'Выйти']) expect(within(panel()).getByRole('button', { name })).toHaveAttribute('title');
+    // Same input frame: disabled add button on the first line, bar with the model, controls in order, no hint line.
+    expect(panel()).toHaveClass('message-input');
+    expect(within(panel()).getByRole('button', { name: 'Добавить' })).toBeDisabled();
+    const bar = within(panel()).getByRole('group', { name: 'Управление голосовым режимом' });
+    expect(bar).toHaveClass('composer-inbar');
+    expect([...bar.querySelectorAll('.voice-panel-button')].map(b => b.getAttribute('aria-label'))).toEqual(['Очистить диктовку', 'Пауза', 'Выйти', 'Отправить']);
+    expect(within(panel()).getByRole('button', { name: 'Пауза' })).toHaveAttribute('title', 'Пауза (Пробел)');
+    expect(within(panel()).getByRole('button', { name: 'Отправить' })).toHaveAttribute('title', 'Отправить (Enter)');
+    expect(within(panel()).getByRole('button', { name: 'Выйти' })).toHaveAttribute('title', 'Выйти (Esc)');
+    expect(panel().querySelector('.voice-panel-hints, kbd')).toBeNull();
   });
 
   it('dictates into the same draft, pauses and resumes with Space, keeps text and attachments', async () => {
@@ -312,24 +322,29 @@ describe('voice panel in the live composer', () => {
     expect(editor()).not.toHaveTextContent('leaked');
   });
 
-  it('shows nothing of the composer below the panel and restores it on exit', async () => {
+  it('keeps the status and metrics rows, hides notices and the stop button, and restores them on exit', async () => {
     sessionStorage.setItem('mauzcode-ui-draft:chat-1', JSON.stringify({ text: '/compact', key: 'k0' }));
     mauzcode.stopAgent.mockReset();
-    const view = render(<LiveComposer agentId="chat-1" running onAccepted={vi.fn()} />);
+    const view = render(<LiveComposer agentId="chat-1" running onAccepted={vi.fn()} planningBadge={<span data-testid="badge">План</span>} />);
     const entry = await screen.findByRole('button', { name: MODE });
     await waitFor(() => expect(entry).not.toHaveAttribute('aria-disabled'));
-    await userEvent.click(entry);
     const footer = () => view.container.querySelector('.composer-footer');
+    const before = footer();
+    await userEvent.click(entry);
     expect(panel()).toBeInTheDocument();
-    expect(footer()).toBeNull();
+    // Status row above and metrics row below stay mounted and in place.
+    expect(screen.getByTestId('badge').closest('.composer-status-row')).not.toBeNull();
+    expect(screen.getByTestId('badge').compareDocumentPosition(panel()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(footer()).toBe(before);
+    expect(panel().compareDocumentPosition(footer()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Остановить выполнение' })).toBeNull();
     expect(view.container.querySelector('.transcript-notice, .connection-error')).toBeNull();
-    // Only the panel follows the docks: nothing is rendered after it except the hidden editor and file input.
-    const after = [...view.container.querySelectorAll('.voice-panel ~ *, .composer-input-anchor ~ *')].filter(el => !(el as HTMLElement).hidden);
-    expect(after).toEqual([]);
+    // Below the frame only the metrics row (and hidden nodes) follow.
+    const after = [...view.container.querySelectorAll('.composer-input-anchor ~ *')].filter(el => !(el as HTMLElement).hidden);
+    expect(after).toEqual([footer()]);
     key(panel(), 'Escape');
     expect(screen.queryByRole('region', { name: MODE })).toBeNull();
-    expect(footer()).not.toBeNull();
+    expect(footer()).toBe(before);
     expect(await screen.findByRole('button', { name: MODE })).toHaveAttribute('aria-pressed', 'false');
     await waitFor(() => expect(editor()).toHaveFocus());
   });

@@ -1,5 +1,5 @@
 import { createRef, useState } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CommandEditor, type CommandEditorHandle } from '../components/mauzcode/CommandEditor';
 
@@ -73,5 +73,32 @@ describe('CommandEditor', () => {
     const onChange=vi.fn(); const onKeyDown=vi.fn((event: React.KeyboardEvent<HTMLDivElement>)=>{if(!event.shiftKey)event.preventDefault();});
     render(<CommandEditor value="hello" onChange={onChange} claimedCommand={null} onRelease={vi.fn()} onKeyDown={onKeyDown}/>); const el=screen.getByRole('textbox'); at(el,5);
     fireEvent.keyDown(el,{key:'Enter'}); expect(onChange).not.toHaveBeenCalled(); fireEvent.keyDown(el,{key:'Enter',shiftKey:true}); expect(onChange).toHaveBeenCalledWith('hello\n');
+  });
+  it('routes native insertParagraph/insertLineBreak (touch keyboards) through one canonical newline', () => {
+    render(<Fixture initial="hi" claim={false}/>); const el = screen.getByRole('textbox'); at(el, 2);
+    const event = new InputEvent('beforeinput', { inputType: 'insertParagraph', bubbles: true, cancelable: true });
+    act(() => { el.dispatchEvent(event); });
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.getByTestId('value').textContent).toBe('hi\n');
+    expect(el.lastChild).toBeInstanceOf(HTMLBRElement); expect(el.querySelector('br[data-editor-tail]')).not.toBeNull();
+    const line = new InputEvent('beforeinput', { inputType: 'insertLineBreak', bubbles: true, cancelable: true }); act(() => { el.dispatchEvent(line); });
+    expect(screen.getByTestId('value').textContent).toBe('hi\n\n');
+  });
+  it('ignores line-break beforeinput during IME composition', () => {
+    render(<Fixture initial="hi" claim={false}/>); const el = screen.getByRole('textbox'); at(el, 2);
+    const event = new InputEvent('beforeinput', { inputType: 'insertParagraph', bubbles: true, cancelable: true, isComposing: true });
+    el.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false); expect(screen.getByTestId('value').textContent).toBe('hi');
+  });
+  it('reads a native paragraph as one newline', () => {
+    render(<Fixture initial="hi" claim={false}/>); const el = screen.getByRole('textbox');
+    el.innerHTML = 'hi<div><br></div>'; fireEvent.input(el);
+    expect(screen.getByTestId('value').textContent).toBe('hi\n');
+  });
+  it.each(['hello\nworld', 'abc\n'])('select-all + delete leaves a truly empty draft: %j', (initial) => {
+    render(<Fixture initial={initial} claim={false}/>); const el = screen.getByRole('textbox');
+    el.replaceChildren(document.createElement('br')); fireEvent.input(el);
+    expect(screen.getByTestId('value').textContent).toBe('');
+    expect(el).toHaveAttribute('data-empty', 'true'); expect(el.childNodes.length).toBe(0);
   });
 });

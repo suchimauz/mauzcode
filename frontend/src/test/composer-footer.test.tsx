@@ -59,7 +59,7 @@ it('sends a file-only turn and preserves the same request key on retry', async (
   expect((bodies[0].body as FormData).get('files')).toBeInstanceOf(File);
   expect(new Headers(bodies[0].headers).get('Idempotency-Key')).toBe(new Headers(bodies[1].headers).get('Idempotency-Key'));
 });
-it('editable chats show the voice group at the right of the controls row, after the model picker; read-only chats do not', async () => {
+it('editable chats show the model, voice group and send in the input bar, metrics below; read-only chats have no voice group', async () => {
   const getUserMedia = vi.fn(); Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
   const socket = vi.fn(); vi.stubGlobal('WebSocket', socket);
   const fetcher = vi.fn(async (url: string) => {
@@ -71,9 +71,15 @@ it('editable chats show the voice group at the right of the controls row, after 
   const ui = render(<LiveComposer agentId="voice" running={false} onAccepted={vi.fn()} />);
   const voice = await screen.findByRole('button', { name: /Маршрут голосового ввода\. Голосовой ввод не настроен/ });
   const group = screen.getByRole('group', { name: 'Голос' });
-  const controls = group.closest('.composer-controls')!;
-  expect(controls.lastElementChild).toContainElement(group);
+  const bar = group.closest('.composer-inbar')!;
+  expect(bar.closest('form.message-input')).not.toBeNull();
+  const send = screen.getByRole('button', { name: 'Отправить сообщение' });
+  // Model picker first, then the voice group, then send — all inside the input frame.
+  expect(bar.firstElementChild).toContainElement(screen.getByRole('button', { name: /Выбрать модель/ }));
+  expect(group.nextElementSibling).toBe(send);
+  expect(group).toHaveClass('is-flat'); expect(group).not.toHaveClass('voice-capsule');
   expect(group.firstElementChild).toBe(voice);
+  expect(document.querySelector('.composer-controls')).toBeNull();
   const metrics = screen.getByRole('button', { name: /Оценка контекста недоступна/ });
   expect(group.compareDocumentPosition(metrics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   ui.unmount(); fetcher.mockClear();

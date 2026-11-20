@@ -8,6 +8,7 @@ The composer footer added in `redesign-composer-footer` takes three rows below t
 
 - The add button stays on the first line of the input. Wrapped and later lines use the full input width instead of a column beside the button.
 - The model picker, the voice controls (settings, voice mode, inline voice input, as flat icons without the grey capsule) and the send button move into one bar at the bottom inside the input. The separate controls row below the input is removed.
+- A press on empty space inside the input frame (for example between the model and the voice controls in the bar) focuses the editor; controls keep their own behaviour.
 - The metrics row stays below the input, with usage on the left (cost, input and output tokens, cache hit) and the context meter on the right. They are two separate hover/press targets that open the same context details panel. The cache hit is always shown, on desktop and on phones, as a bare percentage without the word "кэш".
 - The status row above the input (planning badge and mascot) is unchanged.
 - The new-session composer uses the same input with the bottom bar (model picker and send inside the input). Its chip row stays above the input, and the "New Session" label and empty context meter sit in the metrics row below.

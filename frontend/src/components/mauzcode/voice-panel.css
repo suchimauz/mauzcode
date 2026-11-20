@@ -1,78 +1,49 @@
 /*
- * Compact voice mode. Mobile layout by default (touch or narrow composer): full-width transcript with clear in its
- * top-right corner, then one row of 44 px round buttons — exit, waveform + time, pause/resume, send. Desktop layout
- * (fine pointer and a composer at least 520 px wide): one row — waveform, transcript, time, clear, pause, send, exit —
- * and one hint line. The panel is its own size container so the composer anchor keeps its layout.
+ * Voice mode inside the ordinary input frame (`.message-input.has-bar`, see message-input.css): the transcript fills
+ * the text area, the add button stays on the first line (disabled), and the bar holds the model, the waveform with the
+ * remaining time, clear, pause/resume, exit and send. The frame keeps its size and position; while listening it gets an
+ * accent outline. Touch devices get 44 px targets and the model reduced to its icon.
  */
-.voice-panel { container-type:inline-size; display:flex; flex-direction:column; gap:6px; width:100%; box-sizing:border-box; padding:8px; border:1px solid var(--line); border-radius:18px; background:var(--input-bg); box-shadow:0 1px 3px #14141308; transition:border-color var(--duration-feedback); }
-.voice-panel:focus-within, .voice-panel:focus { border-color:var(--text-muted); }
-.voice-panel:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-.voice-panel[data-state=error] { border-color:var(--danger, #c0392b); }
-.voice-panel-error { margin:0; padding:0 4px; color:var(--danger, #c0392b); font-size:12px; line-height:18px; overflow-wrap:anywhere; }
+.voice-panel.message-input { display:flex; flex-direction:column; outline:none; }
+.voice-panel.message-input:focus-within, .voice-panel.message-input:focus { border-color:var(--text-muted); }
+.voice-panel.message-input:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.voice-panel[data-state=listening] { border-color:color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+.voice-panel[data-state=error], .voice-panel[data-error] { border-color:var(--danger, #c0392b); box-shadow:none; }
+.voice-panel-error { margin:4px 0 0; color:var(--danger, #c0392b); font-size:12px; line-height:18px; overflow-wrap:anywhere; }
+.voice-panel .message-input-leading .composer-add:disabled { opacity:.35; }
 
-.voice-panel-body { position:relative; display:flex; flex-direction:column; gap:6px; min-width:0; }
-.voice-panel-transcript-wrap { min-width:0; }
-.voice-panel-transcript { max-height:88px; overflow-y:auto; padding:2px 44px 2px 4px; color:var(--text); font-size:15px; line-height:22px; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:6px; }
-.voice-panel[data-can-clear] .voice-panel-transcript { min-height:36px; box-sizing:border-box; }
-.voice-panel:not([data-can-clear]) .voice-panel-transcript { padding-right:4px; }
+.voice-panel-transcript { min-height:24px; max-height:164px; overflow-y:auto; color:var(--text); font-size:14px; line-height:24px; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:4px; }
 .voice-panel-transcript:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .voice-panel-placeholder { color:var(--text-muted); }
 
-.voice-panel-controls { display:flex; align-items:center; gap:6px; min-width:0; }
-.voice-panel-spacer { flex:1; }
-.voice-panel-button { flex:none; display:grid; place-items:center; width:44px; height:44px; padding:0; border:1px solid var(--line); border-radius:50%; background:var(--input-bg); color:var(--text); cursor:pointer; transition:background var(--duration-feedback), border-color var(--duration-feedback), color var(--duration-feedback); }
+.voice-panel-button { flex:none; display:grid; place-items:center; width:28px; height:28px; padding:0; border:0; border-radius:999px; background:transparent; color:var(--text-secondary); cursor:pointer; transition:background var(--duration-feedback), color var(--duration-feedback); }
 .voice-panel-button[hidden] { display:none; }
-.voice-panel-button:disabled { opacity:.45; cursor:default; }
-.voice-panel-button[aria-disabled=true] { opacity:.45; cursor:default; }
-.voice-panel-button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-@media (hover:hover) { .voice-panel-button:not(:disabled):not([aria-disabled=true]):hover { background:var(--hover); } }
+.voice-panel-button:disabled, .voice-panel-button[aria-disabled=true] { opacity:.45; cursor:default; }
+.voice-panel-button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+@media (hover:hover) { .voice-panel-button:not(:disabled):not([aria-disabled=true]):hover { background:var(--hover); color:var(--text); } }
+.voice-panel-send { color:var(--on-accent); background:var(--accent); }
+@media (hover:hover) { .voice-panel-send:not(:disabled):hover { color:var(--on-accent); background:var(--accent-hover); } }
+.voice-panel-send:disabled { color:var(--text-secondary); background:color-mix(in srgb, var(--text) 10%, transparent); opacity:1; }
 
-/* Mobile: clear sits in the transcript corner as a soft grey circle and disappears when there is nothing to clear. */
-.voice-panel-clear { position:absolute; top:0; right:0; width:36px; height:36px; border-color:transparent; background:var(--sidebar); color:var(--text-secondary); }
-.voice-panel:not([data-can-clear]) .voice-panel-clear { display:none; }
-.voice-panel[data-state=listening] .voice-panel-toggle { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
-.voice-panel-send { background:var(--text); border-color:var(--text); color:var(--bg); }
-@media (hover:hover) {
-  .voice-panel[data-state=listening] .voice-panel-toggle:not(:disabled):hover { background:var(--accent-hover); }
-  .voice-panel-send:not(:disabled):hover { background:var(--text); filter:brightness(.9); }
-}
-
-.voice-panel-wave { display:flex; align-items:center; gap:2px; height:18px; margin:0 4px; flex:none; }
+.voice-panel-wave { display:flex; flex:none; align-items:center; gap:2px; height:18px; margin:0 2px 0 6px; }
 .voice-panel-wave i { width:3px; height:4px; border-radius:2px; background:var(--text-tertiary); }
 .voice-panel[data-state=listening] .voice-panel-wave i { background:var(--accent); animation:voice-panel-wave 1s ease-in-out infinite; }
 .voice-panel-wave i:nth-child(2) { animation-delay:.15s; } .voice-panel-wave i:nth-child(3) { animation-delay:.3s; }
 .voice-panel-wave i:nth-child(4) { animation-delay:.45s; } .voice-panel-wave i:nth-child(5) { animation-delay:.6s; }
-.voice-panel-time { color:var(--text-tertiary); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
-.voice-panel-hints { display:none; margin:0; padding:0 4px; gap:12px; color:var(--text-tertiary); font-size:11px; line-height:16px; }
-.voice-panel-hints kbd { font-family:var(--font-sans); border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+.voice-panel-time { flex:none; margin-right:2px; color:var(--text-tertiary); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.voice-panel-time:empty { display:none; }
 @keyframes voice-panel-wave { 0%,100% { height:4px; } 50% { height:16px; } }
 
-/* Desktop: one compact row. The control group dissolves into the row so the waveform can lead it. */
-@media (pointer:fine) {
-  @container (min-width:520px) {
-    .voice-panel-body { flex-direction:row; align-items:center; gap:8px; padding-left:4px; }
-    .voice-panel-controls { display:contents; }
-    .voice-panel-wave { order:1; margin:0; }
-    .voice-panel-transcript-wrap { order:2; flex:1; }
-    .voice-panel-transcript, .voice-panel[data-can-clear] .voice-panel-transcript { min-height:0; padding:2px 4px; font-size:14px; }
-    .voice-panel-time { order:3; }
-    .voice-panel-spacer { display:none; }
-    .voice-panel-clear { order:4; }
-    .voice-panel-toggle { order:5; }
-    .voice-panel-send { order:6; }
-    .voice-panel-exit { order:7; }
-    .voice-panel-button { width:32px; height:32px; }
-    .voice-panel-clear, .voice-panel:not([data-can-clear]) .voice-panel-clear { position:static; display:grid; border-color:var(--line); background:var(--input-bg); color:var(--text); }
-    .voice-panel[data-state=listening] .voice-panel-toggle { background:var(--input-bg); border-color:var(--line); color:var(--text); }
-    .voice-panel-send { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
-    .voice-panel-hints { display:flex; }
-  }
-}
-@media (hover:hover) and (pointer:fine) {
-  @container (min-width:520px) {
-    .voice-panel[data-state=listening] .voice-panel-toggle:not(:disabled):hover { background:var(--hover); }
-    .voice-panel-send:not(:disabled):hover { background:var(--accent-hover); filter:none; }
-  }
+@media (pointer:coarse) {
+  .voice-panel-transcript { font-size:16px; }
+  .voice-panel-button { width:44px; height:44px; }
+  /* Pause/resume: accent while listening, neutral when paused or failed. */
+  .voice-panel[data-state=listening] .voice-panel-toggle { color:var(--on-accent); background:var(--accent); }
+  .voice-panel:not([data-can-clear]) .voice-panel-clear { display:none; }
+  /* The bar is crowded: the model collapses to its icon and chevron. */
+  .voice-panel .composer-inbar .model-picker-body { display:none; }
+  .voice-panel .composer-inbar .model-picker-trigger { flex:none; }
+  .voice-panel-wave { margin:0 0 0 2px; }
 }
 @media (prefers-reduced-motion:reduce) {
   .voice-panel, .voice-panel-button { transition:none; }

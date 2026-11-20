@@ -1,4 +1,4 @@
-import { useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type KeyboardEvent, type Ref } from 'react';
+import { useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type KeyboardEvent, type PointerEvent, type Ref } from 'react';
 import { useCommandMenu } from '../../hooks/useCommandMenu';
 import { CommandMenu } from './CommandMenu';
 import type { ComposerCommand } from '../../hooks/useCommandMenu';
@@ -16,6 +16,11 @@ export type MessageInputProps = {
   caretRef?: Ref<DraftCaretHandle>;
   /** Leading control inside the input, before the text (the composer's add button). The input stays unaware of its menu. */
   leading?: ReactNode;
+  /**
+   * Bar at the bottom inside the input frame: `start` (the model picker) at the left, `end` (voice controls) right before
+   * the send button. With a bar, send moves into it; without one it keeps its corner position.
+   */
+  bar?: { start?: ReactNode; end?: ReactNode };
 };
 /**
  * Draft selection in plain-text offsets. `selection` returns the live selection while the editor is focused and the
@@ -24,7 +29,7 @@ export type MessageInputProps = {
  */
 export type DraftCaretHandle = { selection(): { start: number; end: number } | null; select(start: number, end: number): void };
 /** One-line controlled input; grows for wrapped lines, then scrolls at 180px. */
-export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, onCompact, value, onChange, onSend, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef, leading }: MessageInputProps) {
+export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, onCompact, value, onChange, onSend, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef, leading, bar }: MessageInputProps) {
   const input = useRef<HTMLTextAreaElement>(null);
   const menuId = useId();
   const editor = useRef<CommandEditorHandle>(null);
@@ -96,7 +101,22 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
   }, [value]);
   const stop = !!running && !canSubmit && !!onStop;
   const track = caretRef ? { onKeyUpCapture: remember, onPointerUpCapture: remember, onInputCapture: remember, onSelectCapture: remember, onFocusCapture: remember } : {};
-  return <form {...track} className="message-input" aria-label="Ввод сообщения" onSubmit={event => { event.preventDefault(); if (!disabled && !sendDisabled && canSubmit) onSend(); }} aria-busy={disabled} onDragOver={event => { if (onFiles && !disabled && event.dataTransfer.types.includes('Files')) event.preventDefault(); }} onDrop={event => { if (onFiles && event.dataTransfer.files.length) { event.preventDefault(); if (!disabled) onFiles(Array.from(event.dataTransfer.files)); } }}>
+  // A press on the frame's empty area (bar gaps, padding, spacer) focuses the editor; controls keep their own behaviour.
+  const focusFromFrame = (event: PointerEvent<HTMLFormElement>) => {
+    if (disabled || event.button > 0 || !(event.target instanceof Element)) return;
+    if (event.target.closest('button, a[href], input, textarea, select, label, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="listbox"], [role="option"], [role="button"], [role="group"][aria-label="Прикреплённые файлы"], [data-floating-ui-portal]')) return;
+    if (!event.currentTarget.contains(event.target)) return; // Portalled popups bubble through React.
+    event.preventDefault(); // Keep focus from landing on the form first.
+    if (commandsEnabled) {
+      const had = editor.current?.selection();
+      editor.current?.focus();
+      if (!had) editor.current?.select(value.length, value.length);
+    } else { input.current?.focus({ preventScroll: true }); }
+  };
+  const sendButton = <IconButton type={stop ? 'button' : 'submit'} className="message-input-send" label={stop ? 'Остановить выполнение' : running && !value.trim().startsWith('/') ? 'В очередь' : 'Отправить сообщение'} disabled={disabled || (!stop && (sendDisabled || !canSubmit))} onClick={stop ? onStop : undefined}>
+    {stop ? <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><rect x="6" y="6" width="4" height="4" rx="1.2" fill="currentColor" /></svg> : <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="miter" aria-hidden="true"><path d="M8 3.75h5.25v7H3M6 7.75l-3 3 3 3" /></svg>}
+  </IconButton>;
+  return <form {...track} className={`message-input${bar ? ' has-bar' : ''}${leading ? ' has-leading' : ''}`} aria-label="Ввод сообщения" onPointerDown={focusFromFrame} onSubmit={event => { event.preventDefault(); if (!disabled && !sendDisabled && canSubmit) onSend(); }} aria-busy={disabled} onDragOver={event => { if (onFiles && !disabled && event.dataTransfer.types.includes('Files')) event.preventDefault(); }} onDrop={event => { if (onFiles && event.dataTransfer.files.length) { event.preventDefault(); if (!disabled) onFiles(Array.from(event.dataTransfer.files)); } }}>
     {menu.open && <CommandMenu id={menuId} commands={menu.matches} index={menu.index} status={menu.status} error={menu.error} onPick={pick} onHover={menu.setIndex} onRetry={menu.retry} />}
     {attachments}
     <div className="message-input-row">{leading && <span className="message-input-leading">{leading}</span>}<div className="message-input-field">
@@ -112,8 +132,6 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
         }
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !window.matchMedia('(pointer: coarse)').matches) { event.preventDefault(); if (!event.repeat && !disabled && !sendDisabled && canSubmit) onSend(); } }} />}</div></div>
     {!commandsEnabled && <InputCaret input={input} value={value} />}
-    <IconButton type={stop ? 'button' : 'submit'} className="message-input-send" label={stop ? 'Остановить выполнение' : running && !value.trim().startsWith('/') ? 'В очередь' : 'Отправить сообщение'} disabled={disabled || (!stop && (sendDisabled || !canSubmit))} onClick={stop ? onStop : undefined}>
-      {stop ? <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><rect x="6" y="6" width="4" height="4" rx="1.2" fill="currentColor" /></svg> : <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="miter" aria-hidden="true"><path d="M8 3.75h5.25v7H3M6 7.75l-3 3 3 3" /></svg>}
-    </IconButton>
+    {bar ? <div className="composer-inbar">{bar.start}<span className="composer-inbar-spacer" />{bar.end}{sendButton}</div> : sendButton}
   </form>;
 }
