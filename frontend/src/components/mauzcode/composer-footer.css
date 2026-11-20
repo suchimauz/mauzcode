@@ -1,41 +1,53 @@
 .composer-input-anchor { position: relative; }
-/* Configured dsh compact footer: centered, 13/20 medium, 10px between figures. */
-.composer-usage-line { display:flex; justify-content:safe center; align-items:center; grid-column:2; grid-row:1; min-width:0; overflow-x:auto; scrollbar-width:none; }
-.composer-usage { flex-shrink:0; display:inline-flex; align-items:center; gap:10px; padding:0; border:0; border-radius:4px; background:transparent; color:var(--text-secondary); font-family:inherit; font-size:13px; font-weight:500; line-height:20px; font-variant-numeric:tabular-nums; white-space:nowrap; cursor:pointer; }
+/* Status row above the input: mode indicators left; the perched pet stands at its right end. */
+:root { --composer-status-row: 28px; }
+@media (pointer: coarse) { :root { --composer-status-row: 44px; } }
+.composer-status-row { display:flex; align-items:center; gap:6px; height:var(--composer-status-row); margin:0 0 6px; padding:0 112px 0 4px; min-width:0; overflow:hidden; }
+/* The pet stays perched above the composer stack; when the status row is the stack's first visible row it steps down
+   into the row's right end, so the row adds no height beyond the pet. Any card or dock in between keeps it on top. */
+.question-pet-perch:has(+ .composer-readonly-boundary > .composer-input-anchor > .composer-status-row:first-child),
+.composer-input-anchor > .composer-pet-slot:has(+ .composer-status-row) { transform:translateY(calc(var(--composer-status-row) + 6px)); }
+.composer-pet-slot { position:relative; height:0; }
+/* Footer: controls row (model left, voice right), then one metrics control. Container queries, not viewport. */
+.composer-footer { container-type:inline-size; display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:2px; margin:6px 0 0; padding:0 4px; width:100%; box-sizing:border-box; }
+.composer-controls { display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
+.composer-controls-model { display:flex; flex:1 1 auto; min-width:0; }
+.composer-controls-model .model-picker-trigger { max-width:100%; }
+.composer-controls-voice { display:flex; flex:none; }
+.composer-metrics { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; min-width:0; min-height:24px; padding:0 4px; border:0; border-radius:6px; background:transparent; color:var(--text-secondary); font:500 12px/20px var(--font-sans,inherit); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; cursor:pointer; text-align:left; }
+.composer-metrics:hover, .composer-metrics[aria-expanded=true] { background:var(--hover); color:var(--text); }
+.composer-metrics:focus-visible { outline:2px solid var(--focus-ring); outline-offset:1px; }
+.composer-metrics-context { --context-rest: rgba(20, 20, 19, .14); display:inline-flex; align-items:center; gap:6px; flex:none; min-width:0; color:#46784e; }
+.composer-metrics-context svg { width:14px; height:14px; flex:none; }
+.composer-metrics-context[data-level=medium] { color:#8b6d42; }
+.composer-metrics-context[data-level=high] { color:#af514d; }
+.composer-metrics-context[data-level=unknown], [data-theme=dark] .composer-metrics-context[data-level=unknown] { color:var(--text-tertiary); }
+[data-theme=dark] .composer-metrics-context { --context-rest: rgba(250, 249, 245, .18); color:#6faf73; }
+[data-theme=dark] .composer-metrics-context[data-level=medium] { color:#c09f66; }
+[data-theme=dark] .composer-metrics-context[data-level=high] { color:#d5746a; }
+.composer-metrics-window { color:var(--text-tertiary); }
+.composer-metrics-usage { display:inline-flex; align-items:center; gap:10px; flex:none; }
 .composer-token-count { display:inline-flex; align-items:center; gap:3px; }
 .composer-token-arrow { color:var(--text-tertiary); }
-.composer-footer { container-type:inline-size; }
-@container(max-width:360px) { .composer-usage { gap:7px; font-size:12px; } }
+/* Hide order as the composer narrows: cache hit first, then used/total tokens. */
+@container(max-width:460px) { .composer-metrics-window { display:none; } .composer-metrics-usage { gap:8px; } }
+@container(max-width:400px) { .composer-cache-hit { display:none; } }
+@media(pointer:coarse) { .composer-metrics { min-height:44px; } }
+.composer-add { display:inline-flex; align-items:center; justify-content:center; border:0; background:transparent; font:inherit; cursor:pointer; border-radius:8px; }
 .composer-cache-hit { color:#b38a51; }
 [data-theme=dark] .composer-cache-hit { color:#c09f66; }
 .composer-cost { color:#4f8a5b; font-variant-numeric:tabular-nums; }
 [data-theme=dark] .composer-cost { color:#7fbf8c; }
-.composer-usage:hover { color:var(--text); }
-.composer-usage:focus-visible { outline:2px solid var(--focus-ring); outline-offset:3px; }
-@media(pointer:coarse) { .composer-usage { min-height:44px; padding-inline:8px; } }
 .composer-input-anchor .crab-mascot { right: 0; bottom: 100%; }
-.composer-footer:has(.composer-usage-line) { display:grid; grid-template-columns:minmax(66px,1fr) minmax(0,auto) minmax(66px,1fr); column-gap:8px; align-items:center; padding:0 4px; margin:6px 0 0; min-height:28px; height:28px; width:100%; position:relative; }
-.composer-footer-actions { grid-column:1; grid-row:1; justify-self:start; display:flex; align-items:center; gap:6px; }
-.composer-model-context { grid-column:3; grid-row:1; justify-self:end; display:flex; align-items:center; gap:8px; min-width:0; }
-.composer-footer:has(.model-picker-trigger) { grid-template-columns:auto minmax(0,1fr) auto; }
-.composer-footer:has(.model-picker-tech) { height:auto; }
-@container(max-width:440px) { .composer-model-context { gap:2px; } }
-.composer-add, .context-meter { display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; font: inherit; cursor: pointer; border-radius: 6px; }
 .composer-add { width: 28px; height: 28px; padding: 0; color: var(--text-secondary); }
-.composer-add:hover, .composer-add[aria-expanded=true], .context-meter:hover { background: var(--hover); }
+.composer-add:hover, .composer-add[aria-expanded=true] { background: var(--hover); }
 .composer-add:disabled { opacity: .4; cursor: default; }
-.context-meter { --context-rest: rgba(20, 20, 19, .14); gap: 6px; padding: 1px 8px; font-size: 13px; line-height: 20px; font-variant-numeric: tabular-nums; color: #46784e; }
-.context-meter[data-level=medium] { color: #8b6d42; }
-.context-meter[data-level=high] { color: #af514d; }
-.context-meter[data-level=unknown], [data-theme=dark] .context-meter[data-level=unknown] { color: var(--text-tertiary); }
-[data-theme=dark] .context-meter { --context-rest: rgba(250, 249, 245, .18); color: #6faf73; }
-[data-theme=dark] .context-meter[data-level=medium] { color: #c09f66; }
-[data-theme=dark] .context-meter[data-level=high] { color: #d5746a; }
+.composer-add:focus-visible { outline:2px solid var(--focus-ring); outline-offset:1px; }
+@media (pointer: coarse) { .composer-add { min-height: 44px; min-width: 44px; } }
 .composer-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0; }
 .composer-file { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font-size: 12px; }
 .composer-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-file button { border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
-@media (pointer: coarse) { .composer-footer { height: 44px; } .composer-add, .context-meter { min-height: 44px; min-width: 44px; } }
 .context-panel { box-sizing: border-box; width: min(264px, calc(100vw - 24px)); max-height: var(--available-height); overflow: auto; padding: 12px; border: 0; border-radius: 16px; background: var(--surface-raised); color: var(--text-secondary); backdrop-filter: blur(40px) saturate(150%); box-shadow: 0 0 0 .5px var(--line), 0 3px 8px #0000000a, 0 0 20px #0000000d; font-size: 12px; line-height: 20px; }
 .context-panel-header { display: flex; align-items: center; gap: 6px; color: var(--text-tertiary); white-space: nowrap; }
 .context-panel-header strong { font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; }

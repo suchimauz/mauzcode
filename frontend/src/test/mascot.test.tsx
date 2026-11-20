@@ -34,3 +34,19 @@ describe('persistent chat mascots', () => {
     expect(animate).not.toHaveBeenCalled();
   });
 });
+describe('mascot in the composer status row', () => {
+  it('stands at the right of the status row when a mode is active and stays aria-hidden artwork', async () => {
+    const { ComposerStatusRow } = await import('../components/mauzcode/ComposerStatusRow');
+    const { container } = render(<div className="question-composer-stack"><div className="composer-input-anchor question-pet-perch"><CrabMascot page={page('crab')} /></div><fieldset className="composer-readonly-boundary"><div className="composer-input-anchor"><ComposerStatusRow modes={<button>Plan</button>} /></div></fieldset></div>);
+    const perch = container.querySelector('.question-pet-perch')!;
+    const row = screen.getByRole('group', { name: 'Режимы чата' });
+    // The perch directly precedes the boundary whose first anchored row is the status row: CSS lowers the pet into it.
+    expect(perch.nextElementSibling!.firstElementChild!.firstElementChild).toBe(row);
+    expect(perch.querySelector('.crab-window')).toHaveAttribute('aria-hidden', 'true');
+  });
+  it('renders no status row without a mode, so the pet keeps its place', async () => {
+    const { ComposerStatusRow } = await import('../components/mauzcode/ComposerStatusRow');
+    const { container } = render(<ComposerStatusRow modes={null} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});

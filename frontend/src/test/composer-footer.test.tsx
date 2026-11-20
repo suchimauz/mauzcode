@@ -10,28 +10,37 @@ vi.mock('../sdk/live', () => ({ subscribeLive: () => () => {} }));
 vi.mock('../lib/queue', async importOriginal => ({ ...await importOriginal<typeof import('../lib/queue')>(), getQueue: vi.fn().mockResolvedValue({ items: [] }) }));
 const json = (body: object, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear(); });
-it('shows real context percentage and delegates the plus button to the shared menu', async () => {
+it('shows the real context percentage in the metrics control; the add button lives inside the input', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => json({ budget: { estimatedTokens: 8000, contextWindow: 200000 } })));
-  const toggle = vi.fn();
-  const ui = render(<ComposerFooter agentId="fixture" busy={false} running={false} revision={0} onMenuToggle={toggle} menuOpen={false} />);
-  expect(await screen.findByText('4%')).toBeInTheDocument();
+  render(<ComposerFooter agentId="fixture" busy={false} running={false} revision={0} />);
+  const metrics = await screen.findByRole('button', { name: /4% of context used/ });
+  expect(metrics).toHaveTextContent('4%');
+  expect(metrics).toHaveTextContent('8k / 200k');
+  expect(screen.queryByRole('button', { name: 'Добавить' })).toBeNull();
+});
+it('shows unavailable context honestly', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json({ budget: null })));
+  render(<ComposerFooter agentId="fixture" busy running revision={0} />);
+  expect(screen.getByRole('button', { name: /Оценка контекста недоступна/ })).toHaveTextContent('—');
+});
+it('puts the add button first inside the input; it toggles the shared menu without touching the draft and disables while busy', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.includes('/ui-lab-api/models')) return json({ models: [] });
+    if (url.startsWith('/voice/api')) return json({ error: 'Only owners can manage voice dictation' }, 403);
+    return json({ budget: null });
+  }));
+  render(<LiveComposer agentId="plus" running={false} onAccepted={vi.fn()} />);
+  const form = screen.getByRole('form', { name: 'Ввод сообщения' });
   const plus = screen.getByRole('button', { name: 'Добавить' });
+  const draft = screen.getByRole('textbox', { name: 'Сообщение агенту' });
+  expect(form).toContainElement(plus);
+  expect(plus.compareDocumentPosition(draft) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(plus).toHaveAttribute('aria-haspopup', 'listbox');
   expect(plus).toHaveAttribute('aria-expanded', 'false');
-  plus.focus(); await userEvent.keyboard('{Enter}');
-  expect(toggle).toHaveBeenCalledOnce();
-  ui.rerender(<ComposerFooter agentId="fixture" busy={false} running={false} revision={0} onMenuToggle={toggle} menuOpen />);
+  await userEvent.click(plus);
   expect(plus).toHaveAttribute('aria-expanded', 'true');
-  expect(screen.queryByRole('menu')).toBeNull();
-});
-it('shows unavailable context honestly and disables plus while busy', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => json({ budget: null })));
-  const toggle = vi.fn();
-  render(<ComposerFooter agentId="fixture" busy running revision={0} onMenuToggle={toggle} />);
-  expect(screen.getByRole('button', { name: /Оценка контекста недоступна/ })).toHaveTextContent('—');
-  expect(screen.getByRole('button', { name: 'Добавить' })).toBeDisabled();
-  await userEvent.click(screen.getByRole('button', { name: 'Добавить' }));
-  expect(toggle).not.toHaveBeenCalled();
+  expect(await screen.findByRole('listbox')).toBeInTheDocument();
+  expect(draft).toHaveTextContent('');
 });
 it('sends a file-only turn and preserves the same request key on retry', async () => {
   let count = 0; const bodies: RequestInit[] = [];
@@ -50,7 +59,7 @@ it('sends a file-only turn and preserves the same request key on retry', async (
   expect((bodies[0].body as FormData).get('files')).toBeInstanceOf(File);
   expect(new Headers(bodies[0].headers).get('Idempotency-Key')).toBe(new Headers(bodies[1].headers).get('Idempotency-Key'));
 });
-it('editable chats show the voice route selector right after the context meter; read-only chats do not', async () => {
+it('editable chats show the voice group at the right of the controls row, after the model picker; read-only chats do not', async () => {
   const getUserMedia = vi.fn(); Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
   const socket = vi.fn(); vi.stubGlobal('WebSocket', socket);
   const fetcher = vi.fn(async (url: string) => {
@@ -61,11 +70,12 @@ it('editable chats show the voice route selector right after the context meter; 
   vi.stubGlobal('fetch', fetcher);
   const ui = render(<LiveComposer agentId="voice" running={false} onAccepted={vi.fn()} />);
   const voice = await screen.findByRole('button', { name: /Маршрут голосового ввода\. Голосовой ввод не настроен/ });
-  const meter = screen.getByRole('button', { name: /Оценка контекста недоступна/ });
-  expect(meter.compareDocumentPosition(voice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  // The voice group (inline input, voice mode, route selector) is the meter's immediate next sibling.
-  expect(meter.nextElementSibling).toBe(screen.getByRole('group', { name: 'Голос' }));
-  expect(screen.getByRole('group', { name: 'Голос' }).lastElementChild).toBe(voice);
+  const group = screen.getByRole('group', { name: 'Голос' });
+  const controls = group.closest('.composer-controls')!;
+  expect(controls.lastElementChild).toContainElement(group);
+  expect(group.firstElementChild).toBe(voice);
+  const metrics = screen.getByRole('button', { name: /Оценка контекста недоступна/ });
+  expect(group.compareDocumentPosition(metrics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   ui.unmount(); fetcher.mockClear();
   render(<LiveComposer agentId="voice" running={false} readOnly onAccepted={vi.fn()} />);
   await screen.findByRole('button', { name: /Оценка контекста недоступна/ });

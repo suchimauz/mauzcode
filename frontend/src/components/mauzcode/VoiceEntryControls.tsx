@@ -109,15 +109,16 @@ function EntryControls({ agentId, busy = false, handlers = {}, hub }: VoiceEntry
       hub.claim(mode); lastReady.current = chat;
       handler.onActivate(capture, chat);
     };
-    return <button type="button" className="voice-route-trigger voice-entry" data-mode={mode} aria-label={NAMES[mode]} aria-describedby={`${id}-${mode}`}
+    return <button type="button" className="voice-route-trigger voice-entry" data-mode={mode} data-primary={mode === 'inline' ? '' : undefined} aria-label={NAMES[mode]} aria-describedby={`${id}-${mode}`}
       aria-disabled={block ? true : undefined} aria-pressed={active === mode} title={description ? `${NAMES[mode]}. ${description}` : NAMES[mode]} onClick={activate}>
       <Icon size={14} strokeWidth={1.25} aria-hidden="true" />
       <span id={`${id}-${mode}`} className="sr-only">{description}</span>
     </button>;
   };
-  return <div className="voice-entry-group" role="group" aria-label="Голос">
-    {button('inline', Mic)}
-    {button('panel', AudioWaveform)}
+  // Fixed order in one capsule: settings, voice mode, then the accent-filled inline input.
+  return <div className="voice-entry-group voice-capsule" role="group" aria-label="Голос">
     <VoiceRoutePicker key={agentId} agentId={agentId} disabled={busy || active !== null} onState={setView} />
+    {button('panel', AudioWaveform)}
+    {button('inline', Mic)}
   </div>;
 }

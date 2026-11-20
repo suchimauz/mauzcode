@@ -68,20 +68,22 @@ afterEach(() => {
 });
 
 describe('voice entry points in the composer footer', () => {
-  it('sit right after the context meter in DOM and Tab order: inline, voice mode, then the route selector', async () => {
+  it('sit at the right of the controls row in a capsule; DOM and Tab order: settings, voice mode, inline input', async () => {
     serve(readyChat);
     render(<LiveComposer agentId="chat-1" running={false} onAccepted={vi.fn()} />);
     const inline = await screen.findByRole('button', { name: INLINE });
     const panel = screen.getByRole('button', { name: PANEL });
     const picker = await screen.findByRole('button', { name: /Маршрут голосового ввода/ });
-    const meter = screen.getByRole('button', { name: /Оценка контекста недоступна/ });
     const group = screen.getByRole('group', { name: 'Голос' });
-    expect(meter.nextElementSibling).toBe(group);
-    expect([...group.querySelectorAll('button')]).toEqual([inline, panel, picker]);
-    meter.focus();
-    await userEvent.tab(); expect(inline).toHaveFocus();
+    expect(group).toHaveClass('voice-capsule');
+    expect(group.closest('.composer-controls')!.lastElementChild).toContainElement(group);
+    expect([...group.querySelectorAll('button')]).toEqual([picker, panel, inline]);
+    // Only inline voice input is the accent-filled primary control.
+    expect([...group.querySelectorAll('[data-primary]')]).toEqual([inline]);
+    expect(picker.querySelector('svg')).toHaveClass('lucide-settings');
+    picker.focus();
     await userEvent.tab(); expect(panel).toHaveFocus();
-    await userEvent.tab(); expect(picker).toHaveFocus();
+    await userEvent.tab(); expect(inline).toHaveFocus();
     // Shared route state: the selector's single request serves all three controls.
     expect(voiceRequests()).toBe(1);
   });

@@ -175,3 +175,16 @@ it('Keyboard flow: Enter opens, arrows move, Enter picks Minimal and focus retur
   const updated = screen.getByRole('button', { name: 'Режим агента: Minimal' });
   await waitFor(() => expect(updated).toHaveFocus());
 });
+it('puts the add button first inside the input; it opens the add menu and keeps the draft', async () => {
+  render(<Draft />);
+  const draft = screen.getByRole('textbox');
+  fireEvent.input(draft,{target:{textContent:'Keep me'}});
+  const plus = screen.getByRole('button', { name: 'Добавить' });
+  expect(screen.getByRole('form',{name:'Ввод сообщения'})).toContainElement(plus);
+  expect(plus.compareDocumentPosition(draft) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(document.querySelector('.new-session-footer')).not.toContainElement(plus);
+  await userEvent.click(plus);
+  expect(plus).toHaveAttribute('aria-expanded', 'true');
+  expect(await screen.findByRole('listbox')).toBeInTheDocument();
+  expect(screen.getByRole('textbox')).toHaveTextContent('Keep me');
+});

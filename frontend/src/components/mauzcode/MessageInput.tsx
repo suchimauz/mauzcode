@@ -14,6 +14,8 @@ export type MessageInputProps = {
   placeholder?: string; hasAttachments?: boolean; pendingVoice?: boolean; attachments?: ReactNode; onFiles?: (files: File[]) => void; commandsEnabled?: boolean;
   /** Caret access for inline dictation; works the same for `CommandEditor` and the plain `textarea`. */
   caretRef?: Ref<DraftCaretHandle>;
+  /** Leading control inside the input, before the text (the composer's add button). The input stays unaware of its menu. */
+  leading?: ReactNode;
 };
 /**
  * Draft selection in plain-text offsets. `selection` returns the live selection while the editor is focused and the
@@ -22,7 +24,7 @@ export type MessageInputProps = {
  */
 export type DraftCaretHandle = { selection(): { start: number; end: number } | null; select(start: number, end: number): void };
 /** One-line controlled input; grows for wrapped lines, then scrolls at 180px. */
-export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, onCompact, value, onChange, onSend, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef }: MessageInputProps) {
+export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, onCompact, value, onChange, onSend, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef, leading }: MessageInputProps) {
   const input = useRef<HTMLTextAreaElement>(null);
   const menuId = useId();
   const editor = useRef<CommandEditorHandle>(null);
@@ -97,6 +99,7 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
   return <form {...track} className="message-input" aria-label="Ввод сообщения" onSubmit={event => { event.preventDefault(); if (!disabled && !sendDisabled && canSubmit) onSend(); }} aria-busy={disabled} onDragOver={event => { if (onFiles && !disabled && event.dataTransfer.types.includes('Files')) event.preventDefault(); }} onDrop={event => { if (onFiles && event.dataTransfer.files.length) { event.preventDefault(); if (!disabled) onFiles(Array.from(event.dataTransfer.files)); } }}>
     {menu.open && <CommandMenu id={menuId} commands={menu.matches} index={menu.index} status={menu.status} error={menu.error} onPick={pick} onHover={menu.setIndex} onRetry={menu.retry} />}
     {attachments}
+    <div className="message-input-row">{leading && <span className="message-input-leading">{leading}</span>}<div className="message-input-field">
     {commandsEnabled ? <CommandEditor ref={editor} value={value} onChange={onChange} claimedCommand={activeClaim} onRelease={() => setClaimed(null)} disabled={disabled} placeholder={activeClaim?.name === 'plan' ? 'Опишите задачу для плана' : placeholder} onFiles={onFiles} onKeyDown={keyDown} aria-label="Сообщение агенту" aria-controls={menu.open ? menuId : undefined} aria-expanded={menu.open} aria-autocomplete="list" aria-haspopup="listbox" aria-activedescendant={menu.open && menu.status === 'ready' && menu.matches.length ? `${menuId}-${menu.index}` : undefined} onBlur={event => { if (!event.currentTarget.closest('.composer-readonly-boundary, .new-session-composer')?.contains(event.relatedTarget)) menu.dismiss(); }} /> : <textarea ref={input} aria-controls={menu.open ? menuId : undefined} aria-autocomplete={commandsEnabled ? 'list' : undefined} aria-haspopup={commandsEnabled ? 'listbox' : undefined} aria-activedescendant={menu.open && menu.status === 'ready' && menu.matches.length ? `${menuId}-${menu.index}` : undefined} aria-label="Сообщение агенту" placeholder={placeholder} rows={1} value={value} disabled={disabled} onPaste={event => { const files = Array.from(event.clipboardData.files); if (onFiles && files.length) { event.preventDefault(); if (!disabled) onFiles(files); } }} onChange={event => onChange(event.target.value)}
       onBlur={event => { if (!event.currentTarget.closest('form')?.contains(event.relatedTarget)) menu.dismiss(); }}
       onKeyDown={event => {
@@ -107,7 +110,7 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); const count = menu.matches.length; if (count) menu.setIndex((menu.index + (event.key === 'ArrowDown' ? 1 : -1) + count) % count); return; }
           if ((event.key === 'Enter' && !event.shiftKey) || (event.key === 'Tab' && !event.shiftKey && menu.status === 'ready' && menu.matches.length)) { event.preventDefault(); if (menu.status === 'ready' && menu.matches[menu.index]) pick(menu.matches[menu.index]); return; }
         }
-        if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !window.matchMedia('(pointer: coarse)').matches) { event.preventDefault(); if (!event.repeat && !disabled && !sendDisabled && canSubmit) onSend(); } }} />}
+        if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !window.matchMedia('(pointer: coarse)').matches) { event.preventDefault(); if (!event.repeat && !disabled && !sendDisabled && canSubmit) onSend(); } }} />}</div></div>
     {!commandsEnabled && <InputCaret input={input} value={value} />}
     <IconButton type={stop ? 'button' : 'submit'} className="message-input-send" label={stop ? 'Остановить выполнение' : running && !value.trim().startsWith('/') ? 'В очередь' : 'Отправить сообщение'} disabled={disabled || (!stop && (sendDisabled || !canSubmit))} onClick={stop ? onStop : undefined}>
       {stop ? <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><rect x="6" y="6" width="4" height="4" rx="1.2" fill="currentColor" /></svg> : <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="miter" aria-hidden="true"><path d="M8 3.75h5.25v7H3M6 7.75l-3 3 3 3" /></svg>}

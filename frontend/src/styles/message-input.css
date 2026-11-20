@@ -13,3 +13,8 @@
 @media (prefers-reduced-motion: reduce) { .input-caret { transition: none; animation: none; } }
 @media (forced-colors: active) { .input-caret { display: none; } .message-input textarea[data-visual-caret] { caret-color: auto; } }
 @media (pointer: coarse) { .message-input { padding-right: 52px; min-height: 46px; } .message-input textarea { font-size: 16px; } .message-input .message-input-send { right: 1px; bottom: 0; width: 44px; min-width: 44px; height: 44px; min-height: 44px; } }
+/* Optional leading control (the composer's add button) sits inside the input, before the text. */
+.message-input-row { display: flex; align-items: flex-end; gap: 4px; min-width: 0; }
+.message-input-field { flex: 1; min-width: 0; }
+.message-input-leading { display: flex; flex: none; align-items: center; margin: -2px 0 -2px -8px; }
+@media (pointer: coarse) { .message-input-leading { margin: -6px 0 -6px -12px; } }

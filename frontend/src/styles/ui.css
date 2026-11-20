@@ -102,8 +102,6 @@ h1 { font-size: clamp(24px, 2.5vw, 36px); font-weight: 600; line-height: 1.18; l
 .composer:focus-within { border-color: var(--line-strong); }
 .composer textarea { display: block; width: 100%; border: 0; background: transparent; color: var(--text); resize: vertical; min-height: 64px; max-height: 220px; line-height: 1.6; outline: none; }
 .composer textarea::placeholder { color: var(--text-muted); }
-.composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.composer-footer > span { color: var(--text-muted); font-size: 10px; }
 .chat-disclaimer { color: var(--text-muted); font-size: 9px; text-align: center; margin-top: 10px; }
 .no-canvas .chat-scroll, .no-canvas .chat-bottom { width: 100%; max-width: 800px; margin-inline: auto; }
 .mobile-header { display: none; }

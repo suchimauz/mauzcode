@@ -12,3 +12,13 @@
 .voice-route-summary { margin:0; padding:7px 8px; color:var(--text-secondary); font-size:12px; line-height:18px; overflow-wrap:anywhere; }
 @media (pointer:coarse) { .voice-route-trigger { min-width:44px; min-height:44px; } }
 @media (prefers-reduced-motion:reduce) { .voice-route-trigger { transition:none; } }
+/* V3 capsule: settings, voice mode, then the accent-filled inline voice input as the primary control. */
+.voice-capsule { gap:2px; padding:2px; border-radius:999px; background:var(--hover); }
+.voice-capsule .voice-route-trigger { border-radius:999px; }
+.voice-capsule .voice-route-trigger:hover,.voice-capsule .voice-route-trigger[aria-expanded=true] { background:color-mix(in srgb, var(--text) 8%, transparent); }
+.voice-entry[data-primary] { color:var(--on-accent); background:var(--accent); }
+.voice-entry[data-primary]:hover { background:var(--accent-hover); }
+.voice-entry[data-primary][aria-pressed=true] { color:var(--on-accent); background:var(--accent-hover); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.voice-entry[data-primary][aria-disabled=true],.voice-entry[data-primary][aria-disabled=true]:hover { color:var(--text-secondary); background:color-mix(in srgb, var(--text) 10%, transparent); opacity:1; }
+.voice-capsule .voice-route-trigger:focus-visible { outline-offset:2px; }
+@media (forced-colors: active) { .voice-entry[data-primary] { border:1px solid ButtonText; } }

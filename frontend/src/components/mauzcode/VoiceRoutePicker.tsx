@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Popover } from '@base-ui/react/popover';
-import { AudioLines, Check, Settings } from 'lucide-react';
+import { Check, Settings } from 'lucide-react';
 import { ApiError } from '../../lib/mauzcode';
 import { clearVoiceChatRoute, destinationText, getVoiceState, setVoiceChatRoute, type VoiceChatRoute, type VoiceState } from '../../lib/voice';
 import './voice-route-picker.css';
@@ -84,7 +84,7 @@ export function VoiceRoutePicker({ agentId, disabled = false, onState }: { agent
   const fallback = state?.routes.find(r => r.route === state.defaultRoute.route);
   return <Popover.Root open={open} onOpenChange={value => { setOpen(value); if (value) setReload(n => n + 1); }}>
     <Popover.Trigger render={<button type="button" className="voice-route-trigger" data-state={unconfigured ? 'unconfigured' : chat?.status} aria-label={`Маршрут голосового ввода. ${summary}`} title={summary} disabled={disabled} />}>
-      <AudioLines size={14} strokeWidth={1.25} aria-hidden="true" />
+      <Settings size={14} strokeWidth={1.25} aria-hidden="true" />
       {chat?.source === 'override' && <span className="voice-route-dot" aria-hidden="true" />}
     </Popover.Trigger>
     <Popover.Portal><Popover.Positioner side="top" align="end" sideOffset={8} collisionPadding={12} className="floating-positioner">
