@@ -1,0 +1,121 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root{--bg:#fff;--surface:#fff;--sidebar:#fafafa;--text:#161616;--t2:#70686a;--t3:#91888a;--line:#e9e9e9;--accent:#d97757;--soft:#f6ded7;--danger:#c0392b;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+body.dark{--bg:#191919;--surface:#212121;--sidebar:#1f1f1f;--text:#fdfdfd;--t2:#beb6b8;--t3:#9c9395;--line:rgba(255,255,255,.09);--soft:#48261b}
+body{margin:0;background:var(--sidebar);color:var(--text);font-size:14px}
+header{position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--line)}
+header b{margin-right:8px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:none;color:var(--t2);padding:5px 10px;cursor:pointer;font-size:12px}
+.seg button.on{background:var(--soft);color:var(--text)}
+main{padding:20px;display:grid;gap:28px}
+h2{font-size:15px;margin:0 0 4px} p.note{margin:0 0 12px;color:var(--t2);font-size:12.5px;line-height:1.5;max-width:900px}
+.row{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+.frame{background:var(--bg);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.cap{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);padding:8px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
+.cap .tag{color:var(--accent)}
+.desk{width:640px;height:420px}.phone{width:360px;height:700px;border-radius:28px;border-width:6px}
+.chat{flex:1;padding:14px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.msg{max-width:80%;padding:8px 12px;border-radius:12px;background:var(--sidebar);color:var(--t2);font-size:13px;line-height:1.4}
+.msg.me{align-self:flex-end;background:var(--soft);color:var(--text)}
+.comp{padding:8px 12px 12px}
+.box{border:1px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--bg);display:flex;flex-direction:column;gap:8px}
+.st{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--t2)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:p 1.4s infinite}
+.paused .dot{animation:none;background:var(--t3)} .error .dot{animation:none;background:var(--danger)}
+@keyframes p{50%{opacity:.3}}
+.tx{font-size:14px;line-height:22px;color:var(--text)} .tx i{color:var(--t3);font-style:normal}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.b{border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:8px;padding:4px 9px;font-size:12px;display:inline-flex;gap:5px;align-items:center}
+.b kbd{font-size:10.5px;color:var(--t3);font-family:inherit}
+.b.pr{background:var(--text);color:var(--bg);border-color:var(--text)} .b.pr kbd{color:inherit;opacity:.7}
+.foot{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--t3);padding:6px 2px 0}
+.foot span{border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+.extra{font-size:12px;padding:6px 10px;margin-top:6px;border-radius:8px;background:rgba(192,57,43,.08);color:var(--danger);outline:2px dashed var(--danger);outline-offset:2px}
+.extra.n{background:var(--sidebar);color:var(--t2)}
+.dim{opacity:.35;outline:2px dashed var(--danger);outline-offset:3px;border-radius:6px}
+/* new desktop */
+.vbar{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:14px;padding:8px 8px 8px 12px;background:var(--bg)}
+.wave{display:flex;gap:2px;align-items:center;height:18px}
+.wave i{width:3px;border-radius:2px;background:var(--accent);animation:w 1s infinite ease-in-out}
+.wave i:nth-child(2){animation-delay:.15s}.wave i:nth-child(3){animation-delay:.3s}.wave i:nth-child(4){animation-delay:.45s}.wave i:nth-child(5){animation-delay:.6s}
+@keyframes w{0%,100%{height:4px}50%{height:16px}}
+.paused .wave i,.error .wave i{animation:none;height:4px;background:var(--t3)}
+.vtx{flex:1;min-width:0;font-size:14px;line-height:22px;max-height:88px;overflow:auto}
+.vtx i{color:var(--t3);font-style:normal}
+.ib{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--text);display:grid;place-items:center;font-size:14px;flex:none}
+.ib.pr{background:var(--accent);border-color:var(--accent);color:#fff}
+.time{font-size:11.5px;color:var(--t3);font-variant-numeric:tabular-nums}
+.hint{font-size:11px;color:var(--t3);padding:6px 4px 0;display:flex;gap:12px}
+.hint kbd{font-family:inherit;border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.err{font-size:12px;color:var(--danger);padding:0 0 6px 2px}
+.thin{display:flex;gap:6px;align-items:center;padding:6px 2px 0;font-size:11.5px;color:var(--t3)}
+.thin .pill{border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+/* mobile new */
+.sheet{border-top:1px solid var(--line);padding:12px 14px 18px;display:flex;flex-direction:column;gap:12px;background:var(--bg)}
+.mtx{font-size:15px;line-height:22px;max-height:120px;overflow:auto;padding:2px}
+.mtx i{color:var(--t3);font-style:normal}
+.mctl{display:flex;align-items:center;justify-content:space-between}
+.big{width:64px;height:64px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:24px;box-shadow:0 0 0 8px var(--soft)}
+.paused .big{background:var(--text);color:var(--bg);box-shadow:none}
+.mb{width:46px;height:46px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font-size:18px;background:var(--bg);color:var(--text)}
+.mb.send{background:var(--text);color:var(--bg);border-color:var(--text)}
+.mstat{display:flex;justify-content:center;gap:8px;align-items:center;font-size:12px;color:var(--t2)}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--t2)}
+.legend{font-size:12px;color:var(--t2);display:flex;gap:14px;flex-wrap:wrap}
+.legend span::before{content:'';display:inline-block;width:10px;height:10px;margin-right:5px;outline:2px dashed var(--danger);vertical-align:-1px}
+</style></head><body>
+<header><b>Голосовой режим — макет</b>
+<div class="seg" id="st"><button data-s="listening" class="on">Запись</button><button data-s="paused">Пауза</button><button data-s="error">Ошибка</button></div>
+<div class="seg" id="th"><button data-t="light" class="on">Светлая</button><button data-t="dark">Тёмная</button></div>
+<div class="seg" id="pick"><button data-v="A">Мобилка: вариант A</button><button data-v="B">Мобилка: вариант B</button></div>
+</header>
+<main>
+<section><h2>ПК</h2><p class="note">Сейчас под панелью остаются футер (модель, контекст, голос), отдельная строка ошибки, notice и кнопка «Остановить выполнение», а внутри — 4 текстовые кнопки с подсказками клавиш. В новом варианте — одна компактная строка: волна/статус, текст, таймер и иконки. Под ней только одна тонкая строка подсказок клавиш (скрывается после первого использования). Футер, notice и дубли ошибок в голосовом режиме не показываются; ошибка — только внутри панели.</p>
+<div class="legend"><span>красная рамка — убирается в голосовом режиме</span></div><br>
+<div class="row">
+<div class="frame desk"><div class="cap">Сейчас</div><div class="chat"><div class="msg">Готово, тесты прошли.</div><div class="msg me">Хорошо, теперь…</div></div>
+<div class="comp"><div class="box S"><div class="st"><span class="dot"></span><b class="lbl" style="color:var(--text)">Идёт запись</b><span style="margin-left:auto">осталось 4:12</span></div>
+<div class="tx">Хорошо, теперь нужно поправить голосовой режим <i>и убрать лишнее…</i></div>
+<div class="acts"><span class="b"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="2" width="3" height="10" rx="1"/><rect x="8" y="2" width="3" height="10" rx="1"/></svg> Пауза <kbd>Пробел</kbd></span><span class="b">⌫ Очистить диктовку</span><span class="b pr">➤ Отправить <kbd>Enter</kbd></span><span class="b">✕ Выйти <kbd>Esc</kbd></span></div></div>
+<div class="foot dim"><span>＋</span><span>claude-sonnet · 34% · mic OpenAI ▾</span></div>
+<div class="extra">Ошибка подключения к провайдеру. ID: 3f9a…</div><div class="extra n">Сообщение поставлено в очередь</div></div></div>
+
+<div class="frame desk"><div class="cap">Предлагается <span class="tag">новое</span></div><div class="chat"><div class="msg">Готово, тесты прошли.</div><div class="msg me">Хорошо, теперь…</div></div>
+<div class="comp"><div class="errslot"></div><div class="vbar S"><div class="wave"><i></i><i></i><i></i><i></i><i></i></div>
+<div class="vtx">Хорошо, теперь нужно поправить голосовой режим <i>и убрать лишнее…</i></div>
+<span class="time">4:12</span>
+<span class="ib" title="Очистить диктовку">⌫</span><span class="ib tog" title="Пауза (Пробел)"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="2" width="3" height="10" rx="1"/><rect x="8" y="2" width="3" height="10" rx="1"/></svg></span><span class="ib pr" title="Отправить (Enter)">➤</span><span class="ib" title="Выйти (Esc)">✕</span></div>
+<div class="hint"><span><kbd>Пробел</kbd> пауза</span><span><kbd>Enter</kbd> отправить</span><span><kbd>Esc</kbd> выйти</span></div></div></div>
+</div></section>
+
+<section><h2>Мобилка</h2><p class="note">Сейчас: те же 4 кнопки по 44px переносятся в 2–3 строки, плюс футер, ошибки и notice — панель занимает пол-экрана. <b>Вариант A</b> — «как запись голосового»: текст сверху, внизу три круглые кнопки: ✕ выйти · большая пауза/продолжить · ➤ отправить; «Очистить» — маленький чип рядом с таймером. <b>Вариант B</b> — ещё компактнее: одна строка как на ПК, но с кнопками 44px, без подсказок клавиш; «Очистить» — долгое нажатие/меню «⋯».</p>
+<div class="row">
+<div class="frame phone"><div class="cap">Сейчас</div><div class="chat"><div class="msg">Готово, тесты прошли.</div><div class="msg me">Хорошо, теперь…</div></div>
+<div class="comp"><div class="box S"><div class="st"><span class="dot"></span><b class="lbl" style="color:var(--text)">Идёт запись</b><span style="margin-left:auto">осталось 4:12</span></div>
+<div class="tx">Хорошо, теперь нужно поправить голосовой режим <i>и убрать лишнее…</i></div>
+<div class="acts"><span class="b" style="min-height:40px"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="2" width="3" height="10" rx="1"/><rect x="8" y="2" width="3" height="10" rx="1"/></svg> Пауза</span><span class="b" style="min-height:40px">⌫ Очистить диктовку</span><span class="b pr" style="min-height:40px">➤ Отправить</span><span class="b" style="min-height:40px">✕ Выйти</span></div></div>
+<div class="foot dim"><span>＋</span><span>sonnet · 34% · mic ▾</span></div>
+<div class="extra">Ошибка подключения… ID: 3f9a…</div><div class="extra n">Сообщение поставлено в очередь</div></div></div>
+
+<div class="frame phone mA"><div class="cap">Вариант A <span class="tag">новое</span></div><div class="chat"><div class="msg">Готово, тесты прошли.</div><div class="msg me">Хорошо, теперь…</div></div>
+<div class="sheet S"><div class="errslot"></div><div class="mtx">Хорошо, теперь нужно поправить голосовой режим <i>и убрать лишнее…</i></div>
+<div class="mstat"><div class="wave"><i></i><i></i><i></i><i></i><i></i></div><span class="lbl2">Запись · 4:12</span><span class="chip">⌫ Очистить</span></div>
+<div class="mctl"><span class="mb">✕</span><span class="big tog"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="2" width="3" height="10" rx="1"/><rect x="8" y="2" width="3" height="10" rx="1"/></svg></span><span class="mb send">➤</span></div></div></div>
+
+<div class="frame phone mB" style="display:none"><div class="cap">Вариант B <span class="tag">новое</span></div><div class="chat"><div class="msg">Готово, тесты прошли.</div><div class="msg me">Хорошо, теперь…</div></div>
+<div class="comp"><div class="errslot"></div><div class="vbar S" style="flex-wrap:wrap;padding:8px"><div class="vtx" style="flex-basis:100%;font-size:15px">Хорошо, теперь нужно поправить голосовой режим <i>и убрать лишнее…</i></div>
+<span class="mb" style="width:44px;height:44px">✕</span><div class="wave" style="margin-left:6px"><i></i><i></i><i></i><i></i><i></i></div><span class="time">4:12</span><span style="flex:1"></span><span class="mb" style="width:44px;height:44px">⋯</span><span class="mb tog" style="width:44px;height:44px"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="2" width="3" height="10" rx="1"/><rect x="8" y="2" width="3" height="10" rx="1"/></svg></span><span class="mb send" style="width:44px;height:44px">➤</span></div></div></div>
+</div></section>
+</main>
+<script>
+const S={listening:{lbl:'Идёт запись',l2:'Запись · 4:12',tog:'<svg width=\'14\' height=\'14\' viewBox=\'0 0 14 14\' fill=\'currentColor\'><rect x=\'3\' y=\'2\' width=\'3\' height=\'10\' rx=\'1\'/><rect x=\'8\' y=\'2\' width=\'3\' height=\'10\' rx=\'1\'/></svg>'},paused:{lbl:'Пауза',l2:'Пауза',tog:'<svg width=\'14\' height=\'14\' viewBox=\'0 0 14 14\' fill=\'currentColor\'><path d=\'M4 2l8 5-8 5z\'/></svg>'},error:{lbl:'Ошибка',l2:'Ошибка',tog:'↻'}};
+function setS(s){document.querySelectorAll('.S').forEach(e=>{e.classList.remove('paused','error');if(s!=='listening')e.classList.add(s)});
+document.querySelectorAll('.lbl').forEach(e=>e.textContent=S[s].lbl);document.querySelectorAll('.lbl2').forEach(e=>e.textContent=S[s].l2);
+document.querySelectorAll('.tog').forEach(e=>e.innerHTML=S[s].tog);
+document.querySelectorAll('.errslot').forEach(e=>e.innerHTML=s==='error'?'<div class="err">Провайдер отключился. Текст сохранён — можно продолжить. ID: 3f9a…</div>':'');
+mauzcode.setState({state:s});}
+document.querySelectorAll('#st button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#st button').forEach(x=>x.classList.toggle('on',x===b));setS(b.dataset.s)});
+document.querySelectorAll('#th button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#th button').forEach(x=>x.classList.toggle('on',x===b));document.body.classList.toggle('dark',b.dataset.t==='dark')});
+document.querySelectorAll('#pick button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#pick button').forEach(x=>x.classList.toggle('on',x===b));document.querySelector('.mA').style.display=b.dataset.v==='A'?'':'none';document.querySelector('.mB').style.display=b.dataset.v==='B'?'':'none';mauzcode.setState({mobile:b.dataset.v})});
+document.querySelector('#pick button').classList.add('on');
+</script></body></html>
