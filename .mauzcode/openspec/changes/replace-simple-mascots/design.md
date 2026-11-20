@@ -9,7 +9,8 @@ Upstream sources, inspected at these commits:
 | Pets | Source | Format | License |
 | --- | --- | --- | --- |
 | dundun, tabby, shiba, maneki, daruma, tuerye | zghey/tokibean `4a22bc74` `src/pet.js`, `src/skins/*.js` | IIFE scripts. Each sets `window.PetRenderer.draw(ctx, canvas, state, warn, bubble, t, extra)` and draws on a 288×184 canvas. `pet.js` also sets `window.PetKit`. | MIT |
-| calico, cloudling | rullerzhou-afk/clawd-on-desk `abf605a9` `assets/gif/*.gif` | Transparent animated GIFs | All rights reserved |
+| calico | rullerzhou-afk/clawd-on-desk `abf605a9` `themes/calico/assets/*.apng` | Transparent animated PNGs (its GIF exports have an opaque black background) | All rights reserved |
+| cloudling | same repo, `assets/gif/cloudling-*.gif` | Transparent animated GIFs | All rights reserved |
 | clawd | same repo, `assets/svg/clawd-*.svg` | CSS-animated SVGs, no scripts | Anthropic character, fan art, non-commercial |
 | claude | Harriszed/claude-desktop-pet `e799a6e2` `assets/*.svg` | CSS-animated SVGs, no scripts | No artwork license |
 
@@ -77,7 +78,7 @@ Repeating it changes nothing, because no removed values remain. Older migrations
 
 - [Unlicensed artwork in a public repository] → The owner decided to commit it. NOTICE and provenance files name the owners and make no license claim. Removal is a revert of the asset commit.
 - [Tokibean module state is shared by every instance of the same skin] → Usually only one chat composer is visible. Storybook may show shared blink and roam state, which is harmless.
-- [Large GIFs, about 6 MB in total] → Only the current state's file loads, and the browser caches it.
+- [Large animations, about 10 MB in total] → Only the current state's file loads, and the browser caches it.
 - [Live database still has the old CHECK until migrations run] → The migration runs on the normal startup path. Until then, choosing a new pet explicitly would be rejected by the database, so the server should restart (or the migration be applied) right after deploy.
 
 ## Migration Plan

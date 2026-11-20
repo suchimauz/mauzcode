@@ -26,7 +26,7 @@ describe('new session isolated mock API',()=>{
  test('accepted message with failed final persistence can recover',async()=>{const f=fixture();const run=f.ctx.fns.procs.db.run;let once=true;f.ctx.fns.procs.db.run=async(opts:any)=>{if(once&&JSON.parse(opts.params[0]).status==='sent'){once=false;throw Error('final save failure');}return run(opts);};expect((await f.post()).status).toBe(409);expect((await f.post()).status).toBe(200);expect(f.counts()).toEqual({creates:1,sends:2});});
  test('middleware dispatches GET and POST to handler',async()=>{const f=fixture();let calls=0;f.ctx.fns.frontendBridge.newSession=async()=>{calls++;return new Response('ok');};for(const method of ['GET','POST'])expect((await middleware(f.ctx,f.session,{req:new Request('http://localhost/ui-lab-api/new-session',{method})})).status).toBe(200);expect(calls).toBe(2);});
  test('explicit mascot persists once before first acceptance, retries never overwrite',async()=>{
-  for(const mascot of ['crab','deepy','whalegirl','desksprite','bitty','tmuxai','planet','rainbow-terminal-cat']){
+  for(const mascot of ['crab','deepy','whalegirl','dundun','tabby','shiba','maneki','daruma','tuerye','calico','cloudling','clawd','claude']){
    const f=fixture();let updates=0;const run=f.ctx.fns.procs.db.run,accept=f.ctx.fns.agent.acceptMessage;
    f.ctx.fns.procs.db.run=async(opts:any)=>{if(opts.sql.startsWith('UPDATE agents')){expect(opts.params).toEqual([mascot,'new']);updates++;return;}return run(opts);};
    f.ctx.fns.agent.acceptMessage=async(opts:any)=>{expect(updates).toBe(1);return accept(opts);};
@@ -42,12 +42,12 @@ describe('new session isolated mock API',()=>{
    expect((await f.post({mascot:'crab'})).status).toBe(409);
   }
  });
- test('invalid mascot rejected without creation',async()=>{const f=fixture();for(const mascot of ['','unknown','CRAB',null,1,{},['crab']])expect((await f.post({mascot})).status).toBe(400);expect(f.counts()).toEqual({creates:0,sends:0});});
+ test('invalid mascot rejected without creation',async()=>{const f=fixture();for(const mascot of ['','unknown','CRAB','bitty','desksprite',null,1,{},['crab']])expect((await f.post({mascot})).status).toBe(400);expect(f.counts()).toEqual({creates:0,sends:0});});
  test('multipart mascot uses same validation and binding',async()=>{
   const f=fixture();const run=f.ctx.fns.procs.db.run;let updates=0;
-  f.ctx.fns.procs.db.run=async(opts:any)=>{if(opts.sql.startsWith('UPDATE agents')){expect(opts.params).toEqual(['planet','new']);updates++;return;}return run(opts);};
+  f.ctx.fns.procs.db.run=async(opts:any)=>{if(opts.sql.startsWith('UPDATE agents')){expect(opts.params).toEqual(['calico','new']);updates++;return;}return run(opts);};
   const post=async(mascot:string)=>{const body=new FormData();for(const [k,v] of Object.entries({requestKey:'request-key-00001',projectId:'p',text:'hello',mascot}))body.set(k,v);return handler(f.ctx,f.session,{req:new Request('http://localhost/ui-lab-api/new-session',{method:'POST',headers:{'x-csrf-token':'token'},body})});};
-  expect((await post('invalid')).status).toBe(400);expect((await post('planet')).status).toBe(201);expect((await post('planet')).status).toBe(200);expect(updates).toBe(1);
+  expect((await post('invalid')).status).toBe(400);expect((await post('calico')).status).toBe(201);expect((await post('calico')).status).toBe(200);expect(updates).toBe(1);
  });
  test('failed mascot persistence fails closed without starting message or retrying configuration',async()=>{
   const f=fixture();const run=f.ctx.fns.procs.db.run;let updates=0;

@@ -315,7 +315,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
         runs,
         version: 1,
         agentId: id,
-        mascot: status.mascot as 'crab' | 'deepy' | 'whalegirl' | 'desksprite' | 'bitty' | 'tmuxai' | 'planet' | 'rainbow-terminal-cat',
+        mascot: status.mascot as 'crab' | 'deepy' | 'whalegirl' | 'dundun' | 'tabby' | 'shiba' | 'maneki' | 'daruma' | 'tuerye' | 'calico' | 'cloudling' | 'clawd' | 'claude',
         events: mobileEvents,
         // A short tail for the collapsed row and offsets for the expanded one,
         // which loads the full retained output from the run output route.

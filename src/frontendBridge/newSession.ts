@@ -60,7 +60,7 @@ export default async function (
     if(data.title!==undefined&&typeof data.title!=='string')return reply({error:'Invalid advanced fields'},400);
     const advanced={title:data.title||''};
     const hasAdvanced=advanced.title.length>0;
-    const mascots=['crab','deepy','whalegirl','desksprite','bitty','tmuxai','planet','rainbow-terminal-cat'];
+    const mascots=['crab','deepy','whalegirl','dundun','tabby','shiba','maneki','daruma','tuerye','calico','cloudling','clawd','claude'];
     if(data.mascot!==undefined&&(typeof data.mascot!=='string'||(data.mascot!=='random'&&!mascots.includes(data.mascot))))return reply({error:'Invalid mascot'},400);
     const mascot=data.mascot==='random'?undefined:data.mascot;
     if(data.presetId!==undefined&&(typeof data.presetId!=='string'||!data.presetId||!await ctx.fns.agentPreset.get({id:data.presetId})))return reply({error:'Unknown agent preset'},400);

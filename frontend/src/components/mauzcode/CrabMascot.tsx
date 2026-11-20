@@ -4,15 +4,19 @@ import deepy from './deepy-sheets.json';
 import whalegirl from './whalegirl-sheets.json';
 import type { EventPage } from '../../lib/mauzcode';
 import './crab-mascot.css';
-import { OpenPetMascot, openPetNames, type OpenPet } from './OpenPetMascot';
-import { DeskSpriteMascot } from './DeskSpriteMascot';
+import { mascotCatalog } from '../../lib/mascots';
+import type { TokibeanPet } from '../../lib/tokibean';
+import type { ImagePet } from '../../lib/imageMascots';
+import { TokibeanMascot } from './TokibeanMascot';
+import { ImageMascot } from './ImageMascot';
 type State = keyof typeof crab | 'idle-spout';
 type Sheet = { frames: number; box: number[]; still: number; columns?: number; durs?: number[] };
 const catalog: Record<'crab' | 'deepy' | 'whalegirl', Record<string, Sheet>> = { crab, deepy, whalegirl };
 /** Original dsh-claude sprites; see public/mascot/NOTICE.md and LICENSE. */
 export function CrabMascot({ page }: { page: EventPage | null }) {
-  if (page?.mascot === 'desksprite') return <DeskSpriteMascot page={page} />;
-  if (page?.mascot && page.mascot in openPetNames) return <OpenPetMascot key={`${page.agentId}:${page.mascot}`} page={page} pet={page.mascot as OpenPet} />;
+  const kind = page?.mascot ? mascotCatalog[page.mascot]?.kind : undefined;
+  if (kind === 'tokibean') return <TokibeanMascot key={`${page!.agentId}:${page!.mascot}`} page={page} pet={page!.mascot as TokibeanPet} />;
+  if (kind === 'image') return <ImageMascot key={`${page!.agentId}:${page!.mascot}`} page={page} pet={page!.mascot as ImagePet} />;
   const pet = page?.mascot && page.mascot in catalog ? page.mascot as keyof typeof catalog : 'crab';
   return <AnimatedPet key={`${page?.agentId ?? 'new'}:${pet}`} page={page} pet={pet} />;
 }

@@ -1,4 +1,6 @@
-# dsh-claude-style mascots
+# Chat mascots
+
+## dsh-claude-style: Crab, Deepy, Whalegirl
 
 Sprite sheets and animation geometry were taken from the installed dsh-claude-style package (© 2026 Nwflower). See LICENSE for the upstream license and artwork exceptions. The crab character belongs to Anthropic and its artwork is not MIT licensed. This is an unofficial fan interface, not endorsed by the character owners.
 
@@ -6,12 +8,16 @@ Deepy: original SVG sprite sheets, 50 ms frames, one-pixel cell gutters.
 Whalegirl: original PNG sprite sheets with per-frame durations and no gutters.
 Crab: existing split body/ink sheets, 80 ms frames.
 
-Only mascot artwork and animation metadata are reused. No Sodium engine code is included. MauzCode activity and interactions are implemented by the React component; this is not a complete port of dsh's activity scheduler.
+Only mascot artwork and animation metadata are reused. No Sodium engine code is included. MauzCode activity and interactions are implemented by the React component.
 
-## Additional local companions
+## Tokibean: Dundun, Tabby, Shiba, Maneki, Daruma, Tu'er Ye
 
-DeskSprite is vendored with its MIT license and pinned provenance under src/vendor/desksprite/. It stays at its desk; roaming and grab/throw are intentionally disabled inside chat. Click/keyboard activation shows its current status.
+Canvas renderers vendored unchanged under `src/vendor/tokibean/` (MIT, © 2026 ZGhey). See its README for the pinned commit and checksums.
 
-Bitty, TmuxAI Official, Planet and Rainbow Terminal Cat were downloaded from the OpenPets public gallery at the user's request. Each directory records its exact source URL and original metadata in provenance.json. The separately hosted artwork does not include an explicit license grant; OpenPets' MIT software license must NOT be represented as an artwork license. Rights remain with their respective owners. Verify redistribution permission before publishing/bundling these artworks for others. Source terms: https://openpets.dev/terms ; rights contact: admin@openpets.dev.
+## Clawd on Desk: Calico, Cloudling, Clawd
 
-The OpenPets animation mapping follows packages/pet-format/src/animation.ts at commit c8dfeb661ee60e9c0f270316dd4e0f9c9158eb3d. Local rendering uses a 192×208 frame grid (8 columns, 9 rows), scaled to 72×78; no OpenPets desktop runtime or AI integrations are installed.
+Animated GIFs (Calico, Cloudling) and CSS-animated SVGs (Clawd) from https://github.com/rullerzhou-afk/clawd-on-desk at the commit recorded in each `provenance.json`. This artwork is NOT openly licensed: Calico and Cloudling are © 鹿鹿 (rullerzhou-afk), all rights reserved; Clawd is Anthropic's character drawn as non-commercial fan art. The upstream rights notice is kept as `RIGHTS.txt` beside the files. The MauzCode owner chose to bundle it; no license is claimed or granted, and MauzCode is not affiliated with or endorsed by the rights holders.
+
+## Claude Desktop Pet: Claude
+
+CSS-animated SVGs from https://github.com/Harriszed/claude-desktop-pet at the commit recorded in `provenance.json`. Upstream states that no redistribution license for the artwork was found and that the character belongs to Anthropic (`RIGHTS.md`). Bundled at the owner's request; no license is claimed or granted.

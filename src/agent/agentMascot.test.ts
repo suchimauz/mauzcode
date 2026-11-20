@@ -2,9 +2,12 @@ import { expect, test } from 'bun:test';
 import { mkTestCtx } from '../_testCtx.entry';
 import migration from './$migration_20331201190000_agent_mascot';
 import expandMigration from './$migration_20331201191000_agent_mascot_eight';
+import catalogueMigration from './$migration_20390305000000_agent_mascot_catalogue';
 
 const legacyChoices = ['crab', 'deepy', 'whalegirl'];
-const choices = [...legacyChoices, 'desksprite', 'bitty', 'tmuxai', 'planet', 'rainbow-terminal-cat'];
+const eightChoices = [...legacyChoices, 'desksprite', 'bitty', 'tmuxai', 'planet', 'rainbow-terminal-cat'];
+const removed = ['desksprite', 'bitty', 'tmuxai', 'planet', 'rainbow-terminal-cat'];
+const choices = [...legacyChoices, 'dundun', 'tabby', 'shiba', 'maneki', 'daruma', 'tuerye', 'calico', 'cloudling', 'clawd', 'claude'];
 
 test('mascot persists across saves, reloads and forks use the database default', async () => {
     const ctx = await mkTestCtx();
@@ -62,9 +65,9 @@ test('eight-choice upgrade preserves existing assignments and is idempotent', as
     await ctx.fns.procs.db.exec({ sql: `INSERT INTO agents (id, model, created_at, updated_at) SELECT 'mascot-eight-' || i, 'mock:echo', 1, 1 FROM generate_series(1, 1024) AS i` });
     const rows = await ctx.fns.procs.db.select({ sql: "SELECT mascot FROM agents WHERE id LIKE 'mascot-eight-%'" });
     expect(rows).toHaveLength(1024);
-    expect(rows.every((row: { mascot: string }) => choices.includes(row.mascot))).toBe(true);
+    expect(rows.every((row: { mascot: string }) => eightChoices.includes(row.mascot))).toBe(true);
     expect(new Set(rows.map((row: { mascot: string }) => row.mascot)).size).toBe(8);
-    for (const mascot of choices) {
+    for (const mascot of eightChoices) {
         await ctx.fns.procs.db.run({ sql: "UPDATE agents SET mascot = ? WHERE id = 'mascot-eight-1'", params: [mascot] });
     }
     await expect(ctx.fns.procs.db.run({ sql: "UPDATE agents SET mascot = 'invalid' WHERE id = 'mascot-eight-1'" })).rejects.toThrow();
@@ -72,4 +75,30 @@ test('eight-choice upgrade preserves existing assignments and is idempotent', as
     const assigned = await ctx.fns.procs.db.select({ sql: "SELECT id, mascot FROM agents WHERE id LIKE 'mascot-eight-%' ORDER BY id" });
     await expandMigration.up(ctx);
     expect(await ctx.fns.procs.db.select({ sql: "SELECT id, mascot FROM agents WHERE id LIKE 'mascot-eight-%' ORDER BY id" })).toEqual(assigned);
+});
+
+test('catalogue upgrade reassigns removed pets once and keeps catalogue assignments', async () => {
+    const ctx = await mkTestCtx();
+    expect(new URL(ctx.env.DATABASE_URL).pathname).toContain('mauzcode_test_');
+    await ctx.fns.procs.db.exec({ sql: 'ALTER TABLE agents DROP COLUMN mascot' });
+    await migration.up(ctx);
+    await expandMigration.up(ctx);
+    for (const mascot of eightChoices) {
+        await ctx.fns.procs.db.run({ sql: 'INSERT INTO agents (id, model, created_at, updated_at, mascot) VALUES (?, ?, 1, 1, ?)', params: [`mascot-cat-${mascot}`, 'mock:echo', mascot] });
+    }
+    await catalogueMigration.up(ctx);
+    const read = () => ctx.fns.procs.db.select({ sql: "SELECT id, mascot FROM agents WHERE id LIKE 'mascot-cat-%' ORDER BY id" });
+    const after = await read();
+    for (const row of after as { id: string; mascot: string }[]) {
+        expect(choices).toContain(row.mascot);
+        const original = row.id.slice('mascot-cat-'.length);
+        if (legacyChoices.includes(original)) expect(row.mascot).toBe(original);
+    }
+    await catalogueMigration.up(ctx);
+    expect(await read()).toEqual(after);
+    await ctx.fns.procs.db.exec({ sql: `INSERT INTO agents (id, model, created_at, updated_at) SELECT 'mascot-thirteen-' || i, 'mock:echo', 1, 1 FROM generate_series(1, 1024) AS i` });
+    const rows = await ctx.fns.procs.db.select({ sql: "SELECT mascot FROM agents WHERE id LIKE 'mascot-thirteen-%'" });
+    expect(new Set(rows.map((row: { mascot: string }) => row.mascot))).toEqual(new Set(choices));
+    for (const mascot of removed) await expect(ctx.fns.procs.db.run({ sql: "UPDATE agents SET mascot = ? WHERE id = 'mascot-thirteen-1'", params: [mascot] })).rejects.toThrow();
+    for (const mascot of choices) await ctx.fns.procs.db.run({ sql: "UPDATE agents SET mascot = ? WHERE id = 'mascot-thirteen-1'", params: [mascot] });
 });

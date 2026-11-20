@@ -1,0 +1,7 @@
+/* The idle art box rests on the input's top edge at the right; the full source canvas is offset around it, unclipped. */
+.image-mascot { position: absolute; right: 12px; bottom: 100%; width: var(--pet-width); height: var(--pet-height); pointer-events: none; z-index: 5; }
+.image-mascot-art { position: absolute; left: var(--art-left); top: var(--art-top); width: var(--art-width); height: var(--art-height); display: block; user-select: none; pointer-events: none; }
+.image-mascot[data-pet="clawd"] .image-mascot-art, .image-mascot[data-pet="claude"] .image-mascot-art { image-rendering: pixelated; }
+.image-mascot-hit { position: absolute; inset: 0; border: 0; padding: 0; background: transparent; pointer-events: auto; cursor: pointer; border-radius: 8px; }
+.image-mascot-hit:disabled { pointer-events: none; }
+.image-mascot-hit:focus-visible { outline: 2px solid var(--text-tertiary); outline-offset: 2px; }
