@@ -1,21 +1,80 @@
-.voice-panel { display:flex; flex-direction:column; gap:8px; width:100%; min-height:38px; padding:10px 12px; border:1px solid var(--line); border-radius:14px; background:var(--input-bg); box-shadow:0 1px 3px #14141308; transition:border-color var(--duration-feedback); }
+/*
+ * Compact voice mode. Mobile layout by default (touch or narrow composer): full-width transcript with clear in its
+ * top-right corner, then one row of 44 px round buttons — exit, waveform + time, pause/resume, send. Desktop layout
+ * (fine pointer and a composer at least 520 px wide): one row — waveform, transcript, time, clear, pause, send, exit —
+ * and one hint line. The panel is its own size container so the composer anchor keeps its layout.
+ */
+.voice-panel { container-type:inline-size; display:flex; flex-direction:column; gap:6px; width:100%; box-sizing:border-box; padding:8px; border:1px solid var(--line); border-radius:18px; background:var(--input-bg); box-shadow:0 1px 3px #14141308; transition:border-color var(--duration-feedback); }
 .voice-panel:focus-within, .voice-panel:focus { border-color:var(--text-muted); }
 .voice-panel:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-.voice-panel-status { display:flex; align-items:center; gap:8px; color:var(--text-secondary); font-size:12px; line-height:18px; }
-.voice-panel-dot { width:8px; height:8px; border-radius:50%; background:var(--text-tertiary); flex:none; }
-.voice-panel[data-state=listening] .voice-panel-dot { background:var(--accent); animation:voice-panel-pulse 1.4s ease-in-out infinite; }
-.voice-panel[data-state=error] .voice-panel-dot { background:var(--danger, var(--accent)); }
-.voice-panel-state { color:var(--text); font-weight:500; }
-.voice-panel-time { margin-left:auto; font-variant-numeric:tabular-nums; }
-.voice-panel-error { margin:0; color:var(--danger, var(--text)); font-size:12px; line-height:18px; }
-.voice-panel-transcript { max-height:164px; overflow-y:auto; color:var(--text); font-size:14px; line-height:24px; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:6px; }
+.voice-panel[data-state=error] { border-color:var(--danger, #c0392b); }
+.voice-panel-error { margin:0; padding:0 4px; color:var(--danger, #c0392b); font-size:12px; line-height:18px; overflow-wrap:anywhere; }
+
+.voice-panel-body { position:relative; display:flex; flex-direction:column; gap:6px; min-width:0; }
+.voice-panel-transcript-wrap { min-width:0; }
+.voice-panel-transcript { max-height:88px; overflow-y:auto; padding:2px 44px 2px 4px; color:var(--text); font-size:15px; line-height:22px; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:6px; }
+.voice-panel[data-can-clear] .voice-panel-transcript { min-height:36px; box-sizing:border-box; }
+.voice-panel:not([data-can-clear]) .voice-panel-transcript { padding-right:4px; }
 .voice-panel-transcript:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .voice-panel-placeholder { color:var(--text-muted); }
-.voice-panel-actions { display:flex; flex-wrap:wrap; gap:6px; }
-.voice-panel-action { min-height:28px; font-size:12px; }
-.voice-panel-action[aria-disabled=true] { opacity:.5; cursor:default; }
-.voice-panel-action kbd { font-family:var(--font-sans); font-size:11px; color:var(--text-tertiary); }
-.voice-panel-action.button--primary kbd { color:inherit; opacity:.8; }
-@keyframes voice-panel-pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
-@media (pointer:coarse) { .voice-panel-action { min-height:44px; } .voice-panel-action kbd { display:none; } }
-@media (prefers-reduced-motion:reduce) { .voice-panel, .voice-panel-dot { transition:none; animation:none !important; } }
+
+.voice-panel-controls { display:flex; align-items:center; gap:6px; min-width:0; }
+.voice-panel-spacer { flex:1; }
+.voice-panel-button { flex:none; display:grid; place-items:center; width:44px; height:44px; padding:0; border:1px solid var(--line); border-radius:50%; background:var(--input-bg); color:var(--text); cursor:pointer; transition:background var(--duration-feedback), border-color var(--duration-feedback), color var(--duration-feedback); }
+.voice-panel-button[hidden] { display:none; }
+.voice-panel-button:disabled { opacity:.45; cursor:default; }
+.voice-panel-button[aria-disabled=true] { opacity:.45; cursor:default; }
+.voice-panel-button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+@media (hover:hover) { .voice-panel-button:not(:disabled):not([aria-disabled=true]):hover { background:var(--hover); } }
+
+/* Mobile: clear sits in the transcript corner as a soft grey circle and disappears when there is nothing to clear. */
+.voice-panel-clear { position:absolute; top:0; right:0; width:36px; height:36px; border-color:transparent; background:var(--sidebar); color:var(--text-secondary); }
+.voice-panel:not([data-can-clear]) .voice-panel-clear { display:none; }
+.voice-panel[data-state=listening] .voice-panel-toggle { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.voice-panel-send { background:var(--text); border-color:var(--text); color:var(--bg); }
+@media (hover:hover) {
+  .voice-panel[data-state=listening] .voice-panel-toggle:not(:disabled):hover { background:var(--accent-hover); }
+  .voice-panel-send:not(:disabled):hover { background:var(--text); filter:brightness(.9); }
+}
+
+.voice-panel-wave { display:flex; align-items:center; gap:2px; height:18px; margin:0 4px; flex:none; }
+.voice-panel-wave i { width:3px; height:4px; border-radius:2px; background:var(--text-tertiary); }
+.voice-panel[data-state=listening] .voice-panel-wave i { background:var(--accent); animation:voice-panel-wave 1s ease-in-out infinite; }
+.voice-panel-wave i:nth-child(2) { animation-delay:.15s; } .voice-panel-wave i:nth-child(3) { animation-delay:.3s; }
+.voice-panel-wave i:nth-child(4) { animation-delay:.45s; } .voice-panel-wave i:nth-child(5) { animation-delay:.6s; }
+.voice-panel-time { color:var(--text-tertiary); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.voice-panel-hints { display:none; margin:0; padding:0 4px; gap:12px; color:var(--text-tertiary); font-size:11px; line-height:16px; }
+.voice-panel-hints kbd { font-family:var(--font-sans); border:1px solid var(--line); border-radius:4px; padding:0 4px; }
+@keyframes voice-panel-wave { 0%,100% { height:4px; } 50% { height:16px; } }
+
+/* Desktop: one compact row. The control group dissolves into the row so the waveform can lead it. */
+@media (pointer:fine) {
+  @container (min-width:520px) {
+    .voice-panel-body { flex-direction:row; align-items:center; gap:8px; padding-left:4px; }
+    .voice-panel-controls { display:contents; }
+    .voice-panel-wave { order:1; margin:0; }
+    .voice-panel-transcript-wrap { order:2; flex:1; }
+    .voice-panel-transcript, .voice-panel[data-can-clear] .voice-panel-transcript { min-height:0; padding:2px 4px; font-size:14px; }
+    .voice-panel-time { order:3; }
+    .voice-panel-spacer { display:none; }
+    .voice-panel-clear { order:4; }
+    .voice-panel-toggle { order:5; }
+    .voice-panel-send { order:6; }
+    .voice-panel-exit { order:7; }
+    .voice-panel-button { width:32px; height:32px; }
+    .voice-panel-clear, .voice-panel:not([data-can-clear]) .voice-panel-clear { position:static; display:grid; border-color:var(--line); background:var(--input-bg); color:var(--text); }
+    .voice-panel[data-state=listening] .voice-panel-toggle { background:var(--input-bg); border-color:var(--line); color:var(--text); }
+    .voice-panel-send { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+    .voice-panel-hints { display:flex; }
+  }
+}
+@media (hover:hover) and (pointer:fine) {
+  @container (min-width:520px) {
+    .voice-panel[data-state=listening] .voice-panel-toggle:not(:disabled):hover { background:var(--hover); }
+    .voice-panel-send:not(:disabled):hover { background:var(--accent-hover); filter:none; }
+  }
+}
+@media (prefers-reduced-motion:reduce) {
+  .voice-panel, .voice-panel-button { transition:none; }
+  .voice-panel[data-state=listening] .voice-panel-wave i { animation:none; height:10px; }
+}

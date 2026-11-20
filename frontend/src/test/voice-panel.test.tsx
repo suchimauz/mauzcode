@@ -71,6 +71,8 @@ afterEach(() => {
 
 const editor = () => screen.getByRole('textbox', { name: 'Сообщение агенту', hidden: true });
 const panel = () => screen.getByRole('region', { name: MODE });
+/** The footer entry point; it is unmounted while voice mode is open, so re-query it after leaving. */
+const modeButton = () => screen.getByRole('button', { name: MODE });
 const live = () => panel().querySelector('[aria-live="polite"]')!;
 async function mount(text = '', files = false) {
   if (text) sessionStorage.setItem('mauzcode-ui-draft:chat-1', JSON.stringify({ text, key: 'k0' }));
@@ -100,11 +102,13 @@ describe('voice panel in the live composer', () => {
     expect(fake.controllers).toBe(1);
     expect(panel()).toHaveFocus();
     expect(editor().closest('[hidden]')).not.toBeNull();
-    expect(entry).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: INLINE })).toHaveAttribute('aria-disabled', 'true');
-    expect(panel()).toHaveTextContent('Идёт запись');
+    // The footer with both entry points is unmounted while voice mode is open.
+    expect(entry).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: INLINE })).toBeNull();
+    // The state is not a visible heading but stays the panel's description for assistive technology.
+    expect(panel()).toHaveAccessibleDescription(/Идёт запись/);
     expect(panel()).toHaveTextContent('осталось 5:00');
-    for (const name of ['Пауза', 'Очистить диктовку', 'Отправить', 'Выйти']) expect(within(panel()).getByRole('button', { name: new RegExp(name) })).toBeInTheDocument();
+    for (const name of ['Пауза', 'Очистить диктовку', 'Отправить', 'Выйти']) expect(within(panel()).getByRole('button', { name })).toHaveAttribute('title');
   });
 
   it('dictates into the same draft, pauses and resumes with Space, keeps text and attachments', async () => {
@@ -121,7 +125,7 @@ describe('voice panel in the live composer', () => {
     // The pause finalizes the current phrase before the microphone is off.
     say('b', 1, 0, 'again', true);
     await act(async () => { fake.current.settle!(true); });
-    expect(panel()).toHaveTextContent('Пауза');
+    expect(panel()).toHaveAccessibleDescription(/Пауза/);
     expect(within(panel()).getByRole('button', { name: /Продолжить запись/ })).toBeInTheDocument();
     // Late events of the paused generation change nothing.
     say('b', 1, 1, 'LATE', true); say('z', 9, 0, 'ghost');
@@ -168,7 +172,7 @@ describe('voice panel in the live composer', () => {
     key(panel(), 'Escape');
     // Correct the dictated word in the editor, then reopen the panel and clear: the corrected word is the user's.
     const el = editor(); el.firstChild!.textContent = 'A hello'; fireEvent.input(el);
-    await userEvent.click(entry);
+    await userEvent.click(await screen.findByRole('button', { name: MODE }));
     say('a', 0, 0, 'new', true);
     await userEvent.click(within(panel()).getByRole('button', { name: 'Очистить диктовку' }));
     expect(editor()).toHaveTextContent(/^A hello$/);
@@ -187,7 +191,7 @@ describe('voice panel in the live composer', () => {
     // Late events of the finished capture never revive phrases.
     say('a', 0, 1, 'ALPHA LATE', true, fake.current.generation - 1); say('c', 2, 0, 'ghost', true, fake.current.generation - 1);
     expect(editor()).toHaveTextContent(/^Typed alpha BETA$/);
-    await userEvent.click(entry);
+    await userEvent.click(modeButton());
     const clearButton = within(panel()).getByRole('button', { name: 'Очистить диктовку' });
     expect(clearButton).not.toHaveAttribute('aria-disabled');
     await userEvent.click(clearButton);
@@ -223,9 +227,10 @@ describe('voice panel in the live composer', () => {
   it('ignores keys outside the panel and leaves native keys to its buttons and text fields', async () => {
     const { entry } = await mount('x');
     await userEvent.click(entry);
-    // Outside the panel: a footer button and the document body.
-    const outside = screen.getByRole('button', { name: INLINE });
+    // Outside the panel: another button on the page and the document body.
+    const outside = document.body.appendChild(document.createElement('button'));
     key(outside, ' '); key(document.body, ' '); key(outside, 'Escape');
+    outside.remove();
     expect(fake.current.pause).not.toHaveBeenCalled();
     expect(panel()).toBeInTheDocument();
     // Inside: Space and Enter on a focused panel button are its own activation, not shortcuts.
@@ -307,13 +312,61 @@ describe('voice panel in the live composer', () => {
     expect(editor()).not.toHaveTextContent('leaked');
   });
 
-  it('activating the voice mode button again leaves the panel like Escape', async () => {
-    const { entry } = await mount('t');
+  it('shows nothing of the composer below the panel and restores it on exit', async () => {
+    sessionStorage.setItem('mauzcode-ui-draft:chat-1', JSON.stringify({ text: '/compact', key: 'k0' }));
+    mauzcode.stopAgent.mockReset();
+    const view = render(<LiveComposer agentId="chat-1" running onAccepted={vi.fn()} />);
+    const entry = await screen.findByRole('button', { name: MODE });
+    await waitFor(() => expect(entry).not.toHaveAttribute('aria-disabled'));
     await userEvent.click(entry);
-    await userEvent.click(entry);
-    expect(fake.current.cancel).toHaveBeenCalledOnce();
+    const footer = () => view.container.querySelector('.composer-footer');
+    expect(panel()).toBeInTheDocument();
+    expect(footer()).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Остановить выполнение' })).toBeNull();
+    expect(view.container.querySelector('.transcript-notice, .connection-error')).toBeNull();
+    // Only the panel follows the docks: nothing is rendered after it except the hidden editor and file input.
+    const after = [...view.container.querySelectorAll('.voice-panel ~ *, .composer-input-anchor ~ *')].filter(el => !(el as HTMLElement).hidden);
+    expect(after).toEqual([]);
+    key(panel(), 'Escape');
     expect(screen.queryByRole('region', { name: MODE })).toBeNull();
-    expect(entry).toHaveAttribute('aria-pressed', 'false');
+    expect(footer()).not.toBeNull();
+    expect(await screen.findByRole('button', { name: MODE })).toHaveAttribute('aria-pressed', 'false');
     await waitFor(() => expect(editor()).toHaveFocus());
+  });
+
+  it('clear is disabled with a reason on desktop and hidden on touch when nothing can be cleared', async () => {
+    const { entry } = await mount('base');
+    await userEvent.click(entry);
+    const clear = () => within(panel()).getByRole('button', { name: 'Очистить диктовку' });
+    expect(clear()).toHaveAttribute('aria-disabled', 'true');
+    expect(clear()).toHaveAttribute('title', 'Надиктованного текста нет');
+    expect(clear()).toBeVisible();
+    say('a', 0, 0, 'spoken', true);
+    expect(clear()).not.toHaveAttribute('aria-disabled');
+    key(panel(), 'Escape');
+    const matchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({ ...matchMedia(query), matches: query === '(pointer: coarse)' })) as typeof window.matchMedia;
+    try {
+      await userEvent.click(await screen.findByRole('button', { name: MODE }));
+      expect(clear()).not.toHaveAttribute('hidden');
+      await userEvent.click(clear());
+      expect(editor()).toHaveTextContent(/^base$/);
+      // Nothing left to clear: the touch layout hides the control (not focusable, out of the accessibility tree).
+      expect(within(panel()).queryByRole('button', { name: 'Очистить диктовку' })).toBeNull();
+      expect(panel().querySelector('.voice-panel-clear')).toHaveAttribute('hidden');
+    } finally { window.matchMedia = matchMedia; }
+  });
+
+  it('a send failure is shown in the panel error line, not below it', async () => {
+    const { entry } = await mount('hello');
+    await userEvent.click(entry);
+    act(() => fake.current.set!({ state: 'paused', remainingMs: null }));
+    mauzcode.sendMessage.mockRejectedValueOnce(new Error('Network down'));
+    await userEvent.click(within(panel()).getByRole('button', { name: 'Отправить' }));
+    const line = await within(panel()).findByRole('alert');
+    expect(line).toHaveTextContent('Network down');
+    expect(panel()).toHaveAttribute('data-error', 'true');
+    expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    mauzcode.sendMessage.mockReset();
   });
 });

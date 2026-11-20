@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Eraser, Pause, Play, Send, X } from 'lucide-react';
+import { Delete, Pause, Play, RotateCcw, Send, X } from 'lucide-react';
 import type { VoiceCapture, VoiceCaptureState } from '../../hooks/useVoiceCapture';
 import './voice-panel.css';
 
@@ -26,6 +26,19 @@ export function ownsKeys(target: EventTarget | null) {
   return !!target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"], button, a[href], summary, [role="button"], [role="link"], [role="menuitem"], [role="checkbox"], [role="switch"], [role="tab"], [role="option"]');
 }
 
+const COARSE = '(pointer: coarse)';
+/** Touch devices always get the mobile layout; a narrow composer with a fine pointer is handled by CSS alone. */
+function useCoarsePointer() {
+  const [coarse, setCoarse] = useState(() => !!window.matchMedia?.(COARSE).matches);
+  useEffect(() => {
+    const query = window.matchMedia?.(COARSE); if (!query) return;
+    const change = () => setCoarse(query.matches);
+    query.addEventListener?.('change', change);
+    return () => query.removeEventListener?.('change', change);
+  }, []);
+  return coarse;
+}
+
 export type VoicePanelProps = {
   capture: VoiceCapture;
   /** The composer's draft; shown read-only here and readable on demand, never announced automatically. */
@@ -40,6 +53,8 @@ export type VoicePanelProps = {
   onSend: () => void;
   canSubmit: boolean;
   busy: boolean;
+  /** The composer's last send failure, shown in the panel's single error line when there is no capture error. */
+  sendError?: string;
 };
 
 /**
@@ -47,10 +62,13 @@ export type VoicePanelProps = {
  * resumes, Enter requests send, Escape stops capture and returns to the editor. They never fire for typing outside the
  * panel, and a focused button or text field inside it keeps its native keys. Every shortcut has a labelled button.
  * One polite live region announces state changes and the 1 min / 10 s thresholds; transcript text is never in it.
+ * Compact layout: the state is conveyed by the waveform, the toggle icon and the time label (the label is screen-reader
+ * only); CSS picks the desktop row or the mobile stack, see voice-panel.css.
  */
-export function VoicePanel({ capture, text, attachments, onToggle, onClear, canClear, onExit, onSend, busy, canSubmit }: VoicePanelProps) {
+export function VoicePanel({ capture, text, attachments, onToggle, onClear, canClear, onExit, onSend, busy, canSubmit, sendError }: VoicePanelProps) {
   const root = useRef<HTMLElement>(null);
   const id = useId();
+  const coarse = useCoarsePointer();
   const [announcement, setAnnouncement] = useState('');
   const announced = useRef<{ state: VoiceCaptureState | null; error: string | null; generation: number; thresholds: Set<number> }>({ state: null, error: null, generation: -1, thresholds: new Set() });
   const { state, error, remainingMs, generation } = capture;
@@ -90,32 +108,44 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, canC
     else if (event.key === 'Escape') { event.preventDefault(); onExit(); }
   };
 
-  return <section ref={root} className="voice-panel" tabIndex={-1} aria-label="Голосовой режим" aria-describedby={`${id}-keys`} data-state={state} onKeyDown={keyDown}>
+  // One error line: the capture error leads; a send failure replaces its generic tail so neither message is lost.
+  const errorText = state === 'error' && error
+    ? <>{error.code === 'superseded' ? `${MOVED}.` : error.message}{error.errorId && <> ID: <code>{error.errorId}</code></>} {sendError || 'Текст сохранён; можно продолжить запись или вернуться к редактированию.'}</>
+    : sendError ? <>{sendError}</> : null;
+  const ToggleIcon = running ? Pause : state === 'error' ? RotateCcw : Play;
+  const clearTitle = canClear ? 'Очистить диктовку' : 'Надиктованного текста нет';
+
+  return <section ref={root} className="voice-panel" tabIndex={-1} aria-label="Голосовой режим" aria-describedby={`${id}-state ${id}-keys`} data-state={state} data-error={errorText ? true : undefined} data-can-clear={canClear || undefined} onKeyDown={keyDown}>
     <p id={`${id}-keys`} className="sr-only">Пробел — пауза или продолжение, Enter — отправить, Escape — выйти в поле ввода. Клавиши работают, пока фокус на самой панели или в тексте сообщения; на кнопках действуют их собственные клавиши.</p>
-    <div className="voice-panel-status">
-      <span className="voice-panel-dot" aria-hidden="true" />
-      <span className="voice-panel-state">{STATE_LABEL[state]}</span>
-      {remainingMs != null && state === 'listening' && <span className="voice-panel-time">осталось <time>{clock(remainingMs)}</time></span>}
-    </div>
-    {state === 'error' && error && <p className="voice-panel-error">{error.code === 'superseded' ? `${MOVED}.` : error.message}{error.errorId && <> ID: <code>{error.errorId}</code></>} Текст сохранён; можно продолжить запись или вернуться к редактированию.</p>}
+    <span id={`${id}-state`} className="sr-only">{STATE_LABEL[state]}</span>
+    {/* A capture error is announced by the live region below; a send failure has no announcement there. */}
+    {errorText && <p className="voice-panel-error" role={state === 'error' && error ? undefined : 'alert'}>{errorText}</p>}
     {attachments}
-    <div className="voice-panel-transcript" tabIndex={0} role="group" aria-label="Текст сообщения">
-      {text ? text : <span className="voice-panel-placeholder">Говорите — текст появится здесь и в поле сообщения.</span>}
+    <div className="voice-panel-body">
+      <div className="voice-panel-transcript-wrap">
+        <div className="voice-panel-transcript" tabIndex={0} role="group" aria-label="Текст сообщения">
+          {text ? text : <span className="voice-panel-placeholder">Говорите — текст появится здесь и в поле сообщения.</span>}
+        </div>
+      </div>
+      <div className="voice-panel-controls" role="group" aria-label="Управление голосовым режимом">
+        <button type="button" className="voice-panel-button voice-panel-exit" aria-label="Выйти" title="Выйти (Esc)" aria-keyshortcuts="Escape" disabled={busy} onClick={onExit}>
+          <X size={16} aria-hidden="true" />
+        </button>
+        <span className="voice-panel-wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>
+        <span className="voice-panel-time">{remainingMs != null && state === 'listening' && <>осталось <time>{clock(remainingMs)}</time></>}</span>
+        <span className="voice-panel-spacer" />
+        <button type="button" className="voice-panel-button voice-panel-clear" aria-label="Очистить диктовку" title={clearTitle} hidden={coarse && !canClear} disabled={busy} aria-disabled={canClear ? undefined : true} onClick={() => { if (canClear) onClear(); }}>
+          <Delete size={16} aria-hidden="true" />
+        </button>
+        <button type="button" className="voice-panel-button voice-panel-toggle" aria-label={toggleLabel} title={`${toggleLabel} (Пробел)`} aria-keyshortcuts="Space" disabled={toggleDisabled} onClick={onToggle}>
+          <ToggleIcon size={16} aria-hidden="true" />
+        </button>
+        <button type="button" className="voice-panel-button voice-panel-send" aria-label="Отправить" title="Отправить (Enter)" aria-keyshortcuts="Enter" disabled={busy || !canSubmit} onClick={onSend}>
+          <Send size={16} aria-hidden="true" />
+        </button>
+      </div>
     </div>
-    <div className="voice-panel-actions" role="group" aria-label="Управление голосовым режимом">
-      <button type="button" className="button button--secondary voice-panel-action" aria-keyshortcuts="Space" disabled={toggleDisabled} onClick={onToggle}>
-        {running ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}<span>{toggleLabel}</span><kbd aria-hidden="true">Пробел</kbd>
-      </button>
-      <button type="button" className="button button--secondary voice-panel-action" disabled={busy} aria-disabled={canClear ? undefined : true} title={canClear ? undefined : 'Надиктованного текста нет'} onClick={() => { if (canClear) onClear(); }}>
-        <Eraser size={14} aria-hidden="true" /><span>Очистить диктовку</span>
-      </button>
-      <button type="button" className="button button--primary voice-panel-action" aria-keyshortcuts="Enter" disabled={busy || !canSubmit} onClick={onSend}>
-        <Send size={14} aria-hidden="true" /><span>Отправить</span><kbd aria-hidden="true">Enter</kbd>
-      </button>
-      <button type="button" className="button button--ghost voice-panel-action" aria-keyshortcuts="Escape" disabled={busy} onClick={onExit}>
-        <X size={14} aria-hidden="true" /><span>Выйти</span><kbd aria-hidden="true">Esc</kbd>
-      </button>
-    </div>
+    <p className="voice-panel-hints" aria-hidden="true"><span><kbd>Пробел</kbd> пауза</span><span><kbd>Enter</kbd> отправить</span><span><kbd>Esc</kbd> выйти</span></p>
     <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</p>
   </section>;
 }
