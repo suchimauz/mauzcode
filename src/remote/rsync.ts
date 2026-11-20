@@ -39,8 +39,8 @@ export default async function (
     if (opts.delete) args.push("--delete");
     if (opts.dryRun) args.push("--dry-run");
     for (const e of opts.exclude ?? []) args.push("--exclude", e);
-    // The client (openrsync on macOS) hands the remote path to a remote shell
-    // unprotected: quote it like a shell word so spaces, quotes and $(…) stay
+    // The client (openrsync on macOS, GNU rsync with RSYNC_OLD_ARGS below) hands the remote path to a
+    // remote shell unprotected: quote it like a shell word so spaces, quotes and $(…) stay
     // literal. A leading ~ is kept outside the quotes so it still expands.
     const remote = opts.host + ":" + ctx.fns.remote.quote({ value: opts.remote, path: true });
     if (opts.direction !== "push" && opts.direction !== "pull") throw new Error("direction must be push or pull");
@@ -59,7 +59,12 @@ export default async function (
     }
     args.push(...(opts.direction === "push" ? [local, remote] : [remote, local]));
     const started = Date.now();
-    const p = Bun.spawn({ cmd: args, stdout: "pipe", stderr: "pipe" });
+    // GNU rsync >= 3.2.4 protects remote arguments itself, so our shell quoting would become part of the
+    // name ("/home/u/'dir/'"). RSYNC_OLD_ARGS=1 restores the classic remote-shell split that the quoting
+    // targets; openrsync and older rsync ignore it, and a caller's RSYNC_PROTECT_ARGS must not override it.
+    const env: Record<string, string | undefined> = { ...process.env, RSYNC_OLD_ARGS: "1" };
+    delete env.RSYNC_PROTECT_ARGS;
+    const p = Bun.spawn({ cmd: args, env, stdout: "pipe", stderr: "pipe" });
     const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
     if (code !== 0) throw new Error("rsync exit " + code + ": " + err.trim().slice(0, 800));
     const num = (re: RegExp) => Number((re.exec(out)?.[1] ?? "0").replaceAll(",", ""));
