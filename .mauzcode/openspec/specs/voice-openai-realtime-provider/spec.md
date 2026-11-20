@@ -24,11 +24,14 @@ The provider SHALL offer `gpt-live-transcribe` as its only model in this version
 - **THEN** saving or starting fails with a validation message and no network request is made.
 
 ### Requirement: Client-committed turns
-For models without server turn detection the provider SHALL disable turn detection and commit the audio buffer whenever the Voice SDK core requests a commit. It SHALL send `languages` and `delay` only when configured. It SHALL append only whole PCM16 samples, carrying an odd trailing byte into the next append. It SHALL send a commit only when at least 100 ms of audio (4800 bytes at 24 kHz) were appended since the previous commit. A shorter non-empty tail SHALL be padded with silence up to 100 ms before committing. A commit request with no audio since the previous commit SHALL send nothing upstream and SHALL settle that order as a final empty phrase.
+For models without server turn detection the provider SHALL disable turn detection and commit the audio buffer whenever the Voice SDK core requests a commit. It SHALL send `languages` and `delay` only when configured.
 
 #### Scenario: Two phrases with silence
 - **WHEN** core requests a commit after the first phrase and the client then finishes after a second phrase
 - **THEN** the provider commits twice and the session produces two ordered phrases.
+
+### Requirement: Commit audio sizing
+The provider SHALL append only whole PCM16 samples, carrying an odd trailing byte into the next append. It SHALL send a commit only when at least 100 ms of audio (4800 bytes at 24 kHz) were appended since the previous commit. A shorter non-empty tail SHALL be padded with silence up to 100 ms before committing. A commit request with no audio since the previous commit SHALL send nothing upstream and SHALL settle that order as a final empty phrase.
 
 #### Scenario: Short tail at finish
 - **WHEN** core requests a commit after only 40 ms of audio since the previous commit
@@ -43,15 +46,11 @@ For models without server turn detection the provider SHALL disable turn detecti
 - **THEN** the upstream append contains only whole samples and the remaining byte is sent at the start of the next append.
 
 ### Requirement: Event normalization
-The provider SHALL bind each `input_audio_buffer.committed` item to the oldest unacknowledged core commit (FIFO). It SHALL NOT use `previous_item_id` to accept or reject an item, and SHALL NOT perform its own segmentation. Transcription events (delta, completed, failed) for an item ID that has no commit acknowledgement yet SHALL be buffered, bounded per session by item count and total bytes, and replayed in arrival order once that item is bound. The provider SHALL map transcription deltas to revisions with the accumulated text, completed events to the final text and failed events to phrase failures. Disconnects and terminal service errors SHALL become sanitized session errors.
+The provider SHALL bind each `input_audio_buffer.committed` item to the oldest unacknowledged core commit (FIFO). It SHALL NOT use `previous_item_id` to accept or reject an item, and SHALL NOT perform its own segmentation. The provider SHALL map transcription deltas to revisions with the accumulated text, completed events to the final text and failed events to phrase failures. Disconnects and terminal service errors SHALL become sanitized session errors.
 
 #### Scenario: Delta then completion
 - **WHEN** the service sends two deltas and a completed transcript for one item
 - **THEN** the client receives two partial revisions and one final revision with the completed text.
-
-#### Scenario: Deltas before the commit acknowledgement
-- **WHEN** the service streams deltas for an item before `input_audio_buffer.committed` names that item, then acknowledges the commit and completes it
-- **THEN** the session stays open and the phrase for the pending order receives all buffered text, in order, followed by the final transcript.
 
 #### Scenario: Predecessor is not a failure condition
 - **WHEN** a commit acknowledgement carries a `previous_item_id` that is null or differs from the previously bound item
@@ -64,6 +63,13 @@ The provider SHALL bind each `input_audio_buffer.committed` item to the oldest u
 #### Scenario: Invalid key
 - **WHEN** the service rejects the API key
 - **THEN** the session fails with an authorization error that contains no key material.
+
+### Requirement: Early transcription events
+Transcription events (delta, completed, failed) for an item ID that has no commit acknowledgement yet SHALL be buffered, bounded per session by item count and total bytes, and replayed in arrival order once that item is bound.
+
+#### Scenario: Deltas before the commit acknowledgement
+- **WHEN** the service streams deltas for an item before `input_audio_buffer.committed` names that item, then acknowledges the commit and completes it
+- **THEN** the session stays open and the phrase for the pending order receives all buffered text, in order, followed by the final transcript.
 
 ### Requirement: Connection test without audio
 The connection test SHALL open a session, send the transcription update, wait for confirmation and close without sending audio.
