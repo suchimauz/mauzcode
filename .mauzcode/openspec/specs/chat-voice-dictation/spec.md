@@ -6,7 +6,7 @@ Let users dictate and revise a draft in an existing chat without sending speech 
 ## Requirements
 
 ### Requirement: Two distinct entry points
-An editable open chat SHALL show the voice controls as one group in the input bar, between the model picker and the send button, in this order: voice settings, voice mode, inline voice input. They SHALL be flat icon buttons without a shared background. Each SHALL be independently named and keyboard-accessible. Voice settings SHALL use a settings (gear) icon, and inline voice input SHALL be the visually primary, accent-filled control. Neither entry point SHALL be available on the new-session or read-only composer.
+An editable open chat SHALL show the voice controls as one group in the input bar, between the model picker and the send button, in this order: voice settings, voice mode, inline voice input. Each SHALL be independently named and keyboard-accessible. Neither entry point SHALL be available on the new-session or read-only composer.
 
 #### Scenario: Discover without activating
 - **WHEN** the user navigates the input bar by keyboard or screen reader
@@ -16,9 +16,16 @@ An editable open chat SHALL show the voice controls as one group in the input ba
 - **WHEN** the page is opened over plain HTTP from a non-localhost address, or the browser lacks microphone capture or AudioWorklet
 - **THEN** both controls are shown disabled with an explanation of what is required, no microphone permission is requested and no voice socket is opened.
 
-#### Scenario: Fixed order and emphasis
+#### Scenario: Fixed order
 - **WHEN** the user tabs through the voice group
-- **THEN** focus reaches voice settings, then voice mode, then inline voice input, and only inline voice input has the accent fill.
+- **THEN** focus reaches voice settings, then voice mode, then inline voice input.
+
+### Requirement: Voice control group appearance
+The voice controls SHALL be flat icon buttons without a shared background. Voice settings SHALL use a settings (gear) icon, and inline voice input SHALL be the visually primary, accent-filled control.
+
+#### Scenario: Emphasis of inline voice input
+- **WHEN** the voice group is shown in the input bar
+- **THEN** all three controls are flat icon buttons, voice settings shows a gear icon, and only inline voice input has the accent fill.
 
 ### Requirement: Inline voice input at the caret
 The first click SHALL start dictation in the ordinary editor. The next click SHALL stop capture, finalize the last phrase and leave an editable draft. Interim hypotheses SHALL appear at the insertion point and be replaced, not appended, by revisions of the same phrase. Neither silence nor stopping SHALL send.
@@ -32,15 +39,18 @@ The first click SHALL start dictation in the ordinary editor. The next click SHA
 - **THEN** the correction does not undo their edit or replace unrelated typed text.
 
 ### Requirement: Dedicated voice panel
-Voice mode SHALL keep the ordinary input frame and replace its text with a live transcript and a visible, accessible recording state. While the frame has focus, Space SHALL pause or resume, Enter SHALL request send, and Escape SHALL return to ordinary editing with the visible text. Each operation, including clearing dictation, SHALL have a labeled on-screen control. Shortcuts SHALL NOT capture typing outside the frame and SHALL NOT override native activation of a focused button or text field inside it.
-
-#### Scenario: Pause without leaving
-- **WHEN** the user presses Space while listening
-- **THEN** capture stops, the current phrase is finalized, and the same draft can be extended by pressing Space again.
+Voice mode SHALL keep the ordinary input frame and replace its text with a live transcript and a visible, accessible recording state. Each operation, including pausing, sending, exiting and clearing dictation, SHALL have a labeled on-screen control.
 
 #### Scenario: Selectively clear and return
 - **WHEN** a user enters with existing text and attachments, dictates, clears dictation, then exits with Escape
 - **THEN** only dictation from this draft is removed; manually entered text and attachments remain, capture stops, and focus returns to the editor without sending.
+
+### Requirement: Voice panel keyboard shortcuts
+While the voice input frame has focus, Space SHALL pause or resume, Enter SHALL request send, and Escape SHALL return to ordinary editing with the visible text. Shortcuts SHALL NOT capture typing outside the frame and SHALL NOT override native activation of a focused button or text field inside it.
+
+#### Scenario: Pause without leaving
+- **WHEN** the user presses Space while listening
+- **THEN** capture stops, the current phrase is finalized, and the same draft can be extended by pressing Space again.
 
 ### Requirement: Compact voice panel
 The voice mode SHALL be compact. The recording state SHALL be shown by a waveform that animates only while listening, by the pause/resume control, by the remaining-time label and by an accent outline of the input frame, not by a visible state heading; the state SHALL remain exposed to assistive technology. Controls SHALL be icon buttons with accessible names: exit, clear dictation, pause or resume, and send. The add button SHALL stay in place but be disabled.
