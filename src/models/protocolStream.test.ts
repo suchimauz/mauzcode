@@ -73,6 +73,27 @@ describe("protocol stream strategies", () => {
         expect(r).toMatchObject({ text: "yes", thinking: "hm", finishReason: "stop", usage: { prompt_tokens: 3, completion_tokens: 1 } });
     });
 
+    test("gemini returns each function call's thoughtSignature only on that call and replays it", async () => {
+        const { fetch } = stub([() => sse([
+            data({ candidates: [{ content: { parts: [{ functionCall: { name: "a", args: { x: 1 } }, thoughtSignature: "sig-1" }, { functionCall: { name: "b", args: {} } }] }, finishReason: "STOP" }] }),
+        ])]);
+        const r = await ctx.fns.models.protocol.gemini.stream({ fetch, endpoint, request: request() });
+        expect(r.finishReason).toBe("tool_calls");
+        expect(r.toolCalls[0]).toMatchObject({ name: "a", args: { x: 1 }, thoughtSignature: "sig-1" });
+        expect("thoughtSignature" in r.toolCalls[1]!).toBe(false);
+        // Stored assistant message → next gemini request replays the signature unchanged.
+        const stored = { role: "assistant", content: "", tool_calls: r.toolCalls };
+        const contents = await ctx.fns.models.protocol.gemini.toGeminiContents({ messages: [{ role: "user", content: "hi" }, stored, { role: "tool", tool_call_id: r.toolCalls[0]!.id, content: "ok" }, { role: "tool", tool_call_id: r.toolCalls[1]!.id, content: "ok" }] });
+        expect(contents[1]!.parts).toEqual([{ functionCall: { name: "a", args: { x: 1 } }, thoughtSignature: "sig-1" }, { functionCall: { name: "b", args: {} } }]);
+    });
+
+    test("gemini unsigned function call has no thoughtSignature field", async () => {
+        const { fetch } = stub([() => sse([data({ candidates: [{ content: { parts: [{ functionCall: { name: "a" } }] }, finishReason: "STOP" }] })])]);
+        const r = await ctx.fns.models.protocol.gemini.stream({ fetch, endpoint, request: request() });
+        expect(r.toolCalls).toHaveLength(1);
+        expect("thoughtSignature" in r.toolCalls[0]!).toBe(false);
+    });
+
     test("HTTP failures are classified without echoing the body", async () => {
         const cases: [Response, Partial<types.models.FailureInfo>][] = [
             [new Response("secret-body", { status: 429, headers: { "retry-after": "2" } }), { classification: "throttled", retryable: true, retryAfterMs: 2000, acceptance: "rejected" }],

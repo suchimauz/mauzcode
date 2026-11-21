@@ -10,6 +10,8 @@ export type LoginFlow = {
     authorizationUrl?: string;
     /** Whether a best-effort local callback listener is running. */
     callbackListening?: boolean;
+    /** Authorization page whose redirect targets the local callback listener, for a browser on the same machine; set only while the listener runs. Contains no secret. */
+    callbackAuthorizationUrl?: string;
     /** Unix epoch milliseconds. */
     expiresAt: number;
     /** Safe status message, never containing tokens or codes other than the user code. */

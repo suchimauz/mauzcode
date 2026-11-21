@@ -27,7 +27,7 @@ implementation namespace and is called by its full name, e.g.
 
 | Directory / runtime namespace | Responsibility |
 | --- | --- |
-| `models/provider/{claude,codex,custom,zaiCoding,minimaxCoding,qwen}` | Provider protocol helpers and declaration operations |
+| `models/provider/{claude,codex,custom,zaiCoding,minimaxCoding,qwen,gemini}` | Provider protocol helpers and declaration operations |
 | `models/protocol` | Closed set of shared wire protocols and their registry (see below) |
 | `models/transport` | Destination validation, HTTP transport and SSE parsing |
 | `models/catalog` | Model discovery/cache, refresh and per-model availability |
@@ -527,6 +527,56 @@ URL, the public client id `qwen-code-cli` and the scope are in `constants`.
   `quota.reset_at` (one hour when absent; process-local). The endpoints and client id are
   unofficial Qwen Code values and may change; check Qwen's terms before use. The
   discontinued free-tier flow, DashScope keys and `~/.qwen` files are not supported.
+
+## Built-in Gemini (Google account) provider
+
+> **Account risk.** This provider uses Google's unofficial Code Assist API with Gemini
+> CLI's public client identity. Google may limit, suspend or block a Google account
+> used this way by a third-party client. Use a separate, non-critical Google account
+> and check Google's terms. The provider can be turned off with
+> `models.disabledProviders`.
+
+`$modelProvider_gemini.ts` ("Gemini (Google account)") signs in with a Google account
+like Gemini CLI. It has no credential fields; API keys and Vertex AI are not
+supported. Helpers live in `models/provider/gemini` (namespace
+`models.provider.gemini`); every URL, the public client, scopes, the pinned CLI
+version and the dated model list are in `constants`.
+
+- **Login** (`login`, `submitLogin`): authorization-code grant with S256 PKCE, state
+  and offline access, scopes `cloud-platform`, `userinfo.email`, `userinfo.profile`.
+  The main link redirects to `https://codeassist.google.com/authcode`, which shows a
+  code to paste. A best-effort `127.0.0.1` listener on a free port
+  (`/oauth2callback`) adds `LoginFlow.callbackAuthorizationUrl`, shown in Models
+  settings as **Browser on this machine**; it works only when the browser runs on
+  the MauzCode host. A flow lasts ten minutes, exchanges one code, and closes its
+  listener on success, failure, expiry, cancel or restart. Token requests always go
+  through `conn.fetch`; the userinfo email is read best-effort.
+- **Tokens** (`auth`, `lock`): one encrypted secret `models/<id>.gemini-auth` with
+  CAS revisions, holding tokens, email and the Code Assist project and tier. Refresh
+  60 s before expiry, single-flight; a rejected refresh means `LOGIN_REQUIRED`. A 401
+  invalidates the access token without replay. **Logout** cancels the flow and
+  deletes the record under the lock, then revokes best-effort (5 s).
+- **Setup** (`setup`): `loadCodeAssist`, then `onboardUser` for the default tier
+  (free tier without a project) with LRO polling up to two minutes. Fails with
+  `INELIGIBLE`, `PROJECT_REQUIRED`, `VALIDATION_REQUIRED` or retryable
+  `SETUP_TIMEOUT`. Runs after login and lazily before requests.
+- **Inference** (`stream`): own `stream` (not a protocol route) on
+  `v1internal:streamGenerateContent?alt=sse`, body
+  `{ model, project, user_prompt_id: "<session>########<user turns>", request: { …, session_id } }`.
+  It reuses `protocol/gemini/buildRequest` (without its reasoning mapping) and
+  `readStream` with `unwrap`. Function-call `thoughtSignature`s are returned per tool
+  call and replayed; an unsigned replayed call turn gets Gemini CLI's
+  `skip_thought_signature_validator` on its first call.
+- **Reasoning** (`reasoningProfile`, `thinkingConfig`): profile
+  `gemini-code-assist-<date>`, no default. Gemini 3 sends `thinkingLevel`
+  (`low`/`high`, plus `medium` on flash); Gemini 2.5 sends `thinkingBudget` 1024 /
+  8192 / 24576, `off` → 0 on flash and flash-lite only, auto → -1.
+  `includeThoughts` is sent for every level except `off`.
+- **Models, tokens, usage**: static list (`listModels`, no network) with limits from
+  the `google` models.dev section; `countTokens` via `v1internal:countTokens`;
+  `usage` from `retrieveUserQuota` as one window per model plus tier and email;
+  `test` runs setup. `failure` maps 429 quota vs throttling (with `RetryInfo`), 403
+  auth and 404 `MODEL_UNAVAILABLE`, never echoing body text.
 
 ## Field schemas and transports
 

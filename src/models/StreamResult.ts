@@ -6,8 +6,8 @@ export type StreamResult = {
     finishReason: string | null;
     /** Token counters only; quota lives in `quota`. */
     usage: { prompt_tokens?: number; completion_tokens?: number; cache_read_tokens?: number; cache_write_tokens?: number };
-    /** Tool calls; unparseable arguments are `{ __unparsed: raw }` for downstream validation. */
-    toolCalls: { id: string; name: string; args: unknown }[];
+    /** Tool calls; unparseable arguments are `{ __unparsed: raw }` for downstream validation. `thoughtSignature` is the gemini function-call part's opaque signature, replayed unchanged on gemini models only. */
+    toolCalls: { id: string; name: string; args: unknown; thoughtSignature?: string }[];
     /** Continuation state to pass with the next request of the same run (requires runId and provider support). */
     state?: types.models.ProviderState;
     /** Quota windows the provider reported on this response, without an extra request. */

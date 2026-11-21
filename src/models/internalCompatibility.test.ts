@@ -6,6 +6,8 @@ import { makeCtx } from "../$main";
 import load from "../procs/boot/load";
 
 const baseline = await Bun.file(join(import.meta.dir, "fixtures/public-contract.baseline.json")).json();
+// add-gemini-code-assist-provider: Gemini refresh, lock, setup and login-flow state (normalized form).
+const GEMINI_STATE = 'geminiRefresh?:Record<string,Promise<string>>;geminiLocks?:Record<string,Promise<void>>;geminiSetup?:Record<string,Promise<string>>;geminiLogin?:Record<string,{flowId:string;status:"pending"|"succeeded"|"failed"|"expired";authorizationUrl:string;callbackAuthorizationUrl?:string;callbackRedirectUri?:string;expiresAt:number;message?:string;verifier:string;state:string;busy:boolean;abort:AbortController;server?:{stop:(force?:boolean)=>unknown};timer?:ReturnType<typeofsetTimeout>;done?:Promise<void>}>;';
 const normalize = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "").replace(/_session/g, "session");
 // A trailing member separator is not part of the contract.
 const normalizeParam = (text: string) => normalize(text).replace(/[;,]}/g, "}");
@@ -71,6 +73,8 @@ test("original public model signatures, async declarations, types and HTTP route
         // usageRefreshMs is an intentional optional SDK addition (provider-paced usage cache).
         if (name === "ProviderDefinition.ts") actual = actual.replace("usageRefreshMs?:number;", "");
         // extend-models-sdk-for-anthropic-routes: optional native reasoning block capture.
+        // add-gemini-code-assist-provider: optional gemini function-call signature per tool call.
+        if (name === "StreamResult.ts") actual = actual.replace("args:unknown;thoughtSignature?:string}[];", "args:unknown}[];");
         if (name === "StreamResult.ts") actual = actual.replace('reasoningBlocks?:{type:"thinking"|"redacted_thinking";thinking?:string;signature?:string;data?:string}[];', "");
         // add-zai-coding-provider: the route request also carries the SDK-resolved reasoning.
         if (name === "ProviderDefinition.ts") actual = actual.replace("route?:(ctx:Context,conn:types.models.ResolvedConnection,req:{model:string;info:types.models.ModelInfo|null;sessionId:string;reasoning?:types.models.ReasoningResolution})=>Promise<types.models.ProtocolRoute>;", "");
@@ -83,9 +87,11 @@ test("original public model signatures, async declarations, types and HTTP route
             "ProviderDefinition.ts": "inference?:{systemPreamble?:string;priceVendor?:string;catalog?:{modelsDev?:string[];piAi?:string[];};};",
             "CallRequest.ts": "tools?:types.models.ToolSpec[];",
             "FailureInfo.ts": "resetAt?:number;",
+            // add-gemini-code-assist-provider: optional same-machine loopback authorization link.
+            "LoginFlow.ts": "callbackAuthorizationUrl?:string;",
             // add-qwen-subscription-provider: Qwen refresh de-duplication, credential lock and observed quota state;
             // add-custom-session-affinity-header: cached installation salt and one-time warning.
-            "State.ts": "qwenRefresh?:Record<string,Promise<string>>;qwenLocks?:Record<string,Promise<void>>;qwenQuota?:Record<string,{resetAt?:number;observedAt:number;until:number}>;sessionAffinitySalt?:Promise<string|null>;sessionAffinityWarned?:boolean;disabledProvidersQueue?:Promise<unknown>;",
+            "State.ts": "qwenRefresh?:Record<string,Promise<string>>;qwenLocks?:Record<string,Promise<void>>;qwenQuota?:Record<string,{resetAt?:number;observedAt:number;until:number}>;sessionAffinitySalt?:Promise<string|null>;sessionAffinityWarned?:boolean;disabledProvidersQueue?:Promise<unknown>;" + GEMINI_STATE,
             // fix-usage-window-classification: optional window identity/classification metadata.
             "UsageReport.ts": 'id?:string;period?:"fiveHour"|"weekly"|"monthly";scope?:"account"|"model"|"unknown";durationSeconds?:number;model?:string;observedAt?:number;',
         };
@@ -117,7 +123,7 @@ test("fresh discovery preserves callable providers, nested dynamic facades, miss
             compatMissing: (opts: Record<string, unknown>) => unknown;
         };
         expect(typeof fns.providers).toBe("function");
-        expect(fns.providers({}).map(p => p.id).sort()).toEqual(["claude", "codex", "compat-fixture", "custom", "minimax-coding", "qwen", "zai-coding"]);
+        expect(fns.providers({}).map(p => p.id).sort()).toEqual(["claude", "codex", "compat-fixture", "custom", "gemini", "minimax-coding", "qwen", "zai-coding"]);
         // Baseline declarations are immutable object literals. Importing creates
         // callbacks but never invokes login, network, validation or usage operations.
         const registrationShape = (value: unknown): unknown => {
