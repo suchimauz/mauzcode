@@ -47,42 +47,64 @@ The websearch plugin SHALL ship `google-browser`, `openserp` and `brave` as prov
 - **THEN** `websearch.search` with `engine: "google-browser"` returns one result for the pair, without the fragment, and drops the non-HTTP(S) one
 
 ### Requirement: Default and per-call engine selection
-`websearch.search` and `websearch.answer` SHALL use the `engine` argument when given, otherwise the `websearch.defaultEngine` setting, whose default is `google-browser`. The setting SHALL offer the currently registered provider ids as its options in Settings and SHALL reject an unregistered id when saved. An unknown engine SHALL fail with an error listing available ids.
+`websearch.search` and the search stage of `websearch.answer` SHALL prefer an explicit ordinary `engine`. Without one, they SHALL use only the issuing registration if its inference had native search. Outside tool dispatch or without native support, they SHALL use `websearch.defaultEngine` (initially `google-browser`). Settings SHALL accept only registered ordinary IDs. An unknown `engine` SHALL fail and list ordinary IDs, not select an account or model.
 
 #### Scenario: Default from settings
-- **WHEN** `websearch.defaultEngine` is `brave` and the caller omits `engine`
-- **THEN** the search uses the `brave` provider
+- **WHEN** `websearch.defaultEngine` is `brave`, the caller is outside model-tool dispatch or the inference that issued the tool call had no native search, and the caller omits `engine`
+- **THEN** the search uses `brave`
+
+#### Scenario: A reload cannot redirect a pending native search
+- **GIVEN** the inference that issued the tool call had native search and the stored ordinary default is `brave`
+- **WHEN** the provider is reloaded without the operation, replaced at the same ID (even with native support), or unmounted before `search` or the search stage of `answer` runs without `engine`
+- **THEN** the step fails; neither the former native handler, a replacement handler nor `brave` receives the query
+
+#### Scenario: Adding native search does not upgrade an existing step
+- **WHEN** the issuing inference lacked native search and a reload adds it before the tool runs without `engine`
+- **THEN** that step still uses only the configured ordinary engine; only a new inference can authorize the new operation
 
 #### Scenario: Per-call override
-- **WHEN** the default is `google-browser` and the caller passes `engine: "openserp"`
-- **THEN** the search uses `openserp` and reports `engine: "openserp"`
+- **WHEN** the caller passes `engine: "openserp"` in a Codex step even though the ordinary default is `google-browser`
+- **THEN** only `openserp` is used and the result reports `engine: "openserp"`
 
 #### Scenario: Fresh install
-- **WHEN** the setting was never changed
+- **WHEN** the setting was never changed and ordinary default selection applies
 - **THEN** the default engine is `google-browser`
 
 #### Scenario: Unknown engine
 - **WHEN** the caller passes `engine: "nope"`
-- **THEN** the call fails with an error that names `nope` and lists registered ids
+- **THEN** the call fails with an error naming `nope` and listing registered ordinary IDs
 
 #### Scenario: Settings lists plugin providers
-- **WHEN** a plugin registers provider `acme-search`
-- **THEN** the Default web search engine select in Settings offers `acme-search`
+- **WHEN** a plugin registers `acme-search` and the Codex model provider advertises native search
+- **THEN** Settings and `websearch.providers` offer `acme-search` but not the Codex subscription as an ordinary engine
+
+#### Scenario: Native source is not a public selector
+- **WHEN** an agent on any model tries to pass the native result identifier as `engine`, or an operator saves it as the default
+- **THEN** it is rejected without any model-provider search or credential lookup
+
+#### Scenario: Link search inside an answer
+- **WHEN** an authorized Codex step calls `answer` without an engine and selects a different model for answer generation
+- **THEN** only link retrieval uses Codex; page reading and answer generation keep their original sources and model selection
+- **AND** a standalone `read` or `fetch` does not invoke native search
 
 ### Requirement: No silent fallback for unconfigured providers
-Before searching, websearch SHALL check the selected provider's optional status handler, bounded to 2 seconds; a status check that throws or times out SHALL count as not configured. A provider reported as not configured SHALL cause a clear error naming the provider, the reason and its declared settings. Websearch SHALL NOT switch to another provider on configuration or search failure.
+Before ordinary search, websearch SHALL check the selected provider's optional status handler, bounded to 2 seconds; a throwing or slow status counts as not configured. An unavailable ordinary provider SHALL produce an error naming the provider, reason and declared settings as applicable. Once an ordinary or native source is selected, failure, cancellation or stale authority MUST NOT send the query to another source or account.
 
 #### Scenario: Brave without key
 - **WHEN** the selected engine is `brave` and `websearch.braveApiKey` is empty
 - **THEN** the call fails with an error naming `brave` and `websearch.braveApiKey`, and no other engine is called
 
 #### Scenario: Default provider removed
-- **WHEN** the stored default names a provider whose plugin is no longer mounted
-- **THEN** a call without `engine` fails with an unknown-engine error that names the stored id and lists registered ids, and no other provider is called
+- **WHEN** ordinary default selection applies and the stored default names a provider whose plugin is no longer mounted
+- **THEN** the call fails with an unknown-engine error naming the stored ID and listing registered IDs; no other provider is called
 
 #### Scenario: Slow status before search
-- **WHEN** the selected provider's status handler does not answer within 2 seconds
+- **WHEN** the selected ordinary provider's status handler does not answer within 2 seconds
 - **THEN** the call fails with `status check timed out` for that engine and the search handler is not called
+
+#### Scenario: A native provider refuses a request
+- **WHEN** native search was selected but the connection is signed out, the service rejects the request or the caller cancels
+- **THEN** the caller receives a safe error; no ordinary engine or other subscription receives the query
 
 ### Requirement: Shared result shape and normalization
 Every provider result SHALL be returned as `{ query, engine, sourceEngine?, results, durationMs }` with each result having `title`, `url`, `description`, `descriptionHtml`, `publishedAt`, `language`, `site` and `extraSnippets`. Websearch core SHALL clamp `limit` to 1..20, drop results with non-HTTP(S) or credential-bearing URLs, remove fragments and duplicate URLs, strip markup from title and description, fill missing optional fields with null or empty arrays and cut results to `limit`.
@@ -138,3 +160,21 @@ An `optionsFrom` function SHALL belong to the module that declares the setting, 
 #### Scenario: Slow options function
 - **WHEN** the `optionsFrom` function does not answer within 1 second
 - **THEN** static `options` apply
+
+### Requirement: Core facade and independent search extensions
+Core SHALL own the public search, normalization and ordinary provider registration contracts. The official plugin SHALL continue to supply `google-browser`, `openserp` and `brave` through the public search-provider SDK. Existing public function names, provider IDs, stored settings and secret references MUST remain usable without reconfiguration. Unloading one extension MUST NOT unregister another owner's provider or the core facade.
+
+#### Scenario: Upgrade without reconfiguration
+- **WHEN** an installation with OpenSERP as its default, a Brave secret reference and a third-party `$websearchProvider` upgrades
+- **THEN** ordinary searches and provider discovery retain their previous IDs, settings and result formats with no duplicate registrations or re-entry of credentials
+
+#### Scenario: Extension lifecycle
+- **WHEN** an ordinary provider plugin reloads and later unmounts
+- **THEN** it is listed exactly once after reload and not listed after unmount; core and other mounted owners remain registered
+
+### Requirement: Normalized model-native sources
+Native search SHALL return only structured sources via the existing `websearch.search` response and normalization rules, including limit, safe URLs and deduplication. The `engine` field MUST identify the actual model-native source in a reserved, non-selectable form `native:<provider-id>` and MUST NOT identify the account. A valid empty result set SHALL stay empty; a malformed envelope MUST return a safe error rather than invented results.
+
+#### Scenario: Native result provenance and empty results
+- **WHEN** the Codex source returns a valid source list, including an empty list
+- **THEN** the result has `engine: "native:codex"` and the normalized list; no links are manufactured from answer text and no second search occurs

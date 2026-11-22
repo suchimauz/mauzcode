@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Default and per-call engine selection
-`websearch.search` and the search stage of `websearch.answer` SHALL prefer an explicit ordinary `engine`. Otherwise they SHALL use native search only if the issuing inference had it, on that exact provider registration. Outside tool dispatch, or if that inference lacked native search, they SHALL use `websearch.defaultEngine` (factory default `google-browser`). Settings SHALL allow only registered ordinary IDs. An unknown explicit engine SHALL fail and list the ordinary IDs, not select an account or model.
+`websearch.search` and the search stage of `websearch.answer` SHALL prefer an explicit ordinary `engine`. Without one, they SHALL use only the issuing registration if its inference had native search. Outside tool dispatch or without native support, they SHALL use `websearch.defaultEngine` (initially `google-browser`). Settings SHALL accept only registered ordinary IDs. An unknown `engine` SHALL fail and list ordinary IDs, not select an account or model.
 
 #### Scenario: Default from settings
 - **WHEN** `websearch.defaultEngine` is `brave`, the caller is outside model-tool dispatch or the inference that issued the tool call had no native search, and the caller omits `engine`
