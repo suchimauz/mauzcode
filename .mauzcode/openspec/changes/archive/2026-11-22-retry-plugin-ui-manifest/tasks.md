@@ -15,4 +15,4 @@
 
 ## 3. Manual verification
 
-- [ ] 3.1 With the app open, restart the server (or reload a module that triggers a page reload during rebuild) and confirm plugin Canvas buttons reappear on their own within the backoff window without pressing F5.
+- [x] 3.1 With the app open, restart the server (or reload a module that triggers a page reload during rebuild) and confirm plugin Canvas buttons reappear on their own within the backoff window without pressing F5.
