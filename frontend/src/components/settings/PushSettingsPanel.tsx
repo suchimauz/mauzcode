@@ -14,7 +14,7 @@ function storedBinding() { try { return localStorage.getItem(ownerKey); } catch 
 function remember(value: string | null) { try { if (value) localStorage.setItem(ownerKey, value); else localStorage.removeItem(ownerKey); } catch { /* Storage is not proof of ownership when unavailable. */ } }
 function availability() {
   // The desktop client delivers its own system notifications; browser Web Push stays off in its profile.
-  if (window.mauzcodeDesktopLive) return `The MauzCode desktop app shows system notifications itself. Open «Сервер → Настройки…» (${/Mac/.test(navigator.platform || navigator.userAgent) ? '⌘,' : 'Ctrl+,'}) and use «Включить уведомления» under «Разрешения».`;
+  if (window.mauzcodeDesktopLive) return `The MauzCode desktop app shows system notifications itself. Open ${/Mac/.test(navigator.platform || navigator.userAgent) ? '«Сервер → Настройки…» (⌘,)' : '«⋯ → Настройки…» (Ctrl+,)'} and use «Включить уведомления» under «Разрешения».`;
   const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (ios && !window.matchMedia('(display-mode: standalone)').matches && !(navigator as Navigator & { standalone?: boolean }).standalone) return 'On iPhone/iPad (16.4+), add MauzCode to your Home Screen in Safari and open it from that icon.';
   if (!window.isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'Push needs HTTPS and a supported browser.';

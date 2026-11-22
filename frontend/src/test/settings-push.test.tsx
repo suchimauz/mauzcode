@@ -103,7 +103,7 @@ test('desktop client points to its own notification settings; browsers keep Web 
     const toggle = await screen.findByRole('switch', { name: 'Push on this device' });
     await screen.findByText('iPhone · Safari');
     expect(toggle).toBeDisabled(); expect(toggle).not.toBeChecked();
-    expect(screen.getByRole('status')).toHaveTextContent('«Сервер → Настройки…»');
+    expect(screen.getByRole('status').textContent).toMatch(/«Сервер → Настройки…» \(⌘,\)|«⋯ → Настройки…» \(Ctrl\+,\)/);
     expect(screen.getByRole('status')).toHaveTextContent('«Включить уведомления»');
     expect(screen.getByRole('status').textContent).toMatch(/⌘,|Ctrl\+,/);
     expect(h.requestPermission).not.toHaveBeenCalled(); expect(h.register).not.toHaveBeenCalled();
@@ -112,5 +112,5 @@ test('desktop client points to its own notification settings; browsers keep Web 
   render(<PushSettingsPanel />);
   const browser = await screen.findByRole('switch', { name: 'Push on this device' });
   await waitFor(() => expect(browser).not.toBeDisabled());
-  expect(screen.queryByText(/Сервер → Настройки/)).toBeNull();
+  expect(screen.queryByText(/Настройки…/)).toBeNull();
 });

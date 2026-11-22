@@ -112,3 +112,20 @@ test('loopback attachment fixture: abort a real streaming response without publi
     t.item.emit('done',{},'cancelled'); expect(await fs.readdir(dir)).toEqual([]);
   } finally { controller.abort(); server.closeAllConnections(); await new Promise<void>(resolve=>server.close(()=>resolve())); await fs.rm(dir,{recursive:true,force:true}); }
 });
+
+describe('clipboard permission', () => {
+  test('copy buttons may write the clipboard from the active server top frame only; reading stays denied', async () => {
+    const f = fixture(), d = { requestingUrl: f.wc.getURL(), isMainFrame: true };
+    expect(f.check(f.wc, 'clipboard-sanitized-write', f.a.origin, d)).toBe(true);
+    expect(await f.ask(d, 'clipboard-sanitized-write')).toBe(true);
+    expect(f.check(f.wc, 'clipboard-sanitized-write', f.a.origin, { ...d, isMainFrame: false })).toBe(false);
+    expect(f.check(f.wc, 'clipboard-sanitized-write', 'https://evil.test', { requestingUrl: 'https://evil.test/', isMainFrame: true })).toBe(false);
+    expect(f.check({}, 'clipboard-sanitized-write', f.a.origin, d)).toBe(false);
+    expect(await f.ask({ ...d, requestingUrl: 'https://evil.test/' }, 'clipboard-sanitized-write')).toBe(false);
+    expect(f.check(f.wc, 'clipboard-read', f.a.origin, d)).toBe(false);
+    expect(await f.ask(d, 'clipboard-read')).toBe(false);
+    expect(await f.ask(d, 'fullscreen')).toBe(true);
+    expect(await f.ask({ ...d, isMainFrame: false }, 'fullscreen')).toBe(false);
+    for (const perm of ['notifications', 'geolocation', 'display-capture', 'openExternal', 'pointerLock']) expect(await f.ask(d, perm)).toBe(false);
+  });
+});

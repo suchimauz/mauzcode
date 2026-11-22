@@ -78,15 +78,26 @@ function createNativeAccess({ dialog, systemPreferences, platform, getActive, pr
     const a = active();
     return a && a.wc === wc && permission === 'media' && d?.isMainFrame === true && sameOrigin(d.requestingUrl, a.origin) && (!d.securityOrigin || sameOrigin(d.securityOrigin, a.origin)) && secure(a.origin) ? a : null;
   }
+  // Harmless page capabilities the app itself uses, for the active server's top frame only:
+  // copy buttons (navigator.clipboard.writeText) and fullscreen (browser live view). Clipboard READ,
+  // notifications/push, geolocation, screen capture and everything else stay denied.
+  const PAGE = new Set(['clipboard-sanitized-write', 'fullscreen']);
+  function pagePermission(wc, permission, d, origin) {
+    const a = active();
+    return !!a && a.wc === wc && PAGE.has(permission) && d?.isMainFrame !== false
+      && sameOrigin(d?.requestingUrl || origin, a.origin) && (!origin || sameOrigin(origin, a.origin));
+  }
   function attach(profile) {
     if (attached.has(profile)) return; attached.add(profile);
     profile.on('will-download', (event, item, wc, frame) => download(profile, event, item, wc, frame));
     profile.setPermissionCheckHandler((wc, perm, origin, d) => {
+      if (PAGE.has(perm)) return pagePermission(wc, perm, d, origin);
       const a = media(wc, perm, d);
       const ok = !!a && sameOrigin(origin, a.origin) && d.mediaType === 'audio' && state().microphoneGranted;
       if (ok) captures.add(a.window); return ok;
     });
     profile.setPermissionRequestHandler((wc, perm, callback, d) => {
+      if (PAGE.has(perm)) return callback(pagePermission(wc, perm, d, d?.requestingUrl));
       const a = media(wc, perm, d);
       if (!a || d.mediaTypes?.length !== 1 || d.mediaTypes[0] !== 'audio') return callback(false);
       grant(a).then(ok => { const allow = ok && live(a) && state().microphoneGranted; if (allow) captures.add(a.window); callback(allow); }, () => callback(false));
