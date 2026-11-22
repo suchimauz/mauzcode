@@ -8,6 +8,8 @@ See `proposal.md` for the motivation. `desktop/main.cjs` currently persists `ser
 
 Keep server state and web workflows on the server; the shell owns connection selection, native permissions, window lifecycle and verifying its own binaries. No multi-server workspace, local agent, offline queue, camera, third-party OAuth redesign, background delivery after Quit, or public stable release in this pilot. Do not change browser users' notification or dictation behavior.
 
+Acceptance stops at the source packaging configuration and local checks of the client, including update staging against a signed fixture feed. It does not require building or signing installers, distributing a prerelease or recruiting testers. `desktop/PILOT.md` distinguishes this evidence from what would be required to call a platform pilot-ready.
+
 ## Decisions
 
 ### 1. Stage a candidate, then switch
@@ -30,7 +32,7 @@ Keep sandbox, context isolation, web security and local-settings sender checks. 
 
 ### 3. Split build authority from release hosting
 
-Build in the **source repository** on appropriate OS runners. Use a separate **public distribution repository** (suggested name `mauzcode-desktop-releases`); choose the owner/name before producing packages and pin them into the app, not the server profile. Use a release-only repository with no source checkout, CI workflows or sensitive configuration copied in; GitHub's generated tag archives then contain only the release repository's contents. Pilot tags/channels are prereleases visible to everyone. The release inventory includes only packages, required update archives/metadata, verification data and public-safe notes. Anonymous HTTPS reads need no token. Future writes from source CI need narrowly scoped release credentials and separate human authorization. Do not publish anything as part of this change proposal.
+Keep build configuration in the **source repository**. If a distribution pilot is later approved, build on appropriate OS runners and use a separate **public distribution repository** (suggested name `mauzcode-desktop-releases`); choose the owner/name before producing packages and pin them into the app, not the server profile. Use a release-only repository with no source checkout, CI workflows or sensitive configuration copied in; GitHub's generated tag archives then contain only the release repository's contents. Pilot tags/channels are prereleases visible to everyone. The release inventory includes only packages, required update archives/metadata, verification data and public-safe notes. Anonymous HTTPS reads need no token. Future writes from source CI need narrowly scoped release credentials and separate human authorization. Do not publish anything as part of this change.
 
 ### 4. Verify before handing an update to the installer
 
@@ -38,7 +40,7 @@ Use electron-builder for NSIS x64, both macOS DMGs **and ZIP update archives**, 
 
 A checksum fetched beside the binary is not proof of publisher identity. Sign a release manifest (version/channel/platform/architecture, exact asset identity, length and digest) outside the hosting repository; embed its verification public key in the app. Use a verified metadata/provider adapter so updater selections and final downloaded bytes must match that manifest, including on Linux. Never verify one file then allow the installer to fetch an unverified replacement. Enforce OS signature checks where applicable; macOS N and N+1 must have compatible signing identities accepted by the updater. If platform trust material or a working signed update path is missing, mark that target unverified rather than documenting a bypass.
 
-The macOS pilot has two separate checks. Use Developer ID signing and notarization for the distributed DMG and app. On clean Intel and Apple Silicon Macs, download the public DMG in a browser, install the app and open it with Gatekeeper and download quarantine intact. Record first launch before testing the updater; compatible N and N+1 signing identities do not establish that a fresh download will launch.
+A future macOS distribution decision has two separate checks. Use Developer ID signing and notarization for the distributed DMG and app. On clean Intel and Apple Silicon Macs, download the public DMG in a browser, install the app and open it with Gatekeeper and download quarantine intact. Record first launch before testing the updater; compatible N and N+1 signing identities do not establish that a fresh download will launch.
 
 ## Risks / Trade-offs
 
@@ -49,6 +51,8 @@ The macOS pilot has two separate checks. Use Developer ID signing and notarizati
 - **Native updater behavior depends on signatures, OS and filesystem** → run real packaged N to N+1 upgrades on every target, including Intel/Apple Silicon where advertised. Mocks cannot close that gate.
 
 ## Migration Plan
+
+Only step 1 is part of this implementation. Steps 2–4 describe a future, separately approved release; none are required to close the change.
 
 1. Implement and test locally with fixture servers, fake notifications and a synthetic signed update feed. Keep the existing app ID and origin partitions; avoid destructive profile migrations.
 2. Produce platform artifacts. Only after separate approval create/configure the release-only repository and publish public-safe pilot builds. A legacy user manually installs the first pilot once; clean installs start at the connection screen.
