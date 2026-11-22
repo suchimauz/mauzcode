@@ -1,3 +1,4 @@
+import { BrandMark } from './BrandMark';
 import { ThemeMenu } from './ThemeMenu';
 import type { ThemeMode } from '../../hooks/useTheme';
 import { useEffect, useId, useState } from 'react';
@@ -78,7 +79,7 @@ export function WorkspaceSidebar({ onOpenPeople, peopleActive, extensionNavigati
   const initials = user?.name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase();
   return <nav className={`workspace-sidebar ${compact ? 'is-compact' : ''}`} aria-label="Навигация по агентам">
     <div className="workspace-brand-row">
-      {compact ? <button className="nav-icon-button compact-brand" aria-label="Развернуть навбар" onClick={onToggle}><span className="brand-mark">h</span><PanelLeft size={16} strokeWidth={1} /></button> : <><span className="workspace-brand"><span className="brand-mark">h</span>MauzCode</span><button className="nav-icon-button" aria-label={mobile ? 'Закрыть навигацию' : 'Свернуть навбар'} onClick={onToggle}>{mobile ? <X size={16} strokeWidth={1} /> : <PanelLeft size={16} strokeWidth={1} />}</button></>}
+      {compact ? <button className="nav-icon-button compact-brand" aria-label="Развернуть навбар" onClick={onToggle}><BrandMark /><PanelLeft size={16} strokeWidth={1} /></button> : <><span className="workspace-brand"><BrandMark />MauzCode</span><button className="nav-icon-button" aria-label={mobile ? 'Закрыть навигацию' : 'Свернуть навбар'} onClick={onToggle}>{mobile ? <X size={16} strokeWidth={1} /> : <PanelLeft size={16} strokeWidth={1} />}</button></>}
     </div>
     {!compact && <div className="workspace-filter"><Search size={14} strokeWidth={1} aria-hidden="true" /><input ref={searchInputRef} aria-keyshortcuts="Meta+/ Control+/" title="Найти агента или проект · ⌘/" aria-label="Найти агента или проект" placeholder="Найти агента или проект…" value={query} onChange={event => setQuery(event.target.value)} /><kbd className="workspace-filter-shortcut" aria-hidden="true">⌘/</kbd>{query && <button aria-label="Очистить фильтр" onClick={() => setQuery('')}><X size={12} /></button>}</div>}
     <div className="workspace-actions">

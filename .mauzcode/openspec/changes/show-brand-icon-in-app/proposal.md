@@ -7,7 +7,6 @@ The brand icon from `unify-app-icon` exists, but the main React shell never link
 ## What Changes
 
 - Link the favicon, `apple-touch-icon` and web manifest from the React shell document and the sign-in document.
-- Add a dark `theme-color` matching the icon tile to the shell document.
 - Replace the "h" brand mark in the sidebar, compact sidebar, new-session welcome and UI LAB prototype with the brand SVG.
 - Give the desktop connection window and the documentation page the brand favicon.
 
@@ -23,6 +22,6 @@ None.
 
 ## Impact
 
-- `frontend/index.html`, `src/auth/reactDocument.ts`, `frontend/public/` (brand icon copy for the Vite base path).
+- `src/frontendRuntime/page.ts` (injects the links into the proxied shell document), `src/auth/reactDocument.ts`, `frontend/public/` (brand icon copy for the Vite base path).
 - `frontend/src/components/mauzcode/WorkspaceSidebar.tsx`, `NewSessionWelcome.tsx`, `frontend/src/App.tsx`, `frontend/src/styles/ui.css`, related frontend tests.
 - `desktop/index.html`, `docs/index.html`; `script/generate-icons.ts` copies the SVG where a static copy is needed.

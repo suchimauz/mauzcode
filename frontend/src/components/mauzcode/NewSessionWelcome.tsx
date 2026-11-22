@@ -4,6 +4,7 @@ import './navigation-tooltip.css';
 import { compactCount, getWelcomeStats, heatmapDays, type StatsRange, type WelcomeStats } from '../../lib/welcomeStats';
 import { ApiError } from '../../lib/mauzcode';
 import './new-session-welcome.css';
+import { BrandMark } from './BrandMark';
 
 /** New-session greeting and owner-scoped MauzCode usage. Opening this surface never creates an agent. */
 export function NewSessionWelcome({ userName }: { userName: string }) {
@@ -50,7 +51,7 @@ export function NewSessionWelcome({ userName }: { userName: string }) {
     ['Favorite model', stats?.favoriteModel || '—'],
   ];
   return <div className="new-session-welcome">
-    <h1 className="new-session-greeting"><span className="brand-mark" aria-hidden="true">h</span><span>What's up next{userName.trim() ? `, ${userName.trim()}` : ''}?</span></h1>
+    <h1 className="new-session-greeting"><BrandMark /><span>What's up next{userName.trim() ? `, ${userName.trim()}` : ''}?</span></h1>
     <section className="welcome-stats" aria-label="Usage statistics" aria-busy={!stats && !error}>
       <header className="welcome-stats-head">
         <div className="welcome-switch" aria-label="Statistics view">

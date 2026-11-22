@@ -1,5 +1,6 @@
 // Regenerates every built-in MauzCode icon from the canonical brand SVG (src/ui/assets/icon.svg):
-// web/PWA PNGs, desktop PNG/ICO/ICNS/tray assets and browser extension icons.
+// web/PWA PNGs, desktop PNG/ICO/ICNS/tray assets, browser extension icons, the in-app brand mark
+// (frontend/public/brand-icon.svg) and the embedded favicons of desktop/index.html and docs/index.html.
 // Run: bun script/generate-icons.ts (or `cd desktop && bun run icons`). Needs the @resvg/resvg-js devDependency.
 import { Resvg } from '@resvg/resvg-js';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -62,5 +63,17 @@ write('desktop/assets/icon.icns', Buffer.concat([icnsHeader, ...entries]));
 // Browser extensions.
 for (const dir of ['browser-extension', 'extensions/canvas-frames'])
     for (const size of [16, 32, 48, 128]) write(`${dir}/icons/icon-${size}.png`, size <= 64 ? png(size) : render(svg, size));
+
+// In-app brand mark served by Vite from frontend/public.
+write('frontend/public/brand-icon.svg', Buffer.from(svg));
+
+// Standalone pages without a MauzCode server embed the icon as a data URL.
+const dataUrl = 'data:image/svg+xml,' + encodeURIComponent(svg.trim());
+for (const file of ['desktop/index.html', 'docs/index.html']) {
+    const full = path.join(root, file), html = readFileSync(full, 'utf8');
+    const next = html.replace(/<link rel="icon" data-brand-icon href="[^"]*">/, `<link rel="icon" data-brand-icon href="${dataUrl}">`);
+    if (next === html && !html.includes(dataUrl)) throw new Error(`${file}: missing <link rel="icon" data-brand-icon href="..."> marker`);
+    writeFileSync(full, next);
+}
 
 console.log('Generated MauzCode icons from src/ui/assets/icon.svg');

@@ -20,6 +20,14 @@ test('auth document mounts no application shell or inline script', async () => {
   expect(html).not.toContain('htmx'); expect(html).not.toContain('/ui-lab');
   expect(r.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
 });
+test('auth document links the public brand icons and its CSP allows only same-origin images and manifest', async () => {
+  const r=await document({} as any,null,{}); const html=await r.text(); const csp=r.headers.get('content-security-policy')!;
+  expect(html).toContain('<link rel="icon" href="/favicon.ico">');
+  expect(html).toContain('<link rel="apple-touch-icon" href="/ui/app-icon?size=180">');
+  expect(html).toContain('<link rel="manifest" href="/ui/manifest.webmanifest">');
+  expect(csp).toContain("img-src 'self'"); expect(csp).toContain("manifest-src 'self'");
+  for (const path of ['/favicon.ico','/ui/app-icon','/ui/manifest.webmanifest']) expect(await middleware(ctx, null, {req:new Request('https://mauzcode.example'+path)})).toBeUndefined();
+});
 test('fixed browser build exposes only the isolated auth entry and CSS', async () => {
   const buildCtx:any={state:{},fns:{procs:{project:{projectRoot:()=>resolve(import.meta.dir,'../..')}}}};
   for(const kind of ['js','css'] as const) {

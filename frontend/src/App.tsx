@@ -8,6 +8,7 @@ import { SplitPane } from './components/layout/SplitPane';
 import { Button } from './components/ui/Button';
 import { IconButton } from './components/ui/IconButton';
 import { AgentListItem } from './components/mauzcode/AgentListItem';
+import { BrandMark } from './components/mauzcode/BrandMark';
 import { Composer } from './components/mauzcode/Composer';
 
 const initialAgents = [
@@ -34,7 +35,7 @@ export function App() {
     setSelected(id); setSheetOpen(false); setMobileView('chat');
   };
   const sidebar = <Sidebar
-    header={<><span className="brand"><span className="brand-mark">h</span>MauzCode<span className="prototype-label">UI LAB</span></span><IconButton label="Новый агент" onClick={addAgent}><Plus size={18} /></IconButton></>}
+    header={<><span className="brand"><BrandMark />MauzCode<span className="prototype-label">UI LAB</span></span><IconButton label="Новый агент" onClick={addAgent}><Plus size={18} /></IconButton></>}
     footer={<><span className="workspace-badge">H</span><div className="workspace-name"><strong>Личное пространство</strong><span>Локальный прототип</span></div><IconButton label={theme === 'light' ? 'Тёмная тема' : 'Светлая тема'} onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}</IconButton></>}
   ><div className="section-label">Агенты <span>{agents.length}</span></div>{agents.map(item => <AgentListItem key={item.id} {...item} selected={selected === item.id} onSelect={() => { setSelected(item.id); setSheetOpen(false); setMobileView('chat'); }} />)}<div className="sidebar-note">Место для ваших идей,<br />инструментов и исследований.</div></Sidebar>;
   const canvas = <section className="canvas-panel" aria-label="Canvas">

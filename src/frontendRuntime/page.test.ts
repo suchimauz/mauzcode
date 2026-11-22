@@ -28,6 +28,14 @@ describe('primary frontend document routing', () => {
         }
         expect(await page(ctx, session, { req: request('/agent/abc', 'POST') })).toBeUndefined();
     });
+    test('HTML document links the brand favicon, apple-touch icon and manifest at server routes, with or without a CSRF token', async () => {
+        for (const token of ['tok"en', null]) {
+            const html = { fns: { auth: { csrfToken: async () => token }, frontendBridge: { proxy: async () => new Response('<html><head><title>x</title></head></html>', { headers: { 'content-type': 'text/html' } }) } } } as any;
+            const text = await (await page(html, session, { req: request('/') }))!.text();
+            expect(text).toContain('<link rel="icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/ui/app-icon?size=180"><link rel="manifest" href="/ui/manifest.webmanifest">');
+            expect(text.includes('<meta name="csrf-token" content="tok&quot;en">')).toBe(token !== null);
+        }
+    });
     test('anonymous deep link cannot skip authentication', async () => {
         expect((await page(ctx, null, { req: request('/agent/abc') }))!.status).toBe(401);
     });

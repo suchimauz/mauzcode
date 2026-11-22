@@ -11,7 +11,8 @@ describe('NewSessionWelcome', () => {
     const fetcher = vi.fn().mockResolvedValue(respond(stats)); vi.stubGlobal('fetch', fetcher);
     const { container } = render(<NewSessionWelcome userName="suchimauz" />);
     expect(screen.getByRole('heading', { name: "What's up next, suchimauz?" })).toBeInTheDocument();
-    expect(container.querySelector('.brand-mark')).toHaveTextContent('h');
+    expect(container.querySelector('img.brand-mark')).toHaveAttribute('src', expect.stringMatching(/brand-icon\.svg$/));
+    expect(container.querySelector('img.brand-mark')).toHaveAttribute('alt', '');
     expect(await screen.findByText('9,876')).toBeInTheDocument();
     expect(screen.getByText('1.3M')).toBeInTheDocument();
     expect(screen.getByText('10 PM')).toBeInTheDocument();

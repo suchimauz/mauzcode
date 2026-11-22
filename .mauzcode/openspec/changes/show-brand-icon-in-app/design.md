@@ -12,6 +12,7 @@ The React shell is served by proxying Vite (`base: '/ui-lab/'`) through `fronten
 
 ## Decisions
 
+- **Shell links are injected by `frontendRuntime.page`, not written in `frontend/index.html`.** Vite rewrites root-relative links in `index.html` under its `/ui-lab/` base (`/favicon.ico` → `/ui-lab/favicon.ico`, a Vite 404), while `page` already rewrites `<head>` for the CSRF token. The links are added even when no CSRF token exists.
 - **Shell links `/favicon.ico`, not a static file.** The route already honours the `ui.setFavicon` override and serves SVG with the right content type, so the shell gets the same icon as SSR pages without duplicating logic. Alternative — a static `frontend/public/icon.svg` link — rejected: it would ignore instance overrides.
 - **Sign-in document**: links work under its CSP only if `img-src 'self'` is added (favicons are fetched as images; `manifest-src 'self'` for the manifest). Both are same-origin, so the policy stays tight.
 - **In-app mark uses a static `frontend/public/brand-icon.svg`** (rendered via `<img src="/ui-lab/brand-icon.svg" alt="">` through Vite `BASE_URL`). The generator copies `src/ui/assets/icon.svg` there so the canonical source stays single. Inline React SVG was considered; an `<img>` keeps one file and lets the generator own it.
