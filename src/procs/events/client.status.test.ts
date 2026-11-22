@@ -104,3 +104,31 @@ test('HTTP/2 stays connected hidden; initially hidden HTTP/1 tab is disconnected
     const hidden = browser('http/1.1', 'hidden');
     expect(hidden.sources.length).toBe(0); expect(hidden.live.getStatus()).toBe('disconnected');
 });
+
+test('health: a slow planned topic change stays ok and the desktop shell is told nothing new; a real error is a loss until reopen', () => {
+    const reported: string[] = [];
+    const b = browser('http/1.1', 'visible', { onRetry: () => {}, status: (s: string) => reported.push(s), capability: () => {} });
+    const health: string[] = [];
+    b.live.onHealth((h: string) => health.push(h));
+    expect(() => b.live.onHealth(null)).toThrow();
+    expect(b.live.getHealth()).toBe('ok');
+    b.sources[0].onopen();
+    b.regions.push({ getAttribute: () => 'agent:b', dataset: { liveTopic: 'agent:b' } });
+    b.live.refreshTopics();
+    expect(b.live.getStatus()).toBe('connecting');
+    expect(b.live.getHealth()).toBe('ok');
+    expect(reported).toEqual(['connecting', 'connected']);
+    b.sources[1].onopen();
+    expect(health).toEqual([]);
+    b.sources[1].onerror();
+    expect(b.live.getHealth()).toBe('lost');
+    expect(reported).toEqual(['connecting', 'connected', 'disconnected']);
+    b.retry();
+    expect(b.live.getHealth()).toBe('lost');
+    expect(reported.at(-1)).toBe('connecting');
+    b.sources[2].onopen();
+    expect(b.live.getHealth()).toBe('ok');
+    expect(health).toEqual(['lost', 'ok']);
+    expect(reported.at(-1)).toBe('connected');
+    b.handlers.pagehide!(); expect(b.live.getHealth()).toBe('lost');
+});

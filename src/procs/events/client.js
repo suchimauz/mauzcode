@@ -18,13 +18,42 @@
   let es;
   let status = 'disconnected';
   const statusListeners = new Set();
+  // Health answers a different question than status: did the transport FAIL?
+  // Replacing the stream on purpose (topics changed on an agent switch, retry)
+  // passes through 'connecting' but is not a loss, however slow the reopen is.
+  // 'lost' is set only when the stream is closed by an error or for good
+  // (hidden HTTP/1.1 tab, pagehide) and is cleared when it is connected again.
+  // Connection banners follow health, not status.
+  let health = 'ok';
+  let everConnected = false;
+  const healthListeners = new Set();
+  function notify(listeners, value, label) {
+    for (const listener of [...listeners]) {
+      try { listener(value); } catch (error) { console.error(`mauzCodeLive ${label}:`, error); }
+    }
+  }
+  // The desktop shell shows "reconnecting" from what it is told, so after the
+  // first connection a planned swap is reported as still connected.
+  let desktopReported = '';
+  function reportDesktop() {
+    const next = health === 'lost' || !everConnected ? status : 'connected';
+    if (next === desktopReported) return;
+    desktopReported = next;
+    desktop?.status(next);
+  }
+  function setHealth(next) {
+    if (health === next) return;
+    health = next;
+    reportDesktop();
+    notify(healthListeners, health, 'health');
+  }
   function setStatus(next) {
     if (status === next) return;
     status = next;
-    desktop?.status(next);
-    for (const listener of [...statusListeners]) {
-      try { listener(status); } catch (error) { console.error('mauzCodeLive status:', error); }
-    }
+    if (next === 'connected') everConnected = true;
+    reportDesktop();
+    notify(statusListeners, status, 'status');
+    if (next === 'connected') setHealth('ok');
   }
   let reconnectTimer = null;
   let retryMs = 1000;
@@ -86,6 +115,14 @@
       if (typeof listener !== 'function') throw new TypeError('mauzCodeLive.onStatus: listener must be a function');
       statusListeners.add(listener);
       return () => statusListeners.delete(listener);
+    },
+    /** Transport health: 'ok', or 'lost' after a real failure until the stream is back. A planned reconnect stays 'ok'. */
+    getHealth: () => health,
+    /** Listen for health changes (not an immediate snapshot); returns unsubscribe. */
+    onHealth: listener => {
+      if (typeof listener !== 'function') throw new TypeError('mauzCodeLive.onHealth: listener must be a function');
+      healthListeners.add(listener);
+      return () => healthListeners.delete(listener);
     },
     /** State subscriber: { types?, onEvent(event), resync(reason), name? } → unsubscribe. */
     subscribe: opts => register('state', opts),
@@ -192,9 +229,12 @@
     try { es?.close(); } catch {}
     es = null;
   }
+  // Closed by an error or for good (hidden HTTP/1.1 tab, pagehide): this IS a
+  // loss, unlike closeStream() followed by an immediate reopen.
   function disconnect() {
     closeStream();
     setStatus('disconnected');
+    setHealth('lost');
   }
 
   // ── Transport ───────────────────────────────────────────────────────────

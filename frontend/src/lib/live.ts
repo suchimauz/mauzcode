@@ -1,14 +1,28 @@
 export type LiveStatus = 'connecting' | 'connected' | 'disconnected';
+/** 'lost' only after a real transport failure; a planned stream replacement stays 'ok'. */
+export type LiveHealth = 'ok' | 'lost';
 export type LiveEvent = { type?: string; topic?: string; agentId?: string };
+/** Window bridge of the desktop client's integrated frame (absent in ordinary browsers). */
+export type DesktopWindowBridge = {
+  version: number;
+  platform: 'darwin' | 'win32' | 'linux';
+  titleBar: { height: number; controls: 'left' | 'right' };
+  setTheme: (theme: 'light' | 'dark') => void;
+  openMenu: (x: number, y: number) => void;
+};
 declare global {
   interface Window {
     /** Present only in the sandboxed desktop client; the page never calls it for status UI. */
     mauzcodeDesktopLive?: unknown;
+    /** Present only in the sandboxed desktop client: title-strip geometry, theme reporting and the shell menu. */
+    mauzcodeDesktopWindow?: DesktopWindowBridge;
     mauzcodeLive?: {
       subscribe: (options: { name: string; types?: string[]; onEvent: (event: LiveEvent) => void; resync: (reason: string) => void }) => () => void;
       refreshTopics?: () => void;
       getStatus?: () => LiveStatus;
       onStatus?: (listener: (status: LiveStatus) => void) => () => void;
+      getHealth?: () => LiveHealth;
+      onHealth?: (listener: (health: LiveHealth) => void) => () => void;
     };
   }
 }

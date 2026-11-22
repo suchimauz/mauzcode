@@ -32,3 +32,17 @@
 .desktop-live-status.is-restored { background: var(--success-soft); }
 .desktop-live-status span { color: var(--text-secondary); }
 .desktop-live-status kbd { font: inherit; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; }
+
+/* Desktop client: integrated title strip over the native window controls (see DesktopTitleBar). */
+html.mauzcode-desktop-frame .app-shell { height: calc(var(--app-height, 100dvh) - var(--desktop-titlebar-height, 40px)); }
+.desktop-titlebar { position: relative; z-index: 5; box-sizing: border-box; height: var(--desktop-titlebar-height, 40px); display: flex; align-items: center; gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-3); background: var(--sidebar); color: var(--text-secondary); border-bottom: 1px solid var(--line);
+  font-size: var(--font-sm); user-select: none; -webkit-user-select: none; -webkit-app-region: drag; app-region: drag; }
+/* Native controls: traffic lights on the left (macOS), caption buttons on the right (Windows/Linux, Window Controls Overlay). */
+.desktop-titlebar--controls-left { padding-left: 80px; }
+.desktop-titlebar--controls-right { padding-right: 140px; padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 140px)) + var(--space-2)); }
+.desktop-titlebar-brand { display: inline-flex; }
+.desktop-titlebar-brand .brand-mark { width: 16px; height: 16px; border-radius: 4px; }
+.desktop-titlebar-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 550; color: var(--text); }
+.desktop-titlebar--darwin .desktop-titlebar-title { text-align: center; }
+.desktop-titlebar-menu, .desktop-titlebar button, .desktop-titlebar a { -webkit-app-region: no-drag; app-region: no-drag; }

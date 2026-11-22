@@ -31,6 +31,15 @@ function openProfile(directory) {
       if (new URL(serverURL(origin)).origin !== origin || !['microphone', 'notifications'].includes(key) || typeof value !== 'boolean') throw Error('Invalid native preference');
       const next = { ...prefs, [origin]: { ...prefs[origin], [key]: value } };
       write('native-preferences.json', next); prefs = next;
+    },
+    /** Theme ('light'|'dark') last reported by the server page of this origin, or '' when unknown. Not a permission. */
+    theme(origin) { const value = prefs[origin]?.theme; return value === 'light' || value === 'dark' ? value : ''; },
+    /** Remember the server-selected theme for this origin; returns false when unchanged. */
+    setTheme(origin, value) {
+      if (new URL(serverURL(origin)).origin !== origin || !['light', 'dark'].includes(value)) throw Error('Invalid theme');
+      if (prefs[origin]?.theme === value) return false;
+      const next = { ...prefs, [origin]: { ...prefs[origin], theme: value } };
+      write('native-preferences.json', next); prefs = next; return true;
     }
   };
 }

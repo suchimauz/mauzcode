@@ -11,4 +11,14 @@ if (process.isMainFrame) {
     hint(scope,id) { if (valid(scope) && valid(id)) ipcRenderer.send('desktop-live-hint', scope,id); },
     onRetry(callback) { if (typeof callback === 'function') retry = callback; },
   }));
+  // Integrated title strip: geometry for layout, theme for native controls, and the shell popup. Nothing else.
+  const platform = ['darwin', 'win32', 'linux'].includes(process.platform) ? process.platform : 'linux';
+  const coordinate = x => typeof x === 'number' && Number.isFinite(x) && x >= 0;
+  contextBridge.exposeInMainWorld('mauzcodeDesktopWindow', Object.freeze({
+    version: 1,
+    platform,
+    titleBar: Object.freeze({ height: 40, controls: platform === 'darwin' ? 'left' : 'right' }),
+    setTheme(theme) { if (theme === 'light' || theme === 'dark') ipcRenderer.send('desktop-window-theme', theme); },
+    openMenu(x, y) { if (coordinate(x) && coordinate(y)) ipcRenderer.send('desktop-window-menu', x, y); },
+  }));
 }

@@ -47,4 +47,26 @@ function buildShellMenu({ Menu, platform, settings, retry, back, reload, quit })
   return Menu.buildFromTemplate(template);
 }
 
-module.exports = { buildShellMenu, menuTemplate };
+/**
+ * Build the shell popup opened by the ⋯ button in the title strip (Windows/Linux have no visible menu bar).
+ * Shortcuts stay registered by the hidden application menu; here they are shown as hints only.
+ * @param {{ Menu: { buildFromTemplate(template: object[]): unknown }, platform: string, settings: () => unknown, retry: () => unknown,
+ *   back: () => unknown, reload: () => unknown, quit?: () => unknown }} opts Same handlers as buildShellMenu; quit falls back to the quit role.
+ * @returns {unknown} The built Menu, ready for menu.popup({ window, x, y }).
+ */
+function buildShellPopup({ Menu, platform, settings, retry, back, reload, quit }) {
+  for (const [name, fn] of Object.entries({ settings, retry, back, reload })) if (typeof fn !== 'function') throw new TypeError(`buildShellPopup: ${name} must be a function`);
+  const items = menuTemplate({ platform, settings, retry, back, reload }).filter(top => top.submenu)
+    .flatMap(top => top.submenu).filter(item => item.id || item.role);
+  const pick = key => ({ ...items.find(item => item.id === key || item.role === key), registerAccelerator: false });
+  const template = [
+    pick('settings'), pick('retry'), { type: 'separator' },
+    pick('back'), pick('reload'), { type: 'separator' },
+    { id: 'zoom', label: 'Масштаб', submenu: [pick('resetZoom'), pick('zoomIn'), pick('zoomOut')] },
+    pick('togglefullscreen'), { type: 'separator' },
+    typeof quit === 'function' ? { id: 'quit', label: 'Выйти', accelerator: 'CmdOrCtrl+Q', registerAccelerator: false, click: () => quit() } : pick('quit')
+  ];
+  return Menu.buildFromTemplate(template);
+}
+
+module.exports = { buildShellMenu, buildShellPopup, menuTemplate };

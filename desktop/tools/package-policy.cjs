@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 
 // Reviewed first-party files only. New runtime entry points require a matching review here.
-const files = ['main.cjs', 'preload.cjs', 'security.cjs', 'navigation.cjs', 'lifecycle.cjs', 'connection.cjs', 'profile.cjs', 'shell-menu.cjs', 'notifications.cjs', 'remote-preload.cjs', 'native-access.cjs', 'updates.cjs', 'update-platform.cjs', 'update-manifest.cjs', 'renderer.js', 'index.html', 'styles.css', 'assets/tray.png', 'assets/trayTemplate.png', 'assets/trayTemplate@2x.png', 'assets/icon.png', 'update-pin.json', 'package.json'];
+const files = ['main.cjs', 'preload.cjs', 'security.cjs', 'navigation.cjs', 'lifecycle.cjs', 'connection.cjs', 'profile.cjs', 'shell-menu.cjs', 'window-chrome.cjs', 'window-bridge.cjs', 'context-menu.cjs', 'notifications.cjs', 'remote-preload.cjs', 'native-access.cjs', 'updates.cjs', 'update-platform.cjs', 'update-manifest.cjs', 'renderer.js', 'index.html', 'styles.css', 'assets/tray.png', 'assets/trayTemplate.png', 'assets/trayTemplate@2x.png', 'assets/icon.png', 'update-pin.json', 'package.json'];
 function validatePin(pin) {
   if (!pin || Object.keys(pin).sort().join() !== 'channel,publicKey,publisherName,repository' ||
       !/^[a-z\d](?:[a-z\d-]{0,38})\/[a-z\d][a-z\d._-]{0,99}$/i.test(pin.repository) ||

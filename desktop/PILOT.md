@@ -25,3 +25,15 @@ These checks are not outstanding tasks for `improve-desktop-client`. Use them on
 2. Connect, same-origin login, open chat, disconnect/reconnect, reject invalid TLS. Export/download and cancel. Dictate, deny, revoke mid-capture, switch origin. Receive both notification types in background, return to correct chat. Verify window/tray accessibility; Linux also test no tray and record distro, writable AppImage location and runtime prerequisites.
 3. Test offline GitHub and tampered metadata/artifact/signature: no install and no change to running version. Discover the real newer matching architecture/channel, defer during chat, then explicitly restart and install. Record actual N+1 installed version and retained server/session; normal quit while deferred must not install. Record failures, not just successful attempts.
 4. **Stable gate remains closed.** Even complete pilot results would not authorize stable. Review separate broad Windows distribution/signing and reputation concerns, support and rollback; obtain a new release decision. No publication, stable promotion or security-control bypass.
+
+## Integrated shell manual check (`desktop-integrated-shell`)
+
+Run on Windows 11, Linux (GNOME on Wayland and an X11 session; record distro and WM) and macOS. Record OS/version, pass/fail per step.
+
+1. Title strip: no File/Edit/View bar (also after pressing `Alt` on Windows/Linux); strip and window controls match the light and dark theme and recolour when the theme is switched in MauzCode settings; drag moves the window, double-click maximises; snap layouts work on Windows.
+2. `⋯` in the strip (Windows/Linux) opens Settings, Retry, Back, Reload, Zoom, Fullscreen, Quit; `Ctrl+,`, `Ctrl+R`, `Ctrl+Shift+R`, `Alt+←`, zoom and `Ctrl+Q` work with the bar hidden.
+3. Right-click: copy selected chat text; cut/copy/paste/select all in the composer; open (with confirmation) and copy an `https` link; copy an image; no menu on empty space.
+4. Switch between several agents repeatedly on a remote server: no «Связь потеряна» / «Связь восстановлена». Disconnect the network for >2 s: the loss banner appears; reconnect: «Связь восстановлена» appears and disappears.
+5. Settings window: product colours and grouped rows; dark when the server theme is dark even with a light OS theme; system appearance before any server theme is known.
+6. Older server (without the title strip): a draggable strip is still present and window controls do not cover page controls.
+Known risk: `titleBarOverlay` may render imperfectly on some Linux window managers; record the result rather than working around it.

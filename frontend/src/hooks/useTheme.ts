@@ -19,6 +19,8 @@ export function useTheme() {
   }, []);
   const theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
   useLayoutEffect(() => { document.documentElement.dataset.theme = theme; document.documentElement.style.colorScheme = theme;
+    // Desktop client: recolour the native window controls and remember the theme for its local settings window.
+    window.mauzcodeDesktopWindow?.setTheme(theme);
     // iOS Safari tints the status bar with theme-color; keep it equal to the chat surface.
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || (theme === 'dark' ? '#212121' : '#ffffff'));
   }, [theme]);

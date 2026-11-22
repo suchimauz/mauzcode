@@ -62,3 +62,26 @@ it('desktop: a short planned reconnect (chat switch) is not announced as a lost 
   change('disconnected');
   await vi.waitFor(() => expect(region).toHaveTextContent('Связь потеряна'));
 });
+
+it('desktop: follows transport health — a slow agent switch is silent, a real failure is announced and recovered', async () => {
+  desktopWindow.mauzcodeDesktopLive = { status: vi.fn(), onRetry: vi.fn() };
+  let healthListeners: Array<(health: 'ok' | 'lost') => void> = [];
+  let health: 'ok' | 'lost' = 'ok';
+  const setHealth = (next: 'ok' | 'lost') => act(() => { health = next; healthListeners.forEach(listener => listener(next)); });
+  window.mauzcodeLive = { ...window.mauzcodeLive!, getHealth: () => health, onHealth: listener => { healthListeners.push(listener); return () => { healthListeners = healthListeners.filter(l => l !== listener); }; } };
+  render(<DesktopLiveStatus graceMs={50} restoredMs={50} />);
+  const region = screen.getByRole('status');
+  await vi.waitFor(() => expect(healthListeners).toHaveLength(1));
+  expect(listeners).toHaveLength(0);
+  change('connecting');
+  await new Promise(resolve => setTimeout(resolve, 120));
+  expect(region).toBeEmptyDOMElement();
+  setHealth('lost');
+  await vi.waitFor(() => expect(region).toHaveTextContent('Связь потеряна'));
+  setHealth('ok');
+  expect(region).toHaveTextContent('Связь восстановлена.');
+  await vi.waitFor(() => expect(region).toBeEmptyDOMElement());
+  setHealth('lost'); setHealth('ok');
+  await new Promise(resolve => setTimeout(resolve, 120));
+  expect(region).toBeEmptyDOMElement();
+});

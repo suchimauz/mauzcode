@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, session, Tray, nativeImage, powerMonitor, Notification, systemPreferences } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, session, Tray, nativeImage, powerMonitor, Notification, systemPreferences, nativeTheme, clipboard } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { serverURL, webURL, sameOrigin, needsHttpConsent } = require('./security.cjs');
@@ -8,23 +8,52 @@ const { stageConnection, probeSession, reasonFor } = require('./connection.cjs')
 const { createNativeAccess } = require('./native-access.cjs');
 const { createNotifications } = require('./notifications.cjs');
 const { createUpdates } = require('./updates.cjs');
-const { buildShellMenu } = require('./shell-menu.cjs');
+const { buildShellMenu, buildShellPopup } = require('./shell-menu.cjs');
+const { chromeOptions, applyChrome, resolveTheme, fallbackCSS } = require('./window-chrome.cjs');
+const { contextTemplate } = require('./context-menu.cjs');
+const { createWindowBridge } = require('./window-bridge.cjs');
 
 app.enableSandbox();
 const resource = name => path.join(__dirname, name);
 const localURL = pathToFileURL(resource('index.html')).href;
 const secure = { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, webviewTag: false };
 const profiles = new WeakSet();
-let setup, active, candidate, store, native, notices, updates;
+let setup, active, candidate, store, native, notices, updates, shellHandlers;
 let savedURL = '', status = '', generation = 0, externalPrompt = false;
 const alive = win => win && !win.isDestroyed();
 const lifecycle = require('./lifecycle.cjs')({ app, Tray, Menu, nativeImage, powerMonitor, platform: process.platform,
   assets: name => resource('assets/' + name), getWindows: () => [candidate?.signingIn && candidate.window, setup, active?.window], createWindow: () => showSetup() });
 const getActive = () => !lifecycle.isQuitting() && active?.ready && alive(active.window) ? active : null;
+// Theme of the integrated frame: what the server page last reported for this origin, else the OS appearance.
+function originOf(url) { try { return new URL(url).origin; } catch { return ''; } }
+function storedTheme(origin) { try { return origin ? store.theme(origin) : ''; } catch { return ''; } }
+function themeFor(origin) { return resolveTheme(storedTheme(origin), !!nativeTheme?.shouldUseDarkColors); }
+function chrome(origin) { return chromeOptions({ platform: process.platform, theme: themeFor(origin) }); }
+function recolor() {
+  const records = [active, candidate].filter(r => alive(r?.window));
+  for (const r of records) applyChrome(r.window, { platform: process.platform, theme: themeFor(r.origin) });
+  if (alive(setup)) applyChrome(setup, { platform: process.platform, theme: themeFor(originOf(savedURL)) });
+  changed();
+}
+// Right-click: edit items everywhere; link and image items only for the server page.
+function attachContextMenu(win, remote) {
+  win.webContents.on('context-menu', (_event, params) => {
+    const record = remote ? [active, candidate].find(r => r?.window === win) : null;
+    const pageOrigin = record ? originOf(win.webContents.getURL()) : '';
+    const trustedPage = !!record && pageOrigin === record.origin && (!params.frameURL || originOf(params.frameURL) === record.origin);
+    const template = contextTemplate(params, trustedPage ? {
+      links: true, images: true,
+      copyText: text => clipboard.writeText(text),
+      openLink: href => void openExternal(record, href),
+      copyImage: (x, y) => { if (alive(win)) win.webContents.copyImageAt(x, y); }
+    } : {});
+    if (template.length) Menu.buildFromTemplate(template).popup({ window: win });
+  });
+}
 function restore(win) { if (alive(win)) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } }
 function state() {
   const mic = native.state(), n = notices.status();
-  return { url: savedURL, status, connected: !!active?.ready, connecting: !!candidate, version: app.getVersion(),
+  return { url: savedURL, status, theme: storedTheme(originOf(savedURL)), connected: !!active?.ready, connecting: !!candidate, version: app.getVersion(),
     liveStatus: active?.ready ? ({ unknown: 'unsupported', connected: 'connected', connecting: 'reconnecting', disconnected: 'offline' })[n.live] : '',
     permissions: { microphone: mic.microphoneGranted, microphoneSupported: mic.microphoneSupported, microphoneReason: mic.microphoneReason, notifications: n.enabled, notificationSupport: n.supported }, update: updates.state() };
 }
@@ -33,7 +62,8 @@ function showSetup(message) {
   if (lifecycle.isQuitting()) return;
   if (message !== undefined) status = message;
   if (alive(setup)) { changed(); restore(setup); return; }
-  const win = setup = new BrowserWindow({ width: 720, height: 740, minWidth: 460, minHeight: 410, icon: resource('assets/icon.png'), title: 'MauzCode — настройки', webPreferences: { ...secure, preload: resource('preload.cjs') } });
+  const win = setup = new BrowserWindow({ width: 720, height: 740, minWidth: 460, minHeight: 410, icon: resource('assets/icon.png'), title: 'MauzCode — настройки', ...chrome(originOf(savedURL)), webPreferences: { ...secure, preload: resource('preload.cjs') } });
+  applyChrome(win, { platform: process.platform, theme: themeFor(originOf(savedURL)) }); attachContextMenu(win, false);
   lifecycle.attach(win, () => !active && !candidate);
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   for (const event of ['will-navigate', 'will-redirect', 'will-attach-webview']) win.webContents.on(event, e => e.preventDefault());
@@ -77,7 +107,10 @@ function connect(value, allowHttp = false) {
     url = serverURL(value); const origin = new URL(url).origin;
     if (needsHttpConsent(url) && allowHttp !== true) return { ok: false, error: 'Подтвердите подключение без шифрования.' };
     const { partition, profile } = prepareSession(origin);
-    win = new BrowserWindow({ width: 1280, height: 850, minWidth: 640, minHeight: 480, show: false, icon: resource('assets/icon.png'), title: 'MauzCode', webPreferences: { ...secure, partition, preload: resource('remote-preload.cjs') } });
+    win = new BrowserWindow({ width: 1280, height: 850, minWidth: 640, minHeight: 480, show: false, icon: resource('assets/icon.png'), title: 'MauzCode', ...chrome(origin), webPreferences: { ...secure, partition, preload: resource('remote-preload.cjs') } });
+    applyChrome(win, { platform: process.platform, theme: themeFor(origin) }); attachContextMenu(win, true);
+    // Pages that render their own title strip opt out of this rule (html.mauzcode-desktop-frame); others stay draggable.
+    win.webContents.on('dom-ready', () => { if (alive(win) && originOf(win.webContents.getURL()) === origin) win.webContents.insertCSS?.(fallbackCSS(process.platform))?.catch(() => {}); });
     const record = { window: win, origin, generation: ++generation, ready: false, signingIn: false };
     lifecycle.attach(win, () => active === record);
     record.control = stageConnection({ url, profile, window: win,
@@ -148,9 +181,15 @@ if (lifecycle.primary) app.whenReady().then(() => {
   local('setup:state', state); local('setup:connect', (url, options) => connect(url, options?.allowHttp === true)); local('setup:action', action);
   app.on('before-quit', () => { candidate?.control.cancel(true); if (active) { active.control.retire(); invalidate(active); } });
   lifecycle.start();
-  Menu.setApplicationMenu(buildShellMenu({ Menu, platform: process.platform, settings: () => showSetup(),
+  shellHandlers = { Menu, platform: process.platform, settings: () => showSetup(),
     retry: () => void retry(), back: () => { const history = (candidate?.signingIn ? candidate : active)?.window.webContents.navigationHistory; if (history?.canGoBack()) history.goBack(); },
-    reload: () => { if (!candidate && alive(active?.window)) active.window.webContents.reload(); }, quit: lifecycle.quit }));
+    reload: () => { if (!candidate && alive(active?.window)) active.window.webContents.reload(); }, quit: lifecycle.quit };
+  // Windows/Linux hide the bar, but the application menu still registers every accelerator.
+  Menu.setApplicationMenu(buildShellMenu(shellHandlers));
+  createWindowBridge({ ipcMain, getActive,
+    onTheme(record, theme) { try { store.setTheme(record.origin, theme); } catch { return; } recolor(); },
+    openMenu(record, x, y) { buildShellPopup(shellHandlers).popup({ window: record.window, x, y }); } });
+  nativeTheme?.on('updated', recolor);
   try { savedURL = store.saved(); } catch { status = 'Не удалось прочитать сохранённый адрес. Введите его заново.'; }
   showSetup(); if (savedURL) { const result = connect(savedURL, true); if (!result.ok) showSetup(result.error); }
 }).catch(() => { dialog.showErrorBox('MauzCode', 'Не удалось запустить клиент.'); app.quit(); });

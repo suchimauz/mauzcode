@@ -70,6 +70,9 @@
     const permissions = state.permissions || {};
     const update = state.update || { state: 'idle' };
     const connecting = Boolean(state.connecting) || busy;
+    // Follow the theme chosen on the server; without one, styles.css follows the system appearance.
+    const theme = state.theme === 'light' || state.theme === 'dark' ? state.theme : 'system';
+    if (document.documentElement.dataset.theme !== theme) document.documentElement.dataset.theme = theme;
     if (!edited) input.value = state.url || '';
     refreshHttpWarning();
     show($('current'), Boolean(state.url));

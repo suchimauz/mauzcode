@@ -58,7 +58,7 @@ describe('settings window markup', () => {
   });
   test('styles provide light/dark tokens, visible focus and reduced motion', () => {
     const css = readFileSync(join(__dirname, 'styles.css'), 'utf8');
-    expect(css).toContain('color-scheme: light dark');
+    expect(css).toContain('color-scheme: light'); expect(css).toContain('color-scheme: dark');
     expect(css).toContain('prefers-color-scheme: dark');
     expect(css).toContain(':focus-visible');
     expect(css).toContain('prefers-reduced-motion');
@@ -194,5 +194,29 @@ describe('preload bridge', () => {
     exposed.desktopSetup.action('update-restart');
     exposed.desktopSetup.action('shell-exec');
     expect(invoked).toEqual([['setup:connect', 'https://x.example', { allowHttp: false }], ['setup:action', 'update-restart']]);
+  });
+});
+
+describe('settings appearance', () => {
+  const css = readFileSync(join(__dirname, 'styles.css'), 'utf8');
+  const tokens = readFileSync(join(__dirname, '../frontend/src/styles/tokens.css'), 'utf8');
+  const block = (source: string, selector: string) => source.slice(source.indexOf(selector), source.indexOf('}', source.indexOf(selector)));
+  const value = (source: string, name: string) => source.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1].trim();
+  test('follows the server-selected theme and falls back to the system appearance', async () => {
+    const { document, push } = await mount({ ...base, theme: 'dark' });
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    push({ ...base, theme: 'light' }); expect(document.documentElement.dataset.theme).toBe('light');
+    push({ ...base, theme: '' }); expect(document.documentElement.dataset.theme).toBe('system');
+    push({ ...base, theme: 'neon' }); expect(document.documentElement.dataset.theme).toBe('system');
+  });
+  test('has the integrated draggable title strip and the product palette', async () => {
+    const { document } = await mount(base);
+    expect(document.querySelector('.titlebar')?.textContent).toContain('MauzCode');
+    expect(css).toMatch(/\.titlebar \{[^}]*-webkit-app-region: drag/);
+    for (const theme of [":root, [data-theme='light']", "[data-theme='dark']"]) {
+      for (const name of ['bg', 'sidebar', 'settings-group', 'text', 'text-secondary', 'line', 'accent', 'accent-hover', 'on-accent', 'success', 'tool-error']) {
+        expect([theme, name, value(block(css, theme), name)]).toEqual([theme, name, value(block(tokens, theme), name)]);
+      }
+    }
   });
 });

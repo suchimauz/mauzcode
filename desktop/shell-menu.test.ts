@@ -42,3 +42,23 @@ describe('desktop shell menu', () => {
     expect(() => buildShellMenu({ Menu, platform: 'linux', settings() {}, retry() {}, back() {} })).toThrow(/reload/);
   });
 });
+
+describe('title-strip shell popup', () => {
+  const { buildShellPopup } = require('./shell-menu.cjs');
+  test('offers settings, retry, back, reload, zoom, fullscreen and quit without registering duplicate accelerators', () => {
+    const calls: string[] = [];
+    const fn = (name: string) => () => { calls.push(name); };
+    const menu: any = buildShellPopup({ Menu, platform: 'win32', settings: fn('settings'), retry: fn('retry'), back: fn('back'), reload: fn('reload'), quit: fn('quit') });
+    const flat = menu.template.flatMap((item: any) => item.submenu ? [item, ...item.submenu] : [item]).filter((item: any) => item.type !== 'separator');
+    expect(flat.map((item: any) => item.id || item.role)).toEqual(['settings', 'retry', 'back', 'reload', 'zoom', 'resetZoom', 'zoomIn', 'zoomOut', 'togglefullscreen', 'quit']);
+    expect(flat.filter((item: any) => item.id !== 'zoom').every((item: any) => item.registerAccelerator === false)).toBe(true);
+    for (const id of ['settings', 'retry', 'back', 'reload', 'quit']) flat.find((item: any) => item.id === id).click();
+    expect(calls).toEqual(['settings', 'retry', 'back', 'reload', 'quit']);
+    expect(flat.find((item: any) => item.id === 'settings').accelerator).toBe('CmdOrCtrl+,');
+  });
+  test('falls back to the quit role and rejects missing handlers', () => {
+    const menu: any = buildShellPopup({ Menu, platform: 'linux', settings() {}, retry() {}, back() {}, reload() {} });
+    expect(menu.template.at(-1)).toMatchObject({ role: 'quit' });
+    expect(() => buildShellPopup({ Menu, platform: 'linux', settings() {}, retry() {}, back() {} })).toThrow();
+  });
+});
