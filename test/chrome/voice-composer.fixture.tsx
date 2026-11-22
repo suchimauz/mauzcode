@@ -14,12 +14,16 @@ Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () 
   // Allow an integration test to generate a natural silence boundary before Stop.
   const tone = (event: Event) => { volume.gain.value = (event as CustomEvent<boolean>).detail ? 1 : 0; };
   window.addEventListener('fixture:tone', tone);
+  const marker = (event: Event) => {
+    oscillator.frequency.value = (event as CustomEvent<boolean>).detail ? 2400 : 440;
+  };
+  window.addEventListener('fixture:marker', marker);
   oscillator.start();
   await context.resume();
   // Stopping capture stops its real track; dispose the corresponding tone graph too.
   const track = output.stream.getAudioTracks()[0]!;
   const stop = track.stop.bind(track);
-  track.stop = () => { stop(); window.removeEventListener('fixture:tone', tone); oscillator.stop(); void context.close(); };
+  track.stop = () => { stop(); window.removeEventListener('fixture:tone', tone); window.removeEventListener('fixture:marker', marker); oscillator.stop(); void context.close(); };
   return output.stream;
 } });
 const agentId = new URLSearchParams(location.search).get('agent')!;

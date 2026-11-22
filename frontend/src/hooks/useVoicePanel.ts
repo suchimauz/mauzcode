@@ -15,6 +15,8 @@ export type UseVoicePanelOptions = {
   capture: VoiceCapture;
   /** Phrase ownership of this draft, shared with inline dictation; clear removes every unedited phrase in it. */
   dictation: DraftDictation;
+  /** Synchronous ordinary send lock. Recognition may still finish, but controls must not edit the draft. */
+  sendLock: RefObject<boolean>;
   /** Losing edit access closes the panel and stops capture; inserted text stays. */
   readOnly?: boolean;
 };
@@ -23,8 +25,10 @@ export type VoicePanelController = {
   open: boolean;
   /** Consumer of the panel entry point for `VoiceEntryControls`; activation while open leaves the panel. */
   handler: VoiceEntryHandler;
-  /** Pause a running capture, or resume (new generation) a paused, stopped or failed one. */
+  /** Mute/unmute a connected run, cancel setup, or explicitly start a new run when disconnected. */
   toggle: () => void;
+  /** Remove the rightmost unedited dictated word in this draft. */
+  deleteWord: () => void;
   /** Remove every unedited dictated phrase of this draft (panel and inline, any visit); typed text, corrections and attachments stay. */
   clear: () => void;
   /** True when `clear` would change the draft. */
@@ -37,12 +41,12 @@ export type VoicePanelController = {
 
 /**
  * Dedicated voice mode (task 3.5): replaces the editor while open but edits the same draft through the composer's
- * ordinary update. Each capture generation is one session of the draft's shared `DraftDictation` ledger; a resumed
- * session continues after the previous one's last phrase. Leaving closes the session, so late events change nothing,
+ * ordinary update. Each capture generation has one session in the shared `DraftDictation` ledger, including while
+ * muted: a late final still revises its original phrase. Leaving closes the session, so late events change nothing,
  * but its unedited phrases stay owned by the draft and a later clear (after Escape → editing → re-entry) removes them.
  * Explicit send and its finalization lock belong to the composer, not the panel.
  */
-export function useVoicePanel({ text, onText, caret, capture, dictation, readOnly = false }: UseVoicePanelOptions): VoicePanelController {
+export function useVoicePanel({ text, onText, caret, capture, dictation, sendLock, readOnly = false }: UseVoicePanelOptions): VoicePanelController {
   const [open, setOpen] = useState(false);
   const [returns, setReturns] = useState(0);
   const isOpen = useRef(false);
@@ -55,7 +59,7 @@ export function useVoicePanel({ text, onText, caret, capture, dictation, readOnl
     const c = cap.current; const previous = session.current;
     let selection = caret.current?.selection() ?? null;
     if (previous) {
-      // A resumed generation continues right after the previous one's last phrase.
+      // An explicit new start (not unmute) continues after the previous run's last phrase.
       dictation.observe(latestText.current); previous.close();
       selection = { start: previous.end, end: previous.end };
     }
@@ -72,25 +76,25 @@ export function useVoicePanel({ text, onText, caret, capture, dictation, readOnl
     if (focusEditor) setReturns(n => n + 1);
   };
   const toggle = () => {
-    if (!isOpen.current) return;
-    const state = cap.current.state;
-    if (state === 'listening' || state === 'connecting') {
-      // Phrases finalized by the pause still apply; once it settles this generation takes no more events.
-      const current = session.current;
-      void cap.current.pause().finally(() => current?.close());
-    }
-    else if (state === 'paused' || state === 'idle' || state === 'error') startSession();
+    if (!isOpen.current || readOnly || sendLock.current) return;
+    const c = cap.current;
+    if (c.state === 'listening' || c.state === 'muted') c.setMuted(c.state === 'listening');
+    else if (c.state === 'connecting') { session.current?.close(); c.cancel(); }
+    else if (c.state === 'idle' || c.state === 'error') startSession();
   };
-  const clear = () => {
-    if (!isOpen.current) return;
-    const value = dictation.clear(latestText.current);
+  const removeDictation = (amount: 'word' | 'all') => {
+    if (!isOpen.current || readOnly || sendLock.current) return;
+    const value = amount === 'word' ? dictation.deleteLastWord(latestText.current) : dictation.clear(latestText.current);
     if (value === latestText.current) return;
     latestText.current = value; update.current(value);
   };
 
   // Losing edit access closes the panel (capture is cancelled too); the inserted text stays.
   useEffect(() => { if (readOnly) close(false); }, [readOnly]);
-  useEffect(() => () => { session.current?.close(); session.current = null; }, []);
+  useEffect(() => {
+    if (capture.state === 'idle' || capture.state === 'error') session.current?.close();
+  }, [capture.state]);
+  useEffect(() => () => { isOpen.current = false; session.current?.close(); session.current = null; }, []);
 
   const handler: VoiceEntryHandler = {
     active: open,
@@ -107,5 +111,5 @@ export function useVoicePanel({ text, onText, caret, capture, dictation, readOnl
       latestText.current = result.text; update.current(result.text);
     },
   };
-  return { open, handler, toggle, clear, canClear: open && dictation.owned, exit: () => close(true), returns };
+  return { open, handler, toggle, deleteWord: () => removeDictation('word'), clear: () => removeDictation('all'), canClear: open && dictation.owned, exit: () => close(true), returns };
 }

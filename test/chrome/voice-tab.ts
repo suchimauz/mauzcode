@@ -9,6 +9,8 @@ export async function openVoiceTab(chrome: HeadlessChrome, secret: string) {
   let id = 0, leaked = false;
   const frames: { sent: boolean; type: string }[] = [];
   const sockets: string[] = [];
+  const pcmFrames: Buffer[] = [];
+  let closedSockets = 0;
   ws.onmessage = ({ data }) => {
     const msg = JSON.parse(String(data));
     if (msg.id) {
@@ -20,9 +22,11 @@ export async function openVoiceTab(chrome: HeadlessChrome, secret: string) {
     if (!msg.method.startsWith('Network.')) return;
     // Include HTTP request bodies, extra/handshake headers and both WS directions.
     leaked ||= String(data).includes(secret);
+    if (msg.method === 'Network.webSocketClosed') closedSockets++;
     if (msg.method === 'Network.webSocketCreated') sockets.push(msg.params.url);
     if (!['Network.webSocketFrameSent', 'Network.webSocketFrameReceived'].includes(msg.method)) return;
     const { opcode, payloadData } = msg.params.response;
+    if (opcode === 2 && msg.method.endsWith('Sent')) pcmFrames.push(Buffer.from(payloadData, 'base64').subarray(4)); // Skip the uint32 sequence.
     if (opcode === 2) leaked ||= Buffer.from(payloadData, 'base64').includes(secret);
     if (opcode === 1 || opcode === 2) frames.push({ sent: msg.method.endsWith('Sent'), type: opcode === 2 ? 'pcm' : JSON.parse(payloadData).type });
   };
@@ -35,10 +39,10 @@ export async function openVoiceTab(chrome: HeadlessChrome, secret: string) {
   const evaluate = async (expression: string) => (await command('Runtime.evaluate', { expression, userGesture: true, returnByValue: true })).result.value;
   const wait = async (expression: string) => {
     const deadline = Date.now() + 5000;
-    do { if (await evaluate(expression)) return; await Bun.sleep(25); } while (Date.now() < deadline);
+    do { if (await evaluate(`Boolean(${expression})`)) return; await Bun.sleep(25); } while (Date.now() < deadline);
     throw new Error(`Composer condition timed out: ${expression}`);
   };
   await command('Network.enable');
   const close = async () => { ws.close(); await fetch(`${chrome.url}/json/close/${target.id}`, { signal: AbortSignal.timeout(2000) }); };
-  return { command, evaluate, wait, frames, sockets, leaked: () => leaked, close };
+  return { command, evaluate, wait, frames, sockets, pcmFrames, closedSockets: () => closedSockets, leaked: () => leaked, close };
 }

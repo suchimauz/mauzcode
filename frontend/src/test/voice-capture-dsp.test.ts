@@ -150,7 +150,7 @@ describe('AudioWorklet module', () => {
     const posted: { type: string; pcm?: ArrayBuffer }[] = [];
     class AudioWorkletProcessor { port = { onmessage: null, postMessage: (m: { type: string; pcm?: ArrayBuffer }) => posted.push(m) }; }
     const registerProcessor = (name: string, ctor: typeof Processor) => { expect(name).toBe(VOICE_PROCESSOR); Processor = ctor; };
-    new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', voiceWorkletSource())(AudioWorkletProcessor, registerProcessor, sampleRate);
+    new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', 'currentTime', voiceWorkletSource())(AudioWorkletProcessor, registerProcessor, sampleRate, 0);
     return { processor: new Processor(), posted };
   }
 
@@ -172,6 +172,39 @@ describe('AudioWorklet module', () => {
     expect(total).toBeGreaterThanOrEqual(24000);
     const pcm = Float32Array.from(frames.flatMap(f => Array.from(f)), v => v / 32768);
     expect(amplitudeAt(pcm, 24000, 1000, 2400, 21600)).toBeGreaterThan(0.49);
+  });
+
+  it('drains pre-mute samples, ignores even nonzero muted input, and clocks silence with no input', () => {
+    const { processor, posted } = loadProcessor(48000);
+    const command = (data: object) => processor.port.onmessage!({ data });
+    const block = (value: number) => [[new Float32Array(128).fill(value)]];
+    command({ type: 'configure', sampleRate: 24000, frameSamples: 960, minSamples: 480 });
+    for (let i = 0; i < 4; i++) processor.process(block(0.25));
+    expect(posted).toHaveLength(0);
+    command({ type: 'gate', muted: true, epoch: 1, cut: 1 });
+    const frames = () => posted.filter(m => m.pcm).map(m => new Int16Array(m.pcm!));
+    expect(frames()[0]).toHaveLength(480);
+    expect(frames()[0].some(v => v > 7000)).toBe(true);
+    for (let i = 0; i < 40; i++) processor.process(i < 20 ? block(-1) : [[]]);
+    command({ type: 'gate', muted: false, epoch: 2, cut: 1 });
+    const silence = frames().slice(1);
+    expect(silence.length).toBeGreaterThanOrEqual(3);
+    expect(silence.every(f => f.every(v => v === 0))).toBe(true);
+    for (let i = 0; i < 20; i++) processor.process(block(0.1));
+    const fresh = frames().at(-1)!;
+    expect(fresh[300]).toBeGreaterThan(3000);
+    expect(fresh.every(v => Math.abs(v) < 4000)).toBe(true);
+  });
+
+  it('zeros the entire pending tail when a render quantum overtakes a delayed mute command', () => {
+    const { processor, posted } = loadProcessor(48000);
+    const command = (data: object) => processor.port.onmessage!({ data });
+    command({ type: 'configure', sampleRate: 24000, frameSamples: 960, minSamples: 480 });
+    processor.process([[new Float32Array(128).fill(-1)]]);
+    command({ type: 'gate', muted: true, epoch: 1, cut: 0 });
+    const tail = posted.find(m => m.pcm);
+    expect(tail).toBeDefined();
+    expect(new Int16Array(tail!.pcm!).every(v => v === 0)).toBe(true);
   });
 
   it('mixes stereo to mono and stops after stop', () => {

@@ -254,6 +254,25 @@ test("idle timeout is server enforced and cancel releases resources without a tr
     expect(f.ctx.state.voice.socketSessions?.size).toBe(0);
 });
 
+test("regular silence keeps the relay alive past idle but cannot extend its original deadline", async () => {
+    jest.useFakeTimers();
+    const f = fixture();
+    const s = await f.localSocket();
+    let sequence = 0;
+    for (let elapsed = 0; elapsed < 300_000; elapsed += 20_000) {
+        s.send(frame(sequence++, 0));
+        await tick(19_999);
+        expect(s.ended()).toBe(false);
+        expect(s.events.map(item => item.type)).toEqual(["ready"]);
+        await tick(1);
+    }
+    expect(s.events.map(item => item.type)).toEqual(["ready", "error"]);
+    expect(last(s.events)).toMatchObject({ code: "timeout", message: expect.stringContaining("five-minute") });
+    expect(f.streams).toHaveLength(1);
+    expect(f.streams[0]!.commits).toEqual([]);
+    expect(f.ctx.state.voice.socketSessions?.size).toBe(0);
+});
+
 test("five-minute limit stops accepting PCM and emits pending finals followed by timeout without a finish request", async () => {
     jest.useFakeTimers();
     const f = fixture();

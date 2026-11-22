@@ -18,7 +18,7 @@ export type VoiceEntryHandler = {
   onActivate: (capture: VoiceCapture, route: ReadyVoiceRoute) => void;
   onPhrase: (event: VoicePhraseEvent) => void;
   /**
-   * The mode is engaged even while capture is paused, idle or failed (the voice panel stays open). Its own control
+   * The panel stays engaged across a connected mute and even when capture has stopped or failed. Its own control
    * then stays pressed and operable (activation means leave), and the other entry point stays blocked.
    */
   active?: boolean;

@@ -42,6 +42,7 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
   const [menuOpen, setMenuOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [revision, setRevision] = useState(0);
+  const [sentCount, setSentCount] = useState(0);
   const anchor = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const fileSubmission = useRef<Pending | null>(null);
@@ -67,12 +68,12 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
   // Which dictated phrases of this draft are still unedited, for both entry points; forgotten once the draft is sent.
   const [dictation] = useState(() => new DraftDictation());
   const inline = useInlineDictation({ text, onText: changeText, caret, dictation, readOnly });
-  const panel = useVoicePanel({ text, onText: changeText, caret, capture: voice.capture, dictation, readOnly });
+  const panel = useVoicePanel({ text, onText: changeText, caret, capture: voice.capture, dictation, sendLock: lock, readOnly });
   const voiceHandlers: VoiceEntryHandlers = { inline: inline.handler, panel: panel.handler };
   // Phrases route through the hub even while voice mode has unmounted the footer and its entry controls.
   voice.handlers.current = voiceHandlers;
   const dragging = useChatFileDrop({ anchor, onFiles: addFiles, disabled: busy || readOnly });
-  const capturing = ['connecting', 'listening', 'finalizing'].includes(voice.capture.state);
+  const capturing = ['connecting', 'listening', 'muted', 'finalizing'].includes(voice.capture.state);
   const canSubmit = capturing || !!text.trim() || files.length > 0;
   const send = async () => {
     if (!canSubmit || lock.current || readOnly) return;
@@ -80,8 +81,8 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
     lock.current = true; setBusy(true); setError('');
     try {
       if (capturing) {
-        // Both actions flush the last audio and wait for recognition; only the panel stays paused.
-        const finalized = await (panel.open ? voice.capture.pause() : voice.capture.finish());
+        // Mute only gates input; either live state still owes us the provider's final words.
+        const finalized = await voice.capture.finish();
         if (epoch !== access.current) return;
         if (!finalized) {
           setError('Распознавание не завершилось. Ничего не отправлено. Проверьте текст и отправьте его ещё раз.');
@@ -114,11 +115,10 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
         else { const ack = await sendMessage(agentId, value, submission.key, files); if (epoch === access.current && ack.queued) void queue.refresh(); }
       }
       if (epoch !== access.current) return;
-      if (panel.open) {
-        // An explicit retry after a capture error may have no live session left to finish.
-        if (!capturing && voice.capture.state !== 'paused') void voice.capture.pause();
-      }
+      // A reviewed draft can also be sent after a capture error. Dismiss it on acknowledgement.
+      if (panel.open && voice.capture.state === 'error') voice.capture.cancel();
       setFiles([]); fileSubmission.current = null; setRevision(n => n + 1);
+      if (panel.open) setSentCount(n => n + 1);
       setText(''); pending.current = null; dictation.reset();
       try { sessionStorage.removeItem(`mauzcode-ui-draft:${agentId}`); } catch { /* In-memory state has already cleared. */ }
       onAccepted();
@@ -133,7 +133,7 @@ function SessionComposer({ focusRequest, agentId, running, onAccepted, mascot, p
 
   // One picker, shown in whichever bar is visible: the editor's or voice mode's.
   const modelPicker = <ModelPicker key={agentId} agentId={agentId} running={running} busy={busy || readOnly} revision={revision} onSaved={() => { setRevision(n => n + 1); onAccepted(); }} onBusyChange={value => { lock.current = value; setBusy(value); }} />;
-  return <fieldset disabled={readOnly} className={`composer-readonly-boundary ${readOnly ? 'is-archived' : ''}`} aria-label={readOnly ? 'Ввод недоступен' : undefined}><div ref={anchor} className="composer-input-anchor">{dragging && anchor.current?.closest('.chat-panel') && createPortal(<div className="chat-file-drop-overlay" aria-hidden="true">Перетащите файлы, чтобы прикрепить к сообщению</div>, anchor.current.closest('.chat-panel')!)}{mascot && <div className="composer-pet-slot">{mascot}</div>}<TodoDock agentId={agentId} /><TriggerDock agentId={agentId} /><GoalDock agentId={agentId} running={running} disabled={readOnly || busy} editor={goalEditor} onClose={() => setGoalEditor(null)} onAccepted={onAccepted} /><QueueDock queue={queue} running={running} disabled={readOnly || busy} /><ComposerStatusRow modes={planningBadge} />{panel.open && <VoicePanel model={modelPicker} leading={<ComposerAddButton open={false} disabled onClick={() => {}} />} capture={voice.capture} text={text} attachments={files.length ? <PendingAttachments files={files} disabled={busy || readOnly} onRemove={removeFile} /> : undefined} busy={busy || readOnly} canSubmit={canSubmit} onSend={send} onToggle={panel.toggle} onClear={panel.clear} canClear={panel.canClear} onExit={panel.exit} sendError={error || undefined} />}<div hidden={panel.open} className="voice-panel-editor"><MessageInput bar={{ start: panel.open ? undefined : modelPicker, end: readOnly || panel.open ? undefined : <VoiceEntryControls key={`voice:${agentId}`} variant="flat" agentId={agentId} busy={busy} handlers={voiceHandlers} hub={voice} /> }} leading={<ComposerAddButton open={!!menuOpen} disabled={busy || readOnly} onClick={() => { if (!panel.open) setMenuOpen(open => !open); }} />} focusRequest={(focusRequest ?? 0) + panel.returns} onSteerAll={running && !queue.waitingForInput && queue.items.length ? () => { if (!busy && !readOnly && !queue.processing) void queue.perform(queue.items, 'steer'); } : undefined} commandsEnabled commandMenuOpen={menuOpen} onCommandMenuClose={() => setMenuOpen(false)} onFile={() => fileInput.current?.click()} agentId={agentId} placeholder={running && queue.items.length ? 'Ctrl/Cmd+Enter — направить всю очередь агенту' : 'Сообщение или /команда…'} onFiles={addFiles} attachments={files.length && !panel.open ? <PendingAttachments files={files} disabled={busy || readOnly} onRemove={removeFile} /> : undefined} hasAttachments={files.length > 0} pendingVoice={capturing} value={text} disabled={busy || readOnly} running={running && !readOnly} onStop={() => { void stop(); }} onSend={() => { void send(); }}
+  return <fieldset disabled={readOnly} className={`composer-readonly-boundary ${readOnly ? 'is-archived' : ''}`} aria-label={readOnly ? 'Ввод недоступен' : undefined}><div ref={anchor} className="composer-input-anchor">{dragging && anchor.current?.closest('.chat-panel') && createPortal(<div className="chat-file-drop-overlay" aria-hidden="true">Перетащите файлы, чтобы прикрепить к сообщению</div>, anchor.current.closest('.chat-panel')!)}{mascot && <div className="composer-pet-slot">{mascot}</div>}<TodoDock agentId={agentId} /><TriggerDock agentId={agentId} /><GoalDock agentId={agentId} running={running} disabled={readOnly || busy} editor={goalEditor} onClose={() => setGoalEditor(null)} onAccepted={onAccepted} /><QueueDock queue={queue} running={running} disabled={readOnly || busy} /><ComposerStatusRow modes={planningBadge} />{panel.open && <VoicePanel model={modelPicker} leading={<ComposerAddButton open={false} disabled onClick={() => {}} />} capture={voice.capture} text={text} attachments={files.length ? <PendingAttachments files={files} disabled={busy || readOnly} onRemove={removeFile} /> : undefined} busy={busy || readOnly} canSubmit={canSubmit} onSend={send} onToggle={panel.toggle} onDeleteWord={panel.deleteWord} onClear={panel.clear} canClear={panel.canClear} onExit={panel.exit} sentCount={sentCount} sendError={error || undefined} />}<div hidden={panel.open} className="voice-panel-editor"><MessageInput bar={{ start: panel.open ? undefined : modelPicker, end: readOnly || panel.open ? undefined : <VoiceEntryControls key={`voice:${agentId}`} variant="flat" agentId={agentId} busy={busy} handlers={voiceHandlers} hub={voice} /> }} leading={<ComposerAddButton open={!!menuOpen} disabled={busy || readOnly} onClick={() => { if (!panel.open) setMenuOpen(open => !open); }} />} focusRequest={(focusRequest ?? 0) + panel.returns} onSteerAll={running && !queue.waitingForInput && queue.items.length ? () => { if (!busy && !readOnly && !queue.processing) void queue.perform(queue.items, 'steer'); } : undefined} commandsEnabled commandMenuOpen={menuOpen} onCommandMenuClose={() => setMenuOpen(false)} onFile={() => fileInput.current?.click()} agentId={agentId} placeholder={running && queue.items.length ? 'Ctrl/Cmd+Enter — направить всю очередь агенту' : 'Сообщение или /команда…'} onFiles={addFiles} attachments={files.length && !panel.open ? <PendingAttachments files={files} disabled={busy || readOnly} onRemove={removeFile} /> : undefined} hasAttachments={files.length > 0} pendingVoice={capturing} value={text} disabled={busy || readOnly} running={running && !readOnly} onStop={() => { void stop(); }} onSend={() => { void send(); }}
     caretRef={caret} onChange={value => { inline.observe(value); changeText(value); }}
   /></div></div>
     <input ref={fileInput} type="file" multiple hidden aria-label="Добавить файлы" onChange={event => {

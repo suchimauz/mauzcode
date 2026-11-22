@@ -139,6 +139,54 @@ describe('InlineDictation.clear', () => {
 });
 
 describe('DraftDictation', () => {
+  it.each([' / keep', '\n/ keep', '/keep'])('deletes Russian words without consuming typed boundaries: %j', suffix => {
+    const draft = new DraftDictation();
+    const typed = 'Note:' + suffix;
+    const s = draft.begin(typed, { start: 5, end: 5 }, 0);
+    let text = draft.apply(s, phrase('a', 0, 0, 'хорошая погода сегодня!'), typed, null)!.text;
+    const tail = suffix === '/keep' ? ' /keep' : suffix;
+    expect(text = draft.deleteLastWord(text)).toBe('Note: хорошая погода' + tail);
+    expect(text = draft.deleteLastWord(text)).toBe('Note: хорошая' + tail);
+    expect(text = draft.deleteLastWord(text)).toBe(typed);
+    expect(draft.owned).toBe(false);
+    expect(draft.deleteLastWord(text)).toBe(typed);
+  });
+
+  it('freezes the truncated interim but accepts new IDs and clears the surviving prefix', () => {
+    const draft = new DraftDictation();
+    const s = draft.begin('', null, 0);
+    let text = draft.apply(s, phrase('a', 0, 0, 'один два'), '', null)!.text;
+    expect(text = draft.deleteLastWord(text)).toBe('один');
+    for (const final of [false, true]) expect(draft.apply(s, phrase('a', 0, 2, 'один два три', final), text, null)).toBeNull();
+    text = draft.apply(s, phrase('b', 1, 0, 'три'), text, null)!.text;
+    expect(text = draft.apply(s, phrase('b', 1, 1, 'четыре', true), text, null)!.text).toBe('один четыре');
+    expect(draft.clear(text)).toBe('');
+  });
+
+  it('uses visible order across visits even for repeated words; skips manual corrections', () => {
+    const draft = new DraftDictation();
+    const older = draft.begin('go', null, 0);
+    let text = draft.apply(older, phrase('a', 0, 0, 'go go'), 'go', null)!.text;
+    text = draft.apply(older, phrase('b', 1, 0, 'tail'), text, null)!.text;
+    older.close();
+    text = text.replace('tail', 'TAIL');
+    const newer = draft.begin(text, { start: 0, end: 0 }, 1);
+    text = draft.apply(newer, phrase('a', 0, 0, 'go', false, 2), text, null)!.text;
+    expect(text).toBe('go go go go TAIL');
+    expect(text = draft.deleteLastWord(text)).toBe('go go go TAIL');
+    expect(text = draft.apply(newer, phrase('a', 0, 1, 'start', true, 2), text, null)!.text).toBe('start go go TAIL');
+    expect(text = draft.deleteLastWord(text)).toBe('start go TAIL');
+    expect(draft.deleteLastWord(text)).toBe('go TAIL');
+  });
+
+  it('keeps a punctuation-only prefix eligible as a unit, without consuming typed punctuation', () => {
+    const draft = new DraftDictation();
+    const s = draft.begin('!', { start: 0, end: 0 }, 0);
+    let text = draft.apply(s, phrase('a', 0, 0, '… cafe\u0301?!'), '!', null)!.text;
+    expect(text = draft.deleteLastWord(text)).toBe('… !');
+    expect(draft.deleteLastWord(text)).toBe('!');
+  });
+
   it('owns phrases of stopped sessions until clear; manual edits detach only the touched phrase; closed sessions stay closed', () => {
     const draft = new DraftDictation();
     const first = draft.begin('Typed', null, 0);

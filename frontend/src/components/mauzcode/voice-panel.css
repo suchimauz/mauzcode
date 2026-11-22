@@ -1,7 +1,7 @@
 /*
  * Voice mode inside the ordinary input frame (`.message-input.has-bar`, see message-input.css): the transcript fills
  * the text area, the add button stays on the first line (disabled), and the bar holds the model, the waveform with the
- * remaining time, clear, pause/resume, exit and send. The frame keeps its size and position; while listening it gets an
+ * remaining time, delete, microphone, exit and send. The frame keeps its size and position; while listening it gets an
  * accent outline. Touch devices get 44 px targets and the model reduced to its icon.
  */
 .voice-panel.message-input { display:flex; flex-direction:column; outline:none; }
@@ -37,7 +37,7 @@
 @media (pointer:coarse) {
   .voice-panel-transcript { font-size:16px; }
   .voice-panel-button { width:44px; height:44px; }
-  /* Pause/resume: accent while listening, neutral when paused or failed. */
+  /* Microphone: accent while listening, neutral when muted or failed. */
   .voice-panel[data-state=listening] .voice-panel-toggle { color:var(--on-accent); background:var(--accent); }
   .voice-panel:not([data-can-clear]) .voice-panel-clear { display:none; }
   /* The bar is crowded: the model collapses to its icon and chevron. */
@@ -49,3 +49,5 @@
   .voice-panel, .voice-panel-button { transition:none; }
   .voice-panel[data-state=listening] .voice-panel-wave i { animation:none; height:10px; }
 }
+
+.voice-panel-clear { touch-action:manipulation; user-select:none; -webkit-touch-callout:none; }

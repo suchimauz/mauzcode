@@ -99,23 +99,58 @@ describe('useVoiceCapture session', () => {
     expect(peak).toBeLessThan(0.31 * 32767);
   });
 
-  it('counts down the remaining server time', async () => {
+  it('keeps the original deadline across toggles and retires a muted run on server timeout', async () => {
     install();
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
     const { result } = renderHook(() => useVoiceCapture({ agentId: 'chat-a' }));
-    await listen(result);
-    act(() => { vi.advanceTimersByTime(61_000); });
-    expect(result.current.remainingMs).toBe(4 * 60_000 - 1000);
+    const { socket } = await listen(result);
+    act(() => { vi.advanceTimersByTime(61_000); result.current.setMuted(true); });
+    expect(result.current.remainingMs).toBe(239_000);
+    act(() => { vi.advanceTimersByTime(60_000); result.current.setMuted(false); result.current.setMuted(true); });
+    expect(result.current.remainingMs).toBe(179_000);
+    expect(result.current.generation).toBe(1);
+    expect(result.current.session?.sessionId).toBe('s1');
+    act(() => { vi.advanceTimersByTime(179_000); });
+    expect(result.current.remainingMs).toBe(0);
+    act(() => socket.receive({ type: 'error', code: 'timeout' }));
+    expect(result.current.state).toBe('error');
+    expect(result.current.session).toBeNull();
+    expect(streams[0].tracks[0].stopped).toBe(true);
+    expect(sockets).toHaveLength(1);
+    expect(socket.controls().map(c => c.type)).not.toContain('finish');
   });
 
-  it('pause finalizes, sends the tail before finish, releases audio and sends nothing while paused; resume opens a new generation', async () => {
+  it('toggles on one run, drains speech, and releases only on terminal finish before a new start', async () => {
     install();
     const phrases: VoicePhraseEvent[] = [];
     const { result } = renderHook(() => useVoiceCapture({ agentId: 'chat-a', onPhrase: e => phrases.push(e) }));
     const { socket, node } = await listen(result);
     node.feed(130); // leaves a partial frame in the worklet
-    let paused!: Promise<boolean>;
-    act(() => { paused = result.current.pause(); });
+    const track = streams[0].tracks[0];
+    const stop = vi.spyOn(track, 'stop');
+    const before = socket.frames().length;
+    act(() => result.current.setMuted(true));
+    expect(result.current.state).toBe('muted');
+    expect(track.enabled).toBe(false);
+    expect(socket.frames()).toHaveLength(before + 1);
+    expect(new Int16Array(socket.frames().at(-1)!.buffer, 4).some(v => v !== 0)).toBe(true);
+    node.feed(500);
+    expect(socket.frames().slice(before + 1).every(f => new Int16Array(f.buffer, 4).every(v => v === 0))).toBe(true);
+    act(() => result.current.setMuted(false));
+    expect(track.enabled).toBe(true);
+    act(() => result.current.setMuted(true));
+    // A delayed worklet frame and stale unmute ACK cannot disclose samples or re-enable the device.
+    node.port.onmessage!({ data: { type: 'gated', epoch: 2 } } as MessageEvent);
+    node.port.onmessage!({ data: { type: 'frame', epoch: 0, pcm: new Int16Array(960).fill(-999).buffer } } as MessageEvent);
+    expect(new Int16Array(socket.frames().at(-1)!.buffer, 4).every(v => v === 0)).toBe(true);
+    expect(track.enabled).toBe(false);
+    expect(socket.frames().every((f, i) => f.getUint32(0, true) === i)).toBe(true);
+    expect(sockets).toHaveLength(1);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(socket.controls()).toHaveLength(1);
+    node.feed(10);
+    let done!: Promise<boolean>;
+    act(() => { done = result.current.finish(); });
     await act(flush);
     expect(result.current.state).toBe('finalizing');
     const controls = socket.sent.map(m => typeof m === 'string' ? JSON.parse(m).type : 'frame');
@@ -130,19 +165,45 @@ describe('useVoiceCapture session', () => {
     expect(socket.sent.length).toBe(sentBefore);
     act(() => socket.receive({ type: 'phrase', id: 'p1', order: 0, revision: 2, text: 'hello world', final: true }));
     act(() => socket.receive({ type: 'completed' }));
-    await act(async () => { expect(await paused).toBe(true); });
-    expect(result.current.state).toBe('paused');
+    await act(async () => { expect(await done).toBe(true); });
+    expect(result.current.state).toBe('idle');
+    expect(stop).toHaveBeenCalledTimes(1);
     expect(result.current.remainingMs).toBeNull();
     expect(phrases).toEqual([{ type: 'phrase', generation: 1, id: 'p1', order: 0, revision: 2, text: 'hello world', final: true }]);
     expect(socket.readyState).toBe(3);
 
-    await act(async () => { void result.current.resume(); await flush(); });
+    await act(async () => { void result.current.start(); await flush(); });
     expect(sockets).toHaveLength(2);
     act(() => sockets[1].open());
     expect(sockets[1].controls()[0]).toEqual({ type: 'start', agentId: 'chat-a', generation: 2 });
     act(() => sockets[1].receive(ready));
     nodes[1].feed(100);
     expect(sockets[1].frames()[0].getUint32(0, true)).toBe(0); // sequence restarts per generation
+  });
+
+  it('keeps a proven pre-mute frame and tail when a rapid unmute overtakes delayed worklet callbacks', async () => {
+    install();
+    const { result } = renderHook(() => useVoiceCapture({ agentId: 'chat-a' }));
+    const { socket, node } = await listen(result);
+    const deliver = node.port.onmessage!;
+    const queue: MessageEvent[] = [];
+    node.port.onmessage = event => queue.push(event);
+    node.feed(53); // one complete speech frame and a partial tail, both known to precede mute
+    act(() => result.current.setMuted(true));
+    node.feed(160); // the fixture still presents nonzero input to the muted processor
+    act(() => result.current.setMuted(false));
+    expect(streams[0].tracks[0].enabled).toBe(false);
+    expect(socket.frames()).toHaveLength(0);
+    queue.forEach(deliver); node.port.onmessage = deliver;
+    expect(streams[0].tracks[0].enabled).toBe(true);
+    const pcm = socket.frames().map(f => new Int16Array(f.buffer, 4));
+    expect(pcm.length).toBeGreaterThan(2);
+    expect(pcm.slice(0, 2).every(frame => frame.some(v => v > 5000))).toBe(true);
+    expect(pcm.slice(2).every(frame => frame.every(v => v === 0))).toBe(true);
+    node.feed(80);
+    expect(new Int16Array(socket.frames().at(-1)!.buffer, 4).some(v => v > 5000)).toBe(true);
+    expect(socket.frames().every((f, i) => f.getUint32(0, true) === i)).toBe(true);
+    expect(socket.controls().map(c => c.type)).toEqual(['start']);
   });
 
   it('navigation releases tracks, cancels the session and ignores its late events', async () => {
