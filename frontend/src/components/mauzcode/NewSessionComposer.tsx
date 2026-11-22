@@ -69,12 +69,13 @@ export function NewSessionComposer({ draft, onChange, projects, onCreated, onPen
   useEffect(() => { onPending(busy || !!pending); }, [busy, pending, onPending]);
   const change = (patch: Partial<NewSessionDraft>) => { if (!busy && !pending) onChange({ ...draft, ...patch, requestKey: crypto.randomUUID() }); };
   const send = async () => {
-    if (lock.current || missingFiles || (!pending && (!modelReady || !draft.model || (!draft.text.trim() && !files.length) || !selected))) return;
+    if (lock.current || missingFiles || (!pending && (!modelReady || !draft.model || !selected))) return;
     lock.current = true; setBusy(true); setError('');
     const snapshot = pending || { ...draft, ...(presetId ? { presetId } : {}), text: draft.text.trim(), fileCount: files.length };
     const snapshotFiles = pending ? shownFiles : [...files];
     try {
-      const resolved = await validateCommand(snapshot.text, snapshotFiles.length);
+      // An empty draft creates the session without a message, so there is no command to resolve.
+      const resolved = snapshot.text || snapshotFiles.length ? await validateCommand(snapshot.text, snapshotFiles.length) : null;
       if (resolved?.command.kind === 'client') {
         await runClientCommand(resolved.command.clientAction, resolved.args, { file: () => picker.current?.click() });
         change({ text: '' }); lock.current = false; setBusy(false); return;
@@ -88,7 +89,7 @@ export function NewSessionComposer({ draft, onChange, projects, onCreated, onPen
     try {
       const defaults = await getNewSessionDefaults();
       const result = await (snapshotFiles.length ? submitNewSession(snapshot, defaults.csrfToken, snapshotFiles) : submitNewSession(snapshot, defaults.csrfToken));
-      if (result.status !== 'sent' || !result.agentId) throw new Error('Сервер не подтвердил отправку. Повторите с тем же ключом.');
+      if ((result.status !== 'sent' && result.status !== 'created') || !result.agentId) throw new Error('Сервер не подтвердил отправку. Повторите с тем же ключом.');
       clearNewSessionDraft(); try { sessionStorage.removeItem(pendingKey); } catch { /* Optional storage. */ }
       pendingFiles.delete(snapshot.requestKey); setFiles([]); setPending(null); onCreated(result.agentId);
     } catch (err) {
@@ -99,7 +100,7 @@ export function NewSessionComposer({ draft, onChange, projects, onCreated, onPen
   };
   return <div className="new-session-composer">
     <div className="new-session-chips"><Menu.Root><Menu.Trigger className="new-session-chip" disabled={busy || !!pending} aria-label="Выбрать Workspace"><FolderOpen size={16} strokeWidth={1} /><span>{available.find(p => p.id === shown.projectId)?.title || 'Выбрать Workspace'}</span></Menu.Trigger><Menu.Portal><Menu.Positioner side="top" align="start" sideOffset={8} collisionPadding={12} className="floating-positioner"><Menu.Popup className="workspace-view-menu" aria-label="Workspace"><Menu.RadioGroup value={draft.projectId} onValueChange={projectId => change({ projectId })}>{available.map(p => <Menu.RadioItem value={p.id} key={p.id} className="workspace-menu-item" title={[p.dir,p.host].filter(Boolean).join(' · ')}><FolderOpen size={14} strokeWidth={1} /><span>{p.title}</span><Menu.RadioItemIndicator><Check size={14} strokeWidth={1} /></Menu.RadioItemIndicator></Menu.RadioItem>)}</Menu.RadioGroup></Menu.Popup></Menu.Positioner></Menu.Portal></Menu.Root><AgentPresetPicker presets={presets.list} value={presetId} disabled={locked} onChange={presetId => change({ presetId })} /></div>
-    <div ref={anchor} className="composer-input-anchor"><MascotPicker value={mascot} disabled={locked} onChange={mascot => change({ mascot })} /><MessageInput bar={{ start: <ModelPicker onReadyChange={setModelReady} agentId="" running={false} busy={busy || !!pending} revision={0} onSaved={() => {}} onBusyChange={() => {}} draft={{ model: shown.model, effort: shown.effort, onChange: (model, effort) => change({ model, effort }) }} /> }} leading={<ComposerAddButton open={menuOpen} disabled={locked} onClick={() => setMenuOpen(open => !open)} />} commandsEnabled commandMenuOpen={menuOpen} onCommandMenuClose={() => setMenuOpen(false)} onFile={() => picker.current?.click()} attachments={shownFiles.length > 0 ? <PendingAttachments files={shownFiles} disabled={locked} onRemove={index => { if (!locked) { setFiles(files.filter((_, i) => i !== index)); change({}); } }} /> : undefined} onFiles={addFiles} hasAttachments={shownFiles.length > 0} value={shown.text} placeholder="How can I help you today?" disabled={busy || !!pending} sendDisabled={!modelReady} onChange={text => change({ text })} onSend={() => { void send(); }} /></div>
+    <div ref={anchor} className="composer-input-anchor"><MascotPicker value={mascot} disabled={locked} onChange={mascot => change({ mascot })} /><MessageInput bar={{ start: <ModelPicker onReadyChange={setModelReady} agentId="" running={false} busy={busy || !!pending} revision={0} onSaved={() => {}} onBusyChange={() => {}} draft={{ model: shown.model, effort: shown.effort, onChange: (model, effort) => change({ model, effort }) }} /> }} leading={<ComposerAddButton open={menuOpen} disabled={locked} onClick={() => setMenuOpen(open => !open)} />} commandsEnabled commandMenuOpen={menuOpen} onCommandMenuClose={() => setMenuOpen(false)} onFile={() => picker.current?.click()} attachments={shownFiles.length > 0 ? <PendingAttachments files={shownFiles} disabled={locked} onRemove={index => { if (!locked) { setFiles(files.filter((_, i) => i !== index)); change({}); } }} /> : undefined} onFiles={addFiles} hasAttachments={shownFiles.length > 0} value={shown.text} placeholder="How can I help you today?" disabled={busy || !!pending} allowEmptySubmit sendDisabled={!modelReady || (!pending && !selected)} onChange={text => change({ text })} onSend={() => { void send(); }} /></div>
     {dragging && anchor.current?.closest('.chat-panel') && createPortal(<div className="chat-file-drop-overlay" aria-hidden="true">Отпустите файлы, чтобы прикрепить</div>, anchor.current.closest('.chat-panel')!)}
     <input ref={picker} type="file" multiple hidden disabled={!!pending} onChange={event => { addFiles(Array.from(event.target.files || [])); event.target.value = ''; }} />
     <div className="composer-footer new-session-footer"><div className="composer-metrics-row"><span className="new-session-draft-label">{shown.title?.trim() || 'New Session'}</span><span className="composer-metrics-context new-session-context" data-level="unknown"><Circle size={14} strokeWidth={2} aria-hidden="true" /><span>—</span><span className="sr-only">Контекст ещё не создан</span></span></div></div>

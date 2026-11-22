@@ -1,7 +1,7 @@
 /**
  * Read new-chat model defaults or create and submit one project chat exactly once
  *
- * Use for UI Lab drafts without an agent. Authenticated JSON or multipart POST binds a durable owner-scoped request key before native creation and message acceptance; interrupted creation fails closed; a durably bound and configured agent can retry native message acceptance with the same idempotency key, never creation. GET returns model choices, agent presets (id, name, description, sortOrder only), the default preset id and a cookie-bound CSRF token without creating an agent.
+ * Use for UI Lab drafts without an agent. Blank text without files creates and configures the agent without any message and answers status created. Authenticated JSON or multipart POST binds a durable owner-scoped request key before native creation and message acceptance; interrupted creation fails closed; a durably bound and configured agent can retry native message acceptance with the same idempotency key, never creation. GET returns model choices, agent presets (id, name, description, sortOrder only), the default preset id and a cookie-bound CSRF token without creating an agent.
  * @param opts.req Authenticated GET defaults request or CSRF-protected POST with requestKey, projectId, optional presetId (an existing agent preset; omitted uses the default, unknown is rejected before creation), optional title (at most 120 characters are kept), model, mascot (omitted or random keeps SQL DEFAULT; otherwise crab/deepy/whalegirl/desksprite/bitty/tmuxai/planet/rainbow-terminal-cat), text, and up to 10 files (40 MiB each, 80 MiB total).
  */
 export default async function (
@@ -56,7 +56,9 @@ export default async function (
     }else return reply({error:'JSON or multipart body required'},415);
     if(files.length>10||files.some(file=>file.size>40*1024*1024)||files.reduce((sum,file)=>sum+file.size,0)>80*1024*1024)return reply({error:'Не более 10 файлов, до 40 МБ каждый и 80 МБ суммарно.'},413);
     files=files.filter(file=>file.size>0);
-    if(!data||Object.keys(data).some(k=>!allowed.includes(k))||typeof data.requestKey!=='string'||! /^[A-Za-z0-9_-]{16,128}$/.test(data.requestKey)||typeof data.projectId!=='string'||!data.projectId||typeof data.text!=='string'||(!data.text.trim()&&!files.length)||data.text.length>64000||(data.model!==undefined&&typeof data.model!=='string'))return reply({error:'Invalid draft submission'},400);
+    if(!data||Object.keys(data).some(k=>!allowed.includes(k))||typeof data.requestKey!=='string'||! /^[A-Za-z0-9_-]{16,128}$/.test(data.requestKey)||typeof data.projectId!=='string'||!data.projectId||typeof data.text!=='string'||data.text.length>64000||(data.model!==undefined&&typeof data.model!=='string'))return reply({error:'Invalid draft submission'},400);
+    // Blank text without files creates a configured session and accepts no message.
+    const empty=!data.text.trim()&&!files.length;
     if(data.title!==undefined&&typeof data.title!=='string')return reply({error:'Invalid advanced fields'},400);
     const advanced={title:data.title||''};
     const hasAdvanced=advanced.title.length>0;
@@ -77,10 +79,11 @@ export default async function (
     const key='mauzcode-ui-new-session:'+owner+':'+data.requestKey;
     type Claim={fingerprint:string;status:string;agentId?:string;projectId:string;ready?:boolean};
     const read=async()=>{const [row]=await ctx.fns.procs.db.select({sql:'SELECT value FROM kv WHERE key=?',params:[key]});return row?JSON.parse(row.value) as Claim:null;};
-    const replay=(claim:Claim)=>claim.fingerprint!==fingerprint?reply({error:'Request key already used for different input'},409):claim.status==='sent'?reply({agentId:claim.agentId,projectId:claim.projectId,status:'sent'},200):reply({error:claim.status==='failed'?'First submission interrupted; inspect the chat before retrying.':'First submission in progress; retry the same request key.',status:claim.status,agentId:claim.agentId??null,projectId:claim.projectId},409);
+    const replay=(claim:Claim)=>claim.fingerprint!==fingerprint?reply({error:'Request key already used for different input'},409):claim.status==='sent'||claim.status==='created'?reply({agentId:claim.agentId,projectId:claim.projectId,status:claim.status},200):reply({error:claim.status==='failed'?'First submission interrupted; inspect the chat before retrying.':'First submission in progress; retry the same request key.',status:claim.status,agentId:claim.agentId??null,projectId:claim.projectId},409);
     const prior=await read();
     if(prior){
-        if(prior.fingerprint!==fingerprint||prior.status==='sent'||!prior.agentId||!prior.ready)return replay(prior);
+        if(prior.fingerprint!==fingerprint||prior.status==='sent'||prior.status==='created'||!prior.agentId||!prior.ready)return replay(prior);
+        if(empty){prior.status='created';await ctx.fns.procs.db.run({sql:'UPDATE kv SET value=? WHERE key=?',params:[JSON.stringify(prior),key]});return replay(prior);}
         // Native acceptMessage serializes and deduplicates this exact agent/key/payload.
         // ready is persisted only after agent binding, mascot and reasoning configuration.
         try{
@@ -110,6 +113,7 @@ export default async function (
      if(mascot)await ctx.fns.procs.db.run({sql:'UPDATE agents SET mascot=? WHERE id=?',params:[mascot,claim.agentId!]});
      await ctx.fns.agent.setReasoningEffort({id:claim.agentId!,effort});
      claim.ready=true;await save();
+     if(empty){claim.status='created';await save();return reply({agentId:claim.agentId,projectId:claim.projectId,status:'created'},201);}
      const message=messageRequest();
      const response=await ctx.fns.agent.acceptMessage({req:message,params:{id:claim.agentId!}});
      if(response.status>=400)throw new Error('Message acceptance failed');

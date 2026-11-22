@@ -7,7 +7,7 @@ import { readNewSessionDraft, resolveNewSessionPreset, type NewSessionDraft } fr
 import userEvent from '@testing-library/user-event';
 import { ApiError } from '../lib/mauzcode';
 import { useMauzCode } from '../hooks/useMauzCode';
-vi.mock('../components/mauzcode/ModelPicker', () => ({ ModelPicker: ({ draft, onReadyChange }: { draft: { onChange: (m:string,e:string)=>void }; onReadyChange?: (ready: boolean) => void }) => { useEffect(() => { onReadyChange?.(true); }, [onReadyChange]); return <button onClick={() => draft.onChange('test:chosen','high')}>Choose model</button>; } }));
+vi.mock('../components/mauzcode/ModelPicker', () => ({ ModelPicker: ({ draft, onReadyChange }: { draft: { onChange: (m:string,e:string)=>void }; onReadyChange?: (ready: boolean) => void }) => { useEffect(() => { onReadyChange?.(true); }, [onReadyChange]); return <button type="button" onClick={() => draft.onChange('test:chosen','high')}>Choose model</button>; } }));
 vi.mock('../components/mauzcode/CrabMascot', () => ({ CrabMascot: ({ control }: { control?: (className: string) => unknown }) => control?.('crab-hit') ?? null }));
 vi.mock('../lib/newSession', async importOriginal => ({ ...await importOriginal<typeof import('../lib/newSession')>(), getNewSessionDefaults: vi.fn(async () => ({ defaultModel:'test:default',csrfToken:'token' })), submitNewSession: vi.fn() }));
 vi.mock('../lib/live', () => ({ loadLiveClient: async () => {} }));
@@ -212,4 +212,46 @@ it('Pet picker on the mascot: no pet chip; picking from the mascot is submitted 
   await screen.findByText('Повторить отправку');
   expect(vi.mocked(submitNewSession).mock.calls[0][0]).toMatchObject({ mascot:'calico' });
   expect(screen.getByRole('button', { name: 'Выбрать питомца: Calico' })).toBeDisabled();
+});
+it('Enter on an empty draft creates a session without a message', async () => {
+  const { submitNewSession } = await import('../lib/newSession');
+  vi.mocked(submitNewSession).mockResolvedValue({agentId:'empty',projectId:'p1',status:'created'});
+  render(<Draft />);
+  const send = await screen.findByRole('button',{name:'Создать сессию'});
+  await waitFor(() => expect(send).toBeEnabled());
+  fireEvent.keyDown(screen.getByRole('textbox'),{key:'Enter'});
+  await waitFor(() => expect(created).toHaveBeenCalledWith('empty'));
+  expect(submitNewSession).toHaveBeenCalledTimes(1);
+  expect(submitNewSession).toHaveBeenCalledWith(expect.objectContaining({text:'',projectId:'p1'}),'token');
+});
+it('send button on a whitespace draft creates a session; label follows the text', async () => {
+  const { submitNewSession } = await import('../lib/newSession');
+  vi.mocked(submitNewSession).mockResolvedValue({agentId:'empty',projectId:'p1',status:'created'});
+  render(<Draft />);
+  fireEvent.input(screen.getByRole('textbox'),{target:{textContent:'Hi'}});
+  expect(await screen.findByRole('button',{name:'Отправить сообщение'})).toBeInTheDocument();
+  fireEvent.input(screen.getByRole('textbox'),{target:{textContent:'  '}});
+  const send = await screen.findByRole('button',{name:'Создать сессию'});
+  await waitFor(() => expect(send).toBeEnabled());
+  fireEvent.click(send);
+  await waitFor(() => expect(created).toHaveBeenCalledWith('empty'));
+  expect(submitNewSession).toHaveBeenCalledWith(expect.objectContaining({text:''}),'token');
+});
+it('without a Workspace an empty draft cannot be created', async () => {
+  const { submitNewSession } = await import('../lib/newSession');
+  render(<NewSessionComposer draft={{...initial,projectId:''}} onChange={() => {}} projects={projects} onCreated={created} onPending={() => {}} />);
+  expect(await screen.findByRole('button',{name:'Создать сессию'})).toBeDisabled();
+  fireEvent.keyDown(screen.getByRole('textbox'),{key:'Enter'});
+  fireEvent.submit(screen.getByRole('form',{name:'Ввод сообщения'}));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(submitNewSession).not.toHaveBeenCalled();
+});
+it('an existing chat input still ignores empty Enter', async () => {
+  const { MessageInput } = await import('../components/mauzcode/MessageInput');
+  const onSend = vi.fn();
+  render(<MessageInput value="  " onChange={() => {}} onSend={onSend} />);
+  expect(screen.getByRole('button',{name:'Отправить сообщение'})).toBeDisabled();
+  fireEvent.keyDown(screen.getByRole('textbox'),{key:'Enter'});
+  fireEvent.submit(screen.getByRole('form',{name:'Ввод сообщения'}));
+  expect(onSend).not.toHaveBeenCalled();
 });

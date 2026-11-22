@@ -59,7 +59,7 @@ export function submitNewSession(draft: NewSessionDraft, csrfToken: string, file
     body.set('title', title);
     if (draft.presetId) body.set('presetId', draft.presetId);
     files.forEach(file => body.append('files', file, file.name));
-    return requestJson<{ agentId: string; projectId: string; status: 'sent' }>('/ui-lab-api/new-session', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body });
+    return requestJson<{ agentId: string; projectId: string; status: 'sent' | 'created' }>('/ui-lab-api/new-session', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body });
   }
-  return requestJson<{ agentId: string; projectId: string; status: 'sent' }>('/ui-lab-api/new-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ title, mascot: normalizeMascotChoice(draft.mascot), requestKey: draft.requestKey, projectId: draft.projectId, ...(draft.model ? { model: draft.model } : {}), ...(draft.effort ? { effort: draft.effort } : {}), ...(draft.presetId ? { presetId: draft.presetId } : {}), text: draft.text.trim() }) });
+  return requestJson<{ agentId: string; projectId: string; status: 'sent' | 'created' }>('/ui-lab-api/new-session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ title, mascot: normalizeMascotChoice(draft.mascot), requestKey: draft.requestKey, projectId: draft.projectId, ...(draft.model ? { model: draft.model } : {}), ...(draft.effort ? { effort: draft.effort } : {}), ...(draft.presetId ? { presetId: draft.presetId } : {}), text: draft.text.trim() }) });
 }

@@ -9,6 +9,8 @@ import { InputCaret } from './InputCaret';
 export type MessageInputProps = {
   value: string; onChange: (value: string) => void; onSend: () => void;
   focusRequest?: number;
+  /** New-session composer only: Enter and the send button submit even an empty draft. */
+  allowEmptySubmit?: boolean;
   disabled?: boolean; sendDisabled?: boolean; running?: boolean; onStop?: () => void; onSteerAll?: () => void;
   commandMenuOpen?: boolean; onCommandMenuClose?: () => void; onFile?: () => void; agentId?: string;
   placeholder?: string; hasAttachments?: boolean; pendingVoice?: boolean; attachments?: ReactNode; onFiles?: (files: File[]) => void; commandsEnabled?: boolean;
@@ -29,7 +31,7 @@ export type MessageInputProps = {
  */
 export type DraftCaretHandle = { selection(): { start: number; end: number } | null; select(start: number, end: number): void };
 /** One-line controlled input; grows for wrapped lines, then scrolls at 180px. */
-export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, agentId, value, onChange, onSend, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef, leading, bar }: MessageInputProps) {
+export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, agentId, value, onChange, onSend, allowEmptySubmit = false, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef, leading, bar }: MessageInputProps) {
   const input = useRef<HTMLTextAreaElement>(null);
   const menuId = useId();
   const editor = useRef<CommandEditorHandle>(null);
@@ -81,7 +83,8 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
     editor.current?.focus(); input.current?.focus();
   };
   // A still-unrecognized phrase may be the entire message. The composer decides after finish.
-  const canSubmit = !!value.trim() || hasAttachments || pendingVoice;
+  const emptyDraft = !value.trim() && !hasAttachments && !pendingVoice;
+  const canSubmit = allowEmptySubmit || !emptyDraft;
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.nativeEvent.isComposing) return;
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && onSteerAll) { event.preventDefault(); if (!disabled) onSteerAll(); return; }
@@ -115,7 +118,7 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
       if (!had) editor.current?.select(value.length, value.length);
     } else { input.current?.focus({ preventScroll: true }); }
   };
-  const sendButton = <IconButton type={stop ? 'button' : 'submit'} className="message-input-send" label={stop ? 'Остановить выполнение' : running && !value.trim().startsWith('/') ? 'В очередь' : 'Отправить сообщение'} disabled={disabled || (!stop && (sendDisabled || !canSubmit))} onClick={stop ? onStop : undefined}>
+  const sendButton = <IconButton type={stop ? 'button' : 'submit'} className="message-input-send" label={stop ? 'Остановить выполнение' : allowEmptySubmit && emptyDraft ? 'Создать сессию' : running && !value.trim().startsWith('/') ? 'В очередь' : 'Отправить сообщение'} disabled={disabled || (!stop && (sendDisabled || !canSubmit))} onClick={stop ? onStop : undefined}>
     {stop ? <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><rect x="6" y="6" width="4" height="4" rx="1.2" fill="currentColor" /></svg> : <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="miter" aria-hidden="true"><path d="M8 3.75h5.25v7H3M6 7.75l-3 3 3 3" /></svg>}
   </IconButton>;
   return <form {...track} className={`message-input${bar ? ' has-bar' : ''}${leading ? ' has-leading' : ''}`} aria-label="Ввод сообщения" onPointerDown={focusFromFrame} onSubmit={event => { event.preventDefault(); if (!disabled && !sendDisabled && canSubmit) onSend(); }} aria-busy={disabled} onDragOver={event => { if (onFiles && !disabled && event.dataTransfer.types.includes('Files')) event.preventDefault(); }} onDrop={event => { if (onFiles && event.dataTransfer.files.length) { event.preventDefault(); if (!disabled) onFiles(Array.from(event.dataTransfer.files)); } }}>
