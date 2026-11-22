@@ -1,4 +1,9 @@
-## ADDED Requirements
+# websearch-provider-sdk Specification
+
+## Purpose
+Plugins can register web search providers that users select in Settings or agents select per request. All providers return results in the same format, and searches never silently switch providers.
+
+## Requirements
 
 ### Requirement: Declarative provider registration
 A mounted module SHALL declare a web search provider with a file `$websearchProvider_<id>.ts` default-exporting `{ apiVersion: 1, label, description, handlers: { search, status? }, settings? }`, where `<id>` is kebab-case. The websearch loader SHALL register valid declarations and SHALL reject an invalid or duplicate declaration with a fixed diagnostic while still registering every other declaration in the same batch.

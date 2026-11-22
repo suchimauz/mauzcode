@@ -10,6 +10,8 @@ type DeclaredItem = {
     source: 'file' | 'db' | 'env' | 'default';
     /** Instance settings file that fixes the value (source = file). */
     path?: string;
+    /** Enum only: the current value is not among the resolved options (for example a removed provider). */
+    unavailable?: boolean;
 };
 
 /** Lists declared settings with their resolved values and provenance. */
@@ -19,14 +21,21 @@ export default async function (ctx: Context, _session: Session | null, _opts?: {
 
     const files = (await ctx.fns.settings.files({})).values;
     const out: DeclaredItem[] = [];
-    for (const [regKey, descriptor] of registry.entries()) {
+    for (let [regKey, descriptor] of registry.entries()) {
         const dotIdx = regKey.indexOf('.');
         if (dotIdx <= 0) continue;
         const module = regKey.slice(0, dotIdx);
         const key = regKey.slice(dotIdx + 1);
 
+        // Enum options may come from the declaring module at runtime (`optionsFrom`); list the resolved ones.
+        if (descriptor?.type === 'enum' && descriptor.optionsFrom !== undefined) {
+            descriptor = { ...descriptor, options: (await ctx.fns.settings.enumOptions({ module, key })).options };
+        }
+        const mark = (item: DeclaredItem): DeclaredItem =>
+            item.descriptor?.type === 'enum' && Array.isArray(item.descriptor.options) && item.currentValue != null
+                && !item.descriptor.options.includes(item.currentValue) ? { ...item, unavailable: true } : item;
         const fixed = files[regKey];
-        if (fixed) { out.push({ module, key, descriptor, currentValue: fixed.value, source: 'file', path: fixed.path }); continue; }
+        if (fixed) { out.push(mark({ module, key, descriptor, currentValue: fixed.value, source: 'file', path: fixed.path })); continue; }
         // Detect provenance.
         const dbRow = (await ctx.fns.procs.db.select({
             sql: "SELECT value FROM settings WHERE module = ? AND scope_type = 'global' AND scope_id = '' AND key = ?",
@@ -49,7 +58,7 @@ export default async function (ctx: Context, _session: Session | null, _opts?: {
             currentValue = descriptor.default;
         }
 
-        out.push({ module, key, descriptor, currentValue, source });
+        out.push(mark({ module, key, descriptor, currentValue, source }));
     }
 
     out.sort((a, b) => (a.module + a.key).localeCompare(b.module + b.key));

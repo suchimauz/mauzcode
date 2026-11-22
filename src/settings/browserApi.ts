@@ -24,7 +24,7 @@ export default async function (
     if(req.method==='GET'){
      if(opts.section==='declared'){
      const items=await ctx.fns.settings.declared({});
-     return reply({items:items.map(i=>({module:i.module,key:i.key,source:i.source,path:i.path,type:i.descriptor.type,title:i.descriptor.title,description:i.descriptor.description,options:i.descriptor.options,min:i.descriptor.min,max:i.descriptor.max,env:i.descriptor.env,...(i.descriptor.type==='secret'?{configured:!!i.currentValue}:{value:i.currentValue,defaultValue:i.descriptor.default})}))});
+     return reply({items:items.map(i=>({module:i.module,key:i.key,source:i.source,path:i.path,type:i.descriptor.type,title:i.descriptor.title,description:i.descriptor.description,options:i.descriptor.options,min:i.descriptor.min,max:i.descriptor.max,env:i.descriptor.env,...(i.unavailable?{unavailable:true}:{}),...(i.descriptor.type==='secret'?{configured:!!i.currentValue}:{value:i.currentValue,defaultValue:i.descriptor.default})}))});
      }
      const snapshot=await ctx.fns.settings.status({});
      const status={openai:snapshot.openai,anthropic:snapshot.anthropic,kimi:snapshot.kimi,groq:snapshot.groq,openrouter:snapshot.openrouter};
@@ -48,7 +48,7 @@ export default async function (
      if(data.action!=='save')return reply({error:'Unknown action'},400);
      const v=data.value;
      if(d.type==='secret'&&v==='')return reply({ok:true});
-     const valid=d.type==='number'?typeof v==='number'&&Number.isFinite(v)&&(d.min==null||v>=d.min)&&(d.max==null||v<=d.max):d.type==='boolean'?typeof v==='boolean':d.type==='enum'?Array.isArray(d.options)&&d.options.includes(v):typeof v==='string';
+     const valid=d.type==='number'?typeof v==='number'&&Number.isFinite(v)&&(d.min==null||v>=d.min)&&(d.max==null||v<=d.max):d.type==='boolean'?typeof v==='boolean':d.type==='enum'?typeof v==='string'&&(await ctx.fns.settings.enumOptions({module:target.module,key:target.key})).options.includes(v):typeof v==='string';
      if(!valid)return reply({error:'Invalid setting value'},400);
      await ctx.fns.settings.set({...target,value:v,isSecret:d.type==='secret'});
     }else{

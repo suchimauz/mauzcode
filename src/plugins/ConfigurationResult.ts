@@ -10,6 +10,8 @@ export type ConfigurationResult = {
         source: 'db' | 'env' | 'file' | 'default';
         secret: boolean;
         configured: boolean;
+        /** Enum only: the current value is not among the resolved options (for example a removed provider). */
+        unavailable?: boolean;
     }>;
     /** Secret references and presence only; values never returned or decrypted. */
     secrets: Array<{name: string; ref: string; title?: string; description?: string; required?: boolean; configured: boolean}>;

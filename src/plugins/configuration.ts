@@ -76,7 +76,7 @@ export default async function (
      const descriptor: types.plugins.ConfigurationResult['settings'][number]['descriptor'] = {type: d.type};
      for (const key of ['title','description','env'] as const) if (typeof d[key] === 'string') descriptor[key] = d[key];
      if (!secret) { descriptor.default = d.default; if (Array.isArray(d.options)) descriptor.options = d.options; if (typeof d.min === 'number') descriptor.min = d.min; if (typeof d.max === 'number') descriptor.max = d.max; }
-     result.settings.push({name,module:item.module,key:item.key,descriptor,source:item.source,secret,configured:item.currentValue !== undefined && item.currentValue !== null && item.currentValue !== '',...(!secret ? {currentValue:item.currentValue} : {})});
+     result.settings.push({name,module:item.module,key:item.key,descriptor,source:item.source,secret,configured:item.currentValue !== undefined && item.currentValue !== null && item.currentValue !== '',...(!secret ? {currentValue:item.currentValue} : {}),...(item.unavailable ? {unavailable:true} : {})});
     }
     return result;
 }

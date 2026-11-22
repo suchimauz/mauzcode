@@ -29,11 +29,11 @@ const normalize = (value: string): string => value.toLowerCase().replace(/[^\p{L
  * results as readable Markdown, asks one LLM for a short answer plus per-claim quotes, and then checks each quote
  * against the page text it was attributed to, marking it `verified`. Prefer websearch.search for link discovery only,
  * and websearch.fetch when the URL is already known. Reading source pages still requires the user's browser,
- * even when search uses the browser-free OpenSERP backend.
+ * even when search uses a browser-free provider such as OpenSERP or Brave.
  *
  * @param opts.question Natural-language question to answer from the public web.
  * @param opts.pages Number of top search results read as evidence. @default 3 @minimum 1 @maximum 8
- * @param opts.engine Search backend passed to websearch.search; when omitted, the `websearch.defaultEngine` setting applies.
+ * @param opts.engine Registered search provider id passed to websearch.search (see websearch.providers); when omitted, the `websearch.defaultEngine` setting applies.
  * @param opts.model Provider-qualified model override; when omitted, uses `websearch.fetchModel`, then the global default model.
  * @param opts.maxCharsPerPage Maximum readable Markdown characters kept per page. @default 12000 @minimum 1000 @maximum 50000
  * @param opts.requireVerified Drop citations whose quote was not found in its source page. @default false
@@ -46,8 +46,8 @@ export default async function (
         question: string;
         /** Number of top search results read as evidence. @default 3 @minimum 1 @maximum 8 */
         pages?: number;
-        /** Search backend passed to websearch.search; when omitted, the `websearch.defaultEngine` setting applies. */
-        engine?: 'google-browser' | 'openserp';
+        /** Registered search provider id passed to websearch.search (see websearch.providers); when omitted, the `websearch.defaultEngine` setting applies. */
+        engine?: string;
         /** Provider-qualified model override; when omitted, uses `websearch.fetchModel`, then the global default model. */
         model?: string;
         /** Maximum readable Markdown characters kept per page. @default 12000 @minimum 1000 @maximum 50000 */

@@ -54,7 +54,8 @@ export default async function (
      } else if (['string','text','enum'].includes(d.type)) {
       if (typeof raw !== 'string') throw new Error('Expected text: ' + item.name);
       value = raw;
-      if (d.type === 'enum' && (!d.options || !d.options.includes(value))) throw new Error('Invalid enum option: ' + item.name);
+      // An unchanged stored value is not revalidated, so a removed option does not block saving other fields.
+      if (d.type === 'enum' && !Object.is(value,item.currentValue) && (!d.options || !d.options.includes(value))) throw new Error('Invalid enum option: ' + item.name);
      } else throw new Error('Unsupported setting type: ' + d.type);
      if (!Object.is(value,item.currentValue)) writes.push({module:item.module,key:item.key,value,isSecret:false});
     }

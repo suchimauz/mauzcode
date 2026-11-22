@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { sdkCtx } from './sdkFixture.entry';
 import search from './search';
 
 const originalFetch = globalThis.fetch;
 const originalTimer = globalThis.setTimeout;
 afterEach(() => { globalThis.fetch = originalFetch; globalThis.setTimeout = originalTimer; });
-const ctx = (engine = 'openserp', endpoint = 'http://127.0.0.1:7000') => ({ fns: {
-    settings: { getString: async ({ key }: { key: string }) => key === 'defaultEngine' ? engine : endpoint },
-    browser: { googleSearch: async () => ({ results: [{ title: 'Google', url: 'https://google.test/', snippet: 'snippet' }] }) },
-} }) as unknown as Context;
+// The real built-in providers, handlers and core wired together without a database or browser.
+const ctx = (engine = 'openserp', endpoint = 'http://127.0.0.1:7000') => sdkCtx({ settings: { defaultEngine: engine, openserpEndpoint: endpoint } });
 const row = (engine = 'duckduckgo', patch = {}) => ({ type: 'organic', engine, title: '<b>Actual title</b>', url: 'https://example.test/a', snippet: 'Actual &amp; snippet', ...patch });
 const response = (results: object[]) => Response.json({ results });
 function mockFetch(fn: (url: URL, init?: RequestInit) => Promise<Response> | Response) {

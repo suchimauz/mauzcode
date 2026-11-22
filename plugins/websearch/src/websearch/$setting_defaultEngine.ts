@@ -2,7 +2,9 @@ export default {
     type: 'enum',
     env: 'WEBSEARCH_DEFAULT_ENGINE',
     default: 'google-browser',
-    options: ['google-browser', 'openserp'],
+    // Registered provider ids, including ones added by other plugins; the static list applies when that fails.
+    optionsFrom: 'websearch.providerIds',
+    options: ['google-browser', 'openserp', 'brave'],
     title: 'Default web search engine',
-    description: 'Engine used by websearch.search when the caller does not select one.',
+    description: 'Provider used by websearch.search and websearch.answer when the caller does not pass engine.',
 };

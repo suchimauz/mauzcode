@@ -12,3 +12,10 @@ test('native configuration keeps secrets write-only and submits explicit CSRF JS
  expect(init.headers).toMatchObject({'Content-Type':'application/json','X-CSRF-Token':'csrf'});expect(JSON.parse(String(init.body))).toEqual({values:{'demo.token':'replacement','demo.enabled':true}});
  await screen.findByText('Configuration saved.');expect((input as HTMLInputElement).value).toBe('');
 });
+test('enum setting with a stored value outside the resolved options is shown as unavailable',async()=>{
+ const fetch=vi.fn(async ()=>new Response(JSON.stringify({csrfToken:'csrf',configuration:{settings:[{name:'websearch.defaultEngine',secret:false,configured:true,unavailable:true,currentValue:'acme-search',source:'db',descriptor:{type:'enum',title:'Default web search engine',options:['google-browser','brave']}}],secrets:[],widget:null}}),{headers:{'content-type':'application/json'}}));
+ vi.stubGlobal('fetch',fetch);
+ render(<PluginConfiguration name="websearch"/>);
+ expect(await screen.findByRole('option',{name:'acme-search (unavailable)'})).toBeTruthy();
+ expect(screen.getByRole('option',{name:'brave'})).toBeTruthy();
+});

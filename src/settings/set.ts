@@ -13,7 +13,7 @@ type SetOpts = {
     isSecret?: boolean;
 };
 
-/** Creates or updates one persisted setting override; refuses an instance (global) key fixed by a $settings_ file with code SETTING_FIXED, status 409 and structured `settingKey`/`fixedBy` (file path) metadata. */
+/** Creates or updates one persisted setting override; rejects a global enum value outside its resolved options (settings.enumOptions) with code SETTING_INVALID; refuses an instance (global) key fixed by a $settings_ file with code SETTING_FIXED, status 409 and structured `settingKey`/`fixedBy` (file path) metadata. */
 export default async function (ctx: Context, _session: Session | null, opts: SetOpts): Promise<{ ok: true }> {
     if (opts.scopeType === 'global' && !opts.scopeId) {
         const fixed = (await ctx.fns.settings.files({})).values[`${opts.module}.${opts.key}`];
@@ -22,6 +22,13 @@ export default async function (ctx: Context, _session: Session | null, opts: Set
     // A declared descriptor may reject a value before it is stored (e.g. route syntax).
     const descriptor = ((ctx.state as any).settings?.registry as Map<string, any> | undefined)?.get(`${opts.module}.${opts.key}`);
     if (opts.scopeType === 'global' && typeof descriptor?.validate === 'function') descriptor.validate(ctx, opts.value);
+    // Enum values are checked against the resolved options for new global writes; stored values are not revalidated.
+    if (opts.scopeType === 'global' && !opts.scopeId && descriptor?.type === 'enum') {
+        const { options } = await ctx.fns.settings.enumOptions({ module: opts.module, key: opts.key });
+        if (!options.includes(opts.value)) {
+            throw Object.assign(new Error(`${opts.module}.${opts.key}: ${JSON.stringify(opts.value)} is not allowed (allowed: ${options.join(', ') || 'none'})`), { code: 'SETTING_INVALID', status: 400, settingKey: `${opts.module}.${opts.key}` });
+        }
+    }
     const now = Date.now();
     await ctx.fns.procs.db.run({
         sql: `INSERT INTO settings (module, scope_type, scope_id, key, value, is_secret, updated_at)

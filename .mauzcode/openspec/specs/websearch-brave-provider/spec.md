@@ -1,4 +1,9 @@
-## ADDED Requirements
+# websearch-brave-provider Specification
+
+## Purpose
+Users with a Brave Search API key can search the web without a browser or a self-hosted service and receive results in the same format as other web search providers.
+
+## Requirements
 
 ### Requirement: Brave API key setting
 The websearch plugin SHALL declare a secret setting `websearch.braveApiKey` (env `WEBSEARCH_BRAVE_API_KEY`) shown in the plugin's Settings. The `brave` provider SHALL report `configured: true` only when the key resolves to a non-empty value. The key SHALL never be returned by any function, logged or included in an error.
