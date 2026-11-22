@@ -7,6 +7,21 @@ function crc32(bytes: Buffer) {
   for (const byte of bytes) { crc ^= byte; for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0); }
   return (crc ^ 0xffffffff) >>> 0;
 }
+/** Reverses PNG scanline filters (types 0–4) for 8-bit RGBA rows. */
+function unfilter(raw: Buffer, size: number) {
+  const stride = size * 4, out = Buffer.alloc(stride * size);
+  for (let y = 0; y < size; y++) {
+    const type = raw[y * (stride + 1)]; expect(type).toBeLessThanOrEqual(4);
+    for (let i = 0; i < stride; i++) {
+      const value = raw[y * (stride + 1) + 1 + i], a = i >= 4 ? out[y * stride + i - 4] : 0;
+      const b = y ? out[(y - 1) * stride + i] : 0, c = y && i >= 4 ? out[(y - 1) * stride + i - 4] : 0;
+      const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+      const predictor = [0, a, b, (a + b) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? b : c][type];
+      out[y * stride + i] = (value + predictor) & 255;
+    }
+  }
+  return out;
+}
 function validatePNG(bytes: Buffer, size: number, template = false) {
   expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
   expect(bytes.readUInt32BE(16)).toBe(size); expect(bytes.readUInt32BE(20)).toBe(size);
@@ -22,12 +37,11 @@ function validatePNG(bytes: Buffer, size: number, template = false) {
   }
   expect(types[0]).toBe('IHDR'); expect(types.at(-1)).toBe('IEND');
   const raw = inflateSync(Buffer.concat(compressed)); expect(raw.length).toBe((size * 4 + 1) * size);
-  const alphas = new Set<number>();
+  const pixels = unfilter(raw, size), alphas = new Set<number>();
   for (let y = 0; y < size; y++) {
-    expect(raw[y * (size * 4 + 1)]).toBe(0);
     for (let x = 0; x < size; x++) {
-      const offset = y * (size * 4 + 1) + 1 + x * 4; alphas.add(raw[offset + 3]);
-      if (template) expect([...raw.subarray(offset, offset + 3)]).toEqual([0, 0, 0]);
+      const offset = (y * size + x) * 4; alphas.add(pixels[offset + 3]);
+      if (template && pixels[offset + 3]) expect([...pixels.subarray(offset, offset + 3)]).toEqual([0, 0, 0]);
     }
   }
   expect(alphas.has(0)).toBe(true); expect(alphas.has(255)).toBe(true);

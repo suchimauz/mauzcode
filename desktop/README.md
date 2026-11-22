@@ -50,9 +50,9 @@ bun run dev
 
 ## Иконки
 
-Оригинальная геометрическая **H** на индиговом фоне создана для этого клиента, без внешних изображений. Ресурсы в `assets/` входят в приложение: `icon.ico` (16–256 px) для Windows, `icon.icns` (16–1024 px) для macOS, `icon.png` для окна и `tray.png` для Windows tray. Отдельные чёрные с прозрачностью `trayTemplate.png` (18 px) и `trayTemplate@2x.png` (36 px) помечены Electron как template для системной окраски macOS menu bar.
+Знак MauzCode — мордочка кота из фигурных скобок `{ }` на тёмной плитке. Единственный источник — `src/ui/assets/icon.svg`; из него же генерируются favicon, PWA-иконки и иконки расширений. Ресурсы в `assets/` входят в приложение: `icon.ico` (16–256 px) для Windows, `icon.icns` (16–1024 px) для macOS, `icon.png` для окна и `tray.png` для Windows tray. Отдельные чёрные с прозрачностью `trayTemplate.png` (18 px) и `trayTemplate@2x.png` (36 px) помечены Electron как template для системной окраски macOS menu bar.
 
-Воспроизводимая генерация: `cd desktop && bun run icons`. Генератор `generate-icons.cjs` использует только встроенные Node/Bun API, без конвертеров, загрузок или системных пакетов; после изменения запустите `bun run test`. electron-builder использует явные `win.icon` / `mac.icon`. Проверка форматов не заменяет визуальную проверку на настоящих ОС.
+Воспроизводимая генерация: `cd desktop && bun run icons` (или `bun script/generate-icons.ts` из корня). Генератор растеризует SVG через dev-зависимость `@resvg/resvg-js`, без системных конвертеров; после изменения запустите `bun run test`. electron-builder использует явные `win.icon` / `mac.icon`. Проверка форматов не заменяет визуальную проверку на настоящих ОС.
 
 ## Сборка Windows
 

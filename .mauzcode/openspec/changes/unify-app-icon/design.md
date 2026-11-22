@@ -18,9 +18,9 @@ Icons are currently produced three different ways: an inline SVG string in `ui.f
 
 ## Decisions
 
-- **Canonical SVG in `src/ui/assets/icon.svg`.** `ui.faviconUrl` reads it (once, cached) instead of an inline string, so the favicon and rasters can never drift. Alternative — keep the inline string and duplicate it into the generator — rejected: two copies drift.
+- **Canonical SVG in `src/ui/assets/icon.svg`.** `ui.faviconUrl` reads it instead of an inline string, so the favicon and rasters can never drift. Alternative — keep the inline string and duplicate it into the generator — rejected: two copies drift.
 - **Rasterize with `@resvg/resvg-js` as a devDependency**, used only by the generator script. It is a self-contained WASM/native renderer with no system packages. Alternatives: hand-written path rasterizer (the D mark uses quadratic curves; too much bespoke code), headless Chrome screenshots (not reproducible in CI), committing PNGs exported by hand (violates single source).
-- **Generator moves to `script/generate-icons.ts`** (run with `bun`), writing `src/ui/assets/icon-*.png`, `desktop/assets/*` and extension PNGs; `desktop` keeps `bun run icons` delegating to it. ICO/ICNS container packing reuses the existing code.
+- **Generator moves to `script/generate-icons.ts`** (run with `bun`), writing `src/ui/assets/icon-*.png`, `desktop/assets/*` and extension PNGs; `desktop` keeps `bun run icons` delegating to it and the old `desktop/generate-icons.cjs` is removed. ICO/ICNS container packing reuses the existing code.
 - **Template tray icon**: render a variant of the SVG with a transparent tile and black braces/face, so macOS can tint the silhouette. Alternative — recolor the full tile black — rejected: it becomes a featureless square at 18 px.
 - **Apple touch / PWA PNGs stay opaque** (tile on full-bleed dark background) because iOS adds its own mask.
 

@@ -21,6 +21,7 @@
     "frontend:build-storybook": "storybook build -c frontend/.storybook -o frontend/storybook-static"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/bun": "latest",
     "@types/web-push": "^3.6.4",
     "happy-dom": "^20.11.2",

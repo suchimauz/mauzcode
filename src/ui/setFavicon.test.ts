@@ -4,7 +4,10 @@ import { mkTestCtx } from "../_testCtx.entry";
 test("an instance sets its own favicon: pages and /favicon.ico serve it, reset brings back the built-in one", async () => {
     const ctx: any = await mkTestCtx();
     const builtIn = await ctx.fns.ui.faviconUrl({});
-    expect(builtIn).toStartWith("data:image/svg+xml,");
+    expect(builtIn).toBe("data:image/svg+xml," + encodeURIComponent((await Bun.file(new URL("./assets/icon.svg", import.meta.url)).text()).trim()));
+    const builtInIco = await ctx.fns.procs.http.dispatch({ method: "GET", url: "http://localhost/favicon.ico" });
+    expect(builtInIco.headers.get("content-type")).toBe("image/svg+xml");
+    expect(await builtInIco.text()).toContain("#6ee7b7");
 
     await ctx.fns.ui.setFavicon({ emoji: "🧪", background: "#dc2626" });
     const custom = await ctx.fns.ui.faviconUrl({});

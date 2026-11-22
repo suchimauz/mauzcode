@@ -50,6 +50,10 @@ test('source label tolerates unavailable URL', () => {
 test('manifest is local MV3 with no injection or remote privileged scripts', async () => {
   const manifest = await Bun.file(new URL('./manifest.json', import.meta.url)).json();
   expect(manifest.manifest_version).toBe(3);
+  for (const icons of [manifest.icons, manifest.action.default_icon]) {
+    expect(Object.keys(icons)).toEqual(['16', '32', '48', '128']);
+    for (const file of Object.values(icons)) expect(await Bun.file(new URL(`./${file}`, import.meta.url)).exists()).toBe(true);
+  }
   expect(manifest.host_permissions).toEqual(['http://localhost/*', 'http://127.0.0.1/*', 'https://*/*']);
   expect(manifest.content_scripts).toEqual([{matches: ['http://localhost/*', 'http://127.0.0.1/*', 'https://*/*'], js: ['hotkeys.js'], run_at: 'document_start'}]);
   expect(manifest.permissions).toContain('debugger');

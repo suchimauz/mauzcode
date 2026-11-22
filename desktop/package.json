@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "electron .",
     "test": "bun test ./security.test.ts ./navigation.test.ts ./lifecycle.test.ts ./icons.test.ts ./prefetch-electron.test.ts",
-    "icons": "bun run generate-icons.cjs",
+    "icons": "bun ../script/generate-icons.ts",
     "check": "bun build main.cjs preload.cjs renderer.js --target=node --external electron --outdir .check",
     "prefetch:win": "bun run prefetch-electron.cjs",
     "build:win": "bun run prefetch:win && electron-builder --win nsis --x64",
