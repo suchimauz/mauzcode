@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import summaryTemplate from './summaryTemplate';
+import iconKeys from '../ui/iconKeys';
 import summaryFormat from './summaryFormat';
 import normalizePresentation from './normalizePresentation';
 import redactArgs from './redactArgs';
@@ -11,6 +12,7 @@ import list from './list';
 function fakeCtx(tools: any[] = []) {
     const registry = new Map(tools.map(t => [t.key, t]));
     const ctx: any = { state: { tools: { registry } }, fns: {} };
+    ctx.fns.ui = { iconKeys };
     ctx.fns.tools = {
         summaryTemplate: (o: any) => summaryTemplate(ctx, null, o),
         summaryFormat: (o: any) => summaryFormat(ctx, null, o),

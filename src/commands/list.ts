@@ -1,12 +1,9 @@
-/**
- * List supported chat commands and their composer capabilities
- *
- * Use for command discovery rather than hard-coding slash commands in clients. Only registered commands are dispatched.
+/** List server-dispatchable slash commands using the legacy catalogue fields.
+ * Use commands.catalogue version 2 for client actions, sections and availability reasons.
+ * @param opts.agentId Existing agent to scope discovery; omit for new-session choices.
  */
-export default async function (
-    ctx: Context,
-    session: Session | null,
-    opts: {},
-): Promise<{name:string;description:string;inputHint:string;attachments:boolean;usage:string[]}[]> {
-    return [{name:'plan',description:'Plan before executing; advisory, not a sandbox',inputHint:'/plan [task|off]',attachments:false,usage:['/plan','/plan <task>','/plan off']}, {name:'compact',description:'Compact context using the existing summarizer',inputHint:'/compact [instructions]',attachments:false,usage:['/compact','/compact <instructions>']}, {name:'trigger',description:'Ask the agent to add, run/check now or cancel one trigger',inputHint:'/trigger [request]',attachments:false,usage:['/trigger','/trigger in 20 minutes check the build','/trigger cancel the daily report']}];
+export default async function (ctx: Context, _session: Session | null, opts: {
+    /** Existing agent to scope discovery; omit for new-session choices. */ agentId?: string;
+}): Promise<{name:string;description:string;inputHint:string;attachments:boolean;usage:string[]}[]> {
+    return (await ctx.fns.commands.catalogue({agentId: opts.agentId, version: 1})).commands;
 }

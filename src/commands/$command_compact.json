@@ -1,0 +1,19 @@
+{
+  "name": "compact",
+  "builtin": true,
+  "kind": "action",
+  "label": "Compact",
+  "description": "Compact context using the existing summarizer",
+  "icon": "circle-dashed",
+  "section": "commands",
+  "order": 20,
+  "attachments": false,
+  "fn": "commands.compact",
+  "requiresSession": true,
+  "blockWhileRunning": true,
+  "inputHint": "/compact [instructions]",
+  "usage": [
+    "/compact",
+    "/compact <instructions>"
+  ]
+}

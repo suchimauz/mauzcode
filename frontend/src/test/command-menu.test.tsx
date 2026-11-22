@@ -11,17 +11,20 @@ vi.mock('../sdk/live', () => ({ subscribeLive: () => () => {} }));
 vi.mock('../lib/queue', async importOriginal => ({ ...await importOriginal<typeof import('../lib/queue')>(), getQueue: vi.fn().mockResolvedValue({ items: [] }) }));
 import { validateCommand } from '../lib/commands';
 vi.mock('../components/mauzcode/ModelPicker', () => ({ ModelPicker: () => null }));
-const catalogue = { version: 1, csrfToken: 'test-csrf', commands: [
-  { name: 'plan', description: 'Plan', usage: ['/plan'], attachments: false },
-  { name: 'compact', description: 'Compact', usage: ['/compact'], attachments: false },
+const base = { kind: 'action', section: 'commands', icon: 'terminal', description: '', enabled: true, usage: [], order: 1 };
+const catalogue = { version: 2, csrfToken: 'test-csrf', sections: [{ id: 'commands', label: 'Commands', order: 2 }, { id: 'add', label: 'Add', order: 1 }], commands: [
+  { ...base, name: 'plan', label: 'Plan', section: 'add', order: 2 },
+  { ...base, name: 'compact', label: 'Compact', enabled: false, reason: 'Завершите выполнение', order: 2 },
+  { ...base, name: 'attachment', label: 'File', section: 'add', kind: 'client', clientAction: 'attach-file' },
+  { ...base, name: 'goal', label: 'Goal', kind: 'client', clientAction: 'open-goal' },
 ] };
 const json = (value: object, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 /** The editable composer reads its voice route (GET only); that read is never a send. */
 const voiceRead = (call: unknown[]) => String(call[0]).startsWith('/voice/api') && !(call[1] as RequestInit | undefined)?.method;
 afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear(); });
-function Editor({ send = vi.fn(), file = vi.fn(), compact = vi.fn(), running = false, initial = '' }: { send?: () => void; file?: () => void; compact?: () => void; running?: boolean; initial?: string }) {
+function Editor({ send = vi.fn(), file = vi.fn(), running = false, initial = '' }: { send?: () => void; file?: () => void; running?: boolean; initial?: string }) {
   const [value, setValue] = useState(initial); const [open, setOpen] = useState(false);
-  return <><button onClick={() => setOpen(v => !v)}>Добавить</button><MessageInput commandsEnabled value={value} onChange={setValue} onSend={send} commandMenuOpen={open} onCommandMenuClose={() => setOpen(false)} onFile={file} onCompact={compact} running={running} /></>;
+  return <><button onClick={() => setOpen(v => !v)}>Добавить</button><MessageInput commandsEnabled value={value} onChange={setValue} onSend={send} commandMenuOpen={open} onCommandMenuClose={() => setOpen(false)} onFile={file} running={running} /></>;
 }
 function input(text: string) { fireEvent.input(screen.getByRole('textbox'), { target: { textContent: text } }); }
 const optionNames = () => screen.getAllByRole('option').map(row => row.querySelector('.command-menu-name')?.textContent);
@@ -60,42 +63,66 @@ it('supports Escape and filtering unknown names', async () => {
   await userEvent.keyboard('{Escape}'); expect(screen.queryByRole('listbox')).toBeNull(); expect(screen.getByRole('textbox').textContent).toBe('/');
   await userEvent.type(screen.getByRole('textbox'), 'xyz'); expect(await screen.findByText('Команда не найдена')).toBeVisible();
 });
-it.each(['File', 'Compact'])('plus %s invokes its local callback once, immediately, without sending or changing the draft', async name => {
-  vi.stubGlobal('fetch', vi.fn(async () => json(catalogue))); const file = vi.fn(), compact = vi.fn(), send = vi.fn();
-  render(<Editor initial="keep this" file={file} compact={compact} send={send} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Добавить' })); await userEvent.click(await screen.findByRole('option', { name: new RegExp(`^${name}`) }));
-  expect(name === 'File' ? file : compact).toHaveBeenCalledOnce(); expect(name === 'File' ? compact : file).not.toHaveBeenCalled();
-  expect(send).not.toHaveBeenCalled(); expect(screen.getByRole('textbox').textContent).toBe('keep this'); expect(screen.queryByRole('listbox')).toBeNull();
+it('picking File opens attachments once without submitting or replacing the draft', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json(catalogue))); const file = vi.fn(), send = vi.fn(); render(<Editor initial="keep this" file={file} send={send} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Добавить' })); await userEvent.click(await screen.findByRole('option', { name: 'File' }));
+  expect(file).toHaveBeenCalledOnce(); expect(send).not.toHaveBeenCalled(); expect(screen.getByRole('textbox').textContent).toBe('keep this');
 });
-it('slash Compact immediately invokes the callback and consumes only the command trigger', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => json(catalogue))); const compact = vi.fn(), send = vi.fn(); render(<Editor compact={compact} send={send} />);
-  await userEvent.type(screen.getByRole('textbox'), '/compact'); await userEvent.click(await screen.findByRole('option', { name: /^Compact/ }));
-  expect(compact).toHaveBeenCalledOnce(); expect(send).not.toHaveBeenCalled(); expect(screen.getByRole('textbox').textContent).toBe('');
-});
-it('Compact stays unavailable during a run for both pointer and keyboard', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => json(catalogue))); const compact = vi.fn(); render(<Editor running compact={compact} />);
+it('respects catalogue disabled reason for pointer and keyboard even when idle', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json(catalogue))); const send = vi.fn(); render(<Editor send={send} />);
   await userEvent.type(screen.getByRole('textbox'), '/compact'); const row = await screen.findByRole('option', { name: /^Compact/ });
-  expect(row).toHaveAttribute('aria-disabled', 'true'); await userEvent.click(row); await userEvent.keyboard('{Enter}');
-  expect(compact).not.toHaveBeenCalled(); expect(screen.getByRole('textbox').textContent).toBe('/compact');
+  expect(row).toHaveAttribute('aria-disabled', 'true'); expect(row).toHaveTextContent('Завершите выполнение');
+  await userEvent.click(row); await userEvent.keyboard('{Enter}'); expect(send).not.toHaveBeenCalled(); expect(screen.getByRole('textbox').textContent).toBe('/compact');
+});
+it.each([['/git:re', 'git:Review'], ['/a.b:', 'a.b:Other'], ['/review', 'git:Review']])('keeps %s open and filters plugin commands by name or label', async (text, name) => {
+  const commands = ['git:Review', 'a.b:Other'].map(name => ({ ...base, name, label: name.includes('Review') ? 'Review' : 'Other', section: 'plugins' }));
+  vi.stubGlobal('fetch', vi.fn(async () => json({ ...catalogue, sections: [{ id: 'plugins', label: 'Version control', order: 1 }], commands })));
+  render(<Editor />); await userEvent.type(screen.getByRole('textbox'), text);
+  expect(await screen.findByRole('group', { name: 'Version control' })).toContainElement(screen.getByRole('option', { name: name.split(':')[1] }));
+  expect(screen.getAllByRole('option')).toHaveLength(1);
+});
+it('filters static options locally; arbitrary text still submits', async () => {
+  const fetcher = vi.fn(async () => json({ ...catalogue, commands: [{ ...base, name: 'project:ship', label: 'Ship', args: { options: [{ value: 'qa', label: 'Testing' }, { value: 'live', label: 'Production' }] } }] }));
+  vi.stubGlobal('fetch', fetcher); const send = vi.fn(); render(<Editor send={send} />);
+  input('/project:ship '); await screen.findByRole('option', { name: 'Testing' });
+  input('/project:ship duct'); expect(screen.getAllByRole('option')).toHaveLength(1);
+  await userEvent.click(screen.getByRole('option', { name: 'Production' })); expect(screen.getByRole('textbox').textContent).toBe('/project:ship live ');
+  input('/project:ship arbitrary'); expect(screen.queryByRole('listbox')).toBeNull();
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' }); expect(send).toHaveBeenCalledOnce(); expect(fetcher).toHaveBeenCalledTimes(1);
+});
+it.each(['goal', 'custom:objective'])('opens goal editor with /%s arguments without posting a command', async name => {
+  const fetcher = vi.fn(async (url: string, _init?: RequestInit) => url.startsWith('/commands?') ? json({ ...catalogue, commands: [{ ...base, name, label: 'Objective', kind: 'client', clientAction: 'open-goal' }] }) : json({ budget: null }));
+  vi.stubGlobal('fetch', fetcher); render(<LiveComposer agentId="local-action" running={false} onAccepted={vi.fn()} />);
+  input(`/${name} write tests`); await userEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }));
+  expect(await screen.findByRole('textbox', { name: 'Цель' })).toHaveValue('write tests'); expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+});
+it('opens a catalogue canvas target via the protected canvas route, not command dispatch', async () => {
+  const action = { type: 'open-canvas', kind: 'file', args: { path: 'README.md' } };
+  const fetcher = vi.fn(async (url: string, _init?: RequestInit) => url.startsWith('/commands?') ? json({ ...catalogue, commands: [{ ...base, name: 'docs:open', label: 'Docs', kind: 'client', clientAction: action }] }) : json({ budget: null }));
+  vi.stubGlobal('fetch', fetcher); const accepted = vi.fn(); render(<LiveComposer agentId="canvas-action" running={false} onAccepted={accepted} />);
+  input('/docs:open'); await userEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }));
+  await waitFor(() => expect(accepted).toHaveBeenCalledOnce()); const posts = fetcher.mock.calls.filter(([, init]) => init?.method === 'POST');
+  expect(posts).toHaveLength(1); expect(posts[0][0]).toBe('/canvas/canvas-action');
+  expect(JSON.parse(String(posts[0][1]?.body))).toEqual({ show: { kind: 'file', args: action.args } }); expect(new Headers(posts[0][1]?.headers).get('X-CSRF-Token')).toBe('test-csrf');
 });
 it('never sends a slash as a prompt when catalogue loading fails, preserving draft', async () => {
   const fetcher = vi.fn(async (url: string) => url.endsWith('/context') ? json({ budget: null }) : json({ error: 'offline' }, 503)); vi.stubGlobal('fetch', fetcher);
   render(<LiveComposer agentId="slash-test" running={false} onAccepted={vi.fn()} />); input('/plan задача');
   await userEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('offline'); expect(screen.getByRole('textbox').textContent).toBe('/plan задача');
-  expect(fetcher.mock.calls.every(call => String(call[0]) === '/commands' || String(call[0]).endsWith('/context') || voiceRead(call))).toBe(true);
+  expect(fetcher.mock.calls.every(call => String(call[0]) === '/commands?version=2&agentId=slash-test' || String(call[0]).endsWith('/context') || voiceRead(call))).toBe(true);
 });
 it('validates unknown commands and attachments but does not load catalogue for ordinary text', async () => {
   const fetcher = vi.fn(async () => json(catalogue)); vi.stubGlobal('fetch', fetcher);
-  await validateCommand('hello'); expect(fetcher).not.toHaveBeenCalled();
+  await validateCommand('hello'); await validateCommand('/file.txt'); await validateCommand('/home/notes'); expect(fetcher).not.toHaveBeenCalled();
   await expect(validateCommand('/plna')).rejects.toThrow('Неизвестная команда');
   await expect(validateCommand('/plan', 1)).rejects.toThrow('пока не принимает файлы');
-  await expect(validateCommand('/plan задача')).resolves.toBeUndefined();
+  await expect(validateCommand('/plan задача')).resolves.toMatchObject({ command: { name: 'plan' }, args: 'задача' });
 });
 it('posts commands through the CSRF-protected endpoint, preserving the request ID on uncertain retry', async () => {
   const bodies: { text: string; requestId: string }[] = [];
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === '/commands') return json(catalogue);
+    if (url === '/commands?version=2&agentId=slash-test') return json(catalogue);
     if (url.endsWith('/context')) return json({ budget: null });
     if (url.startsWith('/voice/api')) return json({ error: 'forbidden' }, 403);
     expect(url).toBe('/agent/slash-test/commands'); expect(init?.method).toBe('POST'); expect(new Headers(init?.headers).get('X-CSRF-Token')).toBe('test-csrf');
@@ -114,9 +141,9 @@ it('posts commands through the CSRF-protected endpoint, preserving the request I
   } finally { window.removeEventListener('mauzcode-planning-changed', change); }
 });
 it('rejects command while running and offers explicit stop, preserving draft', async () => {
-  const fetcher = vi.fn(async (_url: string) => json({ budget: null })); vi.stubGlobal('fetch', fetcher);
+  const fetcher = vi.fn(async (url: string) => url.startsWith('/commands?') ? json({ ...catalogue, commands: [{ ...base, name: 'plan', enabled: false, reason: 'Сначала остановите выполнение' }] }) : json({ budget: null })); vi.stubGlobal('fetch', fetcher);
   render(<LiveComposer agentId="running" running onAccepted={vi.fn()} />); input('/plan задача');
   await userEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Сначала остановите'); expect(screen.getByRole('button', { name: 'Остановить выполнение' })).toBeEnabled();
-  expect(fetcher.mock.calls.every(call => String(call[0]).endsWith('/context') || voiceRead(call))).toBe(true); expect(screen.getByRole('textbox').textContent).toBe('/plan задача');
+  expect(fetcher.mock.calls.every(call => String(call[0]).startsWith('/commands?') || String(call[0]).endsWith('/context') || voiceRead(call))).toBe(true); expect(screen.getByRole('textbox').textContent).toBe('/plan задача');
 });

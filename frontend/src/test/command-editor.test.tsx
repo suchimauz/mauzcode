@@ -16,6 +16,11 @@ function Fixture({ initial = '/plan ', claim = true }: { initial?: string; claim
 }
 const paste = (el: HTMLElement, text: string) => fireEvent.paste(el, { clipboardData: { files: [], getData: (format: string) => format === 'text/plain' ? text : '<b>unsafe</b>' } });
 describe('CommandEditor', () => {
+  it('keeps a namespaced command chip atomic and leaves its free-form argument editable', () => {
+    render(<CommandEditor value="/a.b:Review free text" claimedCommand={{ name: 'a.b:Review' }} onChange={vi.fn()} onRelease={vi.fn()} />);
+    const chip = screen.getByRole('textbox').querySelector('[data-composer-command]');
+    expect(chip).toHaveTextContent('/a.b:Review'); expect(chip?.nextSibling?.textContent).toBe(' free text');
+  });
   it('removes separator, then selects adjacent chip, then deletes it atomically', () => {
     render(<Fixture/>); const el = screen.getByRole('textbox'); at(el, 6);
     fireEvent.keyDown(el, {key:'Backspace'});

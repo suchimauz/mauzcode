@@ -1,0 +1,19 @@
+{
+  "name": "plan",
+  "builtin": true,
+  "kind": "action",
+  "label": "Plan",
+  "description": "Plan before executing; advisory, not a sandbox",
+  "icon": "list-checks",
+  "section": "add",
+  "order": 10,
+  "attachments": false,
+  "fn": "planning.command",
+  "blockWhileRunning": true,
+  "inputHint": "/plan [task|off]",
+  "usage": [
+    "/plan",
+    "/plan <task>",
+    "/plan off"
+  ]
+}

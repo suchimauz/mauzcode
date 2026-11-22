@@ -14,6 +14,7 @@ export type CommandEditorProps = Pick<AriaAttributes, 'aria-label' | 'aria-contr
   onFiles?: (files: File[]) => void;
   disabled?: boolean;
   placeholder?: string;
+  argumentHint?: string;
   className?: string;
 };
 
@@ -76,7 +77,7 @@ function caret(root: HTMLElement, offset: number, end = offset) {
 }
 
 /** Controlled canonical plain text with an explicitly claimed, indivisible leading command. */
-export const CommandEditor = forwardRef<CommandEditorHandle, CommandEditorProps>(function CommandEditor({ value, onChange, claimedCommand, onRelease, onKeyDown, onBlur, onFiles, disabled, placeholder, className = '', ...aria }, ref) {
+export const CommandEditor = forwardRef<CommandEditorHandle, CommandEditorProps>(function CommandEditor({ value, onChange, claimedCommand, onRelease, onKeyDown, onBlur, onFiles, disabled, placeholder, argumentHint, className = '', ...aria }, ref) {
   const root = useRef<HTMLDivElement>(null);
   const composing = useRef(false);
   const selected = useRef(false);
@@ -167,7 +168,7 @@ export const CommandEditor = forwardRef<CommandEditorHandle, CommandEditorProps>
     commit(rest, 0, false);
   };
   return <><div {...aria} ref={root} className={`command-editor ${className}`} role="textbox" aria-multiline="true" aria-disabled={disabled || undefined}
-    contentEditable={!disabled} suppressContentEditableWarning tabIndex={disabled ? -1 : 0} data-placeholder={placeholder} data-empty={!value}
+    contentEditable={!disabled} suppressContentEditableWarning tabIndex={disabled ? -1 : 0} aria-description={argumentHint} data-argument-hint={argumentHint} data-placeholder={placeholder} data-empty={!value}
     onBlur={onBlur}
     onCompositionStart={() => { composing.current = true; selectChip(false); }}
     onCompositionEnd={() => { composing.current = false; const el = root.current!; const text = plain(el); if (validClaim && (!text.startsWith(token) || el.firstChild !== el.querySelector('[data-composer-command]'))) release(); el.dataset.empty = String(!text); onChange(text); }}

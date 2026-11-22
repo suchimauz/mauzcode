@@ -21,7 +21,7 @@ Open `/` or `/?agent=<id>` on your normal signed-in MauzCode origin. Vite runs i
 
 ## Commands and planning
 
-The live composer loads slash suggestions from `GET /commands`. Type `/`, choose with arrows/Enter, Tab or a pointer, then submit explicitly. Escape closes suggestions. A failed catalogue request or unknown command never falls back to a model prompt; rejected submissions keep the draft and attachments.
+The live composer loads slash suggestions from `GET /commands?version=2` (with `agentId` for an existing session). Type `/`, choose with arrows/Enter, Tab or a pointer, then submit explicitly. Escape closes suggestions. A failed catalogue request or unknown command never falls back to a model prompt; rejected submissions keep the draft and attachments.
 
 - `/plan` enters planning without starting a model turn; `/plan <task>` enters and submits the task; `/plan off` leaves without approving or executing a proposal.
 - Mode belongs to one session and comes from `GET /agent/:id/planning`. It is separate from MauzCode's existing task checklist. The UI refreshes after commands, focus/run changes and every eight seconds while visible.

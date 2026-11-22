@@ -1,0 +1,17 @@
+{
+  "name": "goal",
+  "builtin": true,
+  "kind": "client",
+  "label": "Goal",
+  "description": "Открыть или изменить цель агента",
+  "icon": "target",
+  "section": "commands",
+  "order": 0,
+  "attachments": false,
+  "clientAction": "open-goal",
+  "inputHint": "/goal [цель]",
+  "usage": [
+    "/goal",
+    "/goal <цель>"
+  ]
+}

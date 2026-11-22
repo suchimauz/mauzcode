@@ -1,0 +1,12 @@
+{
+  "name": "file",
+  "builtin": true,
+  "kind": "client",
+  "label": "File",
+  "description": "Attach a file",
+  "icon": "paperclip",
+  "section": "add",
+  "order": 0,
+  "attachments": false,
+  "clientAction": "attach-file"
+}

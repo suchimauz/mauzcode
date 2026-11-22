@@ -1,0 +1,19 @@
+{
+  "name": "trigger",
+  "builtin": true,
+  "kind": "action",
+  "label": "Trigger",
+  "description": "Ask the agent to add, run/check now or cancel one trigger",
+  "icon": "alarm-clock",
+  "section": "commands",
+  "order": 30,
+  "attachments": false,
+  "fn": "commands.trigger",
+  "available": "commands.triggerAvailable",
+  "inputHint": "/trigger [request]",
+  "usage": [
+    "/trigger",
+    "/trigger in 20 minutes check the build",
+    "/trigger cancel the daily report"
+  ]
+}
