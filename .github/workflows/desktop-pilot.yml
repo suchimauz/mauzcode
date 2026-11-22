@@ -1,0 +1,65 @@
+name: Desktop pilot source checks (no distribution)
+on:
+  pull_request:
+    paths: ['desktop/**', '.github/workflows/desktop-pilot.yml']
+  workflow_dispatch:
+    inputs:
+      native_build:
+        description: 'Build on protected native runners (no publication)'
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+jobs:
+  source-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - name: Install shared DOM test tools from the root lockfile
+        working-directory: .
+        run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run test
+      - run: bun run check
+
+  # Never run PR code on a signing host. These are opt-in source builds, not a release workflow.
+  native-build:
+    needs: source-check
+    if: github.event_name == 'workflow_dispatch' && inputs.native_build && github.ref_name == github.event.repository.default_branch
+    environment: desktop-pilot-build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: win, runner: desktop-pilot-windows-x64}
+          - {target: mac, runner: desktop-pilot-macos}
+          - {target: linux, runner: desktop-pilot-linux-x64}
+    runs-on: [self-hosted, '${{ matrix.runner }}']
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Import reviewed public pins from the protected build host
+        run: node -e "const fs=require('node:fs');const p=process.env.PILOT_PIN_FILE;if(!p)throw Error('Missing approved pin');require('./tools/package-policy.cjs').loadPin(p);fs.copyFileSync(p,'update-pin.json',fs.constants.COPYFILE_EXCL)"
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run build:${{ matrix.target }}
+      - if: matrix.target == 'mac'
+        run: bash tools/verify-mac.sh
+      # Collect dist manually from the controlled runner. Never upload a checkout, pin source,
+      # raw dist, signing key, workflow artifact, release or tag from this job.

@@ -13,7 +13,8 @@ test('prefetch targets the pinned Windows archive with a one-hour request and ch
     unsafelyDisableChecksums: false,
   });
   expect(typeof builderRequire('@electron/get').downloadArtifact).toBe('function');
-  expect(pkg.scripts['build:win']).toBe('bun run prefetch:win && electron-builder --win nsis --x64');
+  expect(pkg.scripts['build:win']).toMatch(/^bun run prefetch:win && electron-builder /);
+  expect(pkg.scripts['build:win']).toContain('--config tools/builder.cjs --win nsis --x64 --publish never');
 });
 
 test('prefetch rejects mirror overrides before making any network request', () => {

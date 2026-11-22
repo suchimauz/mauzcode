@@ -58,9 +58,10 @@ function serve(chat: VoiceChatRoute) {
 const voiceRequests = () => fetcher.mock.calls.filter(([url]) => String(url).startsWith('/voice/api')).length;
 const handler = () => ({ onActivate: vi.fn(), onPhrase: vi.fn() });
 
-beforeEach(() => browser());
+let expectedMicRequests = 0;
+beforeEach(() => { browser(); expectedMicRequests = 0; });
 afterEach(() => {
-  expect(getUserMedia).not.toHaveBeenCalled();
+  expect(getUserMedia).toHaveBeenCalledTimes(expectedMicRequests);
   expect(socket).not.toHaveBeenCalled();
   vi.unstubAllGlobals();
   Object.defineProperty(window, 'isSecureContext', { configurable: true, value: original });
@@ -68,6 +69,19 @@ afterEach(() => {
 });
 
 describe('voice entry points in the input bar', () => {
+  it('explicit dictation denial leaves the real composer editable and opens no voice socket', async () => {
+    serve(readyChat); expectedMicRequests = 1;
+    getUserMedia.mockRejectedValue(new DOMException('Permission denied', 'NotAllowedError'));
+    render(<LiveComposer agentId="chat-1" running={false} onAccepted={vi.fn()} />);
+    const inline = await screen.findByRole('button', { name: INLINE });
+    await waitFor(() => expect(inline).not.toHaveAttribute('aria-disabled'));
+    const box = screen.getByRole('textbox', { name: 'Сообщение агенту' });
+    await userEvent.type(box, 'До отказа'); await userEvent.click(inline);
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    await userEvent.click(box); await userEvent.keyboard('{End} и после');
+    expect(box).toHaveTextContent('До отказа и после');
+    expect(screen.getByRole('button', { name: 'Отправить сообщение' })).toBeEnabled();
+  });
   it('sit in the input bar as flat icons before send; DOM and Tab order: settings, voice mode, inline input', async () => {
     serve(readyChat);
     render(<LiveComposer agentId="chat-1" running={false} onAccepted={vi.fn()} />);

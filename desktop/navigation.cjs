@@ -1,45 +1,35 @@
 'use strict';
 const { sameOrigin } = require('./security.cjs');
 
-// Keep HTTP page errors separate from the initial server connection. Inject the
-// UI callbacks so the real Electron event sequence can be tested without Electron.
-module.exports = function attachNavigation({ contents, origin, fail, ready, pageError }) {
-  let connected = false;
-  let stopped = false;
-  let committed = false;
-  let httpError = false;
-  function failure(reason) {
-    if (stopped) return;
-    if (connected) { pageError(reason); return; }
-    stopped = true;
-    fail(reason);
+// Electron 44's navigation details identify main-frame document replacements.
+module.exports = function attachNavigation({ contents, origin, start, changing = () => {}, ready, failure, external }) {
+  let committed = false, code = 0, httpError = false;
+  function guard(event) {
+    if (!sameOrigin(event.url, origin)) { event.preventDefault(); external(event.url, event.initiator?.url); }
   }
-  function failedLoad(code, description, isMainFrame = true) {
-    // ERR_ABORTED is normal for replaced navigations and blocked redirects.
-    if (!isMainFrame || code === -3) return;
-    // Chromium may also emit ERR_HTTP_RESPONSE_CODE_FAILURE for an HTTP page.
-    if (connected && httpError && code === -379) return;
-    failure(`${description} (${code}).`);
-  }
-  contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
-    if (isMainFrame && !isInPlace) { committed = false; httpError = false; }
+  contents.setWindowOpenHandler(({ url, referrer }) => { external(url, referrer?.url); return { action: 'deny' }; });
+  contents.on('will-navigate', guard);
+  contents.on('will-redirect', event => { if (event.isMainFrame) guard(event); });
+  contents.on('will-attach-webview', event => event.preventDefault());
+  contents.on('did-start-navigation', event => {
+    if (event.isMainFrame && !event.isSameDocument) { committed = false; httpError = false; start(); }
   });
-  contents.on('did-navigate', (_event, url, responseCode) => {
-    if (stopped || !sameOrigin(url, origin)) return;
-    httpError = responseCode >= 400;
-    if (httpError) {
-      if (!connected) failure(`HTTP ${responseCode}.`);
-      // Do not replace the response body: it may contain a login form, permission
-      // explanation or useful server diagnostics. Back/retry remain in the menu.
-      else pageError(`HTTP ${responseCode}.`, { http: true });
-    } else committed = true;
+  contents.on('did-navigate', (_event, href, status) => {
+    if (!sameOrigin(href, origin)) { committed = false; failure('Переход за пределы выбранного сервера заблокирован.'); return; }
+    code = status; httpError = status >= 400;
+    // A provisional navigation may become a download or be cancelled. Revoke
+    // the active document only when Chromium has actually replaced it.
+    changing();
+    committed = (status >= 200 && status < 300 && status !== 204 && status !== 205) || status === 304 || status === 401;
+    if (!committed) failure(`HTTP ${status}.`, true);
   });
-  contents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => failedLoad(code, description, isMainFrame));
-  contents.on('render-process-gone', (_event, details) => failure(`Процесс интерфейса завершился (${details?.reason || 'unknown'}).`));
   contents.on('did-finish-load', () => {
-    if (stopped || connected || !committed || !sameOrigin(contents.getURL(), origin)) return;
-    connected = true;
-    ready();
+    const href = contents.getURL(); if (committed && sameOrigin(href, origin)) ready(href, code);
   });
-  return { failure, failedLoad };
+  contents.on('did-fail-load', (_event, netCode, _text, _url, main) => {
+    if (!main || netCode === -3 || (netCode === -379 && httpError)) return;
+    committed = false;
+    failure(netCode <= -200 && netCode > -300 ? 'Ошибка сертификата TLS. Обход проверки невозможен.' : `Ошибка загрузки страницы (${netCode}). Проверьте сеть и адрес.`);
+  });
+  contents.on('render-process-gone', () => { committed = false; failure('Процесс интерфейса завершился. Можно повторить загрузку.'); });
 };

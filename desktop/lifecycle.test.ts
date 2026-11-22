@@ -1,16 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 const createLifecycle = require('./lifecycle.cjs');
-function fixture(platform = 'win32', primary = true) {
+function fixture(platform = 'win32', primary = true, available = () => true, throwTray = false) {
   const app = Object.assign(new EventEmitter(), { quits: 0, requestSingleInstanceLock: () => primary, quit() { this.quits++; } });
   const powerMonitor = new EventEmitter();
   let tray: any;
   let created = 0;
   const windows: any[] = [];
   const image = { template: false, isEmpty: () => false, setTemplateImage(value: boolean) { this.template = value; } };
-  const lifecycle = createLifecycle({ app, powerMonitor, platform, assets: (name: string) => name,
+  const lifecycle = createLifecycle({ app, powerMonitor, platform, trayAvailable: available, assets: (name: string) => name,
     nativeImage: { createFromPath: () => image }, Menu: { buildFromTemplate: (items: any) => items },
-    Tray: class extends EventEmitter { menu: any; destroyed = false; constructor() { super(); tray = this; } setToolTip() {} setContextMenu(menu: any) { this.menu = menu; } destroy() { this.destroyed = true; } },
+    Tray: class extends EventEmitter { menu: any; destroyed = false; constructor() { super(); if (throwTray) throw Error('No tray'); tray = this; } setToolTip() {} setContextMenu(menu: any) { this.menu = menu; } destroy() { this.destroyed = true; } },
     getWindows: () => windows, createWindow: () => { created++; } });
   function window() {
     const w = Object.assign(new EventEmitter(), { webContents: new EventEmitter(), visible: true, minimized: false, destroyed: false, focused: false,
@@ -22,6 +22,11 @@ function fixture(platform = 'win32', primary = true) {
   return { app, powerMonitor, lifecycle, window, close, image, get tray() { return tray; }, get created() { return created; } };
 }
 describe('desktop lifecycle', () => {
+  test('tray creation failure or missing Linux indicator host still allows normal close and quit', () => {
+    for (const throws of [true,false]) { const f=fixture('linux',true,()=>false,throws); f.lifecycle.start(); const w=f.window(); expect(f.close(w)).toBe(false); f.app.emit('window-all-closed'); expect(f.app.quits).toBe(1); }
+    const host = createLifecycle.linuxTrayHost; expect(host(()=>({status:0,stdout:'method return\n variant    boolean true\n'}))).toBe(true);
+    for(const r of [{status:1,stdout:'true'},{status:0,stdout:' variant boolean false'},{status:null,stdout:''}]) expect(host(()=>r)).toBe(false);
+  });
   test('close hides instead of quitting; tray click restores minimized window', () => {
     const f = fixture(); f.lifecycle.start(); const w = f.window();
     expect(f.close(w)).toBe(true); expect(w.visible).toBe(false); expect(f.app.quits).toBe(0);
