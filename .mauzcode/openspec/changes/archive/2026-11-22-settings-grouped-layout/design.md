@@ -23,7 +23,7 @@ Settings lives in `frontend/src/components/settings/` (one panel per tab, shared
 - **Keep existing confirmations and feedback components**; only restyle them (danger-tinted inline confirm block).
 - **Retire `ssh-card*` usage outside SSH-specific markup** and remove dead CSS after migration.
 - **Navigation:** keep `settings-nav-cell`; add an accent inset bar for `.is-active` and a divider element before plugin tabs.
-- **Motion:** switch knob and row expansion use short transitions gated by `prefers-reduced-motion`.
+- **Motion:** per the Apple design skill, critically damped springs (damping 1.0, response 0.3–0.4 s) expressed as a CSS `linear()` easing; CSS transitions retarget from the current value, so switches, chevrons and hover stay interruptible. Row details and confirmations fade and settle in via `@starting-style`; press feedback is instant on `:active`. Under `prefers-reduced-motion` movement and scaling are removed and only short colour/opacity cross-fades remain. Alternative: a JS spring library — rejected as a new dependency for simple state transitions without gestures.
 
 ## Risks / Trade-offs
 

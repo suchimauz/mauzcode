@@ -13,15 +13,16 @@ The settings dialog SHALL show a "Models" tab as the only model connection setti
 - **THEN** the "Models" tab is listed and opens its panel, and no "LLM Connections" or legacy model-policy tab is listed
 
 ### Requirement: Connection list
-The Models tab SHALL list connections with account name, provider label and icon, transport, enabled state and the usage report (status and, when present, quota windows and balance).
+The Models tab SHALL list connections as rows with account name, provider label and icon, transport, enabled state and a usage summary (status and, when present, the most used quota window). Expanding a row SHALL show the full usage report: status with reason, every quota window and balance. Wherever other requirements of this capability refer to a connection card, they SHALL apply to the connection row together with its expanded details.
 
 #### Scenario: Connection with quota windows
 - **WHEN** a connection's usage report contains quota windows
-- **THEN** each window is shown with its label, used percent and reset time
+- **THEN** its collapsed row shows the status and a quota summary
+- **AND** after expanding the row each window is shown with its label, used percent and reset time
 
 #### Scenario: Connection with status only
 - **WHEN** a connection's usage report has no windows
-- **THEN** only its status and reason are shown
+- **THEN** its row shows only its status, and the expanded details show the status and reason
 
 ### Requirement: Add and edit connections
 The Models tab SHALL let the owner choose a built-in or plugin provider, enter an account name, provider fields and transport, and test, save, edit or remove connections. Removal MUST require explicit confirmation. Creation MUST follow the placement and provider-availability requirements below.
@@ -227,11 +228,12 @@ Toggling the provider switch SHALL send the owner-only `setProviderEnabled` acti
 - **THEN** every provider switch is rendered disabled with an accessible hint that the value is fixed by an instance settings file, and no request is sent
 
 ### Requirement: Disabled provider presentation
-While a provider is disabled its header SHALL carry a disabled badge, its connection cards SHALL be visually dimmed, and Test, Update models and provider login controls MUST be blocked without sending requests. The connection-level enable switch and edit/remove controls SHALL remain operable, and stored connections and secrets MUST NOT change when the provider is toggled. Blocking in the UI is presentation only; the backend refuses the same operations independently.
+While a provider is disabled its header SHALL carry a disabled badge, its connection rows SHALL be visually dimmed, and Test, Update models and provider login controls in the expanded details MUST be blocked without sending requests. The connection-level enable switch and edit/remove controls SHALL remain operable, and stored connections and secrets MUST NOT change when the provider is toggled. Blocking in the UI is presentation only; the backend refuses the same operations independently.
 
 #### Scenario: Disabled provider cards
 - **WHEN** the owner disables a provider with two connections
-- **THEN** both cards stay listed, dimmed under the disabled header, with Test, Update models and Login blocked and the connection switches still operable
+- **THEN** both rows stay listed, dimmed under the disabled header, with the connection switches still operable
+- **AND** in their expanded details Test, Update models and Login are blocked
 
 #### Scenario: Re-enable restores controls
 - **WHEN** the owner re-enables the provider

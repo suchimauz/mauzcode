@@ -1,8 +1,9 @@
-## Purpose
+# settings-visual-layout Specification
 
+## Purpose
 Define the shared visual language of the Settings dialog: a grouped-list presentation used by every built-in section, consistent navigation styling, and the guarantee that restyling never removes existing controls, accessibility or theme support.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Grouped list presentation
 
@@ -154,7 +155,7 @@ The Settings navigation SHALL use monochrome icons, mark the active section with
 
 ### Requirement: Preserved controls, accessibility and themes
 
-The restyling MUST NOT remove any existing control, state message, confirmation or plugin extension point of the Settings sections. All sections SHALL use existing light and dark theme tokens (including the system dark theme), keep visible focus, semantic headings and status/alert roles, and disable non-essential motion under reduced motion.
+The restyling MUST NOT remove any existing control, state message, confirmation or plugin extension point of the Settings sections. All sections SHALL use existing light and dark theme tokens (including the system dark theme), keep visible focus, semantic headings and status/alert roles, and replace movement with short colour and opacity changes under reduced motion.
 
 #### Scenario: Dark theme
 - **WHEN** the dark theme is active, explicitly or through the system preference
@@ -162,4 +163,21 @@ The restyling MUST NOT remove any existing control, state message, confirmation 
 
 #### Scenario: Reduced motion
 - **WHEN** the user prefers reduced motion
-- **THEN** switch and row expansion transitions are not animated
+- **THEN** switches, chevrons, row details, confirmations and the navigation accent bar do not move or scale
+- **AND** only short colour and opacity changes remain
+
+### Requirement: Motion and feedback
+
+State changes of switches, disclosure chevrons, expanding row details, inline confirmations and the navigation accent bar SHALL use a critically damped spring curve (no overshoot) with a response of about 0.3–0.4 s, following the Apple design guidance for MauzCode UI. These transitions SHALL stay interruptible and continue from the on-screen value when reversed mid-flight.
+
+#### Scenario: Reverse a switch mid-flight
+- **WHEN** the owner toggles a switch and toggles it back before the knob settles
+- **THEN** the knob reverses from its current position without jumping
+
+### Requirement: Row press and hover feedback
+
+Pressing an interactive row SHALL give immediate feedback on pointer-down. Hover feedback SHALL cover the whole row, including the add rows (Add connection, Add voice connection, Add SSH instance, Add proxy), with a quick fade-in and a slightly slower fade-out.
+
+#### Scenario: Add row hover
+- **WHEN** a pointer hovers the Add SSH instance row
+- **THEN** the hover background fills the full width and height of that row inside the group
