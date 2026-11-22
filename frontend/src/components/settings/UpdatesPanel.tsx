@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { RotateCw } from 'lucide-react';
+import { RefreshCw, RotateCw } from 'lucide-react';
 import { requestJson } from '../../lib/mauzcode';
 import { Button } from '../ui/Button';
+import { SettingsGroup } from './SettingsGroup';
 
 type UpdateData = { csrfToken: string; status: { state: string; message: string; current?: string; target?: string; upstream?: string; clean: boolean } };
 
@@ -50,19 +51,21 @@ export function UpdatesPanel() {
     </header>
     {error && <p role="alert" className="settings-feedback is-error">{error}</p>}
     {!data && !error && <p role="status" className="settings-loading">Loading update status…</p>}
-    {status && <>
-      <p role="status" className={`settings-feedback ${message || status.state === 'available' || status.state === 'current' ? 'is-success' : ''}`}>{message || status.message}</p>
-      <dl className="settings-kv">
-        <div className="settings-kv-row"><dt>Current</dt><dd><code>{status.current || '—'}</code></dd></div>
-        <div className="settings-kv-row"><dt>Target</dt><dd><code>{status.target || '—'}</code></dd></div>
-        <div className="settings-kv-row"><dt>Upstream</dt><dd><code>{status.upstream || '—'}</code></dd></div>
-        <div className="settings-kv-row"><dt>Working tree</dt><dd>{status.clean ? <span>Clean</span> : <span role="warning" className="settings-kv-flag">Dirty</span>}</dd></div>
-      </dl>
-    </>}
-    <div className="settings-actions">
-      <Button disabled={busy || checking || !data} onClick={() => { void refresh(true); }}>{checking ? <><RotateCw size={14} strokeWidth={1.5} className="settings-spinner" aria-hidden="true" />Checking…</> : 'Check upstream'}</Button>
-      <Button variant="primary" disabled={busy || checking || status?.state !== 'available'} onClick={() => setConfirm(true)}>Update and restart…</Button>
-    </div>
+    {status && <div className="updates-card settings-group-surface">
+      <div className="updates-card-icon" aria-hidden="true"><RefreshCw size={22} strokeWidth={1.5} /></div>
+      <div className="updates-card-body">
+        <p role="status" className={`updates-card-message ${message || status.state === 'available' || status.state === 'current' ? 'is-success' : ''}`}>{message || status.message}</p>
+        <p className="updates-card-revisions"><code>{status.current || '—'}</code>{status.target && <> → <code>{status.target}</code></>}</p>
+        <div className="settings-actions updates-card-actions">
+          <Button variant="primary" disabled={busy || checking || status.state !== 'available'} onClick={() => setConfirm(true)}>Update and restart…</Button>
+          <Button variant="ghost" disabled={busy || checking} onClick={() => { void refresh(true); }}>{checking ? <><RotateCw size={14} strokeWidth={1.5} className="settings-spinner" aria-hidden="true" />Checking…</> : 'Check upstream'}</Button>
+        </div>
+      </div>
+    </div>}
+    {!status && <div className="settings-actions">
+      <Button disabled={busy || checking || !data} onClick={() => { void refresh(true); }}>Check upstream</Button>
+      <Button variant="primary" disabled>Update and restart…</Button>
+    </div>}
     {confirm && <div role="group" aria-label="Confirm update and restart" className="settings-confirm">
       <p className="settings-note">Apply target {status?.target ?? ''} and restart the server. Active connections will disconnect. No change occurs until you confirm.</p>
       <div className="settings-actions">
@@ -70,5 +73,13 @@ export function UpdatesPanel() {
         <Button variant="primary" disabled={busy} onClick={() => { void apply(); }}>Confirm update and restart</Button>
       </div>
     </div>}
+    {status && <SettingsGroup title="Details">
+      <dl className="settings-kv">
+        <div className="settings-kv-row"><dt>Current</dt><dd><code>{status.current || '—'}</code></dd></div>
+        <div className="settings-kv-row"><dt>Target</dt><dd><code>{status.target || '—'}</code></dd></div>
+        <div className="settings-kv-row"><dt>Upstream</dt><dd><code>{status.upstream || '—'}</code></dd></div>
+        <div className="settings-kv-row"><dt>Working tree</dt><dd>{status.clean ? <span>Clean</span> : <span role="warning" className="settings-kv-flag">Dirty</span>}</dd></div>
+      </dl>
+    </SettingsGroup>}
   </section>;
 }

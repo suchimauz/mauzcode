@@ -38,6 +38,7 @@ export function SettingsDialog({ open, tab, onTab, onOpenChange, theme = 'light'
           <Dialog.Title className="settings-nav-title">Settings</Dialog.Title>
           <div className="settings-nav-list">
             {SETTINGS_TABS.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={`settings-nav-cell ${tab === id ? 'is-active' : ''}`} aria-current={tab === id ? 'true' : undefined} onClick={() => onTab(id)}><Icon size={16} strokeWidth={1.5} aria-hidden="true" /><span>{label}</span></button>)}
+            {pluginTabs.length > 0 && <div className="settings-nav-divider" role="separator" aria-hidden="true" />}
             {pluginTabs.map(entry => { const id = pluginSettingsTab(entry.key); return <button key={id} type="button" className={`settings-nav-cell ${tab === id ? 'is-active' : ''}`} aria-current={tab === id ? 'true' : undefined} onClick={() => onTab(id)}><PhosphorIcon icon={entry.icon} size={16} /><span>{entry.title}</span></button>; })}
           </div>
           <select className="settings-nav-select settings-select" aria-label="Раздел настроек" value={tab} onChange={(event) => onTab(event.target.value as SettingsTab)}>

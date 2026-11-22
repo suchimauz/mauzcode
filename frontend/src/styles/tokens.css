@@ -20,7 +20,7 @@
 :root, [data-theme='light'], [data-theme='system'] {
   color-scheme: light;
   --bg: #ffffff; --surface: #ffffff; --sidebar: #fafafa; --surface-raised: #ffffff;
-  --surface-overlay: #ffffff; --input-bg: #ffffff;
+  --surface-overlay: #ffffff; --input-bg: #ffffff; --settings-group: #f6f5f4;
   --user-bubble: #f4f2f3; --hover-solid: #f4f4f4;
   --text: #161616; --text-secondary: #70686a; --text-muted: #70686a;
   --text-tertiary: #91888a; --text-caption: #b2acad; --focus-ring: rgba(6, 6, 6, .28);
@@ -33,7 +33,7 @@
 [data-theme='dark'] {
   color-scheme: dark;
   --bg: #191919; --surface: #212121; --sidebar: #1f1f1f; --surface-raised: #282828;
-  --surface-overlay: #282828; --input-bg: #141414;
+  --surface-overlay: #282828; --input-bg: #141414; --settings-group: #262626;
   --user-bubble: rgba(255, 255, 255, .06); --hover-solid: #323232;
   --text: #fdfdfd; --text-secondary: #beb6b8; --text-muted: #beb6b8;
   --text-tertiary: #9c9395; --text-caption: #776f71; --focus-ring: rgba(255, 255, 255, .32);
@@ -47,7 +47,7 @@
   :root:not([data-theme='light']), [data-theme='system'] {
     color-scheme: dark;
     --bg: #191919; --surface: #212121; --sidebar: #1f1f1f; --surface-raised: #282828;
-    --surface-overlay: #282828; --input-bg: #141414;
+    --surface-overlay: #282828; --input-bg: #141414; --settings-group: #262626;
     --user-bubble: rgba(255, 255, 255, .06); --hover-solid: #323232;
     --text: #fdfdfd; --text-secondary: #beb6b8; --text-muted: #beb6b8;
     --text-tertiary: #9c9395; --text-caption: #776f71; --focus-ring: rgba(255, 255, 255, .32);

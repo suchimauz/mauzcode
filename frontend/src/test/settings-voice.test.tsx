@@ -100,9 +100,11 @@ it('selects, shows and clears the default route; tests and removes a connection 
   const picker = await screen.findByLabelText('Voice model for chats');
   expect(picker).toHaveValue(route.route);
   expect(screen.getByText('Audio is sent from the MauzCode server to OpenAI Realtime (api.openai.com). Metered per audio minute.')).toBeInTheDocument();
-  // Each card names where its own connection sends audio: the default endpoint vs. the custom host and port only.
+  // Each row names where its own connection sends audio: the default endpoint vs. the custom host and port only.
+  await userEvent.click(screen.getByRole('button', { name: 'work' }));
   expect(screen.getByRole('article', { name: 'OpenAI Realtime transcription · work' })).toHaveTextContent('Audio is sent from the MauzCode server to OpenAI Realtime (api.openai.com).');
   const own = screen.getByRole('article', { name: 'OpenAI Realtime transcription · home' });
+  await userEvent.click(screen.getByRole('button', { name: 'home' }));
   expect(own).toHaveTextContent('Audio is sent from the MauzCode server to Configured endpoint (voice.example.test:8443).');
   expect(own).not.toHaveTextContent('/private');
   fireEvent.change(picker, { target: { value: home.route } });
@@ -113,6 +115,7 @@ it('selects, shows and clears the default route; tests and removes a connection 
   expect(calls.filter(c => c.body?.action === 'setDefaultRoute').map(c => c.body)).toEqual([{ action: 'setDefaultRoute', route: home.route }, { action: 'setDefaultRoute', route: '' }]);
   await waitFor(() => expect(screen.getByLabelText('Voice model for chats')).toHaveValue(''));
   const card = screen.getByRole('article', { name: 'OpenAI Realtime transcription · work' });
+  await userEvent.click(screen.getByRole('button', { name: 'work' }));
   expect(card).not.toHaveTextContent(KEY);
   await userEvent.click(within(card).getByRole('button', { name: 'Test' }));
   expect(await within(card).findByText('Available — Voice connection is ready')).toBeInTheDocument();
@@ -218,8 +221,10 @@ it('transport: offers only declared kinds and saved references, round-trips them
   }, state);
   render(<VoicePanel />);
   const work = await screen.findByRole('article', { name: 'OpenAI Realtime transcription · work' });
+  await userEvent.click(within(work).getByRole('button', { name: 'work' }));
   expect(within(work).getByText('Network: SOCKS5 · office')).toBeInTheDocument();
   const homeCard = screen.getByRole('article', { name: 'OpenAI Realtime transcription · home' });
+  await userEvent.click(within(homeCard).getByRole('button', { name: 'home' }));
   expect(within(homeCard).getByText('Network: SOCKS5 · saved proxy unavailable')).toBeInTheDocument();
   // The stale reference stays selected and is explained, not silently replaced.
   await userEvent.click(within(homeCard).getByRole('button', { name: 'Edit' }));
@@ -228,6 +233,7 @@ it('transport: offers only declared kinds and saved references, round-trips them
   expect(within(staleForm).getByText(/no longer exists/)).toBeInTheDocument();
   await userEvent.click(within(homeCard).getByRole('button', { name: 'Cancel' }));
   // Reopening the routed connection shows the saved selection; an unrelated edit keeps it.
+  await userEvent.click(within(work).getByRole('button', { name: 'work' }));
   await userEvent.click(within(work).getByRole('button', { name: 'Edit' }));
   const form = within(work).getByRole('form', { name: 'Edit work' });
   const radios = within(form).getAllByRole('radio');
@@ -255,4 +261,15 @@ it('transport: a direct-only provider offers no proxy or tunnel choice', async (
   const form = await screen.findByRole('form', { name: 'New Legacy recognizer connection' });
   expect(within(form).getAllByRole('radio').map(r => (r as HTMLInputElement).value)).toEqual(['direct']);
   expect(within(form).queryByLabelText('Saved proxy')).toBeNull();
+});
+
+it('shows Default route, Connections and Errors groups in order, with an add row in Connections', async () => {
+  server(() => undefined, configured);
+  render(<VoicePanel />);
+  await screen.findByLabelText('Voice model for chats');
+  const titles = [...document.querySelectorAll('.settings-group-title')].map(t => t.textContent);
+  expect(titles).toEqual(['Default route', 'Connections', 'Errors']);
+  const connections = screen.getByRole('region', { name: 'Connections' });
+  expect(within(connections).getAllByRole('article').length).toBe(configured.connections.length);
+  expect(within(connections).getByRole('button', { name: 'Add voice connection' })).toBeVisible();
 });

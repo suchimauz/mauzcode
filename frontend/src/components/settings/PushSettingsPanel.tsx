@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { BellOff, Check, X } from 'lucide-react';
+import { BellOff } from 'lucide-react';
 import { requestJson } from '../../lib/mauzcode';
 import { Button } from '../ui/Button';
 import { PushDevices, type PushDevice } from './PushDevices';
+import { SettingsGroup, SettingsRow, SettingsSwitch } from './SettingsGroup';
 
 type Config = { enabled: boolean; publicKey: string | null; userId: string; binding: string; devices: PushDevice[]; csrf: string };
 const workerPath = '/webPush/web-push-sw.js';
@@ -126,14 +127,21 @@ export function PushSettingsPanel() {
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not remove the device.'); }
     finally { setBusy(false); }
   };
-  return <section aria-label="Push notifications">
-    <h2>Push notifications</h2><p className="settings-note">Optional notifications for action requests and errors that stop work. No prompt or subscription is created until you enable them.</p>
-    <p role="status" aria-live="polite">{message}</p>
-    {subscription ? (confirmDisable
-      ? <div role="group" aria-label="Confirm disable notifications"><p>Remove this browser’s push subscription? Other devices are not affected.</p><span className="push-confirm-actions"><Button variant="ghost" size="compact" className="push-device-remove" aria-label="Confirm disable" title="Confirm disable" disabled={busy} onClick={() => { void disable(); }}><Check size={16} strokeWidth={2} aria-hidden="true" /></Button><Button variant="ghost" size="compact" aria-label="Cancel" title="Cancel" disabled={busy} onClick={() => setConfirmDisable(false)}><X size={16} strokeWidth={2} aria-hidden="true" /></Button></span></div>
-      : <Button disabled={busy} onClick={() => setConfirmDisable(true)}><BellOff size={16} strokeWidth={1.75} aria-hidden="true" />Disable on this device</Button>) : <Button disabled={busy || !!unavailable || !config?.enabled} onClick={() => { void enable(); }}>Enable on this device</Button>}
-    <h3>Connected devices</h3>
+  const subscribed = !!subscription;
+  const notConfigured = config !== null && !config.enabled;
+  const reason = unavailable ?? (notConfigured ? 'Push is not configured on this server.' : null);
+  // Turning on must call enable() synchronously so the permission request stays inside the gesture.
+  // Turning off only opens the confirmation; the switch stays on until the subscription is really removed.
+  const onSwitch = (next: boolean) => { if (next) void enable(); else setConfirmDisable(true); };
+  return <section className="settings-panel" aria-label="Push notifications">
+    <header className="settings-panel-header"><h2>Push notifications</h2><p className="settings-note">Optional notifications for action requests and errors that stop work. No prompt or subscription is created until you enable them.</p></header>
+    <p className="settings-note push-message" role="status" aria-live="polite">{message}</p>
+    <SettingsGroup label="Push on this device" className="push-this-device">
+      <SettingsRow label="Push on this device" subtitle={reason ?? (subscribed ? 'This browser receives notifications.' : 'Turn on to receive notifications in this browser.')}
+        trailing={<SettingsSwitch label="Push on this device" checked={subscribed && !reason} disabled={busy || !!reason || !config} onChange={e => onSwitch(e.target.checked)} />}>
+        {subscribed && confirmDisable && <div className="settings-confirm" role="group" aria-label="Confirm disable notifications"><p className="settings-note">Remove this browser’s push subscription? Other devices are not affected.</p><div className="settings-actions"><Button variant="ghost" disabled={busy} onClick={() => setConfirmDisable(false)}>Cancel</Button><Button className="button--danger" aria-label="Confirm disable" disabled={busy} onClick={() => { void disable(); }}><BellOff size={16} strokeWidth={1.75} aria-hidden="true" />Disable</Button></div></div>}
+      </SettingsRow>
+    </SettingsGroup>
     <PushDevices devices={config ? config.devices : null} currentHash={deviceHash} onRemove={(id) => { void removeDevice(id); }} busy={busy} />
-    <p className="settings-footnote">Notifications are sent for action requests and errors that stop work. Each device manages its own subscription.</p>
   </section>;
 }

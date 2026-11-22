@@ -35,6 +35,12 @@ function mockApi(connections: unknown[], providers: unknown[] = [custom], usage:
 }
 beforeEach(() => { pluginUi.current = { registry: createExtensionRegistry([], {}), applications: {}, errors: {}, loaded: true }; });
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
+/** Expands a connection row by its disclosure button (named by the account) and returns the row. */
+async function expand(name: string) {
+  const toggle = await screen.findByRole('button', { name });
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+  return screen.getByRole('article', { name });
+}
 
 it('lists Models as the only model settings tab', async () => {
   const ids: string[] = SETTINGS_TABS.map(t => t.id);
@@ -69,7 +75,7 @@ it('places the single Add connection block before existing connections, collapse
   const posts = mockApi([stored]);
   const { container } = render(<ModelsPanel context={context} />);
   const toggle = await screen.findByRole('button', { name: 'Add connection' });
-  const list = container.querySelector('.ssh-list')!;
+  const list = container.querySelector('[data-model-connection]')!;
   expect(list).toBeTruthy();
   expect(toggle.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const focusable = [...container.querySelectorAll('button, input, select, a[href]')];
@@ -89,16 +95,16 @@ it('keeps the expanded first-connection form at the top with no duplicate when e
   mockApi([]);
   const { container } = render(<ModelsPanel context={context} />);
   const section = await screen.findByRole('region', { name: 'Add connection' });
-  expect(container.querySelector('.ssh-add-toggle')).toBeNull();
+  expect(container.querySelector('.models-add-toggle')).toBeNull();
   expect(screen.getAllByRole('region', { name: 'Add connection' })).toHaveLength(1);
-  expect(container.querySelector('.ssh-list')).toBeNull();
+  expect(container.querySelector('[data-model-connection]')).toBeNull();
   expect(section.compareDocumentPosition(screen.getByRole('heading', { name: 'Models' })) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
 });
 
 it('keeps a stored secret write-only: empty input omits it, clearing sends null', async () => {
   const posts = mockApi([stored]);
   render(<ModelsPanel context={context} />);
-  const card = await screen.findByRole('article', { name: 'Work' });
+  const card = await expand('Work');
   fireEvent.click(within(card).getByRole('button', { name: 'Edit' }));
   const form = within(card).getByRole('form', { name: 'Edit Work' });
   const key = within(form).getByLabelText('API key');
@@ -119,7 +125,7 @@ it('keeps a stored secret write-only: empty input omits it, clearing sends null'
 it('removes only after explicit confirmation, with focus on the confirm button', async () => {
   const posts = mockApi([stored]);
   render(<ModelsPanel context={context} />);
-  const card = await screen.findByRole('article', { name: 'Work' });
+  const card = await expand('Work');
   fireEvent.click(within(card).getByRole('button', { name: 'Remove' }));
   expect(posts.some(p => p.body.action === 'remove')).toBe(false);
   const confirm = within(card).getByRole('button', { name: 'Remove connection' });
@@ -131,7 +137,7 @@ it('removes only after explicit confirmation, with focus on the confirm button',
 it('tests a connection and toggles enabled', async () => {
   const posts = mockApi([stored]);
   render(<ModelsPanel context={context} />);
-  const card = await screen.findByRole('article', { name: 'Work' });
+  const card = await expand('Work');
   fireEvent.click(within(card).getByRole('button', { name: /Test/ }));
   expect(await screen.findByText('Work: Model discovery succeeded')).toBeVisible();
   fireEvent.click(within(card).getByRole('switch', { name: 'Enabled' }));
@@ -185,7 +191,7 @@ it('toggles models by clicking the row, saving all changes with one Save button'
     return base(url, init);
   });
   render(<ModelsPanel context={context} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Models' }));
+  await expand('Work');
   const m1 = await screen.findByRole('switch', { name: 'Enabled m1' });
   const m2 = screen.getByRole('switch', { name: 'Enabled m2' });
   // The model draft is initialized by an effect after the async catalogue arrives.
@@ -238,6 +244,7 @@ it('runs the Codex device login: code, copy, polling, cancel and confirmed logou
   const writeText = vi.fn(async () => {});
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
   render(<ModelsPanel context={context} />);
+  await expand('GPT');
   const region = await screen.findByRole('region', { name: 'Codex login for GPT' });
   await waitFor(() => expect(within(region).getByRole('status')).toHaveTextContent('Not logged in'));
   fireEvent.click(within(region).getByRole('button', { name: 'Log in' }));
@@ -315,6 +322,7 @@ it.each([true, false])('supports Claude authorization paste, rejection and retry
     return base(url, init);
   });
   render(<ModelsPanel context={context} />);
+  await expand('Claude work');
   const region = await screen.findByRole('region', { name: 'Claude login for Claude work' });
   await waitFor(() => expect(within(region).getByRole('status')).toHaveTextContent('Not logged in'));
   fireEvent.click(within(region).getByRole('button', { name: 'Log in' }));
@@ -358,6 +366,7 @@ it('shows the Gemini same-machine link next to the paste link and code field', a
     return base(url, init);
   });
   render(<ModelsPanel context={context} />);
+  await expand('Google');
   const region = await screen.findByRole('region', { name: 'Gemini (Google account) login for Google' });
   fireEvent.click(await within(region).findByRole('button', { name: 'Log in' }));
   await within(region).findByRole('textbox', { name: 'Callback URL or authorization code' });
@@ -400,7 +409,7 @@ function mockContextApi(opts: { failSave?: boolean } = {}) {
 it('shows fallback limits, saves an override and distinguishes reset from discard without touching availability', async () => {
   const posts = mockContextApi();
   render(<ModelsPanel context={context} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Models' }));
+  await expand('Work');
   const field = await screen.findByLabelText('Context limit for qwen');
   expect(field).toHaveValue('');
   const group = screen.getByRole('group', { name: 'Context limit qwen' });
@@ -437,7 +446,7 @@ it('shows fallback limits, saves an override and distinguishes reset from discar
 it('validates context input locally and keeps the draft after a failed save', async () => {
   const posts = mockContextApi({ failSave: true });
   render(<ModelsPanel context={context} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Models' }));
+  await expand('Work');
   const field = await screen.findByLabelText('Context limit for qwen');
   const group = screen.getByRole('group', { name: 'Context limit qwen' });
   for (const bad of ['0', '-5', '1.5', '12k']) {
@@ -457,7 +466,7 @@ it('validates context input locally and keeps the draft after a failed save', as
 it('keeps context drafts across refresh, including for models that disappeared', async () => {
   mockContextApi();
   render(<ModelsPanel context={context} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Models' }));
+  await expand('Work');
   fireEvent.change(await screen.findByLabelText('Context limit for qwen'), { target: { value: '32000' } });
   fireEvent.change(screen.getByLabelText('Context limit for big'), { target: { value: '100000' } });
   fireEvent.click(screen.getByRole('button', { name: 'Update models' }));
@@ -488,6 +497,7 @@ it('shows the Qwen account and plan, and numbered device-code steps', async () =
     return base(url, init);
   });
   render(<ModelsPanel context={context} />);
+  await expand('qwen');
   const region = await screen.findByRole('region', { name: 'Qwen Subscription login for qwen' });
   await waitFor(() => expect(within(region).getByRole('status')).toHaveTextContent('Logged in'));
   expect(within(region).getByText('me@example.com · plus plan')).toBeInTheDocument();
@@ -560,6 +570,7 @@ it('disabled provider: dimmed cards, blocked Test/Update models/Login, connectio
   const { container } = render(<ModelsPanel context={context} />);
   const group = await screen.findByRole('region', { name: 'Codex provider' });
   const card = within(group).getByRole('article', { name: 'sub' });
+  fireEvent.click(within(card).getByRole('button', { name: 'sub' }));
   expect(card.className).toContain('is-provider-disabled');
   expect(within(card).getByRole('button', { name: 'Test' })).toBeDisabled();
   // Connection-level switch stays operable.
@@ -572,7 +583,7 @@ it('disabled provider: dimmed cards, blocked Test/Update models/Login, connectio
   expect(login).toBeDisabled();
   expect(posts.some(p => p.body.action === 'action' && p.body.id === 'cx')).toBe(false);
   // Update models blocked inside the Models section.
-  fireEvent.click(within(card).getByRole('button', { name: 'Models' }));
+  // The model list loads with the expanded details.
   await waitFor(() => expect(within(card).getByRole('button', { name: 'Update models' })).toBeDisabled());
   // Add connection offers only the enabled provider.
   fireEvent.click(screen.getByRole('button', { name: 'Add connection' }));
@@ -643,6 +654,7 @@ it.each([
   mockVersionApi(id as string, config as Record<string, unknown>, { version: '1.2.3', source, detail: 'Version detail' });
   render(<ModelsPanel context={context} />);
   expect(await screen.findByText(`· v1.2.3 (${label})`)).toHaveAttribute('title', 'Version detail');
+  await expand('Work');
   expect(!!screen.queryByRole('button', { name: 'Re-detect' })).toBe(reDetect);
 });
 
@@ -652,6 +664,7 @@ it('loads lazily, disables re-detect while pending and requests a fresh version 
   lookup.mockImplementationOnce(() => new Promise<Response>(done => { resolve = done; }));
   render(<ModelsPanel context={context} />);
   expect(await screen.findByRole('article', { name: 'Work' })).toBeInTheDocument();
+  await expand('Work');
   expect(screen.getByLabelText('Loading client version')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Re-detect' })).toBeDisabled();
   resolve(json({ clientVersion: { version: '2.1.260', source: 'detected' } }));
@@ -666,6 +679,7 @@ it('silently hides failed version lookups but reports explicit re-detect failure
   const { lookup } = mockVersionApi();
   lookup.mockImplementation(async () => json({ error: 'Version unavailable' }, 500));
   render(<ModelsPanel context={context} />);
+  await expand('Work');
   const button = await screen.findByRole('button', { name: 'Re-detect' });
   await waitFor(() => expect(button).not.toBeDisabled());
   expect(screen.queryByLabelText('Loading client version')).toBeNull();
@@ -680,6 +694,7 @@ it('does not request versions for a provider without the hook', async () => {
   render(<ModelsPanel context={context} />);
   await screen.findByText('Configured');
   expect(posts.some(p => p.body.action === 'clientVersion')).toBe(false);
+  await expand('Work');
   expect(screen.queryByRole('button', { name: 'Re-detect' })).toBeNull();
 });
 
@@ -687,6 +702,7 @@ it('unchecks detection when typing an override, saves false and reloads the repo
   const { posts, lookup } = mockVersionApi();
   render(<ModelsPanel context={context} />);
   await screen.findByText('· v2.1.260 (detected: claude --version)');
+  await expand('Work');
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
   const form = screen.getByRole('form', { name: 'Edit Work' });
   const detect = within(form).getByRole('checkbox', { name: 'Detect CLI version' });
@@ -703,7 +719,60 @@ it('unchecks detection when typing an override, saves false and reloads the repo
 it('disables the default detection for a stored override without the detection key', async () => {
   mockVersionApi('claude', { clientVersion: '3.0.0' });
   render(<ModelsPanel context={context} />);
+  await expand('Work');
   fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
   const detect = screen.getByRole('checkbox', { name: 'Detect CLI version' });
   expect(detect).not.toBeChecked(); expect(detect).toBeDisabled();
+});
+
+it('keeps at most one connection row expanded and requests models only on expand', async () => {
+  const second = { ...stored, id: 'c3', accountName: 'Home' };
+  const posts = mockApi([stored, second]);
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') !== 'GET' && JSON.parse(String(init.body)).action === 'models') { posts.push({ body: JSON.parse(String(init.body)), headers: init.headers }); return json({ models: [{ id: 'm1' }], source: 'provider', cachedAt: 1 }); }
+    return base(url, init);
+  });
+  render(<ModelsPanel context={context} />);
+  const work = await screen.findByRole('button', { name: 'Work' });
+  const home = screen.getByRole('button', { name: 'Home' });
+  await screen.findAllByText('Configured');
+  expect(posts.some(p => p.body.action === 'models')).toBe(false);
+  fireEvent.click(work);
+  expect(work).toHaveAttribute('aria-expanded', 'true');
+  await waitFor(() => expect(posts.filter(p => p.body.action === 'models').map(p => p.body.id)).toEqual(['c1']));
+  fireEvent.click(home);
+  expect(work).toHaveAttribute('aria-expanded', 'false');
+  expect(home).toHaveAttribute('aria-expanded', 'true');
+  await waitFor(() => expect(posts.filter(p => p.body.action === 'models').map(p => p.body.id)).toEqual(['c1', 'c3']));
+  // The enable switch is a sibling of the disclosure button and never toggles the row.
+  const sw = within(screen.getByRole('article', { name: 'Work' })).getByRole('switch', { name: 'Enabled' });
+  expect(work.contains(sw)).toBe(false);
+  fireEvent.click(sw);
+  expect(work).toHaveAttribute('aria-expanded', 'false');
+});
+
+it('unregistered provider: no model request, a note, Edit disabled with a reason, Remove available', async () => {
+  const orphan = { ...stored, id: 'o1', provider: 'gone', providerRegistered: false, accountName: 'Old' };
+  const posts = mockApi([orphan]);
+  render(<ModelsPanel context={context} />);
+  const row = await expand('Old');
+  expect(within(row).getByRole('note')).toHaveTextContent('not loaded');
+  const edit = within(row).getByRole('button', { name: 'Edit' });
+  expect(edit).toBeDisabled();
+  expect(document.getElementById(edit.getAttribute('aria-describedby')!)).toHaveTextContent('not loaded');
+  expect(within(row).getByRole('button', { name: 'Remove' })).not.toBeDisabled();
+  expect(posts.some(p => p.body.action === 'models')).toBe(false);
+});
+
+it('shows the status and the most used quota window in the collapsed row', async () => {
+  mockApi([stored], [custom], { status: 'available', checkedAt: 1, windows: [{ label: '5h', usedPercent: 20 }, { label: 'week', usedPercent: 75, resetAt: 5 }] });
+  render(<ModelsPanel context={context} />);
+  const toggle = await screen.findByRole('button', { name: 'Work' });
+  const row = screen.getByRole('article', { name: 'Work' });
+  expect(await within(row).findByText('week 75%')).toBeVisible();
+  expect(within(row).getByText('Available')).toBeVisible();
+  expect(within(row).queryByRole('list', { name: 'Quota windows' })).toBeNull();
+  fireEvent.click(toggle);
+  expect(within(row).getByRole('list', { name: 'Quota windows' })).toBeVisible();
 });

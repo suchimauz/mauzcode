@@ -12,6 +12,7 @@ import {
   type ConnectionInput, type ConnectionModels, type ModelClientVersion, type ModelContextLimit, type ModelConnectionView, type ModelFieldSpec, type ModelInfo, type ModelProviderView, type ModelsState, type ModelTransportSpec, type ModelUsageReport,
 } from '../../lib/modelConnections';
 import { SettingsField as Field } from './SettingsField';
+import { SettingsGroup, SettingsRow, SettingsSwitch } from './SettingsGroup';
 
 type Feedback = { tone: 'success' | 'error'; text: string } | null;
 const message = (error: unknown, fallback: string) => error instanceof Error && error.message ? error.message : fallback;
@@ -39,9 +40,9 @@ function formatTime(ms: number) { return new Date(ms).toLocaleString(undefined, 
 
 /** Shared renderer of a UsageReport: status and reason, then quota windows and balance when present. */
 export function UsageView({ usage }: { usage: ModelUsageReport }) {
-  const tone = usage.status === 'available' ? 'is-verified' : usage.status === 'unavailable' ? 'is-error' : 'is-pending';
+  const tone = usage.status === 'available' ? 'is-success' : usage.status === 'unavailable' ? 'is-error' : 'is-pending';
   return <div className="models-usage">
-    <p className="models-usage-status"><span className={`ssh-badge ${tone}`}><span aria-hidden="true" />{STATUS_LABEL[usage.status] ?? usage.status}</span>{usage.reason && <span className="models-usage-reason" title={usage.reason}>{reasonLabel(usage.reason)}</span>}<span className="models-usage-time">checked {formatTime(usage.checkedAt)}</span></p>
+    <p className="models-usage-status"><span className={`settings-badge ${tone}`}><i aria-hidden="true" />{STATUS_LABEL[usage.status] ?? usage.status}</span>{usage.reason && <span className="models-usage-reason" title={usage.reason}>{reasonLabel(usage.reason)}</span>}<span className="models-usage-time">checked {formatTime(usage.checkedAt)}</span></p>
     {usage.windows && usage.windows.length > 0 && <ul className="models-windows" aria-label="Quota windows">{usage.windows.map((w, i) => {
       const used = typeof w.usedPercent === 'number' ? Math.max(0, Math.min(100, w.usedPercent)) : null;
       return <li key={`${w.label}-${i}`} className="models-window">
@@ -154,8 +155,6 @@ function ProviderForm({ provider, connection, actions, onDone }: { provider: Mod
   return <SchemaConnectionForm provider={provider} connection={connection} state={actions.state} onSubmit={submit} onCancel={onDone} busy={actions.busy} />;
 }
 
-type Section = 'edit' | 'models' | 'remove' | null;
-
 const SOURCE_LABEL: Record<ModelContextLimit['source'], string> = { override: 'Owner override', provider: 'Provider', catalog: 'Catalog', fallback: 'Fallback' };
 const FALLBACK_LIMIT = 200_000;
 const formatTokens = (n: number) => `${n.toLocaleString('en-US')} tokens`;
@@ -202,53 +201,81 @@ function ContextLimitControl({ model, limit, override, draft, error, saving, dis
   </div>;
 }
 
-/** Version lookup never blocks the overview or raises a toast on initial failure. */
-function ClientVersion({ connection, provider, actions }: { connection: ModelConnectionView; provider: ModelProviderView; actions: Actions }) {
+/** Effective client version of a connection; lookup never blocks the overview or raises a toast on initial failure. */
+function useClientVersion(connection: ModelConnectionView, provider: ModelProviderView | undefined, actions: Actions) {
+  const enabled = !!provider?.hasClientVersion;
   const [report, setReport] = useState<ModelClientVersion | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const generation = useRef(0);
   useEffect(() => {
+    if (!enabled) return;
     const current = ++generation.current;
     setReport(null); setLoading(true);
     void connectionClientVersion(actions.csrf, connection.id).then(value => {
       if (current === generation.current) setReport(value);
     }).catch(() => {}).finally(() => { if (current === generation.current) setLoading(false); });
     return () => { generation.current++; };
-  }, [actions.csrf, connection.id, connection.updatedAt]);
-  const detectField = provider.fields.find(f => f.key === 'detectCliVersion' && f.type === 'boolean');
+  }, [enabled, actions.csrf, connection.id, connection.updatedAt]);
+  const detectField = provider?.fields.find(f => f.key === 'detectCliVersion' && f.type === 'boolean');
   const detection = connection.config.detectCliVersion ?? detectField?.default ?? false;
-  const canDetect = detection === true && !String(connection.config.clientVersion ?? '').trim();
+  const canDetect = enabled && detection === true && !String(connection.config.clientVersion ?? '').trim();
   const refresh = async () => {
     const current = ++generation.current;
     setLoading(true);
     const result = await actions.run('Re-detect', () => connectionClientVersion(actions.csrf, connection.id, true));
     if (current === generation.current) { setReport(result); setLoading(false); }
   };
-  const source = report?.source === 'detected' ? `detected: ${provider.id} --version` : report?.source === 'override' ? 'connection override' : report?.source === 'fallback' ? 'built-in fallback' : 'built-in default';
-  return <>
-    <span aria-live="polite">{loading ? <span aria-label="Loading client version"> · v…</span> : report ? <span title={report.detail}> · v{report.version} ({source})</span> : null}</span>
-    {canDetect && <Button variant="ghost" size="compact" onClick={() => { void refresh(); }} disabled={loading || actions.busy || actions.context.readOnly}>Re-detect</Button>}
-  </>;
+  const source = report?.source === 'detected' ? `detected: ${provider?.id} --version` : report?.source === 'override' ? 'connection override' : report?.source === 'fallback' ? 'built-in fallback' : 'built-in default';
+  const text = !enabled ? null : <span aria-live="polite">{loading ? <span aria-label="Loading client version"> · v…</span> : report ? <span title={report.detail}> · v{report.version} ({source})</span> : null}</span>;
+  return { text, canDetect, loading, refresh };
 }
 
-function ConnectionCard({ connection, provider, actions }: { connection: ModelConnectionView; provider?: ModelProviderView; actions: Actions }) {
+/** Most used quota window as a short row summary, e.g. `5h 42%`. */
+function quotaSummary(usage: ModelUsageReport | null): { text: string; tone: string } | null {
+  const windows = (usage?.windows ?? []).filter(w => typeof w.usedPercent === 'number');
+  if (!windows.length) return null;
+  const top = windows.reduce((a, b) => (b.usedPercent! > a.usedPercent! ? b : a));
+  const used = Math.round(Math.max(0, Math.min(100, top.usedPercent!)));
+  return { text: `${top.label} ${used}%`, tone: used >= 90 ? 'is-critical' : used >= 70 ? 'is-warning' : 'is-ok' };
+}
+
+type DetailSection = 'edit' | 'remove' | null;
+
+/**
+ * One connection row: account, status, transport, client version, quota summary and the enable switch. Expanding it
+ * shows usage, login, Re-detect, the model list (requested on expand, registered providers only) and Test/Edit/Remove.
+ */
+function ConnectionRow({ connection, provider, actions, expanded, onToggle }: { connection: ModelConnectionView; provider?: ModelProviderView; actions: Actions; expanded: boolean; onToggle: () => void }) {
   // Global provider switch gates network controls; the connection-level switch stays operable.
   const providerOff = provider?.enabled === false;
+  const registered = connection.providerRegistered && !!provider;
   const [usage, setUsage] = useState<ModelUsageReport | null>(null);
   const [usageError, setUsageError] = useState<string | null>(null);
-  const [open, setOpen] = useState<Section>(null);
+  const [open, setOpen] = useState<DetailSection>(null);
   const [models, setModels] = useState<ConnectionModels | null>(null);
   const [updatingModels, setUpdatingModels] = useState(false);
   const confirmRef = useRef<HTMLDivElement>(null);
+  const editReasonId = useId();
+  const version = useClientVersion(connection, provider, actions);
   const loadUsage = useCallback(async (refresh: boolean, signal?: AbortSignal) => {
     try { setUsage(await connectionUsage(actions.csrf, connection.id, refresh, signal)); setUsageError(null); }
     catch (error) { if (!signal?.aborted) setUsageError(message(error, 'Usage unavailable')); }
   }, [actions.csrf, connection.id]);
   useEffect(() => { const c = new AbortController(); void loadUsage(false, c.signal); return () => c.abort(); }, [loadUsage, connection.updatedAt, connection.enabled]);
   useEffect(() => { if (open === 'remove') confirmRef.current?.querySelector<HTMLButtonElement>('.button--danger')?.focus(); }, [open]);
-  const toggle = (section: Exclude<Section, null>) => setOpen(open === section ? null : section);
+  useEffect(() => { if (!expanded) setOpen(null); }, [expanded]);
+  // The model list is requested when the row expands, and only for a registered provider. It loads locally,
+  // without the panel-wide busy state, so the other controls of the row stay operable meanwhile.
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!expanded || !registered) return;
+    let live = true;
+    setModels(null); setModelsError(null);
+    connectionModels(actions.csrf, connection.id).then(r => { if (live) setModels(r); }, error => { if (live) setModelsError(message(error, 'Model list unavailable')); });
+    return () => { live = false; };
+  }, [expanded, registered, actions.csrf, connection.id]);
+  const toggle = (section: Exclude<DetailSection, null>) => setOpen(open === section ? null : section);
   const test = async () => { const result = await actions.run('Test', () => testConnection(actions.csrf, connection.id), r => `${connection.accountName}: ${r.message}`); if (result) await loadUsage(true); };
-  const showModels = async () => { if (open === 'models') return setOpen(null); setOpen('models'); setModels(null); const r = await actions.run('Models', () => connectionModels(actions.csrf, connection.id)); if (r) setModels(r); };
   const updateModels = async () => {
     setUpdatingModels(true);
     try { const r = await actions.run('Update models', () => connectionModels(actions.csrf, connection.id, true), r => r.error ? `Update failed: ${r.error}` : `${r.models.length} models updated`); if (r) setModels(r); }
@@ -300,30 +327,28 @@ function ConnectionCard({ connection, provider, actions }: { connection: ModelCo
   const listed = new Set((models?.models ?? []).map(m => m.id));
   const pendingAbsent = Object.keys(contextDrafts).filter(id => !listed.has(id)).sort();
   const label = provider?.label ?? connection.provider;
-  return <article className={`ssh-card${providerOff ? ' is-provider-disabled' : ''}`} data-model-connection={connection.id} aria-label={connection.accountName}>
-    <header className="ssh-card-header">
-      <div className="ssh-card-title">
-        <div className="ssh-card-name"><ProviderLogo logo={actions.state.providerLogos?.[connection.provider]} providerId={connection.provider} icon={provider?.icon} /><h3>{connection.accountName}</h3>{!connection.enabled && <span className="ssh-badge is-pending"><span aria-hidden="true" />Disabled</span>}</div>
-        <p className="ssh-card-target">{label}{!connection.providerRegistered && ' (provider not loaded)'} · {transportLabel(connection.transport, actions.state.proxies)}{provider?.hasClientVersion && <ClientVersion connection={connection} provider={provider} actions={actions} />}</p>
-      </div>
-      <div className="models-card-buttons">
-        <Button onClick={() => { void test(); }} disabled={actions.busy || !connection.enabled || !connection.providerRegistered || providerOff}><RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />Test</Button>
-        <label className="settings-check models-enabled"><input type="checkbox" role="switch" checked={connection.enabled} disabled={actions.busy} onChange={e => { const enabled = e.target.checked; void actions.run(enabled ? 'Enable' : 'Disable', () => setConnectionEnabled(actions.csrf, connection.id, enabled), () => `${connection.accountName} ${enabled ? 'enabled' : 'disabled'}`).then(r => r && actions.reload()); }} />Enabled</label>
-      </div>
-    </header>
-    <div aria-live="polite">{usage ? <UsageView usage={usage} /> : usageError ? <p className="settings-note" role="status">{usageError}</p> : <p className="settings-loading" role="status">Checking…</p>}</div>
-    <div className="ssh-card-tabs" role="group" aria-label={`Actions for ${connection.accountName}`}>
-      <button type="button" className="ssh-card-tab" aria-expanded={open === 'edit'} disabled={!provider} onClick={() => toggle('edit')}>Edit</button>
-      <button type="button" className="ssh-card-tab" aria-expanded={open === 'models'} disabled={!connection.providerRegistered} onClick={() => { void showModels(); }}>Models</button>
-      <button type="button" className="ssh-card-tab is-danger" aria-expanded={open === 'remove'} onClick={() => toggle('remove')}>Remove</button>
-    </div>
+  const tone = usage?.status === 'available' ? 'is-success' : usage?.status === 'unavailable' ? 'is-error' : 'is-pending';
+  const quota = quotaSummary(usage);
+  const enableSwitch = <SettingsSwitch label="Enabled" checked={connection.enabled} disabled={actions.busy} onChange={e => { const enabled = e.target.checked; void actions.run(enabled ? 'Enable' : 'Disable', () => setConnectionEnabled(actions.csrf, connection.id, enabled), () => `${connection.accountName} ${enabled ? 'enabled' : 'disabled'}`).then(r => r && actions.reload()); }} />;
+  return <SettingsRow as="article" aria-label={connection.accountName} data-model-connection={connection.id}
+    className={`models-connection${providerOff ? ' is-provider-disabled' : ''}`}
+    leading={<ProviderLogo logo={actions.state.providerLogos?.[connection.provider]} providerId={connection.provider} icon={provider?.icon} />}
+    label={<><span className="models-connection-name">{connection.accountName}</span>
+      {usage ? <span className={`settings-badge ${tone}`}><i aria-hidden="true" />{STATUS_LABEL[usage.status] ?? usage.status}</span> : !usageError && <span className="settings-badge" role="status">Checking…</span>}
+      {!connection.enabled && <span className="settings-badge is-pending">Disabled</span>}</>}
+    subtitle={<><span>{label}{!connection.providerRegistered && ' (provider not loaded)'} · {transportLabel(connection.transport, actions.state.proxies)}{version.text}</span>
+      {quota && <span className={`llm-quota ${quota.tone}`}>{quota.text}</span>}
+      {usageError && <span role="status">{usageError}</span>}</>}
+    toggleLabel={connection.accountName}
+    trailing={enableSwitch} expanded={expanded} onToggle={onToggle}>
+    <div className="settings-detail-section" aria-live="polite">{usage ? <UsageView usage={usage} /> : usageError ? <p className="settings-note">{usageError}</p> : <p className="settings-loading">Checking…</p>}</div>
     {['codex', 'claude', 'qwen', 'gemini'].includes(connection.provider) && connection.providerRegistered && <ProviderLogin connection={connection} actions={actions} />}
-    {open === 'edit' && provider && <div className="ssh-card-section"><ProviderForm key={connection.updatedAt} provider={provider} connection={connection} actions={actions} onDone={() => setOpen(null)} /></div>}
-    {open === 'models' && <div className="ssh-card-section" aria-live="polite">{!models ? <p className="settings-loading" role="status">Loading models…</p> : <>
+    {version.canDetect && <div className="settings-detail-section"><Button variant="ghost" size="compact" className="models-redetect" onClick={() => { void version.refresh(); }} disabled={version.loading || actions.busy || actions.context.readOnly}>Re-detect</Button></div>}
+    {registered ? <section className="settings-detail-section" aria-label={`Models of ${connection.accountName}`} aria-live="polite"><h4>Models</h4>{!models ? (modelsError ? <p className="settings-note" role="status">{modelsError}</p> : <p className="settings-loading" role="status">Loading models…</p>) : <>
       {models.error && <p className="settings-note" role="status">Discovery failed: {models.error}</p>}
       {models.models.length ? <ul className="models-list" aria-label={`Models of ${connection.accountName}`}>{models.models.map(m => { const off = draftOff.has(m.id); return <li key={m.id} className={off ? 'is-disabled' : undefined} data-model-disabled={off ? 'true' : undefined}>
-        <label className="models-model-row"><input type="checkbox" role="switch" aria-label={`Enabled ${m.id}`} checked={!off} disabled={saving} onChange={() => toggleDraft(m.id)} />
-          <code>{m.id}</code>{m.label && m.label !== m.id && <span className="models-model-label">{m.label}</span>}{off && <span className="ssh-badge is-pending"><span aria-hidden="true" />Disabled</span>}</label>
+        <label className="models-model-row"><input type="checkbox" role="switch" className="settings-switch" aria-label={`Enabled ${m.id}`} checked={!off} disabled={saving} onChange={() => toggleDraft(m.id)} />
+          <code>{m.id}</code>{m.label && m.label !== m.id && <span className="models-model-label">{m.label}</span>}{off && <span className="settings-badge is-pending">Disabled</span>}</label>
         {contextControl(m.id, models.contextLimits?.[m.id])}
       </li>; })}</ul> : <p className="settings-note">No models.</p>}
       {pendingAbsent.length > 0 && <div className="models-context-pending" role="group" aria-label="Pending context edits for models not in the current list">
@@ -338,12 +363,19 @@ function ConnectionCard({ connection, provider, actions }: { connection: ModelCo
       <div className="models-cache-row">
         <p className="settings-field-hint">{models.cachedAt ? `Updated ${formatTime(models.cachedAt)} · refreshes hourly` : `Source: ${models.source}`}</p>
         <Button variant="ghost" disabled={updatingModels || actions.busy || !connection.enabled || providerOff} onClick={() => { void updateModels(); }}><RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />{updatingModels ? 'Updating…' : 'Update models'}</Button>
-      </div></>}</div>}
-    {open === 'remove' && <div className="ssh-card-section settings-confirm" role="group" aria-label="Confirm removal">
+      </div></>}</section>
+      : <p id={editReasonId} className="settings-note" role="note">The {label} provider is not loaded, so its models and settings are unavailable. Restart MauzCode or remove this connection.</p>}
+    <div className="settings-detail-actions" role="group" aria-label={`Actions for ${connection.accountName}`}>
+      <Button onClick={() => { void test(); }} disabled={actions.busy || !connection.enabled || !registered || providerOff}><RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />Test</Button>
+      <Button variant="ghost" aria-expanded={open === 'edit'} disabled={!registered} aria-describedby={registered ? undefined : editReasonId} onClick={() => toggle('edit')}>Edit</Button>
+      <Button variant="ghost" className="is-danger" aria-expanded={open === 'remove'} onClick={() => toggle('remove')}>Remove</Button>
+    </div>
+    {open === 'edit' && provider && registered && <div className="settings-detail-section"><ProviderForm key={connection.updatedAt} provider={provider} connection={connection} actions={actions} onDone={() => setOpen(null)} /></div>}
+    {open === 'remove' && <div className="settings-confirm" role="group" aria-label="Confirm removal">
       <p className="settings-note">Removes <b>{connection.accountName}</b> and its stored secrets from MauzCode. This cannot be undone.</p>
       <div className="ssh-form-actions" ref={confirmRef}><Button variant="ghost" onClick={() => setOpen(null)}>Cancel</Button><Button className="button--danger" disabled={actions.busy} onClick={() => { void actions.run('Remove', () => removeConnection(actions.csrf, connection.id), () => `${connection.accountName} removed`).then(r => r && actions.reload()); }}>Remove connection</Button></div>
     </div>}
-  </article>;
+  </SettingsRow>;
 }
 
 type LoginFlow = { flowId: string; kind: 'device-code' | 'authorization-code'; status: 'pending' | 'succeeded' | 'failed' | 'expired'; verificationUri?: string; authorizationUrl?: string; callbackAuthorizationUrl?: string; userCode?: string; callbackListening?: boolean; expiresAt: number; message?: string };
@@ -403,12 +435,12 @@ function ProviderLogin({ connection, actions }: { connection: ModelConnectionVie
     : flow?.status === 'failed' || flow?.status === 'expired' ? (flow.message ?? 'Login failed')
     : status.loggedIn ? 'Logged in' : status.needsLogin && status.expiresAt ? 'Login expired; log in again' : 'Not logged in';
   const failed = flow?.status === 'failed' || flow?.status === 'expired';
-  const tone = pending ? 'is-pending' : failed ? 'is-error' : status?.loggedIn ? 'is-verified' : 'is-pending';
+  const tone = pending ? 'is-pending' : failed ? 'is-error' : status?.loggedIn ? 'is-success' : 'is-pending';
   const account = status?.loggedIn ? status.account : null;
   const who = account ? [account.email ?? account.name, account.plan && `${account.plan} plan`].filter(Boolean).join(' · ') : '';
-  return <section className="ssh-card-section models-login" aria-label={`${providerLabel} login for ${connection.accountName}`}>
+  return <section className="settings-detail-section models-login" aria-label={`${providerLabel} login for ${connection.accountName}`}>
     <div className="models-login-head">
-      <p className="models-login-state" role="status" aria-live="polite"><span className={`ssh-badge ${tone}`}><span aria-hidden="true" />{live}</span></p>
+      <p className="models-login-state" role="status" aria-live="polite"><span className={`settings-badge ${tone}`}><i aria-hidden="true" />{live}</span></p>
       {who && <p className="models-login-account">{who}</p>}
     </div>
     {pending && flow && <div className="models-login-code">
@@ -452,17 +484,20 @@ function AddConnection({ actions, first }: { actions: Actions; first: boolean })
   const provider = providers.find(p => p.id === providerId) ?? providers[0];
   if (!actions.state.providers.length) return <p className="settings-note">No model providers are registered.</p>;
   if (!providers.length) return <p className="settings-note" role="note">All model providers are disabled. Enable a provider below to add a connection.</p>;
-  if (!open) return <Button className="ssh-add-toggle" onClick={() => setOpen(true)}><Plus size={14} strokeWidth={1.5} aria-hidden="true" />Add connection</Button>;
-  return <section className="ssh-card" aria-label="Add connection">
-    <h3>Add connection</h3>
-    {provider && <p className="models-add-provider"><ProviderLogo logo={actions.state.providerLogos?.[provider.id]} providerId={provider.id} icon={provider.icon} />{provider.label}</p>}
-    <SelectField name="provider" label="Provider" value={provider?.id ?? ''} onChange={setProviderId} options={providers.map(p => ({ value: p.id, label: p.label }))} hint={provider?.description} />
-    {provider && <ProviderForm key={provider.id} provider={provider} actions={actions} onDone={() => { if (!first) setOpen(false); }} />}
-  </section>;
+  if (!open) return <div className="settings-group-surface models-add"><button type="button" className="settings-row-toggle settings-row-add models-add-toggle" onClick={() => setOpen(true)}><span className="settings-row-leading" aria-hidden="true"><Plus size={16} strokeWidth={1.75} /></span><span className="settings-row-label">Add connection</span></button></div>;
+  return <SettingsGroup className="models-add-form" label="Add connection" title="Add connection">
+    <div className="settings-row-form ssh-form">
+      {provider && <p className="models-add-provider"><ProviderLogo logo={actions.state.providerLogos?.[provider.id]} providerId={provider.id} icon={provider.icon} />{provider.label}</p>}
+      <SelectField name="provider" label="Provider" value={provider?.id ?? ''} onChange={setProviderId} options={providers.map(p => ({ value: p.id, label: p.label }))} hint={provider?.description} />
+      {provider && <ProviderForm key={provider.id} provider={provider} actions={actions} onDone={() => { if (!first) setOpen(false); }} />}
+    </div>
+  </SettingsGroup>;
 }
 
-/** Provider header row: mark, label, global enable switch; shown even without connections. */
-function ProviderSection({ provider, connections, actions }: { provider: ModelProviderView; connections: ModelConnectionView[]; actions: Actions }) {
+type Expansion = { expanded: string | null; onToggle: (id: string) => void };
+
+/** Provider group: header row with mark, label, disabled badge and global switch, then one row per connection. */
+function ProviderSection({ provider, connections, actions, expansion }: { provider: ModelProviderView; connections: ModelConnectionView[]; actions: Actions; expansion: Expansion }) {
   const enabled = provider.enabled !== false;
   const locked = provider.enabledLocked === true;
   const hintId = useId();
@@ -475,20 +510,14 @@ function ProviderSection({ provider, connections, actions }: { provider: ModelPr
       () => setProviderEnabled(actions.csrf, provider.id, next),
       () => `${provider.label} ${next ? 'enabled' : 'disabled'}`).then(r => r && actions.reload());
   };
-  return <section className="models-provider-group" data-model-provider={provider.id} aria-label={`${provider.label} provider`}>
-    <header className="models-provider-header">
-      <div className="models-provider-title">
-        <ProviderLogo logo={actions.state.providerLogos?.[provider.id]} providerId={provider.id} icon={provider.icon} />
-        <h3>{provider.label}</h3>
-        {!enabled && <span className="ssh-badge is-pending"><span aria-hidden="true" />Disabled</span>}
-      </div>
-      <label className="settings-check models-enabled models-provider-switch">
-        <input type="checkbox" role="switch" aria-label={`Enable ${provider.label} provider`} aria-describedby={hintId} checked={enabled} disabled={actions.busy || locked} onChange={e => toggle(e.target.checked)} />Enabled
-      </label>
-    </header>
-    <p id={hintId} className="settings-field-hint models-provider-hint">{hint}</p>
-    {connections.length > 0 && <div className="ssh-list">{connections.map(c => <ConnectionCard key={c.id} connection={c} provider={provider} actions={actions} />)}</div>}
-  </section>;
+  return <SettingsGroup className="models-provider-group" data-model-provider={provider.id} label={`${provider.label} provider`}
+    footnote={<p id={hintId} className="models-provider-hint">{hint}</p>}>
+    <SettingsRow className="models-provider-header"
+      leading={<ProviderLogo logo={actions.state.providerLogos?.[provider.id]} providerId={provider.id} icon={provider.icon} />}
+      label={<><h3 className="models-provider-name">{provider.label}</h3>{!enabled && <span className="settings-badge is-pending">Disabled</span>}{connections.length > 0 && <span className="llm-group-count">{connections.length}</span>}</>}
+      trailing={<SettingsSwitch label={`Enable ${provider.label} provider`} aria-describedby={hintId} checked={enabled} disabled={actions.busy || locked} onChange={e => toggle(e.target.checked)} />} />
+    {connections.map(c => <ConnectionRow key={c.id} connection={c} provider={provider} actions={actions} expanded={expansion.expanded === c.id} onToggle={() => expansion.onToggle(c.id)} />)}
+  </SettingsGroup>;
 }
 
 /** Settings → Models: owner management of provider connections through /models/api. */
@@ -509,6 +538,9 @@ export function ModelsPanel({ context }: { context: ExtensionContext }) {
     finally { setBusy(false); }
   };
   const actions: Actions | null = state && { csrf: state.csrfToken, busy, context, state, run, reload: () => load() };
+  // At most one connection row is expanded at a time across all provider groups.
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const expansion: Expansion = { expanded, onToggle: id => setExpanded(current => current === id ? null : id) };
   return <div className="settings-panel" data-page="models">
     <header className="settings-panel-header">
       <h2>Models</h2>
@@ -520,9 +552,9 @@ export function ModelsPanel({ context }: { context: ExtensionContext }) {
       : <>
         <AddConnection actions={actions} first={state.connections.length === 0} />
         {state.providers.length > 0 && <div className="models-provider-groups">
-          {state.providers.map(p => <ProviderSection key={p.id} provider={p} connections={state.connections.filter(c => c.provider === p.id)} actions={actions} />)}
-          {/* Connections whose provider is no longer registered keep their card, ungrouped. */}
-          {state.connections.some(c => !state.providers.some(p => p.id === c.provider)) && <div className="ssh-list">{state.connections.filter(c => !state.providers.some(p => p.id === c.provider)).map(c => <ConnectionCard key={c.id} connection={c} actions={actions} />)}</div>}
+          {state.providers.map(p => <ProviderSection key={p.id} provider={p} connections={state.connections.filter(c => c.provider === p.id)} actions={actions} expansion={expansion} />)}
+          {/* Connections whose provider is no longer registered keep their row, in a separate group. */}
+          {state.connections.some(c => !state.providers.some(p => p.id === c.provider)) && <SettingsGroup title="Unavailable providers" className="models-orphans">{state.connections.filter(c => !state.providers.some(p => p.id === c.provider)).map(c => <ConnectionRow key={c.id} connection={c} actions={actions} expanded={expanded === c.id} onToggle={() => expansion.onToggle(c.id)} />)}</SettingsGroup>}
         </div>}
       </>}
   </div>;

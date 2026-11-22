@@ -39,7 +39,25 @@ it('renders instances with status badges and the public key for pending setup', 
   expect(within(box).getByRole('button', { name: /Test connection/ })).toBeDisabled();
   const prod = screen.getByRole('article', { name: 'prod' });
   expect(within(prod).getByText('Host verified')).toBeVisible();
+  // Verified instances start collapsed; each expanded row shows its own key.
+  expect(within(prod).queryByLabelText('SSH public key')).toBeNull();
+  fireEvent.click(within(prod).getByRole('button', { name: 'prod' }));
+  expect(within(prod).getByLabelText('SSH public key')).toBeVisible();
   expect(within(prod).getByRole('button', { name: /Test connection/ })).toBeEnabled();
+});
+
+it('shows the probe summary for all three tools in the instance row', async () => {
+  const calls = mockApi([verified], () => json({ message: 'Remote check done', probe: { python3: true, codex: true, claude: false } }));
+  render(<SshInstancesPanel />);
+  const prod = await screen.findByRole('article', { name: 'prod' });
+  fireEvent.click(within(prod).getByRole('button', { name: 'prod' }));
+  fireEvent.click(within(prod).getByRole('button', { name: /Test connection/ }));
+  const probe = await within(prod).findByRole('list', { name: 'Результат проверки' });
+  expect(probe).toHaveTextContent('python3');
+  expect(probe).toHaveTextContent('codex');
+  expect(probe).toHaveTextContent('claudemissing');
+  expect(within(prod).getByRole('button', { name: 'prod' }).contains(probe)).toBe(true);
+  expect(calls.some(c => c.method === 'POST')).toBe(true);
 });
 
 it('shows the add form when empty and creates with CSRF', async () => {
@@ -71,6 +89,7 @@ it('requires explicit confirmation before trusting a host key', async () => {
 it('removal needs a checkbox and errors are shown inline', async () => {
   const calls = mockApi([verified], () => json({ error: 'Instance is busy' }, 422)); render(<SshInstancesPanel />);
   const prod = await screen.findByRole('article', { name: 'prod' });
+  fireEvent.click(within(prod).getByRole('button', { name: 'prod' }));
   fireEvent.click(within(prod).getByRole('button', { name: 'Remove' }));
   const submit = within(prod).getByRole('button', { name: 'Remove instance' });
   expect(submit).toBeDisabled();
@@ -83,9 +102,10 @@ it('removal needs a checkbox and errors are shown inline', async () => {
 it('shows probe results', async () => {
   mockApi([verified], () => json({ message: 'Remote check done', probe: { python3: true, codex: false, claude: true } })); render(<SshInstancesPanel />);
   const prod = await screen.findByRole('article', { name: 'prod' });
+  fireEvent.click(within(prod).getByRole('button', { name: 'prod' }));
   fireEvent.click(within(prod).getByRole('button', { name: /Test connection/ }));
   const list = await screen.findByRole('list', { name: 'Результат проверки' });
-  expect(within(list).getByText('codex').closest('li')).toHaveClass('is-missing');
+  expect(within(list).getByText('codex').closest('[role="listitem"]')).toHaveClass('is-missing');
 });
 
 it('explains owner-only access on 403', async () => {
@@ -113,4 +133,16 @@ it('account menu offers Settings', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Профиль: Ann Owner' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Settings' }));
   expect(onOpenSettings).toHaveBeenCalledOnce();
+});
+
+it('starts an unverified instance expanded and gives each row its own key', async () => {
+  const other = { ...verified, name: 'edge', publicKey: 'ssh-ed25519 BBBB edge', updatedAt: 3 };
+  mockApi([pending, verified, other]); render(<SshInstancesPanel />);
+  const box = await screen.findByRole('article', { name: 'box' });
+  expect(within(box).getByRole('button', { name: 'box' })).toHaveAttribute('aria-expanded', 'true');
+  expect(within(box).getByText(/Verify the server host key/)).toBeVisible();
+  const edge = screen.getByRole('article', { name: 'edge' });
+  fireEvent.click(within(edge).getByRole('button', { name: 'edge' }));
+  expect(within(edge).getByLabelText('SSH public key')).toHaveTextContent('ssh-ed25519 BBBB edge');
+  expect(within(box).getByLabelText('SSH public key')).toHaveTextContent('ssh-ed25519 AAAA mauzcode');
 });

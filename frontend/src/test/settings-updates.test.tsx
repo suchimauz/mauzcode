@@ -45,3 +45,15 @@ test('checking upstream spins and leaves a single status card', async () => {
   await waitFor(() => expect(screen.queryByText('Checking…')).toBeNull());
   expect(screen.getAllByText('Up to date')).toHaveLength(1);
 });
+
+test('status card shows current and target revisions with both actions and a key/value summary', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...statusBody, status: { ...statusBody.status, upstream: 'origin/main' } }), { headers: { 'Content-Type': 'application/json' } })));
+  render(<UpdatesPanel />);
+  await screen.findByText('Ready');
+  const card = document.querySelector('.updates-card')!;
+  expect(card).toHaveTextContent('old → new');
+  expect(card.querySelector('button.button--primary')).toHaveTextContent('Update and restart…');
+  expect(screen.getByRole('button', { name: 'Update and restart…' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Check upstream' })).toBeEnabled();
+  expect(screen.getByRole('region', { name: 'Details' })).toHaveTextContent('Upstreamorigin/main');
+});

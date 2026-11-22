@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Laptop, type LucideIcon, Monitor, MonitorSmartphone, Smartphone, Tablet, Trash2, X } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { SettingsGroup } from './SettingsGroup';
 
 /** One active push subscription owned by the signed-in user; endpoint hash only, never a raw endpoint. */
 export type PushDevice = { id: string; endpointHash: string; createdAt: number; expiresAt: number; provider: 'apple' | 'google' | 'mozilla' | 'other'; userAgent: string | null; current: boolean };
@@ -38,8 +39,9 @@ export const deviceIcon = (ua: string | null): LucideIcon => {
 export function PushDevices({ devices, currentHash, onRemove, busy }: { devices: PushDevice[] | null; currentHash: string | null; onRemove?: (id: string) => void; busy?: boolean }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   if (devices === null) return null;
-  if (devices.length === 0) return <p className="settings-footnote">No devices receive notifications yet.</p>;
-  return <ul className="push-devices" aria-label="Connected devices">
+  const footnote = <p>Notifications are sent for action requests and errors that stop work. Each device manages its own subscription.</p>;
+  if (devices.length === 0) return <SettingsGroup title="Connected devices" footnote={footnote}><div className="settings-row"><div className="settings-row-main"><div className="settings-row-static"><span className="settings-row-subtitle">No devices receive notifications yet.</span></div></div></div></SettingsGroup>;
+  return <SettingsGroup title="Connected devices" list footnote={footnote}>
     {devices.map(device => {
       const isThisDevice = currentHash !== null && device.endpointHash === currentHash;
       const Icon = deviceIcon(device.userAgent);
@@ -59,5 +61,5 @@ export function PushDevices({ devices, currentHash, onRemove, busy }: { devices:
         </span>}
       </li>;
     })}
-  </ul>;
+  </SettingsGroup>;
 }

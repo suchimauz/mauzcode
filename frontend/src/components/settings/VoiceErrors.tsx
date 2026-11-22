@@ -2,7 +2,9 @@ import { useEffect, useId, useState } from 'react';
 import { ApiError } from '../../lib/mauzcode';
 import { getVoiceError, isVoiceErrorId, listVoiceErrors, type VoiceErrorRecord } from '../../lib/voice';
 import { Button } from '../ui/Button';
+import { ChevronRight } from 'lucide-react';
 import { SettingsField } from './SettingsField';
+import { SettingsGroup } from './SettingsGroup';
 
 type Result = { records: VoiceErrorRecord[] } | { message: string };
 
@@ -51,8 +53,10 @@ function Journal() {
 export function VoiceErrors() {
   const [open, setOpen] = useState(false);
   const id = useId();
-  return <section className="ssh-card" aria-label="Voice errors">
-    <Button aria-expanded={open} aria-controls={id} onClick={() => setOpen(v => !v)}>Errors</Button>
-    <div id={id} hidden={!open}>{open && <Journal />}</div>
-  </section>;
+  return <SettingsGroup title="Errors" label="Voice errors" className="voice-errors">
+    <div className={`settings-row is-expandable ${open ? 'is-expanded' : ''}`}>
+      <div className="settings-row-main"><button type="button" className="settings-row-toggle" aria-expanded={open} aria-controls={id} aria-label="Errors" onClick={() => setOpen(v => !v)}><span className="settings-row-text"><span className="settings-row-label">Error ID lookup and recent errors</span></span><ChevronRight className="settings-row-chevron" size={14} strokeWidth={2} aria-hidden="true" /></button></div>
+      <div id={id} className="settings-row-details voice-journal" hidden={!open}>{open && <Journal />}</div>
+    </div>
+  </SettingsGroup>;
 }

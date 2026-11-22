@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Check, Copy, Plus, RefreshCw } from 'lucide-react';
+import { Check, Copy, Plus, RefreshCw, Server } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { ApiError } from '../../lib/mauzcode';
 import { getSshInstances, runSshAction, sshTarget, type SshAction, type SshActionResult, type SshInstance, type SshProbe } from '../../lib/sshInstances';
@@ -10,6 +10,7 @@ type Run = (action: SshAction) => Promise<SshActionResult | null>;
 const NAME_PATTERN = '[A-Za-z0-9][A-Za-z0-9_.\\-]*';
 
 import { SettingsField as Field } from './SettingsField';
+import { SettingsGroup, SettingsRow } from './SettingsGroup';
 
 function readEndpoint(form: HTMLFormElement, name: string) {
   const data = new FormData(form);
@@ -68,34 +69,42 @@ function RemoveForm({ item, run, busy }: { item: SshInstance; run: Run; busy: bo
 }
 
 function ProbeResult({ probe }: { probe: SshProbe }) {
-  return <ul className="ssh-probe" aria-label="Результат проверки">{(['python3', 'codex', 'claude'] as const).map(key => <li key={key} className={probe[key] ? 'is-ok' : 'is-missing'}><span aria-hidden="true" />{key}<em>{probe[key] ? 'available' : 'missing'}</em></li>)}</ul>;
+  // Phrasing content only: the summary sits inside the row's disclosure button.
+  return <span className="ssh-probe" role="list" aria-label="Результат проверки">{(['python3', 'codex', 'claude'] as const).map(key => <span role="listitem" key={key} className={probe[key] ? 'is-ok' : 'is-missing'}><span aria-hidden="true" />{key}<em>{probe[key] ? 'available' : 'missing'}</em></span>)}</span>;
 }
 
-type Section = 'key' | 'trust' | 'edit' | 'remove' | null;
+type Section = 'trust' | 'edit' | 'remove' | null;
 
-function InstanceCard({ item, run, busy, probe }: { item: SshInstance; run: Run; busy: boolean; probe?: SshProbe }) {
+/**
+ * One instance row: name, target, verification status and probe summary. Expanding it shows the instance's own public
+ * key, setup steps while unverified, Test connection, host-key, edit and remove; unverified instances start expanded.
+ */
+function InstanceRow({ item, run, busy, probe }: { item: SshInstance; run: Run; busy: boolean; probe?: SshProbe }) {
   const trusted = !!item.pinnedHostKey;
-  const [open, setOpen] = useState<Section>(trusted ? null : 'key');
+  const [expanded, setExpanded] = useState(!trusted);
+  const [open, setOpen] = useState<Section>(null);
   const toggle = (section: Exclude<Section, null>) => setOpen(open === section ? null : section);
-  const tabs: [Exclude<Section, null>, string][] = [['key', 'Public key'], ['trust', trusted ? 'Replace host key' : 'Verify host key'], ['edit', 'Edit connection'], ['remove', 'Remove']];
-  return <article className="ssh-card" data-ssh-instance={item.name} aria-label={item.name}>
-    <header className="ssh-card-header">
-      <div className="ssh-card-title">
-        <div className="ssh-card-name"><h3>{item.name}</h3><span className={`ssh-badge ${trusted ? 'is-verified' : 'is-pending'}`}><span aria-hidden="true" />{trusted ? 'Host verified' : 'Setup required'}</span></div>
-        <p className="ssh-card-target">{sshTarget(item)}</p>
-      </div>
-      <Button onClick={() => { void run({ action: 'probe', name: item.name }); }} disabled={!trusted || busy} title={trusted ? 'Check SSH, python3, codex and claude on the server' : 'Verify the host key first'}><RefreshCw size={14} strokeWidth={1.5} />Test connection</Button>
-    </header>
-    {probe && <ProbeResult probe={probe} />}
-    {!trusted && <ol className="ssh-steps"><li>Add the public key to <code>~/.ssh/authorized_keys</code> of the remote user.</li><li>Verify the server host key.</li><li>Test the connection.</li></ol>}
-    <div className="ssh-card-tabs" role="group" aria-label={`Действия ${item.name}`}>
-      {tabs.map(([id, label]) => <button key={id} type="button" className={`ssh-card-tab ${id === 'remove' ? 'is-danger' : ''}`} aria-expanded={open === id} onClick={() => toggle(id)}>{label}</button>)}
+  const tabs: [Exclude<Section, null>, string][] = [['trust', trusted ? 'Replace host key' : 'Verify host key'], ['edit', 'Edit connection'], ['remove', 'Remove']];
+  return <SettingsRow as="article" data-ssh-instance={item.name} aria-label={item.name} className="ssh-instance" toggleLabel={item.name}
+    leading={<Server size={16} strokeWidth={1.5} />}
+    label={<><span>{item.name}</span><span className={`settings-badge ${trusted ? 'is-success' : 'is-pending'}`}><i aria-hidden="true" />{trusted ? 'Host verified' : 'Setup required'}</span></>}
+    subtitle={<><code className="ssh-target">{sshTarget(item)}</code>{probe && <ProbeResult probe={probe} />}</>}
+    expanded={expanded} onToggle={() => setExpanded(v => !v)}>
+    <div className="settings-detail-section">
+      <h4>Public key</h4>
+      <p className="settings-note">Add this public key to <code>~/.ssh/authorized_keys</code> for <b>{item.user}</b>. The private key stays in MauzCode.</p>
+      <CopyKey value={item.publicKey} />
+      {trusted && <p className="settings-note">Pinned host key: <code className="ssh-pinned">{item.pinnedHostKey}</code></p>}
     </div>
-    {open === 'key' && <div className="ssh-card-section"><p className="settings-note">Add this public key to <code>~/.ssh/authorized_keys</code> for <b>{item.user}</b>. The private key stays in MauzCode.</p><CopyKey value={item.publicKey} />{trusted && <p className="settings-note">Pinned host key: <code className="ssh-pinned">{item.pinnedHostKey}</code></p>}</div>}
-    {open === 'trust' && <div className="ssh-card-section"><TrustForm item={item} run={run} busy={busy} /></div>}
-    {open === 'edit' && <div className="ssh-card-section"><EditForm key={item.updatedAt} item={item} run={run} busy={busy} /></div>}
-    {open === 'remove' && <div className="ssh-card-section"><RemoveForm item={item} run={run} busy={busy} /></div>}
-  </article>;
+    {!trusted && <ol className="ssh-steps"><li>Add the public key to <code>~/.ssh/authorized_keys</code> of the remote user.</li><li>Verify the server host key.</li><li>Test the connection.</li></ol>}
+    <div className="settings-detail-actions" role="group" aria-label={`Действия ${item.name}`}>
+      <Button onClick={() => { void run({ action: 'probe', name: item.name }); }} disabled={!trusted || busy} title={trusted ? 'Check SSH, python3, codex and claude on the server' : 'Verify the host key first'}><RefreshCw size={14} strokeWidth={1.5} />Test connection</Button>
+      {tabs.map(([id, label]) => <Button key={id} variant="ghost" className={id === 'remove' ? 'is-danger' : ''} aria-expanded={open === id} onClick={() => toggle(id)}>{label}</Button>)}
+    </div>
+    {open === 'trust' && <div className="settings-detail-section"><TrustForm item={item} run={run} busy={busy} /></div>}
+    {open === 'edit' && <div className="settings-detail-section"><EditForm key={item.updatedAt} item={item} run={run} busy={busy} /></div>}
+    {open === 'remove' && <div className="settings-confirm"><RemoveForm item={item} run={run} busy={busy} /></div>}
+  </SettingsRow>;
 }
 
 function AddForm({ run, busy, first }: { run: Run; busy: boolean; first: boolean }) {
@@ -108,9 +117,9 @@ function AddForm({ run, busy, first }: { run: Run; busy: boolean; first: boolean
     const ok = await run({ action: 'create', ...readEndpoint(form, name) });
     if (ok) { form.reset(); if (!first) setOpen(false); }
   };
-  if (!open) return <Button className="ssh-add-toggle" onClick={() => setOpen(true)}><Plus size={14} strokeWidth={1.5} />Add SSH instance</Button>;
-  return <section className="ssh-card ssh-add" aria-label="Add SSH instance">
-    <h3>Add SSH instance</h3>
+  if (!open) return <div className="settings-row"><button type="button" className="settings-row-toggle settings-row-add ssh-add-toggle" onClick={() => setOpen(true)}><span className="settings-row-leading" aria-hidden="true"><Plus size={16} strokeWidth={1.75} /></span><span className="settings-row-label">Add SSH instance</span></button></div>;
+  return <section className="settings-row settings-row-form ssh-add" aria-label="Add SSH instance">
+    <h4 className="settings-row-label">Add SSH instance</h4>
     <form className="ssh-form" onSubmit={submit}>
       <div className="ssh-grid">
         <Field label="Name" name="name" required placeholder="work-server" maxLength={64} pattern={NAME_PATTERN} hint="A short name to recognize this server in LLM Connections." autoComplete="off" spellCheck={false} />
@@ -162,9 +171,10 @@ export function SshInstancesPanel({ onOpenConnections }: { onOpenConnections?: (
     {loadError ? <div className="settings-feedback is-error" role="alert">{loadError.forbidden ? 'Только владелец может управлять SSH Instances.' : loadError.text}{!loadError.forbidden && <Button variant="ghost" onClick={() => { void load(); }}>Повторить</Button>}</div>
       : instances === null ? <p className="settings-loading" role="status">Загрузка…</p>
       : <>
-        {instances.length > 0 && <div className="ssh-list">{instances.map(item => <InstanceCard key={item.name} item={item} run={run} busy={busy} probe={probes[item.name]} />)}</div>}
-        <AddForm run={run} busy={busy} first={instances.length === 0} />
-        <p className="settings-footnote">The remote server needs Python 3 and Codex or Claude CLI. Use Edit connection to change its address, or Replace host key after a verified server key change.</p>
+        <SettingsGroup title="Instances" className="ssh-instances" footnote={<p>The remote server needs Python 3 and Codex or Claude CLI. Use Edit connection to change its address, or Replace host key after a verified server key change.</p>}>
+          {instances.map(item => <InstanceRow key={item.name} item={item} run={run} busy={busy} probe={probes[item.name]} />)}
+          <AddForm run={run} busy={busy} first={instances.length === 0} />
+        </SettingsGroup>
       </>}
   </div>;
 }

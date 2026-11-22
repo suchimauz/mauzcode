@@ -8,6 +8,7 @@ import {
 } from '../../lib/voice';
 import { VoiceErrors } from './VoiceErrors';
 import { SettingsField as Field } from './SettingsField';
+import { SettingsGroup, SettingsRow } from './SettingsGroup';
 
 type Feedback = { tone: 'success' | 'error'; text: string } | null;
 const message = (error: unknown, fallback: string) => error instanceof Error && error.message ? error.message : fallback;
@@ -110,44 +111,47 @@ function AddVoiceConnection({ actions, first }: { actions: Actions; first: boole
   const [open, setOpen] = useState(first);
   const [providerId, setProviderId] = useState(providers[0]?.id ?? '');
   const provider = providers.find(p => p.id === providerId) ?? providers[0];
-  if (!providers.length) return <p className="settings-note">No voice providers are registered.</p>;
-  if (!open) return <Button className="ssh-add-toggle" onClick={() => setOpen(true)}><Plus size={14} strokeWidth={1.5} aria-hidden="true" />Add voice connection</Button>;
-  return <section className="ssh-card" aria-label="Add voice connection">
-    <h3>Add voice connection</h3>
+  if (!providers.length) return <div className="settings-row"><div className="settings-row-main"><div className="settings-row-static"><p className="settings-note">No voice providers are registered.</p></div></div></div>;
+  if (!open) return <div className="settings-row"><button type="button" className="settings-row-toggle settings-row-add" onClick={() => setOpen(true)}><span className="settings-row-leading" aria-hidden="true"><Plus size={16} strokeWidth={1.75} /></span><span className="settings-row-label">Add voice connection</span></button></div>;
+  return <section className="settings-row settings-row-form ssh-form" aria-label="Add voice connection">
+    <h4 className="settings-row-label">Add voice connection</h4>
     <SelectField name="provider" label="Provider" value={provider?.id ?? ''} onChange={setProviderId} options={providers.map(p => ({ value: p.id, label: p.label }))} hint={provider?.description} />
     {provider && <p className="settings-note" role="note">{destinationText(provider.destination)}{provider.models.some(m => m.description) ? ` ${provider.models.map(m => m.description).filter(Boolean).join(' ')}` : ''}</p>}
     {provider && <VoiceConnectionForm key={provider.id} provider={provider} actions={actions} onDone={() => { if (!first) setOpen(false); }} onCancel={first ? undefined : () => setOpen(false)} />}
   </section>;
 }
 
-function VoiceConnectionCard({ connection, actions }: { connection: VoiceConnectionView; actions: Actions }) {
+/** Voice connection row; expanding it shows destination, network, routes, the test result and Edit/Test/Remove. */
+function VoiceConnectionRow({ connection, actions, expanded, onToggle }: { connection: VoiceConnectionView; actions: Actions; expanded: boolean; onToggle: () => void }) {
   const provider = actions.state.providers.find(p => p.id === connection.provider);
   const [open, setOpen] = useState<'edit' | 'remove' | null>(null);
   const [result, setResult] = useState<VoiceTestResult | null>(null);
   const removeButton = useRef<HTMLButtonElement>(null);
   const toggle = (next: 'edit' | 'remove') => setOpen(current => current === next ? null : next);
+  useEffect(() => { if (!expanded) setOpen(null); }, [expanded]);
   const routes = actions.state.routes.filter(r => r.connectionId === connection.id);
   const test = async () => { const r = await actions.run('Test', () => testVoiceConnection(actions.csrf, connection.id)); if (r) setResult(r); };
-  return <article className="ssh-card" aria-label={`${provider?.label ?? connection.provider} · ${connection.accountName}`}>
-    <header className="ssh-card-header"><div className="ssh-card-title">
-      <h3 className="ssh-card-name"><AudioLines size={16} strokeWidth={1.5} aria-hidden="true" /><span>{connection.accountName}</span></h3>
-      <p className="ssh-card-target">{provider ? provider.label : `${connection.provider} — provider is not loaded`}</p>
-      {provider && <p className="settings-field-hint">{destinationText(connection.destination ?? provider.destination)}</p>}
-      {provider && <p className="settings-field-hint">{transportText(connection.transport, actions.state)}</p>}
-      {routes.map(r => <p key={r.route} className="ssh-card-target"><code>{r.route}</code></p>)}
-    </div></header>
+  const tone = result?.status === 'available' ? 'is-success' : result?.status === 'unavailable' ? 'is-error' : 'is-pending';
+  return <SettingsRow as="article" aria-label={`${provider?.label ?? connection.provider} · ${connection.accountName}`} className="voice-connection"
+    leading={<AudioLines size={16} strokeWidth={1.5} />}
+    label={<><span>{connection.accountName}</span>{result && <span className={`settings-badge ${tone}`}><i aria-hidden="true" />{STATUS_LABEL[result.status]}</span>}</>}
+    subtitle={<span>{provider ? provider.label : `${connection.provider} — provider is not loaded`}{provider && ` · ${transportText(connection.transport, actions.state).replace(/^Network: /, '')}`}</span>}
+    toggleLabel={connection.accountName} expanded={expanded} onToggle={onToggle}>
+    {provider && <p className="settings-field-hint">{destinationText(connection.destination ?? provider.destination)}</p>}
+    {provider && <p className="settings-field-hint">{transportText(connection.transport, actions.state)}</p>}
+    {routes.length > 0 && <ul className="settings-chips" aria-label="Routes">{routes.map(r => <li key={r.route}><code>{r.route}</code></li>)}</ul>}
     {result && <p className="settings-note" role="status">{STATUS_LABEL[result.status]} — {result.message}</p>}
-    <div className="ssh-card-tabs" role="group" aria-label={`Actions for ${connection.accountName}`}>
-      <button type="button" className="ssh-card-tab" aria-expanded={open === 'edit'} disabled={!provider} onClick={() => toggle('edit')}>Edit</button>
-      <button type="button" className="ssh-card-tab" disabled={!provider || actions.busy} onClick={() => { void test(); }}>Test</button>
-      <button ref={removeButton} type="button" className="ssh-card-tab is-danger" aria-expanded={open === 'remove'} onClick={() => toggle('remove')}>Remove</button>
+    <div className="settings-detail-actions" role="group" aria-label={`Actions for ${connection.accountName}`}>
+      <Button variant="ghost" aria-expanded={open === 'edit'} disabled={!provider} onClick={() => toggle('edit')}>Edit</Button>
+      <Button disabled={!provider || actions.busy} onClick={() => { void test(); }}>Test</Button>
+      <button ref={removeButton} type="button" className="button button--ghost is-danger" aria-expanded={open === 'remove'} onClick={() => toggle('remove')}>Remove</button>
     </div>
-    {open === 'edit' && provider && <div className="ssh-card-section"><VoiceConnectionForm key={connection.updatedAt} provider={provider} connection={connection} actions={actions} onDone={() => setOpen(null)} onCancel={() => setOpen(null)} /></div>}
-    {open === 'remove' && <div className="ssh-card-section settings-confirm" role="group" aria-label="Confirm removal" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setOpen(null); removeButton.current?.focus(); } }}>
+    {open === 'edit' && provider && <div className="settings-detail-section"><VoiceConnectionForm key={connection.updatedAt} provider={provider} connection={connection} actions={actions} onDone={() => setOpen(null)} onCancel={() => setOpen(null)} /></div>}
+    {open === 'remove' && <div className="settings-confirm" role="group" aria-label="Confirm removal" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setOpen(null); removeButton.current?.focus(); } }}>
       <p className="settings-note">Removes <b>{connection.accountName}</b> and its stored key from MauzCode. Chats that use its route will show it as unavailable until another route is chosen.</p>
       <div className="ssh-form-actions"><Button variant="ghost" autoFocus onClick={() => { setOpen(null); removeButton.current?.focus(); }}>Cancel</Button><Button className="button--danger" disabled={actions.busy} onClick={() => { void actions.run('Remove', () => removeVoiceConnection(actions.csrf, connection.id), () => `${connection.accountName} removed`).then(r => r && actions.reload()); }}>Remove connection</Button></div>
     </div>}
-  </article>;
+  </SettingsRow>;
 }
 
 function DefaultRoute({ actions }: { actions: Actions }) {
@@ -161,10 +165,9 @@ function DefaultRoute({ actions }: { actions: Actions }) {
     : selected ? `${destinationText(selected.destination)}${selected.description ? ` ${selected.description}` : ''}`
     : defaultRoute.route ? 'The saved route is not available. Choose another one; there is no automatic fallback.'
     : 'Chats without their own choice have no voice input until a default is selected.';
-  return <section className="ssh-card" aria-label="Default voice route">
-    <h3>Default route</h3>
-    <SelectField name="defaultRoute" label="Voice model for chats" value={defaultRoute.route} onChange={change} options={options} disabled={actions.busy || defaultRoute.fixed || (!routes.length && !defaultRoute.route)} hint={hint} />
-  </section>;
+  return <SettingsGroup title="Default route" className="voice-default-route">
+    <div className="settings-row settings-row-form"><SelectField name="defaultRoute" label="Voice model for chats" value={defaultRoute.route} onChange={change} options={options} disabled={actions.busy || defaultRoute.fixed || (!routes.length && !defaultRoute.route)} hint={hint} /></div>
+  </SettingsGroup>;
 }
 
 /** Owner settings for live dictation: voice connections, their check and the default voice route. */
@@ -185,6 +188,7 @@ export function VoicePanel() {
     finally { setBusy(false); }
   };
   const actions: Actions | null = state && { csrf: state.csrfToken, busy, state, run, reload: () => load() };
+  const [expanded, setExpanded] = useState<string | null>(null);
   return <div className="settings-panel" data-page="voice">
     <header className="settings-panel-header">
       <h2>Voice</h2>
@@ -195,8 +199,10 @@ export function VoicePanel() {
       : !state || !actions ? <p className="settings-loading" role="status">Загрузка…</p>
       : <>
         <DefaultRoute actions={actions} />
-        <AddVoiceConnection actions={actions} first={state.connections.length === 0} />
-        {state.connections.length > 0 && <div className="ssh-list">{state.connections.map(c => <VoiceConnectionCard key={c.id} connection={c} actions={actions} />)}</div>}
+        <SettingsGroup title="Connections" className="voice-connections">
+          {state.connections.map(c => <VoiceConnectionRow key={c.id} connection={c} actions={actions} expanded={expanded === c.id} onToggle={() => setExpanded(current => current === c.id ? null : c.id)} />)}
+          <AddVoiceConnection actions={actions} first={state.connections.length === 0} />
+        </SettingsGroup>
         <VoiceErrors />
       </>}
   </div>;

@@ -25,3 +25,5 @@ it('shows linked accounts and disables deleting an in-use proxy',async()=>{
  expect(await screen.findByRole('button',{name:'Удалить'})).toBeDisabled();
  expect(screen.getByText(/anthropic-oauth\/work/)).toBeVisible();
 });
+
+it('lists proxies as rows with label, address, login state and a check action, with the add row and form below',async()=>{render(<SocksProxies context={context}/>);const row=await screen.findByRole('listitem',{name:'Office'});expect(row).toHaveTextContent('localhost:1080');expect(row).toHaveTextContent('С аутентификацией');expect(screen.getByRole('button',{name:'Проверить'})).toBeEnabled();const add=screen.getByRole('button',{name:'Добавить прокси'});expect(row.compareDocumentPosition(add)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();fireEvent.click(add);const form=screen.getByRole('group',{name:'Новый SOCKS5'});expect(add.compareDocumentPosition(form)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();});

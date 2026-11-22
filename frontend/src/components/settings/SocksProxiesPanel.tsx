@@ -4,6 +4,7 @@ import { requestJson, ApiError, type ExtensionViewProps } from '@mauzcode/ui';
 import { Network, Plus } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { SettingsField as TextField } from './SettingsField';
+import { SettingsGroup } from './SettingsGroup';
 import './settings.css';
 
 type Proxy = { id: string; name: string | null; host: string; port: number; hasAuth: boolean; revision: number; users?:Array<{provider:string;account:string}> };
@@ -26,7 +27,7 @@ export function SocksProxiesPanel({ context }: ExtensionViewProps) {
   const [form, setForm] = useState(empty), [editing, setEditing] = useState<Proxy | null>(null), [open, setOpen] = useState(false), [replace, setReplace] = useState(false);
   const [busy, setBusy] = useState(false), [checking, setChecking] = useState<string[]>([]), [results, setResults] = useState<Record<string, Check>>({});
   const [removing, setRemoving] = useState<Proxy | null>(null);
-  const addButton = useRef<HTMLDivElement>(null), removeButton = useRef<HTMLButtonElement | null>(null);
+  const addButton = useRef<HTMLLIElement>(null), removeButton = useRef<HTMLButtonElement | null>(null);
   const lock = useRef(false), active = useRef(new Map<string, AbortController>()), versions = useRef(new Map<string, number>());
   const refresh = async (signal?: AbortSignal) => { const data = await requestJson<{items: Proxy[]}>('/settings/proxies', { signal }); setItems(data.items); setLoaded(true); };
   useEffect(() => { const controller = new AbortController(); void refresh(controller.signal).catch(e => { if (!controller.signal.aborted) setError(message(e)); }); return () => { controller.abort(); for (const c of active.current.values()) c.abort(); }; }, []);
@@ -44,9 +45,32 @@ export function SocksProxiesPanel({ context }: ExtensionViewProps) {
   return <section className="settings-panel" aria-label="SOCKS5">
     <header className="settings-panel-header"><h2>SOCKS5</h2><p>Управление прокси</p></header>
     {error && <p className="settings-feedback is-error" role="alert">{error}</p>}{!loaded && !error && <p className="settings-loading" role="status">Загрузка…</p>}
-    <div ref={addButton} className="settings-actions"><Button aria-expanded={open} disabled={context.readOnly || busy} onClick={()=>{close();setRemoving(null);setOpen(true);setError('');}}><Plus size={14} strokeWidth={1.5} aria-hidden="true" />Добавить прокси</Button></div>
-    {open && <form className="ssh-card" autoComplete="off" onSubmit={event=>{event.preventDefault(); if (editing) invalidate(editing.id); void mutate({action:editing?'update':'add',...(editing?{id:editing.id,revision:editing.revision}:{}),name:form.name,host:form.host,port:Number(form.port),auth:form.auth,...(form.auth && (!editing?.hasAuth || replace)?{username:form.username,password:form.password}:{})});}}>
-      <div className="ssh-form" role="group" aria-label={editing?'Редактировать SOCKS5':'Новый SOCKS5'}><h3 className="ssh-card-name">{editing?'Редактировать SOCKS5':'Новый SOCKS5'}</h3>
+    <SettingsGroup title="Proxies" list className="socks-list" footnote={<p>Проверка выполняется через ip-api.com (HTTP). Логин и пароль никогда не показываются.</p>}>
+      {items.map(item=>{const result=results[item.id];const name=item.name || endpoint(item);return <li className="settings-row socks-row" key={item.id} aria-label={name}>
+        <div className="settings-row-main"><div className="settings-row-static"><span className="settings-row-leading" aria-hidden="true"><Network size={16} strokeWidth={1.5} /></span><span className="settings-row-text">
+          <span className="settings-row-label"><span className="ssh-pinned">{name}</span>{checking.includes(item.id) ? <span className="settings-badge is-pending" role="status">Проверка…</span> : result && <span className={`settings-badge ${result.ok?'is-success':'is-error'}`}><i aria-hidden="true" />{result.ok?'Работает':'Ошибка'}</span>}</span>
+          <span className="settings-row-subtitle"><code>{endpoint(item)}</code><span>{item.hasAuth?'С аутентификацией':'Без аутентификации'}</span></span></span></div>
+        <div className="settings-row-trailing">
+          <Button variant="ghost" size="compact" title="Проверка через ip-api.com (HTTP)" disabled={busy || context.readOnly || checking.includes(item.id) || editing?.id===item.id} onClick={()=>void check(item)}>{checking.includes(item.id)?'Проверка…':'Проверить'}</Button>
+          {checking.includes(item.id) && <Button variant="ghost" size="compact" onClick={()=>active.current.get(item.id)?.abort()}>Отменить проверку</Button>}
+          <Button variant="ghost" size="compact" disabled={busy || context.readOnly} onClick={()=>edit(item)}>Редактировать</Button>
+          <button type="button" className="button button--ghost button--compact is-danger" disabled={busy || context.readOnly || !!item.users?.length} title={item.users?.length ? "Прокси привязан к аккаунтам" : undefined} onClick={event=>{removeButton.current=event.currentTarget;setRemoving(item);}}>Удалить</button>
+        </div></div>
+        {(!!item.users?.length || removing?.id===item.id || editing?.id===item.id || result) && <div className="settings-row-details">
+        {!!item.users?.length && <p className="settings-note">Используется: {item.users.map(u=>`${u.provider}/${u.account}`).join(", ")}. Удаление недоступно, пока есть привязки.</p>}
+        {removing?.id===item.id && <div className="settings-confirm" role="group" aria-label="Удаление прокси" onKeyDown={event=>{if(event.key==='Escape' && !busy){event.preventDefault();event.stopPropagation();setRemoving(null);removeButton.current?.focus();}}}>
+          <p className="settings-note">Удалить прокси «{name}»?</p>
+          <div className="settings-actions"><Button autoFocus disabled={busy} onClick={()=>{setRemoving(null);removeButton.current?.focus();}}>Отмена</Button><Button className="button--danger" disabled={busy || context.readOnly} onClick={()=>{invalidate(item.id);setRemoving(null);void mutate({action:'remove',id:item.id,revision:item.revision});}}>Удалить прокси</Button></div>
+        </div>}
+        {editing?.id===item.id && <p className="settings-note">Перед проверкой сохраните изменения или отмените редактирование.</p>}
+        {result && <div role="status">{result.ok?<dl className="settings-kv">{(['query','country','regionName','city','isp','org','as','timezone'] as const).map(key=>result[key] && <div className="settings-kv-row" key={key}><dt>{{query:'Внешний IP',country:'Страна',regionName:'Регион',city:'Город',isp:'Провайдер',org:'Организация',as:'AS',timezone:'Часовой пояс'}[key]}</dt><dd>{result[key]}</dd></div>)}</dl>:<p>{result.message || checkErrors[result.code ?? ''] || result.code || 'Проверка не удалась.'}</p>}<p className="settings-footnote">Проверено: {result.checkedAt} · Общая длительность: {result.durationMs} мс.</p></div>}
+        </div>}
+      </li>;})}
+      {loaded && !items.length && <li className="settings-row"><div className="settings-row-main"><div className="settings-row-static"><span className="settings-row-subtitle">Прокси пока нет.</span></div></div></li>}
+      <li ref={addButton} className="settings-row"><button type="button" className="settings-row-toggle settings-row-add" aria-expanded={open} disabled={context.readOnly || busy} onClick={()=>{close();setRemoving(null);setOpen(true);setError('');}}><span className="settings-row-leading" aria-hidden="true"><Plus size={16} strokeWidth={1.75} /></span><span className="settings-row-label">Добавить прокси</span></button></li>
+    </SettingsGroup>
+    {open && <form className="settings-group-surface settings-row-form socks-form" autoComplete="off" onSubmit={event=>{event.preventDefault(); if (editing) invalidate(editing.id); void mutate({action:editing?'update':'add',...(editing?{id:editing.id,revision:editing.revision}:{}),name:form.name,host:form.host,port:Number(form.port),auth:form.auth,...(form.auth && (!editing?.hasAuth || replace)?{username:form.username,password:form.password}:{})});}}>
+      <div className="ssh-form" role="group" aria-label={editing?'Редактировать SOCKS5':'Новый SOCKS5'}><h3 className="settings-row-label">{editing?'Редактировать SOCKS5':'Новый SOCKS5'}</h3>
       <TextField disabled={busy || context.readOnly} label="Метка" autoFocus value={form.name} maxLength={100} onChange={e=>setForm({...form,name:e.target.value})}/>
       <TextField disabled={busy || context.readOnly} label="IP или DNS-имя" value={form.host} required maxLength={253} onChange={e=>setForm({...form,host:e.target.value})} onPaste={e=>{const text=e.clipboardData.getData('text'); if (!text.includes(':')) return; try { if (new URL(`http://[${text}]/`).hostname) return; } catch { /* Not a bare IPv6 address; try the composite format. */ } e.preventDefault(); try { const parsed=parseProxyPaste(text); setForm({...form,...parsed}); setReplace(true); setError(''); } catch (error) { setError(message(error)); }}} hint="Можно вставить HOST:PORT:USER:PASS; для IPv6 — [IPv6]:PORT:USER:PASS. Пароль может содержать двоеточия."/>
       <TextField disabled={busy || context.readOnly} label="Порт" type="number" min={1} max={65535} step={1} required value={form.port} onChange={e=>setForm({...form,port:e.target.value})}/>
@@ -56,19 +80,5 @@ export function SocksProxiesPanel({ context }: ExtensionViewProps) {
       {form.auth && (!editing?.hasAuth || replace) && <><TextField disabled={busy || context.readOnly} label="Логин" autoComplete="off" required value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/><TextField disabled={busy || context.readOnly} label="Пароль" type="password" autoComplete="new-password" required value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></>}
       <div className="settings-actions"><Button variant="primary" disabled={busy || context.readOnly} type="submit">{busy?'Сохранение…':'Сохранить прокси'}</Button><Button disabled={busy} type="button" onClick={close}>Отмена</Button></div></div>
     </form>}
-    {loaded && !items.length && <p className="settings-note">Прокси пока нет.</p>}
-    <div className="ssh-list">{items.map(item=><article className="ssh-card" key={item.id}><header className="ssh-card-header"><div className="ssh-card-title"><h3 className="ssh-card-name"><Network size={16} strokeWidth={1.5} aria-hidden="true" /><span className="ssh-pinned">{item.name || endpoint(item)}</span></h3><p className="ssh-card-target">{endpoint(item)} · {item.hasAuth?'С аутентификацией':'Без аутентификации'}</p></div></header><div className="ssh-card-tabs">
-      <button type="button" className="ssh-card-tab" disabled={busy || context.readOnly} onClick={()=>edit(item)}>Редактировать</button>
-      <button type="button" className="ssh-card-tab" title="Проверка через ip-api.com (HTTP)" disabled={busy || context.readOnly || checking.includes(item.id) || editing?.id===item.id} onClick={()=>void check(item)}>{checking.includes(item.id)?'Проверка…':'Проверить'}</button>
-      {checking.includes(item.id) && <button type="button" className="ssh-card-tab" onClick={()=>active.current.get(item.id)?.abort()}>Отменить проверку</button>}
-      <button type="button" className="ssh-card-tab is-danger" disabled={busy || context.readOnly || !!item.users?.length} title={item.users?.length ? "Прокси привязан к аккаунтам" : undefined} onClick={event=>{removeButton.current=event.currentTarget;setRemoving(item);}}>Удалить</button></div>
-      {!!item.users?.length && <p className="settings-note">Используется: {item.users.map(u=>`${u.provider}/${u.account}`).join(", ")}. Удаление недоступно, пока есть привязки.</p>}
-      {removing?.id===item.id && <div className="settings-confirm" role="group" aria-label="Удаление прокси" onKeyDown={event=>{if(event.key==='Escape' && !busy){event.preventDefault();event.stopPropagation();setRemoving(null);removeButton.current?.focus();}}}>
-        <p className="settings-note">Удалить прокси «{item.name || endpoint(item)}»?</p>
-        <div className="settings-actions"><Button autoFocus disabled={busy} onClick={()=>{setRemoving(null);removeButton.current?.focus();}}>Отмена</Button><Button variant="primary" disabled={busy || context.readOnly} onClick={()=>{invalidate(item.id);setRemoving(null);void mutate({action:'remove',id:item.id,revision:item.revision});}}>Удалить прокси</Button></div>
-      </div>}
-      {editing?.id===item.id && <p className="settings-note">Перед проверкой сохраните изменения или отмените редактирование.</p>}
-      {results[item.id] && <div role="status">{results[item.id].ok?<dl className="settings-kv">{(['query','country','regionName','city','isp','org','as','timezone'] as const).map(key=>results[item.id][key] && <div className="settings-kv-row" key={key}><dt>{{query:'Внешний IP',country:'Страна',regionName:'Регион',city:'Город',isp:'Провайдер',org:'Организация',as:'AS',timezone:'Часовой пояс'}[key]}</dt><dd>{results[item.id][key]}</dd></div>)}</dl>:<p>{results[item.id].message || checkErrors[results[item.id].code ?? ''] || results[item.id].code || 'Проверка не удалась.'}</p>}<p className="settings-footnote">Проверено: {results[item.id].checkedAt} · Общая длительность: {results[item.id].durationMs} мс.</p></div>}
-    </article>)}</div>
   </section>;
 }

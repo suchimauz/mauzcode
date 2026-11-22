@@ -110,3 +110,21 @@ describe('plugin settings tabs', () => {
     spy.mockRestore();
   });
 });
+
+describe('settings navigation styling', () => {
+  it('separates plugin tabs from built-in tabs with a divider only when plugin tabs exist', () => {
+    set([rtk], { rtk: { settingsTabs: ['shell'] } });
+    const view = dialog('models');
+    const list = document.querySelector('.settings-nav-list')!;
+    const children = [...list.children];
+    const divider = list.querySelector('.settings-nav-divider')!;
+    expect(divider).not.toBeNull();
+    expect(children.indexOf(divider)).toBe(SETTINGS_TABS.length);
+    expect(children[children.indexOf(divider) + 1]).toHaveTextContent('RTK shell output');
+    expect(screen.getByRole('button', { name: 'Models' })).toHaveClass('is-active');
+    view.unmount();
+    set([], {});
+    dialog('models');
+    expect(document.querySelector('.settings-nav-divider')).toBeNull();
+  });
+});
