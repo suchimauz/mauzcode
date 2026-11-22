@@ -15,7 +15,7 @@ const projects = [{id:'p1',title:'First',dir:'/first',host:null,chats:[]}];
 const created = vi.fn();
 const initial: NewSessionDraft = { projectId:'p1',model:'test:default',effort:'',text:'',requestKey:'initial' };
 function Draft() { const [draft,setDraft] = useState(initial); return <NewSessionComposer draft={draft} onChange={setDraft} projects={projects} onCreated={created} onPending={() => {}} />; }
-afterEach(() => { sessionStorage.clear(); localStorage.clear(); vi.clearAllMocks(); vi.unstubAllGlobals(); history.replaceState(null,'','/'); });
+afterEach(async () => { const { getNewSessionDefaults } = await import('../lib/newSession'); vi.mocked(getNewSessionDefaults).mockImplementation(async () => ({ version:1, defaultModel:'test:default', csrfToken:'token' })); sessionStorage.clear(); localStorage.clear(); vi.clearAllMocks(); vi.unstubAllGlobals(); history.replaceState(null,'','/'); });
 it('typing and model selection stay local; first send creates once with the selected settings', async () => {
   const { submitNewSession } = await import('../lib/newSession');
   vi.mocked(submitNewSession).mockResolvedValue({agentId:'zz',projectId:'p1',status:'sent'});
@@ -126,22 +126,90 @@ it('Draft with a deleted preset falls back to the default preset', () => {
   expect(resolveNewSessionPreset(presetList, 'gone', undefined)).toBe('standard');
   expect(resolveNewSessionPreset([], 'standard', 'creator')).toBeUndefined();
 });
-it('Default selection: the preset chip shows the default preset', async () => {
+const confirmedDraft = (presetId = 'standard') => ({ ...initial, presetId, presetConfirmed: true });
+function DraftFrom({ start }: { start: NewSessionDraft }) { const [draft,setDraft] = useState(start); return <NewSessionComposer draft={draft} onChange={setDraft} projects={projects} onCreated={created} onPending={() => {}} />; }
+const optionNames = () => screen.getAllByRole('option').map(option => option.querySelector('.preset-row-name > span')?.textContent);
+it('presetConfirmed survives persist/restore and is never submitted', async () => {
+  const { persistNewSessionDraft, submitNewSession: realSubmit } = await vi.importActual<typeof import('../lib/newSession')>('../lib/newSession');
+  persistNewSessionDraft({ ...initial, presetId:'creator', presetConfirmed:true });
+  expect(readNewSessionDraft()).toMatchObject({ presetId:'creator', presetConfirmed:true });
+  sessionStorage.setItem('mauzcode-ui-new-session', JSON.stringify({ ...initial, presetConfirmed:'yes' }));
+  expect(readNewSessionDraft()).not.toHaveProperty('presetConfirmed');
+  const fetcher = vi.fn(async () => new Response(JSON.stringify({ agentId:'a', projectId:'p1', status:'sent' }), { headers:{ 'content-type':'application/json' } })); vi.stubGlobal('fetch', fetcher);
+  await realSubmit({ ...initial, presetId:'creator', presetConfirmed:true, text:'Hi' }, 'token');
+  await realSubmit({ ...initial, presetId:'creator', presetConfirmed:true, text:'Hi' }, 'token', [new File(['x'], 'a.txt')]);
+  const json = JSON.parse(String((fetcher.mock.calls[0] as unknown[])[1] && ((fetcher.mock.calls[0] as unknown[])[1] as RequestInit).body));
+  expect(json).toMatchObject({ presetId:'creator' }); expect(json).not.toHaveProperty('presetConfirmed');
+  const form = ((fetcher.mock.calls[1] as unknown[])[1] as RequestInit).body as FormData;
+  expect(form.get('presetId')).toBe('creator'); expect(form.has('presetConfirmed')).toBe(false);
+});
+it('Fresh session: the preset dialog opens with the default selected and marked; rows keep sort order', async () => {
   await withPresets(); render(<Draft />);
-  expect(await screen.findByRole('button', { name: 'Режим агента: Standard' })).toHaveTextContent('Standard');
-  expect(screen.queryByText('Standard mode')).toBeNull();
+  const dialog = await screen.findByRole('dialog', { name: 'Режим агента' });
+  expect(optionNames()).toEqual(['Standard','Creator','Minimal']);
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('Standard');
+  expect(screen.getByRole('option', { name: /Standard/ })).toHaveTextContent('по умолчанию');
+  expect(screen.getAllByText('по умолчанию')).toHaveLength(1);
+  expect(screen.getByRole('option', { name: /Creator/ })).toHaveAccessibleDescription('All runtime functions.');
+  expect(screen.getByRole('combobox', { name: 'Поиск режима' })).toHaveFocus();
+  expect(dialog).toContainElement(screen.getByRole('button', { name: 'Продолжить' }));
+});
+it('Keep the default with Enter: the chip shows Standard and focus moves to the message input', async () => {
+  await withPresets(); render(<Draft />);
+  await screen.findByRole('dialog');
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.getByRole('button', { name: 'Режим агента: Standard' })).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole('textbox')).toHaveFocus());
+});
+it('Restored draft with a confirmed preset: no dialog and the chip shows Creator', async () => {
+  await withPresets(); render(<DraftFrom start={confirmedDraft('creator')} />);
+  expect(await screen.findByRole('button', { name: 'Режим агента: Creator' })).toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+it('Catalogue unavailable or a single preset: no dialog opens', async () => {
+  const { getNewSessionDefaults } = await import('../lib/newSession');
+  vi.mocked(getNewSessionDefaults).mockRejectedValue(new Error('down'));
+  const first = render(<Draft />);
+  await waitFor(() => expect(getNewSessionDefaults).toHaveBeenCalled());
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Режим агента: Режим' })).toBeDisabled();
+  first.unmount();
+  vi.mocked(getNewSessionDefaults).mockResolvedValue({ version:1, defaultModel:'test:default', csrfToken:'token', presets:[presetList[0]], defaultPresetId:'standard' });
+  render(<Draft />);
+  expect(await screen.findByRole('button', { name: 'Режим агента: Standard' })).toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+it('Pending first message: the dialog does not open automatically', async () => {
+  await withPresets();
+  sessionStorage.setItem('mauzcode-ui-new-session-pending', JSON.stringify({ ...initial, presetId:'minimal', text:'Hi' }));
+  render(<Draft />);
+  expect(await screen.findByRole('button', { name: 'Режим агента: Minimal' })).toBeDisabled();
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+it('Esc after an auto-open keeps the default and does not reopen within the mount', async () => {
+  await withPresets(); render(<Draft />);
+  await screen.findByRole('dialog');
+  await userEvent.keyboard('{ArrowDown}{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.getByRole('button', { name: 'Режим агента: Standard' })).toBeInTheDocument();
+  fireEvent.input(screen.getByRole('textbox'),{target:{textContent:'Hello'}});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 it('Pick a preset: the chip shows Creator and the first submit carries it', async () => {
   await withPresets();
   const { submitNewSession } = await import('../lib/newSession');
   vi.mocked(submitNewSession).mockResolvedValue({agentId:'zz',projectId:'p1',status:'sent'});
-  render(<Draft />);
+  render(<DraftFrom start={confirmedDraft()} />);
   await userEvent.click(await screen.findByRole('button', { name: 'Режим агента: Standard' }));
-  const items = await screen.findAllByRole('menuitemradio');
-  expect(items.map(item => item.getAttribute('aria-label'))).toEqual(['Standard','Creator','Minimal']);
-  expect(screen.getByRole('menuitemradio', { name: 'Creator' })).toHaveAccessibleDescription('All runtime functions.');
-  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Creator' }));
+  await screen.findByRole('dialog', { name: 'Режим агента' });
+  await userEvent.click(screen.getByRole('option', { name: /Creator/ }));
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('Creator');
+  await userEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
   expect(await screen.findByRole('button', { name: 'Режим агента: Creator' })).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   fireEvent.input(screen.getByRole('textbox'),{target:{textContent:'Hello'}});
   fireEvent.submit(screen.getByRole('form',{name:'Ввод сообщения'}));
   await waitFor(() => expect(created).toHaveBeenCalledWith('zz'));
@@ -151,7 +219,7 @@ it('Busy composer: the preset chip is disabled while the first submit is pending
   await withPresets();
   const { submitNewSession } = await import('../lib/newSession');
   vi.mocked(submitNewSession).mockRejectedValue(new Error('Network'));
-  render(<Draft />);
+  render(<DraftFrom start={confirmedDraft()} />);
   const chip = await screen.findByRole('button', { name: 'Режим агента: Standard' });
   expect(chip).toBeEnabled();
   fireEvent.input(screen.getByRole('textbox'),{target:{textContent:'Hello'}});
@@ -161,19 +229,65 @@ it('Busy composer: the preset chip is disabled while the first submit is pending
   expect(vi.mocked(submitNewSession).mock.calls[0][0]).toMatchObject({ presetId:'standard' });
 });
 it('Keyboard flow: Enter opens, arrows move, Enter picks Minimal and focus returns to the chip', async () => {
-  // jsdom has no PointerEvent; Base UI dispatches one when Enter activates a menu item.
-  if (!('PointerEvent' in window)) vi.stubGlobal('PointerEvent', class extends MouseEvent { constructor(type: string, init?: PointerEventInit) { super(type, init); } });
-  await withPresets(); render(<Draft />);
+  await withPresets(); render(<DraftFrom start={confirmedDraft()} />);
   const chip = await screen.findByRole('button', { name: 'Режим агента: Standard' });
   chip.focus(); expect(chip).toHaveFocus();
   await userEvent.keyboard('{Enter}');
-  await screen.findAllByRole('menuitemradio');
-  for (let i = 0; i < 3 && document.activeElement?.getAttribute('aria-label') !== 'Minimal'; i++) await userEvent.keyboard('{ArrowDown}');
-  expect(screen.getByRole('menuitemradio', { name: 'Minimal' })).toHaveFocus();
-  await userEvent.keyboard('{Enter}');
-  await waitFor(() => expect(screen.queryByRole('menuitemradio')).toBeNull());
+  await screen.findByRole('dialog', { name: 'Режим агента' });
+  await waitFor(() => expect(screen.getByRole('combobox')).toHaveFocus());
+  await userEvent.keyboard('{ArrowDown}{ArrowDown}');
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('Minimal');
+  expect(screen.getByRole('combobox')).toHaveAttribute('aria-activedescendant', screen.getByRole('option', { selected: true }).id);
+  await userEvent.keyboard('{ArrowDown}');
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('Standard');
+  await userEvent.keyboard('{ArrowUp}{Enter}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   const updated = screen.getByRole('button', { name: 'Режим агента: Minimal' });
   await waitFor(() => expect(updated).toHaveFocus());
+});
+it('Cancel keeps the previous choice: Esc restores Creator', async () => {
+  await withPresets(); render(<DraftFrom start={confirmedDraft('creator')} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Режим агента: Creator' }));
+  await screen.findByRole('dialog');
+  await userEvent.keyboard('{ArrowDown}');
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('Minimal');
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.getByRole('button', { name: 'Режим агента: Creator' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Режим агента: Creator' }));
+  await screen.findByRole('dialog');
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('Creator');
+});
+it('Search filters by name and description, keeps the selection and shows Ничего не найдено', async () => {
+  await withPresets(); render(<Draft />);
+  await screen.findByRole('dialog');
+  const search = screen.getByRole('combobox');
+  await userEvent.type(search, 'runtime');
+  expect(optionNames()).toEqual(['Creator']);
+  expect(screen.queryByRole('option', { selected: true })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Продолжить' })).toBeDisabled();
+  await userEvent.keyboard('{Enter}');
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  await userEvent.clear(search);
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('Standard');
+  await userEvent.type(search, 'zzz');
+  expect(screen.queryAllByRole('option')).toHaveLength(0);
+  expect(screen.getByText('Ничего не найдено')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Продолжить' })).toBeDisabled();
+  await userEvent.clear(search); await userEvent.type(search, 'MIN');
+  await userEvent.keyboard('{ArrowDown}');
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('Minimal');
+  await userEvent.keyboard('{Enter}');
+  expect(await screen.findByRole('button', { name: 'Режим агента: Minimal' })).toBeInTheDocument();
+});
+it('Many presets: all ten are listed in the scrollable list', async () => {
+  const { getNewSessionDefaults } = await import('../lib/newSession');
+  const many = Array.from({ length: 10 }, (_, i) => ({ id:`p${i}`, name:`Preset ${i}`, description:`Mode ${i}`, sortOrder:i }));
+  vi.mocked(getNewSessionDefaults).mockResolvedValue({ version:1, defaultModel:'test:default', csrfToken:'token', presets:[...many].reverse(), defaultPresetId:'p3' });
+  render(<Draft />);
+  await screen.findByRole('dialog');
+  expect(optionNames()).toEqual(many.map(preset => preset.name));
+  expect(screen.getByRole('option', { selected: true })).toHaveTextContent('Preset 3');
 });
 it('puts the add button first inside the input; it opens the add menu and keeps the draft', async () => {
   render(<Draft />);

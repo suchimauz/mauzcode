@@ -9,7 +9,7 @@ import { ComposerAddButton } from './ComposerAddButton';
 import { MessageInput } from './MessageInput';
 import { ModelPicker } from './ModelPicker';
 import { MascotPicker } from './MascotPicker';
-import { AgentPresetPicker } from './AgentPresetPicker';
+import { AgentPresetDialog, AgentPresetPicker } from './AgentPresetPicker';
 import { normalizeMascotChoice } from '../../lib/mascots';
 import { ApiError } from '../../lib/mauzcode';
 import { runClientCommand, validateCommand } from '../../lib/commands';
@@ -66,6 +66,19 @@ export function NewSessionComposer({ draft, onChange, projects, onCreated, onPen
   const mascot = normalizeMascotChoice(shown.mascot);
   // A stored preset that no longer exists falls back to the default without failing.
   const presetId = pending ? pending.presetId : resolveNewSessionPreset(presets.list, presets.defaultId, draft.presetId);
+  // The preset dialog opens by itself once per mount for an unconfirmed draft; the chip reopens it.
+  const [presetDialog, setPresetDialog] = useState<'auto' | 'chip' | null>(null);
+  const autoOpened = useRef(false);
+  const presetChip = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (autoOpened.current || presets.list.length < 2) return;
+    autoOpened.current = true;
+    if (!draft.presetConfirmed && !pending && !busy) setPresetDialog('auto');
+  }, [presets.list.length, draft.presetConfirmed, pending, busy]);
+  // Read at close time, after the state is already cleared: an auto-open hands focus to the message input.
+  const presetOpenedBy = useRef<'auto' | 'chip' | null>(null);
+  if (presetDialog) presetOpenedBy.current = presetDialog;
+  const presetDialogFocus = () => presetOpenedBy.current === 'auto' ? anchor.current?.querySelector<HTMLElement>('[role="textbox"], textarea') ?? true : presetChip.current ?? true;
   useEffect(() => { onPending(busy || !!pending); }, [busy, pending, onPending]);
   const change = (patch: Partial<NewSessionDraft>) => { if (!busy && !pending) onChange({ ...draft, ...patch, requestKey: crypto.randomUUID() }); };
   const send = async () => {
@@ -99,7 +112,8 @@ export function NewSessionComposer({ draft, onChange, projects, onCreated, onPen
     } finally { lock.current = false; setBusy(false); }
   };
   return <div className="new-session-composer">
-    <div className="new-session-chips"><Menu.Root><Menu.Trigger className="new-session-chip" disabled={busy || !!pending} aria-label="Выбрать Workspace"><FolderOpen size={16} strokeWidth={1} /><span>{available.find(p => p.id === shown.projectId)?.title || 'Выбрать Workspace'}</span></Menu.Trigger><Menu.Portal><Menu.Positioner side="top" align="start" sideOffset={8} collisionPadding={12} className="floating-positioner"><Menu.Popup className="workspace-view-menu" aria-label="Workspace"><Menu.RadioGroup value={draft.projectId} onValueChange={projectId => change({ projectId })}>{available.map(p => <Menu.RadioItem value={p.id} key={p.id} className="workspace-menu-item" title={[p.dir,p.host].filter(Boolean).join(' · ')}><FolderOpen size={14} strokeWidth={1} /><span>{p.title}</span><Menu.RadioItemIndicator><Check size={14} strokeWidth={1} /></Menu.RadioItemIndicator></Menu.RadioItem>)}</Menu.RadioGroup></Menu.Popup></Menu.Positioner></Menu.Portal></Menu.Root><AgentPresetPicker presets={presets.list} value={presetId} disabled={locked} onChange={presetId => change({ presetId })} /></div>
+    <div className="new-session-chips"><Menu.Root><Menu.Trigger className="new-session-chip" disabled={busy || !!pending} aria-label="Выбрать Workspace"><FolderOpen size={16} strokeWidth={1} /><span>{available.find(p => p.id === shown.projectId)?.title || 'Выбрать Workspace'}</span></Menu.Trigger><Menu.Portal><Menu.Positioner side="top" align="start" sideOffset={8} collisionPadding={12} className="floating-positioner"><Menu.Popup className="workspace-view-menu" aria-label="Workspace"><Menu.RadioGroup value={draft.projectId} onValueChange={projectId => change({ projectId })}>{available.map(p => <Menu.RadioItem value={p.id} key={p.id} className="workspace-menu-item" title={[p.dir,p.host].filter(Boolean).join(' · ')}><FolderOpen size={14} strokeWidth={1} /><span>{p.title}</span><Menu.RadioItemIndicator><Check size={14} strokeWidth={1} /></Menu.RadioItemIndicator></Menu.RadioItem>)}</Menu.RadioGroup></Menu.Popup></Menu.Positioner></Menu.Portal></Menu.Root><AgentPresetPicker chipRef={presetChip} presets={presets.list} value={presetId} disabled={locked} onOpen={() => setPresetDialog('chip')} /></div>
+    <AgentPresetDialog open={!!presetDialog && !locked} presets={presets.list} value={presetId} defaultId={presets.defaultId} finalFocus={presetDialogFocus} onClose={() => setPresetDialog(null)} onConfirm={presetId => { change({ presetId, presetConfirmed: true }); setPresetDialog(null); }} />
     <div ref={anchor} className="composer-input-anchor"><MascotPicker value={mascot} disabled={locked} onChange={mascot => change({ mascot })} /><MessageInput bar={{ start: <ModelPicker onReadyChange={setModelReady} agentId="" running={false} busy={busy || !!pending} revision={0} onSaved={() => {}} onBusyChange={() => {}} draft={{ model: shown.model, effort: shown.effort, onChange: (model, effort) => change({ model, effort }) }} /> }} leading={<ComposerAddButton open={menuOpen} disabled={locked} onClick={() => setMenuOpen(open => !open)} />} commandsEnabled commandMenuOpen={menuOpen} onCommandMenuClose={() => setMenuOpen(false)} onFile={() => picker.current?.click()} attachments={shownFiles.length > 0 ? <PendingAttachments files={shownFiles} disabled={locked} onRemove={index => { if (!locked) { setFiles(files.filter((_, i) => i !== index)); change({}); } }} /> : undefined} onFiles={addFiles} hasAttachments={shownFiles.length > 0} value={shown.text} placeholder="How can I help you today?" disabled={busy || !!pending} allowEmptySubmit sendDisabled={!modelReady || (!pending && !selected)} onChange={text => change({ text })} onSend={() => { void send(); }} /></div>
     {dragging && anchor.current?.closest('.chat-panel') && createPortal(<div className="chat-file-drop-overlay" aria-hidden="true">Отпустите файлы, чтобы прикрепить</div>, anchor.current.closest('.chat-panel')!)}
     <input ref={picker} type="file" multiple hidden disabled={!!pending} onChange={event => { addFiles(Array.from(event.target.files || [])); event.target.value = ''; }} />

@@ -1,7 +1,7 @@
 import { requestJson } from './mauzcode';
 import { normalizeMascotChoice, type MascotChoice } from './mascots';
-/** presetId names an agent preset; omitted lets the server use its configured default. */
-export type NewSessionDraft = { title?: string; mascot?: MascotChoice; presetId?: string; projectId: string; model: string; effort: string; text: string; requestKey: string };
+/** presetId names an agent preset; omitted lets the server use its configured default. presetConfirmed marks a preset confirmed in the dialog; it is local only and never submitted. */
+export type NewSessionDraft = { title?: string; mascot?: MascotChoice; presetId?: string; presetConfirmed?: boolean; projectId: string; model: string; effort: string; text: string; requestKey: string };
 /** Menu fields of an agent preset; access rules never reach the browser. */
 export type AgentPresetOption = { id: string; name: string; description: string; sortOrder: number };
 export type NewSessionDefaults = { version: number; defaultModel: string; csrfToken: string; presets?: AgentPresetOption[]; defaultPresetId?: string };
@@ -41,7 +41,7 @@ export function readNewSessionDraft(): NewSessionDraft {
     const last = readSessionSelection();
     return { title: query.get('title') || '', mascot: 'random', projectId: query.get('projectId') || last.projectId || '', model: query.get('model') || last.model || '', effort: query.get('effort') || '', text: query.get('text') || '', requestKey: crypto.randomUUID() };
   }
-  try { const d = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); if (d && ['projectId','model','effort','text','requestKey'].every(k => typeof d[k] === 'string')) return { ...(typeof d.title === 'string' ? { title: d.title } : {}), ...(typeof d.presetId === 'string' && d.presetId ? { presetId: d.presetId } : {}), mascot: normalizeMascotChoice(d.mascot), projectId: d.projectId, model: d.model, effort: d.effort, text: d.text, requestKey: d.requestKey }; } catch { /* Browser storage is optional. */ }
+  try { const d = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); if (d && ['projectId','model','effort','text','requestKey'].every(k => typeof d[k] === 'string')) return { ...(typeof d.title === 'string' ? { title: d.title } : {}), ...(typeof d.presetId === 'string' && d.presetId ? { presetId: d.presetId } : {}), ...(d.presetConfirmed === true ? { presetConfirmed: true } : {}), mascot: normalizeMascotChoice(d.mascot), projectId: d.projectId, model: d.model, effort: d.effort, text: d.text, requestKey: d.requestKey }; } catch { /* Browser storage is optional. */ }
   const last = readSessionSelection();
   return { mascot: 'random', projectId: last.projectId || '', model: last.model || '', effort: '', text: '', requestKey: crypto.randomUUID() };
 }
