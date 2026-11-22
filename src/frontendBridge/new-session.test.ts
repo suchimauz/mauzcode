@@ -63,6 +63,12 @@ describe('new session isolated mock API',()=>{
 test('title binds immutable retries and reaches native domain',async()=>{const f=fixture();let received:any;f.ctx.fns.agent.createFromValues=async(opts:any)=>{received=opts;return {agent:{id:'new'}};};expect((await f.post({title:'Named'})).status).toBe(201);expect(received).toMatchObject({title:'Named',projectId:'p'});expect((await f.post({title:'Changed'})).status).toBe(409);});
 test('removed creation fields are rejected before anything is created',async()=>{for(const patch of [{promptPreset:['review-mode']},{workspaceDir:'/local'},{projectId:'',workspaceDir:'/local'},{createWorkspaceDir:'1'},{systemPrompt:'Extra'}]){const f=fixture();expect((await f.post(patch)).status).toBe(400);expect(f.counts()).toEqual({creates:0,sends:0});}});
 test('removed fields are rejected in multipart bodies too',async()=>{const f=fixture();const body=new FormData();body.set('requestKey','request-key-00002');body.set('projectId','p');body.set('text','hi');body.set('systemPrompt','x');const response=await handler(f.ctx,f.session,{req:new Request('http://localhost/ui-lab-api/new-session',{method:'POST',headers:{'x-csrf-token':'token'},body})});expect(response.status).toBe(400);expect(f.counts()).toEqual({creates:0,sends:0});});
+test('draft request cannot persist response consent even on create-and-send',async()=>{
+ const f=fixture();
+ for(const fields of [{speed:'fast'}, {verbosity:'high'}, {responseControls:{speed:'fast'}}]) expect((await f.post(fields)).status).toBe(400);
+ expect(f.counts()).toEqual({creates:0,sends:0});
+ expect((await f.post()).status).toBe(201);expect(f.counts()).toEqual({creates:1,sends:1});
+});
 test('new-chat selector groups by connection account and reports unavailable connections',async()=>{
  const f=fixture(); const base=await f.ctx.fns.frontendBridge.modelCatalogue();
  f.ctx.fns.frontendBridge.modelCatalogue=async()=>({groups:[...base.groups,{connectionId:'d',provider:'claude',accountName:'down',enabled:true,unavailable:true}],models:base.models});

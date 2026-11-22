@@ -4,6 +4,8 @@ export type ProviderState = {
     connectionId: string;
     sessionId: string;
     runId: string;
+    /** Provider-issued origin proof, not a caller-selectable account or generation. */
+    binding?: string;
     /** Provider-private string values; opaque to callers. */
     data: Record<string, string>;
 };

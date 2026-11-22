@@ -64,16 +64,30 @@ export default async function (
         const def = Object.hasOwn(ctx.state.models?.providers ?? {}, view.provider) ? ctx.state.models!.providers![view.provider]!.definition : undefined;
         if (!def?.stream && !def?.route) throw Object.assign(new Error("Provider " + view.provider + " does not support stream"), { code: "UNSUPPORTED", status: 400, retryable: false });
         ctx.fns.models.inference.checkInput({ provider: view.provider, connectionId: view.id, model: opts.model, sessionId: opts.sessionId, capabilities: def.capabilities, messages: opts.messages, runId: opts.runId, state: opts.state, signal: opts.signal });
-        if (def.capabilities?.reasoning && opts.reasoningEffort !== undefined && !["auto", "off", "minimal", "low", "medium", "high", "xhigh"].includes(opts.reasoningEffort)) {
+        if (def.capabilities?.reasoning && opts.reasoningEffort !== undefined && !["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(opts.reasoningEffort)) {
             throw ctx.fns.models.inference.failure({ message: "Invalid reasoning effort", status: 400, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
         }
         let reasoning: types.models.ReasoningResolution | undefined;
         let info: types.models.ModelInfo | undefined;
-        if (def.capabilities?.reasoning || def.route) {
+        const codex = view.provider === "codex";
+        const dispatch = ctx.state.models?.codexDispatch?.get(opts);
+        let generation: string | null = null;
+        if (def.capabilities?.reasoning || def.route || codex) {
             // Read the existing catalogue cache only; inference never triggers model discovery.
-            const rows = await ctx.fns.procs.db.select({ sql: "SELECT models_cache FROM llm_connections WHERE id=?", params: [view.id] }) as { models_cache: unknown }[];
+            const rows = await ctx.fns.procs.db.select({ sql: codex ? "SELECT codex_generation, CASE WHEN models_cache_generation=codex_generation THEN models_cache END AS models_cache FROM llm_connections WHERE id=?" : "SELECT models_cache FROM llm_connections WHERE id=?", params: [view.id] }) as { models_cache: unknown; codex_generation?: string | null }[];
+            generation = rows[0]?.codex_generation ?? null;
             const cache = typeof rows[0]?.models_cache === "string" ? JSON.parse(rows[0].models_cache) : rows[0]?.models_cache;
             info = Array.isArray(cache) ? (cache as types.models.ModelInfo[]).find(m => m?.id === opts.model) : undefined;
+        }
+        let explicitGeneration: string | null | undefined;
+        let codexOptions: Record<string, unknown> | undefined;
+        if (codex) {
+            const controls = ctx.fns.models.provider.codex.codexControls({ options: opts.providerOptions, model: info });
+            if (controls.service_tier || controls.verbosity) explicitGeneration = generation;
+            codexOptions = controls.service_tier || controls.verbosity ? { ...(controls.service_tier ? { speed: controls.service_tier === 'priority' ? 'fast' : 'ultrafast' } : {}), ...(controls.verbosity ? { verbosity: controls.verbosity } : {}) } : undefined;
+            if (dispatch?.pin && dispatch.pin.generation !== undefined && dispatch.pin.generation !== generation) throw ctx.fns.models.inference.failure({ message: "Codex account changed before retry", status: 409, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
+            if (info?.reasoningUnavailable) throw ctx.fns.models.inference.failure({ message: "Catalogue provides no usable reasoning level", status: 400, info: { code: "CAPABILITY_UNAVAILABLE", classification: "capability_unavailable", acceptance: "none", retryable: false, replaySafe: true } });
+            await ctx.fns.models.provider.codex.codexCheckOpaque({ connectionId: view.id, messages: opts.messages, state: opts.state });
         }
         // Protocol-route providers are discovery-driven: a model reported without reasoning controls (and no profile)
         // streams without a reasoning setting instead of failing CAPABILITY_UNAVAILABLE.
@@ -91,9 +105,13 @@ export default async function (
             ...(def.capabilities?.structuredOutput && responseFormat !== undefined ? { responseFormat } : {}),
         };
         const req: types.models.StreamRequest = reasoning ? { ...rest, ...gated, reasoning } : { ...rest, ...gated };
+        if (codex) {
+            req.providerOptions = codexOptions;
+            ((ctx.state.models ??= {}).codexDispatch ??= new WeakMap()).set(req, { ...dispatch, generation: explicitGeneration });
+        }
         const result = definition.stream
             ? await definition.stream(ctx, conn, req)
             : await ctx.fns.models.inference.streamRoute({ definition, conn, req, info: info ?? null });
         if (result.state && (!def.capabilities?.continuationState || result.state.provider !== view.provider || result.state.connectionId !== view.id || result.state.sessionId !== opts.sessionId || result.state.runId !== opts.runId)) delete result.state;
-        return reasoning ? { ...result, reasoning } : result;
+        return req.reasoning ? { ...result, reasoning: req.reasoning } : result;
 }

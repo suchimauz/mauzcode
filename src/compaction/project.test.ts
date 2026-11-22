@@ -1,16 +1,17 @@
 import { expect, test } from 'bun:test';
 import project from './project';
+import digest from './historyDigest';
 import portable from './portable';
 import normalize from '../agent/normalizeSleepContext';
 import generation from '../agent/getSleepGeneration';
 
 function fixture(patch: any = {}) {
- const history: any[] = [{role:'user',content:'old'}, {role:'assistant',content:'answer'}, {role:'user',content:'tail'}];
+ const history: any[] = [{role:'user',idx:0,content:'old'}, {role:'assistant',idx:1,content:'answer'}, {role:'user',idx:2,content:'tail'}];
  const checkpoint = [{role:'user',content:'summary'}];
  const gen = {revision:4,model:'codex:gpt',sourceOffset:2,tailStart:2,activatedAt:10,contextMessages:checkpoint,...patch};
  const sleep: any = {mode:'compact',activeRevision:4,generations:[gen]};
  const reads: string[] = [];
- const ctx: any = {fns:{agent:{normalizeSleepContext:(o:any)=>normalize(ctx,null,o),getSleepGeneration:(o:any)=>generation(ctx,null,o)},session:{getMessages:async({id}:any)=>{reads.push(id);return checkpoint;}},compaction:{portable:(o:any)=>portable(ctx,null,o)}}};
+ const ctx: any = {fns:{agent:{normalizeSleepContext:(o:any)=>normalize(ctx,null,o),getSleepGeneration:(o:any)=>generation(ctx,null,o)},session:{getMessages:async({id}:any)=>{reads.push(id);return checkpoint;}},models:{resolveRoute:()=>({connectionId:'c',provider:'codex',model:'gpt'}),canReplayCodex:({checkpoint}:any)=>checkpoint.binding==='verified'},compaction:{historyDigest:(o:any)=>digest(ctx,null,o),portable:(o:any)=>portable(ctx,null,o)}}};
  return {ctx,history,checkpoint,gen,sleep,reads,call:()=>project(ctx,null,{model:'codex:gpt',messages:history,sleepContext:sleep})};
 }
 test('selected checkpoint and retained tail are read-only; child storage wins over inline checkpoint',async()=>{
@@ -42,8 +43,8 @@ test('source and tail boundaries reject negative, fractional, missing and out of
  expect((await f.call()).messages).toEqual([...f.checkpoint,...f.history.slice(1)]);
  expect((await fixture({sourceOffset:0,tailStart:0}).call()).mode).toBe('compact');
 });
-test('same upstream route preserves opaque checkpoint via real portable policy',async()=>{
- const native={role:'assistant',content:JSON.stringify({kind:'native-checkpoint',version:1,provider:'codex',connectionId:'c',model:'gpt',payload:{type:'compaction',encrypted_content:'opaque'}}),message_type:'codex_compaction'};
+test('same upstream route still needs verified checkpoint provenance',async()=>{
+ const native={role:'assistant',content:JSON.stringify({kind:'native-checkpoint',version:1,binding:'verified',provider:'codex',connectionId:'c',model:'gpt',payload:{type:'compaction',encrypted_content:'opaque'}}),message_type:'codex_compaction'};
  const f=fixture({model:'ssh:codex/work:gpt',contextMessages:[native]});
  expect((await f.call()).messages[0]).toBe(native);
  f.gen.model='codex:other';expect((await f.call()).fallback).toBe('incompatible_checkpoint');
@@ -54,6 +55,14 @@ test('pre-migration raw checkpoint uses complete canonical history, never curren
  const f=fixture({contextMessages:[raw]});const before=structuredClone(raw);
  const result=await f.call();expect(result.mode).toBe('full');expect(result.fallback).toBe('incompatible_checkpoint');expect(result.messages).toBe(f.history);expect(raw).toEqual(before);
  f.history.length=0;await expect(f.call()).rejects.toThrow('canonical history is unavailable');
+});
+test('foreign signed checkpoint rebuilds only from the original complete prefix',async()=>{
+ const native={role:'assistant',message_type:'codex_compaction',content:JSON.stringify({kind:'native-checkpoint',version:1,provider:'codex',binding:'foreign',connectionId:'c',model:'gpt',payload:{type:'compaction',encrypted_content:'old-secret'}})};
+ const f=fixture({contextMessages:[native]}); f.gen.sourceDigest=digest(f.ctx,null,{messages:f.history.slice(0,2)});
+ expect((await f.call()).messages).toBe(f.history);
+ f.history[0].content='replacement'; await expect(f.call()).rejects.toThrow('start a new chat');
+ delete f.gen.sourceDigest; f.history.splice(0,1); await expect(f.call()).rejects.toThrow('start a new chat');
+ f.history.unshift({idx:0,...native}); await expect(f.call()).rejects.toThrow('start a new chat');
 });
 test('malformed persisted checkpoint is not silently discarded',async()=>{
  const f=fixture({contextMessages:[{role:'user',message_type:'codex_compaction',content:'{'}]});

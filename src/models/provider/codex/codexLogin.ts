@@ -27,19 +27,29 @@ export default async function (
             const flows = (ctx.state.models.loginFlows ??= {});
             const view = (f: types.models.LoginFlow | undefined) => f ? { kind: "device-code" as const, flowId: f.flowId, status: f.status, verificationUri: f.verificationUri, userCode: f.userCode, expiresAt: f.expiresAt, ...(f.message ? { message: f.message } : {}) } : null;
             const json = { "content-type": "application/json", accept: "application/json" };
+            const current = async (id: string) => {
+                const rows = await ctx.fns.procs.db.select({ sql: "SELECT 1 FROM llm_connections WHERE id=? AND codex_login_intent IN (?,?)", params: [conn.id, id, `done:${id}`] });
+                return rows.length > 0;
+            };
+            const superseded = () => Object.assign(new Error("Login cancelled or superseded"), { code: "LOGIN_SUPERSEDED", status: 409 });
             if (opts.op === "status") {
                 const f = flows[conn.id];
+                if (f && (f.status === "pending" || f.status === "succeeded") && !await current(f.flowId)) { f.status = "failed"; f.message = "Login cancelled or superseded"; f.abort.abort(); }
                 if (f && f.status === "pending" && Date.now() >= f.expiresAt) { f.status = "expired"; f.message = "Login code expired"; f.abort.abort(); }
                 return view(f);
             }
             if (opts.op === "cancel") {
                 const f = flows[conn.id];
+                await ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET codex_login_intent=NULL WHERE id=?", params: [conn.id] });
                 if (f && f.status === "pending") { f.status = "failed"; f.message = "Login cancelled"; f.abort.abort(); }
                 return view(f);
             }
             // op === "start": cancel any previous pending flow first.
             const prev = flows[conn.id];
             if (prev?.status === "pending") { prev.status = "failed"; prev.message = "Superseded by a new login"; prev.abort.abort(); }
+            const intent = crypto.randomUUID();
+            const reserved = await ctx.fns.procs.db.select({ sql: "UPDATE llm_connections SET codex_login_intent=? WHERE id=? RETURNING id", params: [intent, conn.id] });
+            if (!reserved.length) throw superseded();
             const res = await conn.fetch(issuer + "/api/accounts/deviceauth/usercode", { method: "POST", headers: json, body: JSON.stringify({ client_id: clientId }) });
             if (res.status === 404) { await res.body?.cancel().catch(() => undefined); throw Object.assign(new Error("Device code login is not enabled for this server"), { code: "LOGIN_UNAVAILABLE", status: 409 }); }
             if (!res.ok) { await res.body?.cancel().catch(() => undefined); throw Object.assign(new Error("Device code request failed with HTTP " + res.status), { code: "LOGIN_FAILED", status: 502 }); }
@@ -49,7 +59,8 @@ export default async function (
             if (!deviceAuthId || !userCode) throw Object.assign(new Error("Device code response is incomplete"), { code: "LOGIN_FAILED", status: 502 });
             const seconds = Number(String(uc.interval ?? "").trim());
             const intervalMs = opts.intervalMs ?? (Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 60) * 1000 : 5000);
-            const flow: types.models.LoginFlow = { kind: "device-code", flowId: crypto.randomUUID(), status: "pending", verificationUri: issuer + "/codex/device", userCode, expiresAt: Date.now() + (opts.maxWaitMs ?? 15 * 60_000), abort: new AbortController() };
+            if (!await current(intent)) throw superseded();
+            const flow: types.models.LoginFlow = { kind: "device-code", flowId: intent, status: "pending", verificationUri: issuer + "/codex/device", userCode, expiresAt: Date.now() + (opts.maxWaitMs ?? 15 * 60_000), abort: new AbortController() };
             flows[conn.id] = flow;
             const signal = flow.abort.signal;
             const finish = (status: "succeeded" | "failed" | "expired", message: string) => { if (flow.status === "pending") { flow.status = status; flow.message = message; } };
@@ -61,6 +72,7 @@ export default async function (
                         if (Date.now() >= flow.expiresAt) { finish("expired", "Login code expired"); flow.abort.abort(); return; }
                         await sleep(intervalMs);
                         if (signal.aborted || flow.status !== "pending") return;
+                        if (!await current(intent)) throw superseded();
                         const poll = await conn.fetch(issuer + "/api/accounts/deviceauth/token", { method: "POST", headers: json, body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }), signal });
                         if (poll.status === 403 || poll.status === 404) { await poll.body?.cancel().catch(() => undefined); continue; }
                         if (!poll.ok) { await poll.body?.cancel().catch(() => undefined); finish("failed", "Authorization check failed with HTTP " + poll.status); return; }
@@ -77,7 +89,8 @@ export default async function (
                     if (!ex.ok) { await ex.body?.cancel().catch(() => undefined); finish("failed", "Token exchange failed with HTTP " + ex.status + "; start login again"); return; }
                     const tokens = await ex.json() as { id_token?: string; access_token: string; refresh_token?: string };
                     if (signal.aborted || flow.status !== "pending") return;
-                    await ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", tokens });
+                    await ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", tokens, intent });
+                    if (!await current(intent)) throw superseded();
                     finish("succeeded", "Logged in");
                 } catch (error) {
                     if (flow.status === "pending") finish("failed", signal.aborted ? "Login cancelled" : ctx.fns.models.connections.safeMessage({ message: error, fallback: "Login failed" }));

@@ -487,19 +487,25 @@ export default async function (
             })().catch(() => { /* calibration sample is optional */ });
             const request = await ctx.fns.agent.buildLlmRequest({ agent });
             const stateKey = JSON.stringify([route.connectionId, route.model, agent.sleepContext]);
-            if (continuationKey !== stateKey) continuationState = undefined;
+            if (continuationKey !== stateKey || (continuationState?.provider === 'codex' && !await ctx.fns.models.canReplayCodex({connectionId: route.connectionId, model: route.model, state: continuationState}))) continuationState = undefined;
             const promptCacheKey = await ctx.fns.agent.cacheRoot({ agent });
             await assertRunActive();
             if ((ctx as Context & { goalRequestContext?: { authority?: types.goal.DelegationAuthority } }).goalRequestContext?.authority) await ctx.fns.goal.requestAuthorize({});
             requestStartedAt = performance.now();
-            streamed = await ctx.fns.models.stream({
+            const replyRequest = {
                 connectionId: route.connectionId, model: route.model,
                 instructions: request.instructions, messages: request.messages,
                 cacheableMessageCount: request.cacheableMessageCount,
                 tools: ctx.fns.agent.wireTools({ agent }), reasoningEffort: agent.reasoningEffort,
                 sessionId: agent.id, promptCacheKey, runId: inferenceRunId,
                 state: continuationState, signal: sampling.signal, onEvent,
-            });
+            };
+            // Only this primary reply (and its tool continuations) can use saved chat consent.
+            if (route.provider === 'codex') {
+                const modelsState = ctx.state.models ??= {};
+                (modelsState.codexDispatch ??= new WeakMap()).set(replyRequest, { chat: route => ctx.fns.session.admittedCodexControls({ ...route, agentId: agent.id, ownerId: agent.createdBy ?? null }) });
+            }
+            streamed = await ctx.fns.models.stream(replyRequest);
             streamed.metrics = { llmTimeMs: Math.max(0, performance.now() - requestStartedAt), ttftMs: firstEventMs };
             reasoningBlocks = Array.isArray(streamed.reasoningBlocks) && streamed.reasoningBlocks.length ? streamed.reasoningBlocks : undefined;
             continuationState = streamed.state;

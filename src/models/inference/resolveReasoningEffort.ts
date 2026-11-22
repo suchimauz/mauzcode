@@ -16,7 +16,7 @@ export default async function (
         effort?: Effort;
     },
 ): Promise<{ requested: Effort; applied: Effort; mode: "none" | "anthropic-adaptive"; downgraded: boolean; reason: string | null }> {
-    const allowed: Effort[] = ["auto", "off", "minimal", "low", "medium", "high", "xhigh"];
+    const allowed: Effort[] = ["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
         const requested = allowed.includes(opts.effort ?? "auto") ? (opts.effort ?? "auto") : "auto";
         // Preserve Claude wire defaults, including Claude 5 auto omitting effort.
         const modelId = opts.model.toLowerCase();
@@ -28,7 +28,7 @@ export default async function (
             : { supported: ["auto", "off"], defaultEffort: "off", mode: "none" };
         if (requested === "auto") return { requested, applied: caps.defaultEffort, mode: caps.mode, downgraded: false, reason: null };
         if (caps.supported.includes(requested)) return { requested, applied: requested as Exclude<Effort, "auto">, mode: caps.mode, downgraded: false, reason: null };
-        const order: Array<Exclude<Effort, "auto">> = ["off", "minimal", "low", "medium", "high", "xhigh"];
+        const order: Array<Exclude<Effort, "auto">> = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
         const start = order.indexOf(requested as any);
         let applied: Effort = caps.defaultEffort;
         let found = false;

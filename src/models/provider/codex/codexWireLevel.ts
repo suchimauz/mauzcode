@@ -11,7 +11,7 @@ export default function (
         v: unknown;
     },
 ): types.models.ReasoningLevel | null {
-    const LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+    const LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
     const { v } = opts;
     
         const s = v === "none" ? "off" : v;

@@ -274,6 +274,7 @@ describe("binding and gating", () => {
         const child = { ...parent, parentId: "p", scratchpad: { delegation: { parentId: "p", status: "working" } }, preset: snapshot(["*"]) };
         const wire = ctx.fns.agent.wireTools({ agent: child }).filter((t: any) => NAMES.includes(t.name));
         expect(wire.map((t: any) => t.name).sort()).toEqual([...NAMES].sort());
+        expect(wire.find((t: any) => t.name === "delegate_task").parameters.properties.reasoningEffort.enum).toEqual(["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"]);
         for (const spec of wire) {
             expect(spec.parameters).toMatchObject({ type: "object", additionalProperties: false });
             expect(JSON.stringify(spec.parameters)).not.toMatch(/"(agent|agentId|parentId|owner|session|preset)"/);

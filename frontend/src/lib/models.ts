@@ -34,7 +34,7 @@ export async function setAgentEffort(id: string, effort: string) {
   if (response.status !== 204) throw new Error('MauzCode не подтвердил сохранение настройки. Обновите список моделей.');
 }
 export const normalizeEffort = (effort: string, supported: string[]) => supported.includes(effort) ? effort : 'auto';
-export const effortLabel = (value: string) => ({ auto: 'Default', off: 'Off', minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Max' }[value] ?? value);
+export const effortLabel = (value: string) => ({ auto: 'Default', off: 'Off', minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' }[value] ?? value);
 // Canonical route template shared with the server (llm.parseModelRoute): `[ssh/<host>:]<provider>/<account>:<model>`.
 export type ModelRoute = { host: string | null; provider: string; account: string; model: string; route: string };
 export const parseModelRoute = (value: string): ModelRoute => {

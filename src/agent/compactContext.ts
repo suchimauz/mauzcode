@@ -99,6 +99,7 @@ export default async function (
       });
       const summary = result.summary;
       const summaryMessage: any = result.message;
+      if (summaryMessage?.message_type === 'codex_compaction') generation.sourceDigest = ctx.fns.compaction.historyDigest({messages: rootMessages});
       const tokensAfter = await ctx.fns.compaction.estimateTokens({ messages: [summaryMessage, ...rootMessages.slice(tailStart)], model });
       generation.compactor = compactor.provider;
       if (parent.jevCompactionEnabled === true) {

@@ -403,6 +403,12 @@ a header row too.
   unavailable-catalogue notices; `modelUsage` omits its connections; `settings.modelDefault`
   skips them. Disabled providers are absent from the Add-connection selector.
 
+## Choosing Codex response settings in chat
+
+Open the model picker in an existing chat. **Speed** starts at **Standard**; Fast or Ultrafast appears only if the selected Codex connection advertises it. Accelerated speeds may consume additional quota. **Response verbosity** starts at **Default** (no explicit override). **Effort** controls reasoning, not speed: Extra high (`xhigh`) and Max (`max`) are distinct choices when advertised. Use arrow keys and Enter to select, or Escape to go back. Opening the picker reads local data only. If a catalogue is missing or out of date, open **Settings → Models**, select the connection and choose **Update models**.
+
+These settings affect subsequent chat replies, not a request already sent. They belong to this chat, connection, signed-in account and model; changing routes does not copy them. Drafts, new chats, forks and children start without paid or verbosity overrides. If the account changes, is logged out, or a capability disappears, obsolete overrides are cleared and the chat reports the reset. Restoring a capability does not restore consent. A stale edit is rejected; reopen the picker and choose again.
+
 ## Built-in Codex provider
 
 `$modelProvider_codex.ts` connects a ChatGPT subscription through the Codex
@@ -427,9 +433,9 @@ through `conn.fetch`. `src/models/codexParity.test.ts` replaces legacy
 namespaces with throwing stubs and statically checks the sources.
 
 **Inference.** The request includes `store:false`, `stream:true`,
-`text.verbosity: "medium"`, `prompt_cache_key = promptCacheKey || sessionId`,
-`reasoning: { effort: applied ("off" → "none"), summary: "auto" }`, and tools
-with `parallel_tool_calls:true`. Headers: `originator: codex_cli_rs`,
+`prompt_cache_key = promptCacheKey || sessionId`, and tools with `parallel_tool_calls:true`.
+An applied reasoning level sends `reasoning: { effort, summary: "auto" }` (`off` → `none`); unresolved automatic effort omits `reasoning` entirely.
+Both `models.stream` and `models.call` accept, for example, `providerOptions: { speed: "fast", verbosity: "high" }`. Only advertised controls on the current verified connection are allowed. Fast sends `service_tier: "priority"`, Ultrafast sends `"ultrafast"`, and explicit verbosity sets `text.verbosity` without changing `text.format`. Standard speed and Default verbosity omit their wire fields; the SDK no longer forces medium verbosity. Headers: `originator: codex_cli_rs`,
 `version`, `OpenAI-Beta: responses=experimental`, `session_id` and
 `x-client-request-id` = `sessionId`. Assistant tool calls become
 `function_call` items, and tool results become `function_call_output` items.
@@ -438,11 +444,13 @@ PDFs become `input_text`. Unparseable tool arguments arrive as
 `{ __unparsed }`.
 
 Sticky routing: with `runId`, the first `x-codex-turn-state` response header of
-the run is returned as `state.data.turnState` and replayed on every later
-request of that run. Without `runId`, or on a new run, none is sent.
+the run is returned as `state.data.turnState` only for a verified account. Carry the entire SDK state unchanged: its `binding` authenticates the token, provider, connection, session, run and issuing account generation. A chat drops obsolete state; an explicit SDK replay with an absent, forged or obsolete binding fails before inference. A new run sends no previous token.
 
-Reasoning profile `codex-2026-07` (used only when discovery reports no
-`supported_reasoning_levels`/`default_reasoning_level`):
+**Discovery.** `ModelInfo.responseControls` is optional and belongs to one connection and model, not a slug globally. `speed.supported` contains Standard plus the advertised accelerated choices; `verbosity.supported` lists supported values independently. `verbosity.default` is descriptive, not a request setting. An adapter can omit either capability. Reporting a descriptor does not enable Codex dispatch or chat controls for another provider.
+
+Codex retains known reasoning levels, deduplicates `none`/`off`, and accepts `max` as a distinct level above `xhigh` only when advertised. A native wire alias like `{xhigh: "max"}` does not add SDK `max`. Unknown or unsupported defaults are omitted; auto then sends no reasoning setting. An explicit list with no usable levels sets `reasoningUnavailable: true` instead of `reasoning`; it must never fall back to a guessed profile.
+
+Reasoning profile `codex-2026-07` (used only when discovery omits `supported_reasoning_levels`):
 `gpt-6*` → low…xhigh; `gpt-5*`, `codex-*` → off…high, plus xhigh for gpt-5.2+
 and codex-max. The default is medium. Other models without metadata fail with
 `CAPABILITY_UNAVAILABLE`.
@@ -452,8 +460,7 @@ the remote "memento" `x-codex-turn-metadata`. It accepts exactly one non-empty
 `encrypted_content` item and a response id, otherwise it fails. The result's
 `checkpoint` is plain JSON. Replay it as `{ type: "checkpoint", checkpoint }`
 at the position it replaces. It becomes the native `compaction` input item
-there. Legacy `codex_compaction` transcript records are rejected; legacy
-conversion is not provided.
+there. Persist the **whole envelope**, including its installation-authenticated `binding`; the marker is never sent upstream. Replay requires the issuing account generation, connection and model. Reconnecting or switching accounts cannot retroactively certify old encrypted content. Legacy, tampered or foreign checkpoints are not sent: chat uses the complete original canonical history if available; otherwise restore that history or start a new chat. Compaction requires a verified account. Failed recovery does not rewrite the transcript.
 
 **Failures.** HTTP 401 → `LOGIN_REQUIRED` (and `needsLogin`).
 `usage_limit_reached`/`usage_not_included`/`quota_exceeded`/`credits_depleted`

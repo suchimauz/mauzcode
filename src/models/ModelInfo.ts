@@ -20,6 +20,13 @@ export type ModelInfo = {
         /** False means the model only switches thinking on or off and no effort value is sent. @default true */
         effort?: boolean;
     };
+    /** Discovery explicitly supplied no usable reasoning levels. Do not fall back to a profile. Mutually exclusive with reasoning. */
+    reasoningUnavailable?: true;
+    /** Route-specific display metadata; does not opt other providers into Codex wire semantics. */
+    responseControls?: {
+        speed?: { supported: ("standard" | "fast" | "ultrafast")[] };
+        verbosity?: { supported: ("low" | "medium" | "high")[]; default?: "low" | "medium" | "high" };
+    };
     /** Native shared protocol of this model, used by protocol-route providers. */
     protocol?: types.models.ProtocolRoute["protocol"];
     /** Set by models.listModels: true when the owner disabled this model on the connection. */

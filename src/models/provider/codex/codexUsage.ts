@@ -19,7 +19,7 @@ export default async function (
     const { conn } = opts;
     const BASE = "https://chatgpt.com/backend-api";
     const a = await ctx.fns.models.provider.codex.codexWireAuth({ conn: conn });
-    const res = await ctx.fns.models.provider.codex.codexWireChecked({ conn: conn, res: await conn.fetch(`${BASE}/wham/usage`, { headers: { authorization: `Bearer ${a.token}`, ...(a.accountId ? { "chatgpt-account-id": a.accountId } : {}), "user-agent": "codex-cli" } }) });
+    const res = await ctx.fns.models.provider.codex.codexWireChecked({ conn, auth: a, res: await conn.fetch(`${BASE}/wham/usage`, { headers: { authorization: `Bearer ${a.token}`, ...(a.accountId ? { "chatgpt-account-id": a.accountId } : {}), "user-agent": "codex-cli" } }) });
     const data = await res.json() as { rate_limit?: unknown; rate_limits?: unknown; additional_rate_limits?: unknown };
     const now = Date.now();
     type Entry = Record<string, unknown>;

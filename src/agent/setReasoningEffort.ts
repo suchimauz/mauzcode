@@ -18,7 +18,7 @@ export default async function (
         now?: number;
     },
 ): Promise<{ id: string; requested: (types.models.ReasoningLevel | "auto"); applied: (types.models.ReasoningLevel | "auto"); downgraded: boolean }> {
-    const allowed: (types.models.ReasoningLevel | "auto")[] = ["auto", "off", "minimal", "low", "medium", "high", "xhigh"];
+    const allowed: (types.models.ReasoningLevel | "auto")[] = ["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
     if (!allowed.includes(opts.effort)) throw new Error("invalid reasoning effort");
     const row = ((await ctx.fns.procs.db.select({ sql: "SELECT id, model, reasoning_effort FROM agents WHERE id = ? AND archived_at IS NULL", params: [opts.id] })) as any[])[0];
     if (!row) throw new Error(`agent not found: ${opts.id}`);

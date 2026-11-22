@@ -53,7 +53,7 @@ export default async function (
     });
     if (opts.presetId !== undefined && (typeof opts.presetId !== "string" || !opts.presetId.trim())) throw new Error("delegate_task: presetId must be a non-empty string");
     if (opts.model !== undefined && (typeof opts.model !== "string" || !opts.model.trim())) throw new Error("delegate_task: model must be a non-empty provider/accountName:modelId route");
-    const efforts: (types.models.ReasoningLevel | "auto")[] = ["auto", "off", "minimal", "low", "medium", "high", "xhigh"];
+    const efforts: (types.models.ReasoningLevel | "auto")[] = ["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
     if (opts.reasoningEffort !== undefined && !efforts.includes(opts.reasoningEffort)) throw new Error(`delegate_task: reasoningEffort must be one of ${efforts.join(", ")}`);
     const tasks = opts.tasks.map(task => ({ id: task.id.trim(), title: task.title.trim(), ...(task.instructions?.trim() ? { instructions: task.instructions.trim() } : {}) }));
     const child = await ctx.fns.agent.delegate({ agent, title: opts.title.trim(), tasks, ...(opts.presetId ? { presetId: opts.presetId.trim() } : {}), ...(opts.model ? { model: opts.model.trim() } : {}), ...(opts.reasoningEffort !== undefined ? { reasoningEffort: opts.reasoningEffort } : {}) });

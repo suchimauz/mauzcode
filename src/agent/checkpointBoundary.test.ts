@@ -5,6 +5,8 @@ import input from '../models/provider/codex/codexInput';
 import anthropic from '../models/protocol/anthropic/toAnthropicMessages';
 import checkInput from '../models/inference/checkInput';
 import failure from '../models/inference/failure';
+import bind from '../models/provider/codex/codexBindOpaque';
+import check from '../models/provider/codex/codexCheckOpaque';
 import stream from '../models/inference/stream';
 import modelCallWithRetry from '../compaction/modelCallWithRetry';
 import retryDecision from './retryDecision';
@@ -23,16 +25,19 @@ function fixture(content: unknown = JSON.stringify(checkpoint), type = 'codex_co
         session: { repairToolPairs: ({messages}: any) => ({messages,repaired:[]}) },
         compaction: { project: async () => ({ messages, mode:'compact', fallback:null, revision:1 }), modelCallWithRetry: (o: any) => modelCallWithRetry(ctx, null, o) },
         settings: { get: async ({ key }: any) => key === 'retryPolicy' ? { initialDelayMs: 1, maxDelayMs: 5, jitterRatio: 0 } : undefined },
-        procs: { log: { warn: () => {} }, events: { emit: () => {} }, db: { select: async () => [] } },
+        secrets: { getLocal: async () => 'af'.repeat(32) },
+        procs: { log: { warn: () => {} }, events: { emit: () => {} }, db: { select: async () => [{codex_generation:'generation'}] } },
         auth: { attributeMessages: async ({messages}: any) => ({messages,applied:false}) },
         attachments: { resolveContent: async ({messages}: any) => messages }, planning: { prompt: async () => '' },
-        models: { resolveRoute: async () => route, inference: { failure: (o: any) => failure(ctx,null,o), checkInput: (o: any) => checkInput(ctx,null,o), assertModelEnabled: async () => ({id:'c',provider:'codex'}) }, connections: { safeMessage: ({message}:any)=>message, resolve: async () => ({definition,conn:{}}) }, compact: async (o: any) => { wire=input(ctx,null,{messages:o.messages}); return { item, checkpoint, responseId:'r' }; } },
+        models: { provider:{codex:{codexControls:()=>({}),codexBindOpaque:(o:any)=>bind(ctx,null,o),codexCheckOpaque:(o:any)=>check(ctx,null,o)}}, resolveRoute: async () => route, inference: { failure: (o: any) => failure(ctx,null,o), checkInput: (o: any) => checkInput(ctx,null,o), assertModelEnabled: async () => ({id:'c',provider:'codex'}) }, connections: { safeMessage: ({message}:any)=>message, resolve: async () => ({definition,conn:{}}) }, compact: async (o: any) => { wire=input(ctx,null,{messages:o.messages}); return { item, checkpoint, responseId:'r' }; } },
     } };
     return {ctx,agent,route,wire:()=>wire};
 }
 test('persisted checkpoint survives real request assembly and models stream, including a new run', async () => {
-    const f=fixture(); const request=await build(f.ctx,null,{agent:f.agent,preview:true});
-    expect(request.messages[0]).toEqual({type:'checkpoint',checkpoint});
+    const f=fixture(); const issued={...checkpoint,binding:await bind(f.ctx,null,{generation:'generation',checkpoint:checkpoint as types.models.Checkpoint})};
+    f.agent.messages[0].content=JSON.stringify(issued);
+    const request=await build(f.ctx,null,{agent:f.agent,preview:true});
+    expect(request.messages[0]).toEqual({type:'checkpoint',checkpoint:issued});
     for(const runId of ['run1','run2']) {
         await stream(f.ctx,null,{connectionId:'c',model:'m',instructions:request.instructions,messages:request.messages,sessionId:'a',runId});
         expect(f.wire().input[0]).toEqual(item);

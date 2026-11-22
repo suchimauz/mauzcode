@@ -25,7 +25,9 @@ async function setup(handler: Handler, transport: types.models.TransportSpec = {
     ctx.state.registry.models.transport.validateTransport = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec }) => o.transport;
     ctx.state.registry.models.transport.fetch = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec; url: string; init?: RequestInit }) => {
         const call: Call = { url: o.url, method: o.init?.method ?? "GET", headers: Object.fromEntries(new Headers(o.init?.headers).entries()), body: String(o.init?.body ?? ""), transport: o.transport };
-        calls.push(call);
+        const admit = o.init && ctx.state.models?.codexHandoff?.get(o.init);
+        if (admit) await admit((body: string) => { call.body = body; calls.push(call); });
+        else calls.push(call);
         return handler(call);
     };
     // SDK independence: any legacy llm call from the provider path fails loudly.
@@ -35,8 +37,11 @@ async function setup(handler: Handler, transport: types.models.TransportSpec = {
     return { ctx, calls, view, conn };
 }
 
-const store = async (ctx: Context, conn: types.models.ResolvedConnection, expSec: number) =>
-    ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", tokens: { id_token: ID_TOKEN, access_token: access(expSec), refresh_token: REFRESH } });
+const store = async (ctx: Context, conn: types.models.ResolvedConnection, expSec: number) => {
+    const intent = crypto.randomUUID();
+    await ctx.fns.procs.db.run({ sql: 'UPDATE llm_connections SET codex_login_intent=? WHERE id=?', params: [intent,conn.id] });
+    return ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", intent, tokens: { id_token: ID_TOKEN, access_token: access(expSec), refresh_token: REFRESH } });
+};
 
 const sse = (events: unknown[]) => new Response(events.map(e => `data: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
 
@@ -146,6 +151,7 @@ describe("codex token refresh", () => {
         });
         const c = await conn();
         await store(ctx, c, Math.floor(Date.now() / 1000) + 10);
+        await expect(ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "token" })).rejects.toMatchObject({ code: "CREDENTIAL_CHANGED" });
         const got = await ctx.fns.models.provider.codex.codexAuth({ conn: c, op: "token" });
         expect(tagOf(got.accessToken)).toBe("a");
         expect(got.expiresAt! - Date.now()).toBeGreaterThan(3700_000);
@@ -224,6 +230,30 @@ describe("codex provider operations", () => {
         await expect(usageOf({ rate_limit: { primary_window: { used_percent: null } } })).resolves.toMatchObject({ status: "unavailable" });
     });
 
+    test.each([ACCOUNT, null])("account header on discovery, stream and call: %p", async account => {
+        const { ctx, calls, view, conn } = await setup(call => call.url.includes('/codex/models')
+            ? Response.json({ models: [{ slug: 'gpt-5' }] })
+            : sse([{ type: 'response.output_text.delta', delta: 'ok' }, { type: 'response.completed', response: { status: 'completed' } }]));
+        const c = await conn();
+        const intent = crypto.randomUUID();
+        await ctx.fns.procs.db.run({ sql: 'UPDATE llm_connections SET codex_login_intent=? WHERE id=?', params: [intent,c.id] });
+        const token = jwt({ exp: now()+3600, 'https://api.openai.com/auth': { ...(account ? {chatgpt_account_id: account} : {}), organizations: [{id: 'other'}, {id: ACCOUNT}] } });
+        await ctx.fns.models.provider.codex.codexAuth({ conn:c, op:'store', intent, tokens:{access_token:token} });
+        await ctx.fns.models.listModels({ id:view.id, refresh:true });
+        await ctx.fns.models.stream({ connectionId:view.id, model:'gpt-5', instructions:'sys', messages:[{role:'user', content:'hi'}], sessionId:'stream' });
+        await ctx.fns.models.call({ connectionId:view.id, model:'gpt-5', user:'hi' });
+        expect(calls.map(c=>new URL(c.url).pathname)).toEqual(['/backend-api/codex/models','/backend-api/codex/responses','/backend-api/codex/responses']);
+        for (const call of calls) {
+            expect(call.headers['chatgpt-account-id'] ?? null).toBe(account);
+            expect(call.headers.authorization).toBe(`Bearer ${token}`);
+            if (call.body) expect(JSON.parse(call.body)).not.toHaveProperty('service_tier');
+        }
+        if (!account) {
+            await expect(ctx.fns.models.call({ connectionId:view.id, model:'gpt-5', user:'hi', providerOptions:{speed:'fast'} })).rejects.toThrow();
+            expect(calls).toHaveLength(3);
+        }
+    });
+
     test("401 from the backend marks login required", async () => {
         const { ctx, view, conn } = await setup(() => new Response("", { status: 401 }));
         const c = await conn();
@@ -265,7 +295,7 @@ describe("codex provider operations", () => {
         await expect(ctx.fns.models.stream({ connectionId: view.id, model: "gpt-5", instructions: "", messages: [], sessionId: "s" })).rejects.toMatchObject({ code: "QUOTA_EXHAUSTED", failure: { classification: "quota", acceptance: "accepted", replaySafe: false } });
         fail = false;
         const r = await ctx.fns.models.compact({ connectionId: view.id, model: "gpt-5", instructions: "sys", messages: [{ role: "user", content: "hi" }], sessionId: "s" });
-        expect(r).toEqual({ item: { type: "compaction", id: "cmp1", encrypted_content: "ENC" }, responseId: "resp1", usage: { prompt_tokens: 7, completion_tokens: 2 }, checkpoint: { kind: "native-checkpoint", version: 1, provider: "codex", connectionId: view.id, model: "gpt-5", payload: { type: "compaction", id: "cmp1", encrypted_content: "ENC" } } });
+        expect(r).toEqual({ item: { type: "compaction", id: "cmp1", encrypted_content: "ENC" }, responseId: "resp1", usage: { prompt_tokens: 7, completion_tokens: 2 }, checkpoint: { binding: expect.stringMatching(/^[a-f0-9]{64}$/), kind: "native-checkpoint", version: 1, provider: "codex", connectionId: view.id, model: "gpt-5", payload: { type: "compaction", id: "cmp1", encrypted_content: "ENC" } } });
         const body = JSON.parse(calls.at(-1)!.body);
         expect(body.input.at(-1)).toEqual({ type: "compaction_trigger" });
         expect(body).toMatchObject({ tools: [], parallel_tool_calls: false, reasoning: { effort: "medium" } });

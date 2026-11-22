@@ -48,11 +48,17 @@ test("same neutral tools reach Claude input_schema and Codex Responses shapes", 
     const ctx = await mkTestCtx();
     ctx.state.registry.models.provider.claude.claudeAuth = async () => ({ accessToken: "fixture", loggedIn: true });
     ctx.state.registry.models.provider.claude.claudeCodeCliVersion = async () => "2.0.0";
-    ctx.state.registry.models.provider.codex.codexAuth = async () => ({ accessToken: "fixture", accountId: "account", loggedIn: true });
+    const { id } = await ctx.fns.models.create({ provider: 'codex', accountName: 'neutral-tools' });
+    ctx.state.registry.models.provider.codex.codexAuth = async () => ({ accessToken: 'fixture', accountId: null, generation: null, credentialRevision: 0, loggedIn: true });
     const bodies: Record<string, unknown>[] = [];
     const req: types.models.StreamRequest = { model: "m", instructions: "", messages: [{ role: "user", content: "Hi" }], sessionId: "s", tools: [tool] };
     for (const provider of [claude, codex]) {
-        const conn: types.models.ResolvedConnection = { id: "test", provider: provider.id, accountName: "test", config: {}, secret: async () => null, fetch: async (_url, init) => { bodies.push(JSON.parse(String(init?.body))); return sse(provider.id === "claude" ? [{ type: "message_stop" }] : [{ type: "response.completed", response: { status: "completed" } }]); } };
+        const conn: types.models.ResolvedConnection = { id, provider: provider.id, accountName: 'test', config: {}, secret: async () => null, fetch: async (_url, init) => {
+            const record = (body: string) => { bodies.push(JSON.parse(body)); };
+            const admit = init && ctx.state.models.codexHandoff?.get(init);
+            if (admit) await admit(record); else record(String(init?.body));
+            return sse(provider.id === 'claude' ? [{ type: 'message_stop' }] : [{ type: 'response.completed', response: { status: 'completed' } }]);
+        } };
         await provider.stream(ctx, conn, { ...req, reasoning: { requested: "medium", applied: "medium", fallbackReason: null, source: "profile", profile: "fixture" } });
     }
     expect(bodies[0]!.tools).toEqual([{ name: tool.name, description: tool.description, input_schema: tool.parameters }]);

@@ -30,7 +30,7 @@ test('navigation projects durable model/effort and creation dates without per-ch
  const chats=data.projects[0]!.chats;
  expect(chats.find(c=>c.id==='high')).toMatchObject({modelLabel:'gpt-6-astra',createdAt:123,effort:{requested:'high',applied:'high',label:'High',downgraded:false}});
  expect(chats.find(c=>c.id==='auto')?.effort).toMatchObject({requested:'auto',applied:'medium',label:'Default'});
- expect(chats.find(c=>c.id==='max')?.effort?.label).toBe('Max');
+ expect(chats.find(c=>c.id==='max')?.effort?.label).toBe('Extra high');
  expect(chats.find(c=>c.id==='down')?.effort).toMatchObject({requested:'off',applied:'low',label:'Low',downgraded:true});
  expect(chats.find(c=>c.id==='none')?.effort?.label).toBeNull();
  expect(data.projects[0]!.createdAt).toBe(100);

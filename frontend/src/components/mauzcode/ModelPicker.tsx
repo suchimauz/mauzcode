@@ -4,9 +4,12 @@ import { Check, ChevronDown, ChevronRight, Cpu } from 'lucide-react';
 import { NavigationChatIcon } from './NavigationChatIcon';
 import { connectionGroupLabel, effortLabel, modelGroup, modelGroupKey, modelSourceLabel, selectableModels, unavailableGroups, getDraftModelSettings, getModelSettings, setAgentEffort, setAgentModel, type ModelSettings } from '../../lib/models';
 import { rememberSessionSelection } from '../../lib/newSession';
+import { useChatControls, type Speed, type Verbosity } from './useChatControls';
 import './model-picker.css';
 
-type Page = 'main' | 'models' | 'effort';
+const choiceLabel = (value: string) => value[0]!.toUpperCase() + value.slice(1);
+
+type Page = 'main' | 'models' | 'effort' | 'speed' | 'verbosity';
 export type ModelPickerDraft = { model: string; effort: string; onChange: (model: string, effort: string) => void };
 export function ModelPicker({ agentId = '', running = false, busy = false, revision = 0, onSaved, onBusyChange, onReadyChange, draft }: { agentId?: string; running?: boolean; busy?: boolean; revision?: number; onSaved?: () => void; onBusyChange?: (busy: boolean) => void; onReadyChange?: (ready: boolean) => void; draft?: ModelPickerDraft }) {
   const [settings, setData] = useState<ModelSettings | null>(null);
@@ -81,6 +84,21 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
     } catch (err) { if (generation.current === current) setError(err instanceof Error ? err.message : String(err)); }
     finally { lock.current = false; setSaving(false); onBusyChange?.(false); }
   };
+  const route = typeof data?.model === 'string' ? data.model : '';
+  const chat = useChatControls(!draft && route ? agentId : '', route, open, revision + retry);
+  const controls = !draft && route.startsWith('codex/') && choices.some(m => m.model === route) ? chat.view : null;
+  const speeds = controls?.speeds?.filter(speed => speed === 'fast' || speed === 'ultrafast') ?? [];
+  const verbosities = controls?.verbosities ?? [];
+  const saveResponse = async (kind: 'speed' | 'verbosity', value: string) => {
+    if (lock.current || !controls || loading || busy || running) return;
+    if ((kind === 'speed' ? controls.speed : controls.verbosity ?? 'default') === value) { setOpen(false); return; }
+    lock.current = true; setSaving(true); onBusyChange?.(true); setError('');
+    try {
+      await chat.save(kind === 'speed' ? value as Speed : controls.speed, kind === 'verbosity' ? value === 'default' ? null : value as Verbosity : controls.verbosity);
+      setOpen(false); onSaved?.();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not save response settings'); setPage('main'); }
+    finally { lock.current = false; setSaving(false); onBusyChange?.(false); }
+  };
   const keyboard = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!['ArrowDown','ArrowUp','Home','End'].includes(event.key)) return;
     if (event.target instanceof HTMLInputElement && ['Home','End'].includes(event.key)) return;
@@ -101,7 +119,7 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
   // Provider caption of the selected route: the route itself carries host, provider and account, so a disabled or
   // uncatalogued current model still shows its provider without changing the stored route.
   const source = data?.model ? modelSourceLabel(data.model) : '';
-  return <Popover.Root open={open} onOpenChange={(value, details) => {
+  return <>{chat.notice && <p ref={chat.display} className="model-picker-note" role="status">{chat.notice.message}{chat.canDismiss && <button type="button" onClick={chat.dismiss}>Dismiss</button>}</p>}<Popover.Root open={open} onOpenChange={(value, details) => {
     if (!value && details.reason === 'escape-key' && page !== 'main') { details.cancel(); setPage('main'); setQuery(''); return; }
     changeOpen(value);
   }}>
@@ -115,7 +133,10 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
           {page === 'main' && <div role="menu" aria-label="Настройки модели">
             <button type="button" role="menuitem" className="model-picker-cell" disabled={!data || saving} onClick={() => setPage('models')}><span>Model</span><span className="model-picker-cell-value">{label}</span><ChevronRight size={14} strokeWidth={1} /></button>
             {hasEffort && <button type="button" role="menuitem" className="model-picker-cell" disabled={saving} onClick={() => setPage('effort')}><span>Effort</span><span className="model-picker-cell-value">{effortLabel(effort.requested)}</span><ChevronRight size={14} strokeWidth={1} /></button>}
+            {speeds.length > 0 && <button type="button" role="menuitem" className="model-picker-cell" disabled={saving} onClick={() => setPage('speed')}><span>Speed</span><span className="model-picker-cell-value">{choiceLabel(controls!.speed)}</span><ChevronRight size={14} /></button>}
+            {verbosities.length > 0 && <button type="button" role="menuitem" className="model-picker-cell" disabled={saving} onClick={() => setPage('verbosity')}><span>Response verbosity</span><span className="model-picker-cell-value">{choiceLabel(controls!.verbosity ?? 'default')}</span><ChevronRight size={14} /></button>}
           </div>}
+          {(page === 'speed' || page === 'verbosity') && controls && <><div role="menu" aria-label={page === 'speed' ? 'Speed' : 'Response verbosity'}>{(page === 'speed' ? ['standard', ...speeds] : ['default', ...verbosities]).map(value => <button type="button" role="menuitemradio" key={value} aria-checked={value === (page === 'speed' ? controls.speed : controls.verbosity ?? 'default')} aria-description={page === 'speed' && value !== 'standard' ? 'Accelerated speeds may use additional quota.' : undefined} className="model-picker-option" disabled={loading || saving || running || busy} onClick={() => void saveResponse(page, value)}>{choiceLabel(value)}<span className="model-picker-check">{value === (page === 'speed' ? controls.speed : controls.verbosity ?? 'default') && <Check size={16} strokeWidth={1} />}</span></button>)}</div>{page === 'speed' && <p className="model-picker-note">Accelerated speeds may use additional quota.</p>}</>}
           {page === 'models' && <>{choices.length > 4 && <input className="model-picker-search" aria-label="Search models" placeholder="Search models" value={query} onChange={event => setQuery(event.target.value)} />}
             <div role="menu" aria-label="Model" className="model-picker-scroll">{[...groups].map(([key, { label: groupName, options }]) => <section role="group" aria-label={groupName} key={key}>
               <div className="model-picker-group">{groupName}</div>{options.map(option => <button type="button" key={option.model} role="menuitemradio" aria-checked={option.model === data?.model} className="model-picker-option" aria-label={option.label} aria-description={modelSourceLabel(option.model) || undefined} title={option.model} disabled={saving || running || busy} onClick={() => void choose('model', option.model)}>
@@ -124,10 +145,12 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
             </section>)}{notices.map(group => { const heading = connectionGroupLabel(group.provider, group.accountName); return <section role="group" aria-label={heading} key={group.connectionId}><div className="model-picker-group">{heading}</div><p className="model-picker-note" title={group.error}>Недоступно: список моделей не загрузился{group.error ? ` (${group.error})` : ''}</p></section>; })}{!groups.size && !notices.length && <p className="model-picker-note">Модели не найдены</p>}</div></>}
           {page === 'effort' && <div role="menu" aria-label="Effort">{[...new Set(['auto', ...(effort?.supported ?? [])])].map(value => <button type="button" role="menuitemradio" key={value} aria-checked={value === effort?.requested} className="model-picker-option" disabled={saving || running || busy} onClick={() => void choose('effort', value)}><span>{effortLabel(value)}</span><span className="model-picker-check">{value === effort?.requested && <Check size={16} strokeWidth={1} />}</span></button>)}</div>}
         </>}
+        {(page === 'models' || !choices.length || !choices.some(m => m.model === data?.model)) && !loading && <a href="/?settings=models" className="model-picker-note">Open Models settings to update the catalogue</a>}
+        {chat.error && !draft && data?.model.startsWith('codex/') && <p role="alert" className="model-picker-error">{chat.error}</p>}
         {running && <p className="model-picker-note">Смена доступна после завершения ответа.</p>}
         {saving && <p className="model-picker-note" role="status">Сохранение…</p>}
         {error && <div className="model-picker-error" role="alert">{error}<button type="button" disabled={saving} onClick={() => setRetry(n => n + 1)}>Повторить загрузку</button></div>}
       </Popover.Popup>
     </Popover.Positioner></Popover.Portal>
-  </Popover.Root>;
+  </Popover.Root></>;
 }
