@@ -184,10 +184,16 @@
     serverStart = start;
   }
 
-  function disconnect() {
+  // Close the stream without announcing it: a planned replacement (topic change,
+  // retry) goes straight to 'connecting', so status listeners never see a
+  // false 'disconnected' for a stream we are about to reopen.
+  function closeStream() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     try { es?.close(); } catch {}
     es = null;
+  }
+  function disconnect() {
+    closeStream();
     setStatus('disconnected');
   }
 
@@ -215,7 +221,7 @@
 
   function connect() {
     if (!mayConnect()) return;
-    disconnect();
+    closeStream();
     // Ask only for what this tab shows: server-side filtering beats waking up
     // and deciding the event was not ours.
     const want = topics();

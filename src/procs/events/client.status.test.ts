@@ -84,6 +84,19 @@ test('refreshTopics reconnects only changed subscriptions and resyncs on hello',
     b.live.refreshTopics(); expect(b.sources.length).toBe(2);
 });
 
+test('a planned topic change reconnects without announcing a lost connection', () => {
+    const b = browser();
+    const states: string[] = [];
+    b.live.onStatus((s: string) => states.push(s));
+    b.sources[0].onopen();
+    b.regions.push({ getAttribute: () => 'stream:next', dataset: { liveTopic: 'stream:next' } });
+    b.live.refreshTopics();
+    expect(b.sources[0].closed).toBe(true);
+    expect(b.live.getStatus()).toBe('connecting');
+    b.sources[1].onopen();
+    expect(states).toEqual(['connected', 'connecting', 'connected']);
+});
+
 test('HTTP/2 stays connected hidden; initially hidden HTTP/1 tab is disconnected', () => {
     const b = browser('h2'); b.sources[0].onopen();
     b.document.visibilityState = 'hidden'; b.handlers.visibilitychange!();

@@ -25,7 +25,7 @@ it('desktop: announces loss and recovery of the open chat without touching its d
   desktopWindow.mauzcodeDesktopLive = { status: vi.fn(), onRetry: vi.fn() };
   const fetcher = vi.fn((url: string, _init?: RequestInit) => url.includes('/ui-lab-api/models') ? Promise.resolve(json({ models: [] })) : url.startsWith('/voice/api') ? Promise.resolve(json({ error: 'Only owners' }, 403)) : url.endsWith('/context') ? Promise.resolve(json({ budget: null })) : Promise.resolve(json({ ok: true, messageIdx: 1 })));
   vi.stubGlobal('fetch', fetcher);
-  render(<><DesktopLiveStatus restoredMs={50} /><LiveComposer agentId="fixture" running={false} onAccepted={vi.fn()} /></>);
+  render(<><DesktopLiveStatus restoredMs={50} graceMs={0} /><LiveComposer agentId="fixture" running={false} onAccepted={vi.fn()} /></>);
   const region = screen.getByRole('status', { name: '' });
   expect(region).toHaveAttribute('aria-live', 'polite'); expect(region).toBeEmptyDOMElement();
   const box = screen.getByRole('textbox');
@@ -48,4 +48,17 @@ it('desktop: announces loss and recovery of the open chat without touching its d
 it('browser: renders nothing and subscribes to no status', () => {
   const { container } = render(<DesktopLiveStatus />);
   expect(container).toBeEmptyDOMElement(); expect(listeners).toHaveLength(0);
+});
+
+it('desktop: a short planned reconnect (chat switch) is not announced as a lost connection', async () => {
+  desktopWindow.mauzcodeDesktopLive = { status: vi.fn(), onRetry: vi.fn() };
+  render(<DesktopLiveStatus graceMs={100} />);
+  const region = screen.getByRole('status');
+  await vi.waitFor(() => expect(listeners).toHaveLength(1));
+  change('connecting');
+  change('connected');
+  await new Promise(resolve => setTimeout(resolve, 150));
+  expect(region).toBeEmptyDOMElement();
+  change('disconnected');
+  await vi.waitFor(() => expect(region).toHaveTextContent('Связь потеряна'));
 });

@@ -12,7 +12,8 @@ export const retryShortcut = () => mac() ? '⌘R' : 'Ctrl+R';
  * in the composer stays intact while the connection drops and returns.
  * Ordinary browsers render nothing: they keep the generic polling notice.
  */
-export function DesktopLiveStatus({ restoredMs = 4000 }: { restoredMs?: number }) {
+/** `graceMs`: a gap shorter than this (planned topic switch, quick retry) is not announced at all. */
+export function DesktopLiveStatus({ restoredMs = 4000, graceMs = 1500 }: { restoredMs?: number; graceMs?: number }) {
   const [phase, setPhase] = useState<Phase>('hidden');
   useEffect(() => {
     if (!window.mauzcodeDesktopLive) return;
@@ -28,7 +29,10 @@ export function DesktopLiveStatus({ restoredMs = 4000 }: { restoredMs?: number }
         if (current !== 'lost') return set('hidden');
         set('restored');
         timer = setTimeout(() => { if (active) set('hidden'); }, restoredMs);
-      } else if (seen || status === 'disconnected') set('lost');
+      } else if (current !== 'lost' && (seen || status === 'disconnected')) {
+        if (graceMs <= 0) return set('lost');
+        timer = setTimeout(() => { if (active) set('lost'); }, graceMs);
+      }
     };
     void loadLiveClient().then(() => {
       const live = window.mauzcodeLive;
@@ -37,7 +41,7 @@ export function DesktopLiveStatus({ restoredMs = 4000 }: { restoredMs?: number }
       apply(live.getStatus?.() ?? 'connecting');
     }, () => apply('disconnected'));
     return () => { active = false; clearTimeout(timer); unstatus?.(); };
-  }, [restoredMs]);
+  }, [restoredMs, graceMs]);
   if (!window.mauzcodeDesktopLive) return null;
   // The live region stays mounted so screen readers announce each change.
   return <div className={`desktop-live-status ${phase === 'hidden' ? '' : `is-${phase}`}`} role="status" aria-live="polite" aria-atomic="true">
