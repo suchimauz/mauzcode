@@ -20,8 +20,9 @@ export default function (
 ): URL {
     const u=new URL(opts.url),p=opts.provider,path=u.pathname;
     if(u.protocol!=='https:'||u.username||u.password||u.port||u.hash||opts.url.includes('#')||/%|\\/.test(path)||opts.url.includes('..')||!['GET','POST'].includes(opts.method))throw Error('Provider endpoint denied');
+    if(u.pathname==='/backend-api/codex/alpha/search' && opts.url!=='https://chatgpt.com/backend-api/codex/alpha/search')throw Error('Endpoint refused');
     const fixed:Record<string,Record<string,string>>={
-    'codex':{'chatgpt.com/backend-api/codex/responses':'POST','chatgpt.com/backend-api/codex/responses/compact':'POST','chatgpt.com/backend-api/codex/models':'GET','chatgpt.com/backend-api/wham/usage':'GET','auth.openai.com/oauth/token':'POST'},
+    'codex':{'chatgpt.com/backend-api/codex/responses':'POST','chatgpt.com/backend-api/codex/alpha/search':'POST','chatgpt.com/backend-api/codex/responses/compact':'POST','chatgpt.com/backend-api/codex/models':'GET','chatgpt.com/backend-api/wham/usage':'GET','auth.openai.com/oauth/token':'POST'},
     'claude-code':{'api.anthropic.com/v1/messages':'POST','api.anthropic.com/v1/messages/count_tokens':'POST','api.anthropic.com/api/oauth/usage':'GET','console.anthropic.com/v1/oauth/token':'POST'},
     'kimi-coding':{'api.kimi.com/coding/v1/messages':'POST','api.kimi.com/coding/v1/models':'GET','api.kimi.com/coding/v1/usages':'GET','api.kimi.com/coding/v1/me':'GET','auth.kimi.com/api/oauth/token':'POST'},
     'zai-coding':{'api.z.ai/api/coding/paas/v4/chat/completions':'POST','api.z.ai/api/coding/paas/v4/models':'GET','api.z.ai/api/monitor/usage/quota/limit':'GET','api.z.ai/api/anthropic/v1/messages':'POST'},

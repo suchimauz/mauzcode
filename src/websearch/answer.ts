@@ -33,7 +33,7 @@ const normalize = (value: string): string => value.toLowerCase().replace(/[^\p{L
  *
  * @param opts.question Natural-language question to answer from the public web.
  * @param opts.pages Number of top search results read as evidence. @default 3 @minimum 1 @maximum 8
- * @param opts.engine Registered search provider id passed to websearch.search (see websearch.providers); when omitted, the `websearch.defaultEngine` setting applies.
+ * @param opts.engine Registered search provider id passed to websearch.search (see websearch.providers); when omitted, the issuing model may supply search, otherwise `websearch.defaultEngine` applies.
  * @param opts.model Provider-qualified model override; when omitted, uses `websearch.fetchModel`, then the global default model.
  * @param opts.maxCharsPerPage Maximum readable Markdown characters kept per page. @default 12000 @minimum 1000 @maximum 50000
  * @param opts.requireVerified Drop citations whose quote was not found in its source page. @default false
@@ -46,7 +46,7 @@ export default async function (
         question: string;
         /** Number of top search results read as evidence. @default 3 @minimum 1 @maximum 8 */
         pages?: number;
-        /** Registered search provider id passed to websearch.search (see websearch.providers); when omitted, the `websearch.defaultEngine` setting applies. */
+        /** Registered search provider id passed to websearch.search (see websearch.providers); when omitted, the issuing model may supply search, otherwise `websearch.defaultEngine` applies. */
         engine?: string;
         /** Provider-qualified model override; when omitted, uses `websearch.fetchModel`, then the global default model. */
         model?: string;
@@ -63,8 +63,10 @@ export default async function (
     model: string;
     durationMs: number;
 }> {
+    await ctx.fns.websearch.requireAccess({ name: 'websearch.answer' });
     const question = String(opts.question ?? '').trim();
     if (!question) throw new Error('websearch.answer: question is required');
+    await ctx.fns.websearch.requireAccess({ name: 'websearch.search' });
     const pages = Math.max(1, Math.min(8, Math.trunc(Number(opts.pages ?? 3))));
     const maxCharsPerPage = Math.max(1_000, Math.min(50_000, Math.trunc(Number(opts.maxCharsPerPage ?? 12_000))));
     const configuredModel = await ctx.fns.settings.getString({

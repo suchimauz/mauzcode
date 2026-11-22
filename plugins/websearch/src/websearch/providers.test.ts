@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import load from './$loader_websearchProvider';
+import load from '../../../../src/websearch/$loader_websearchProvider';
 import { sdkCtx } from './sdkFixture.entry';
 
 const originalTimeout = AbortSignal.timeout;

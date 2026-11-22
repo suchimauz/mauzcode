@@ -20,7 +20,8 @@ export default async function (
     const plugin = (ctx.fns.procs.modules.list({}) as any[]).find((module: any) =>
         module.plugin && (module.name === name || module.namespaces?.includes(name)),
     );
-    if (!plugin || (opts.allows && !plugin.fns.some((name: string) => opts.allows!(name)))) throw new Error(`plugins.read: mounted plugin "${name}" not found`);
+    const names = plugin && opts.allows ? ctx.fns.plugins.logicalFacade({ plugin: plugin.name, physical: plugin.fns }) : [];
+    if (!plugin || (opts.allows && !names.some(opts.allows))) throw new Error(`plugins.read: mounted plugin "${name}" not found`);
     let overview: { path: string; markdown: string; truncated: boolean } | null = null;
     if (plugin.skill) {
         const full = await Bun.file(plugin.skill).text().catch(() => null);
@@ -35,7 +36,7 @@ export default async function (
         description: plugin.description,
         path: plugin.dir,
         domains: plugin.domains ?? [],
-        namespaces: (plugin.namespaces ?? []).filter((ns: string) => !opts.allows || plugin.fns.some((fn: string) => fn.startsWith(ns + ".") && opts.allows!(fn))),
+        namespaces: (plugin.namespaces ?? []).filter((ns: string) => !opts.allows || names.some((fn: string) => fn.startsWith(ns + ".") && opts.allows!(fn))),
         routes: plugin.routes.length,
         source: plugin.source,
         overview,

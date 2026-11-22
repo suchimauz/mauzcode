@@ -8,7 +8,7 @@ function fixture() {
     const calls: types.models.CallRequest[] = []; const routes: string[] = [];
     const ctx: any = { fns: {
         settings: { getString: async () => model, modelDefault: async () => { throw Error("unexpected default"); } },
-        websearch: { search: async () => ({ results: [{ url, title: "Title" }] }), read: async () => ({ url, title: "Title", markdown: "The result is forty two.", truncated: false }) },
+        websearch: { requireAccess: async () => {}, search: async () => ({ results: [{ url, title: "Title" }] }), read: async () => ({ url, title: "Title", markdown: "The result is forty two.", truncated: false }) },
         models: {
             resolveRoute: async (o: { route: string }) => { expect(o).toEqual({ route: model }); routes.push(o.route); return { connectionId: "connection", model: "new/model:v2" }; },
             call: async (o: types.models.CallRequest) => { calls.push(o); return { text: JSON.stringify({ answer: "Forty two.", citations: [{ url, quote: "The result is forty two." }] }) }; },

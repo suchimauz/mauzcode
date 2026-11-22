@@ -205,6 +205,7 @@ and `test(ctx, conn)`. `description` and `icon` (Lucide name or data URL) are op
 | `validate(ctx, config)` | Optional synchronous/async validation; throw to reject |
 | `stream(ctx, conn, req)` | Optional `Promise<StreamResult>`; streaming inference, reached only through `models.stream` |
 | `compact(ctx, conn, req)` | Optional `Promise<CompactResult>`; native compaction, reached only through `models.compact` |
+| `nativeWebSearch` | Optional explicit link retrieval, bound to the model tool step; see below. Never an ordinary engine or a tool added to inference. |
 | `actions[name]` | `{ label, run(ctx, conn, input) }` for provider-owned login/logout or other operations |
 
 These callbacks belong to the declaration object, not the `ctx.fns` procedure
@@ -216,6 +217,14 @@ It contains no secret reference map and no other connections. Secret access is
 lazy; absent values return `null`. Use `conn.fetch` rather than global `fetch`
 so the connection's transport is respected. `config` values are strings, numbers,
 booleans, null or string arrays (including manually configured model ids).
+
+### Optional native web search
+
+Omitting `nativeWebSearch` leaves inference and the stored ordinary search engine unchanged. An opt-in declaration has `binding` and `search(ctx, conn, { model, query, limit, signal, deadline })`. Return `{results: [{title, url, description?, publishedAt?}]}`, not answer text. The facade normalizes the links, labels their source `native:<id>` and never retries elsewhere. An explicit ordinary `engine` bypasses native routing. A result label cannot be saved as an engine.
+
+- **SDK-managed key:** use `binding: { kind: 'key', field: 'apiKey' }` for a declared secret field. In inference read that key via `conn.secret('apiKey')` and send via `conn.fetch`. The SDK pins the revision actually read; even replacing a key with the same value invalidates a pending search.
+- **Provider-managed login:** attest `{ generation, revision }` on the inference connection using `conn.attestNativeWebSearch?.(proof)` at handoff. `binding: { kind: 'login', current, read }` must check the same local account store under the SDK’s connection lock. `current(ctx, connectionId)` returns non-secret proof or `null`; `read(ctx, scopedConnection, proof)` reads only that tuple. Reject direct reads without the SDK-issued proof and connection. Change the generation on logout/login or replacement. A verified renewal may keep the generation but must change revision. Do not fetch or renew under the lock. Missing proof is an error, not an ordinary lookup.
+- **Search operation:** use only `await conn.credentials()` (once; `values` and opaque `proof`) and `await conn.request(fixedUrl, {method:'POST', headers, body})` (one attempt). Never cache these functions, use global fetch or accept an endpoint from the query. Honor `signal` through body EOF, cap the number of bytes read and never log credentials or provider bodies. Contexts other than the issuing tool call do not have search authority. Neither `models.connections.resolve` nor the ordinary search registry exposes this operation.
 
 `TestResult` contains `status`, machine-readable `reason`, safe `message`, and
 `checkedAt` in Unix epoch milliseconds. Status is `available`, `unavailable`,
@@ -410,6 +419,17 @@ Open the model picker in an existing chat. **Speed** starts at **Standard**; Fas
 These settings affect subsequent chat replies, not a request already sent. They belong to this chat, connection, signed-in account and model; changing routes does not copy them. Drafts, new chats, forks and children start without paid or verbosity overrides. If the account changes, is logged out, or a capability disappears, obsolete overrides are cleared and the chat reports the reset. Restoring a capability does not restore consent. A stale edit is rejected; reopen the picker and choose again.
 
 ## Built-in Codex provider
+
+**Provider-native web search.** An admitted search sends one standalone POST to
+`https://chatgpt.com/backend-api/codex/alpha/search` on the configured transport.
+It sends the selected model and search phrase, not the transcript, and always requests
+live access (`settings.external_web_access: true`). It never retries in cached mode
+or on another connection. Only structured `results` are used; empty results are valid.
+Invalid, oversized (over 1 MiB) or interrupted responses fail without returning a partial list.
+An unverified account, replaced login or token needing renewal also fails closed.
+Use the normal Codex login/inference path to restore a fresh account binding before retrying.
+This alpha protocol was checked against [DSH’s pinned request](https://github.com/WSL043/dsh-codex-subscription/blob/05690e4045030bf8d4a85dbd5049d866ea6cd014/src/codex-search.js#L95-L119)
+and local fixtures, not a live subscription. Backend availability is not guaranteed.
 
 `$modelProvider_codex.ts` connects a ChatGPT subscription through the Codex
 backend. Its optional `clientVersion` overrides the wire version; `detectCliVersion`

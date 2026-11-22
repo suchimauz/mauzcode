@@ -104,7 +104,27 @@ export default async function (ctx: Context, _session: Session | null, opts: { e
                 if (!/^[a-z][a-zA-Z0-9-]*$/.test(name) || !action || typeof action.label !== "string" || !action.label.trim() || typeof action.run !== "function") fail("modelProvider action requires a safe name, label and run operation");
             }
         }
-        providers[id] = { owner, module: entry.moduleDir === "." ? "app" : entry.moduleDir, rel: entry.rel, definition };
+        const { nativeWebSearch, ...ordinary } = definition;
+        let native: types.models.NativeWebSearchOperation | undefined;
+        if (nativeWebSearch !== undefined) {
+            const binding = nativeWebSearch?.binding;
+            if (typeof nativeWebSearch?.search !== 'function' || !(binding?.kind === 'key'
+                ? definition.fields.some(f => f.type === 'secret' && f.key === binding.field)
+                : binding?.kind === 'login' && typeof binding.current === 'function' && typeof binding.read === 'function')) {
+                fail('nativeWebSearch requires a search operation and a declared key or attested login binding');
+            }
+            const read = nativeWebSearch.binding.kind === 'login' ? nativeWebSearch.binding.read : undefined;
+            const guardedBinding = binding.kind === 'login' ? { ...binding, read: (c: Context, conn: types.models.NativeWebSearchConnection, proof: types.models.NativeWebSearchProof) => {
+                if (!c.state.models?.nativeSearchConnections?.has(conn) || c.state.models.nativeSearchReads?.get(proof) !== conn) throw new Error('Inactive native search credential read');
+                return read!(c, conn, proof);
+            } } : { ...binding };
+            native = Object.freeze({ binding: Object.freeze(guardedBinding), search: (c: Context, conn: types.models.NativeWebSearchConnection, req: Parameters<types.models.NativeWebSearchOperation['search']>[2]) => {
+                if (!c.state.models?.nativeSearchCalls?.delete(conn)) throw new Error('Native search requires an authorized invocation');
+                return nativeWebSearch.search(c, conn, req);
+            } });
+        }
+        // Ordinary resolvers return only the public definition, never an executable search operation.
+        providers[id] = { owner, module: entry.moduleDir === "." ? "app" : entry.moduleDir, rel: entry.rel, definition: native ? ordinary : definition, ...(native ? { native } : {}) };
         ctx.fns.procs.log.debug({ event: "load.modelProvider", msg: id, from: entry.rel });
     }
 }

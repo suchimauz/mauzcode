@@ -41,5 +41,6 @@ export default async function (
         },
         fetch: (url: string, init?: RequestInit) => ctx.fns.models.transport.fetch({ transport, url, init, signal: opts.signal, timeoutMs: opts.timeoutMs ?? 30000, headerTimeoutMs: opts.headerTimeoutMs, idleTimeoutMs: opts.idleTimeoutMs }),
     };
+    if (entry.native) (ctx.state.models.nativeSearchResolved ??= new WeakMap()).set(conn, entry.native);
     return { view, definition, conn };
 }

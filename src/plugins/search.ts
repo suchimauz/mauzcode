@@ -30,7 +30,10 @@ export default async function (
     const limit = Math.max(1, Math.min(20, Math.floor(opts.limit ?? 5)));
     const perPlugin = Math.max(1, Math.min(20, Math.floor(opts.functionsPerPlugin ?? 5)));
     const mode = opts.mode ?? "hybrid";
-    const plugins = (ctx.fns.procs.modules.list({}) as any[]).filter((module: any) => module.plugin && (!opts.allows || module.fns.some((name: string) => opts.allows!(name))));
+    const plugins = (ctx.fns.procs.modules.list({}) as any[])
+        .filter(module => module.plugin)
+        .map(module => ({ ...module, fns: ctx.fns.plugins.logicalFacade({ plugin: module.name, physical: module.fns }) }))
+        .filter(module => !opts.allows || module.fns.some(opts.allows));
     const byName = new Map(plugins.map((plugin: any) => [plugin.name, plugin]));
     const owners = new Map<string, any>();
     for (const plugin of plugins) for (const name of [...new Set(plugin.fns as string[])]) owners.set(name, plugin);

@@ -6,5 +6,5 @@ export default {
     optionsFrom: 'websearch.providerIds',
     options: ['google-browser', 'openserp', 'brave'],
     title: 'Default web search engine',
-    description: 'Provider used by websearch.search and websearch.answer when the caller does not pass engine.',
+    description: 'Ordinary provider used when no engine is specified and the issuing model does not supply native search.',
 };

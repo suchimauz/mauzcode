@@ -69,6 +69,10 @@ test("original public model signatures, async declarations, types and HTTP route
         if (name === "ReasoningCapabilities.ts") actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
         if (name === "ReasoningResolution.ts") actual = actual.replace('applied:types.models.ReasoningLevel|"auto";', 'applied:types.models.ReasoningLevel;').replace("wire?:string;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
         if (name === "Checkpoint.ts" || name === "ProviderState.ts") actual = actual.replace("binding?:string;", "");
+        // Optional native retrieval does not change the historical provider, resolved connection or registry contract.
+        if (name === 'ProviderDefinition.ts') actual = actual.replace('nativeWebSearch?:types.models.NativeWebSearchOperation;', '');
+        if (name === 'ResolvedConnection.ts') actual = actual.replace('attestNativeWebSearch?:(proof:types.models.NativeWebSearchProof)=>void;', '');
+        if (name === 'State.ts') actual = actual.replace('types.models.NativeWebSearchState&', '').replace('native?:types.models.NativeWebSearchOperation;', '');
         // usageRefreshMs is an intentional optional SDK addition (provider-paced usage cache).
         if (name === "ProviderDefinition.ts") actual = actual.replace("usageRefreshMs?:number;", "");
         // extend-models-sdk-for-anthropic-routes: optional native reasoning block capture.

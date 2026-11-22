@@ -96,7 +96,12 @@ export default async function (
             reasoning = ctx.fns.models.inference.resolveReasoning({ model: opts.model, preference: opts.reasoningEffort, metadata: info?.reasoning ?? null, profile });
         }
         opts.signal?.throwIfAborted();
-        const { definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id, signal: opts.signal, timeoutMs: 1800000, headerTimeoutMs: 300000, idleTimeoutMs: 300000 });
+        const { view: resolvedView, definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id, signal: opts.signal, timeoutMs: 1800000, headerTimeoutMs: 300000, idleTimeoutMs: 300000 });
+        let capture: ((calls: types.models.StreamResult['toolCalls']) => void) | undefined;
+        if (ctx.state.models?.nativeSearchOrigins?.has(opts)) {
+            (ctx.state.models.nativeSearchInference ??= new WeakMap()).set(conn, { request: opts, view: resolvedView });
+            capture = ctx.fns.models.nativeSearch.capture({ conn, model: opts.model });
+        }
         const { connectionId: _c, temperature, maxTokens, responseFormat, ...rest } = opts;
         // Capability gating: a provider never sees options it did not opt into.
         const gated = {
@@ -112,6 +117,7 @@ export default async function (
         const result = definition.stream
             ? await definition.stream(ctx, conn, req)
             : await ctx.fns.models.inference.streamRoute({ definition, conn, req, info: info ?? null });
+        capture?.(result.toolCalls);
         if (result.state && (!def.capabilities?.continuationState || result.state.provider !== view.provider || result.state.connectionId !== view.id || result.state.sessionId !== opts.sessionId || result.state.runId !== opts.runId)) delete result.state;
         return req.reasoning ? { ...result, reasoning: req.reasoning } : result;
 }

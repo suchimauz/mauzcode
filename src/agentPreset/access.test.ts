@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import origin from './origin';
+import logicalFacade from '../plugins/logicalFacade';
 import generation from './generation';
 import compilePattern from './compilePattern';
 import allows from './allows';
@@ -10,7 +11,7 @@ import unload from '../procs/repl/unload';
 
 function fixture() {
     const plugins: { name: string; namespaces: string[] }[] = [{ name: 'redmine', namespaces: ['redmine'] }, { name: 'browser', namespaces: ['browser', 'cdp', 'chrome'] }];
-    const ctx: any = { state: { registry: {}, procs: { boot: { namespaceSources: { skill: { project: true, core: false }, files: { project: true, core: true } } } } }, fns: { plugins: { list: () => plugins }, procs: { log: { debug: () => {} }, project: { scan: async () => [] } }, agentPreset: {} } };
+    const ctx: any = { state: { registry: {}, procs: { boot: { namespaceSources: { skill: { project: true, core: false }, files: { project: true, core: true } } } } }, fns: { plugins: { list: () => plugins, logicalFacade: (opts: {plugin:string}) => logicalFacade(ctx, null, opts) }, procs: { modules: { list: () => plugins.map(p => ({ ...p, plugin:true, fns: [] })) }, log: { debug: () => {} }, project: { scan: async () => [] } }, agentPreset: {} } };
     for (const [name, fn] of Object.entries({ origin, generation, compilePattern, allows, defaults, coreCatalogue })) ctx.fns.agentPreset[name] = (opts: any) => fn(ctx, null, opts as never);
     const snapshot = (allow: string[], granted: string[] = [], deny: string[] = []): types.agentPreset.Snapshot => ({ presetId: 'test', name: 'Test', layers: [{ id: 'test', allow, plugins: granted, deny, prompt: '', excludeSections: [] }] });
     const check = (snapshot: types.agentPreset.Snapshot, name: string) => allows(ctx, null, { snapshot, name });
@@ -75,7 +76,7 @@ describe('layer resolution', () => {
         const standard = snapshot(preset.allow, preset.plugins);
         for (const plugin of ['openspec', 'git', 'websearch', 'gh', 'terminal', 'glab']) plugins.push({ name: plugin, namespaces: [plugin] });
         for (const plugin of preset.plugins) {
-            const name = `${plugin}.action`;
+            const name = plugin === 'websearch' ? 'websearch.search' : `${plugin}.action`;
             expect(check(standard, name)).toBe(true);
             const denied = structuredClone(standard);
             denied.layers[0]!.deny.push(name);

@@ -108,6 +108,7 @@ describe("settings.enumOptions (dynamic enum options)", () => {
         ctx.state.websearch = { providers: { "google-browser": {}, openserp: {}, brave: {}, "acme-search": {} } };
         await expect(ctx.fns.settings.set({ module: "websearch", scopeType: "global", key: "defaultEngine", value: "nope" }))
             .rejects.toThrow(/websearch\.defaultEngine: "nope" is not allowed \(allowed: .*google-browser/);
+        await expect(ctx.fns.settings.set({ module: "websearch", scopeType: "global", key: "defaultEngine", value: "native:codex" })).rejects.toThrow(/is not allowed/);
         await ctx.fns.settings.set({ module: "websearch", scopeType: "global", key: "defaultEngine", value: "acme-search" });
         expect(await ctx.fns.settings.get({ module: "websearch", scopeType: "global", key: "defaultEngine" })).toBe("acme-search");
     });

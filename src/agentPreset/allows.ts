@@ -30,6 +30,7 @@ export default function (ctx: Context, _session: Session | null, opts: { snapsho
     const origin = ctx.fns.agentPreset.origin({ name: opts.name });
     const allowed = compiled.layers.length > 0 && compiled.layers.every(layer => {
         if (layer.deny.some(pattern => pattern.test(opts.name))) return false;
+        if (origin.kind === 'unavailable') return false;
         if (origin.kind === 'plugin') return layer.plugins.includes('*') || layer.plugins.includes(origin.plugin);
         if (origin.kind === 'project') return true;
         return layer.allow.some(pattern => pattern.test(opts.name));

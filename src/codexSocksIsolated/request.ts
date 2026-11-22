@@ -112,7 +112,8 @@ export default async function (
     /** Pure production policy; no socket or credentials access. */
     function policy(url:string,method='GET'){
      const u=new URL(url);
-     const routes:Record<string,string>={'auth.openai.com/oauth/token':'POST','chatgpt.com/backend-api/codex/responses':'POST','chatgpt.com/backend-api/codex/responses/compact':'POST','chatgpt.com/backend-api/codex/models':'GET','chatgpt.com/backend-api/wham/usage':'GET'};
+     if(u.pathname==='/backend-api/codex/alpha/search' && url!=='https://chatgpt.com/backend-api/codex/alpha/search')throw Error('Endpoint refused');
+    const routes:Record<string,string>={'auth.openai.com/oauth/token':'POST','chatgpt.com/backend-api/codex/responses':'POST','chatgpt.com/backend-api/codex/alpha/search':'POST','chatgpt.com/backend-api/codex/responses/compact':'POST','chatgpt.com/backend-api/codex/models':'GET','chatgpt.com/backend-api/wham/usage':'GET'};
      if(u.protocol!=='https:'||u.username||u.password||u.hash||(u.port&&u.port!=='443')||routes[u.hostname+u.pathname]!==method||(u.search&&u.pathname!=='/backend-api/codex/models'))throw Error('destination');
      return u;
     }

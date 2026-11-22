@@ -35,6 +35,7 @@ export default async function (
     truncated: boolean;
     durationMs: number;
 }> {
+    await ctx.fns.websearch.requireAccess({ name: 'websearch.fetch' });
     const url = String(opts.url ?? '').trim();
     const prompt = String(opts.prompt ?? '').trim();
     if (!/^https?:\/\//i.test(url)) throw new Error('websearch.fetch: url must be HTTP or HTTPS');

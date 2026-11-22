@@ -23,6 +23,8 @@ import toolsRequirements from '../tools/requirements';
 import schemas from '../tools/schemas';
 import wireTools from '../agent/wireTools';
 import fullSystemPrompt from '../agent/fullSystemPrompt';
+import pluginPrompt from '../plugins/promptSection';
+import logicalFacade from '../plugins/logicalFacade';
 import pluginDocs from '../plugins/docs';
 import pluginRead from '../plugins/read';
 import pluginFunctions from '../plugins/functions';
@@ -43,7 +45,7 @@ function fixture() {
  r.input={kinds:inputKinds,promptSection:inputPrompt,request:()=>true};
  r.runtime={docs:{list,get,search}};
  r.tools={list:toolsList,schemas,permitted:toolsPermitted,requirements:toolsRequirements,read:()=>{},bash:()=>{}};
- r.plugins={list:()=>plugins,docs:pluginDocs,read:pluginRead,functions:pluginFunctions,search:pluginSearch};
+ r.plugins={logicalFacade,list:()=>plugins,docs:pluginDocs,read:pluginRead,functions:pluginFunctions,search:pluginSearch};
  r.external={view:()=>{},unrelated:()=>{}}; r.privateAlias={hidden:()=>{}};
  for (const [name,fn] of [['external.view',r.external.view],['privateAlias.hidden',r.privateAlias.hidden],['canvas.show',r.canvas.show],['tools.read',r.tools.read],['tools.bash',r.tools.bash]] as const) fn.meta={name,summary:name,signature:'({})',canvas:name==='external.view'?'external.panel':undefined};
  (ctx.state as any).canvas={kinds:{file:{name:'file',module:'canvas',hint:'file',requires:['canvas.show']},panel:{name:'external.panel',module:'external',hint:'panel',requires:['canvas.show','external.view']},unknown:{name:'external.unknown',module:'external',hint:'unknown'}}};
@@ -229,3 +231,21 @@ test('HTML survives denied optional state guidance in direct and full prompts',a
  }
  expect(await ctx.fns.canvas.kinds({})).toHaveLength(3);
  });
+
+test('a restored plugin grant discovers the promoted facade exactly once, without exposing denied physical handlers', async()=>{
+ const {ctx,r,snapshot,view}=fixture();
+ const physical='websearch.braveSearch';
+ r.plugins.list().push({name:'websearch',plugin:true,namespaces:['websearch'],fns:[physical],routes:[],label:'Web Search'});
+ r.websearch={search:()=>{},braveSearch:()=>{},requireAccess:()=>{}};
+ for(const [name,fn] of Object.entries(r.websearch) as [string,any][]) fn.meta={name:`websearch.${name}`,summary:`websearch.${name}`,signature:'({})'};
+ const rules=snapshot([physical,...logicalFacade(ctx,null,{plugin:'websearch'}).filter(n=>n!=='websearch.search')],['websearch']);
+ const restored=JSON.parse(JSON.stringify(rules)); const f=view(restored);
+ const prompt=(rules:types.agentPreset.Snapshot)=>pluginPrompt(ctx,null,{allows:ctx.fns.agentPreset.predicate({snapshot:rules})});
+ expect(prompt(restored)).toContain('- websearch'); expect(prompt(snapshot([],[]))).not.toContain('- websearch');
+ for(const rows of [f.plugins.docs({name:'websearch'}).functions,(await f.plugins.read({name:'websearch'})).functions,f.plugins.functions({name:'websearch'}),(await f.plugins.search({query:'websearch.search',mode:'lexical'}))[0]?.functions]) expect(rows?.map((x:any)=>x.name)).toEqual(['websearch.search']);
+ expect(()=>f.websearch.braveSearch({query:'q',limit:1})).toThrow('not available');
+ expect(origin(ctx,null,{name:'websearch.requireAccess'})).toEqual({kind:'core'});
+ expect(view(snapshot([],[])).runtime.docs.list({namespace:'websearch'}).map(x=>x.name)).not.toContain('websearch.search');
+ const child={...rules,layers:[...restored.layers,...snapshot([],[]).layers]};expect(()=>view(child).websearch.search({query:'q'})).toThrow('not available');
+ r.plugins.list().pop();expect(()=>f.websearch.search({query:'q'})).toThrow('not available');
+});

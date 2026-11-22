@@ -22,7 +22,7 @@ export default function (
         module.plugin && (module.name === name || module.namespaces?.includes(name)),
     );
     if (!plugin) throw new Error(`plugins.docs: mounted plugin "${name}" not found`);
-    const functions = [...new Set(plugin.fns as string[])].filter(name => !opts.allows || opts.allows(name)).sort().map(functionName => {
+    const functions = ctx.fns.plugins.logicalFacade({ plugin: plugin.name, physical: plugin.fns }).filter(name => !opts.allows || opts.allows(name)).sort().map(functionName => {
         const meta = ctx.fns.runtime.docs.get({ name: functionName });
         return {
             name: functionName,

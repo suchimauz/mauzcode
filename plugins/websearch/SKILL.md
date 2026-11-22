@@ -17,7 +17,7 @@ Configure `websearch.openserpEndpoint` (default `http://127.0.0.1:7000`) with an
 
 ## Choosing a provider
 
-Pass `engine` (a provider id) to `websearch.search` or `websearch.answer` to pick a provider for one call. When omitted, the `websearch.defaultEngine` setting applies (default `google-browser`); Settings offers every registered provider. `websearch.providers({})` lists providers with `label`, `owner`, `configured`, `reason` and `isDefault` — check it before choosing a browser-free engine.
+Pass `engine` (a provider id) to `websearch.search` or `websearch.answer` to pick a provider for one call. When omitted inside a capable model tool step, search uses that step’s provider and account. Its `engine` result (`native:<id>`) is provenance, not a selectable engine. Failure does not fall back. Outside that step or for a model without native search, `websearch.defaultEngine` applies (default `google-browser`). Settings lists only ordinary engines. The synthesis `model` on `answer` never selects the search account. `websearch.providers({})` lists providers with `label`, `owner`, `configured`, `reason` and `isDefault` — check it before choosing a browser-free engine.
 
 There is **no fallback**: an unknown engine fails with the list of available ids, and an unconfigured one (for example `brave` without a key) fails with the reason and the setting to configure. Websearch never silently switches to another provider. Search is retrieval-only and does not generate an LLM answer.
 

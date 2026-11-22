@@ -50,6 +50,7 @@ export default async function (
     const inputWaitSince = Date.now();
     const agentCtx: any = Object.create(ctx);
     agentCtx.session = ctx.fns.session.forAgent({ agent });
+    agentCtx.toolRun = undefined; // A delegated or nested agent never inherits the issuing tool's search authority.
     // Derived context flows through provider adapters without sharing mutable agent state.
     // Always replace any inherited scope: a nested run must never inherit its parent's filter.
     agentCtx.goalRequestContext = Object.freeze({
@@ -500,6 +501,12 @@ export default async function (
                 sessionId: agent.id, promptCacheKey, runId: inferenceRunId,
                 state: continuationState, signal: sampling.signal, onEvent,
             };
+            // Only the actual replying inference can authorize the tool calls it returns. This map is never on the wire.
+            const models = ctx.state?.models;
+            if (models) (models.nativeSearchOrigins ??= new WeakMap()).set(replyRequest, {
+                agent, route: requestModel, runId: inferenceRunId, claim: runToken,
+                current: () => !ac.signal.aborted && agent.abortController === ac && (!runToken || agent.currentJobId === runToken) && agent.model === requestModel,
+            });
             // Only this primary reply (and its tool continuations) can use saved chat consent.
             if (route.provider === 'codex') {
                 const modelsState = ctx.state.models ??= {};
@@ -840,12 +847,20 @@ export default async function (
             const accountingBlocked = nativeHandoffFailed || nativeMutationStopped || (goalRun && (goalResult?.kind !== 'committed' || goalResult.status !== 'active'));
             const dispatchTool = () => {
                 const binding = nativeBinding();
+                // Only this exact provider call object can transfer its reply's source decision to tools.call.
+                const toolRequest = { name: call.name, args: call.args, agent };
+                const state = ctx.state?.models;
+                const decision = state?.nativeSearchReplies?.get(call);
+                if (decision) {
+                    state.nativeSearchReplies!.delete(call);
+                    (state.nativeSearchDispatch ??= new WeakMap()).set(toolRequest, decision);
+                }
                 // The provider call id lets nested runtime calls (including inside eval) record their creator.
                 const invokeTool = () => typeof ctx.fns.agent.toolCallScope === 'function'
                     ? ctx.fns.agent.toolCallScope({ action: 'with', binding: { agentId: agent.id, toolCallId: String(call.id ?? '') },
-                        fn: () => ctx.fns.tools.call({ name: call.name, args: call.args, agent }),
+                        fn: () => ctx.fns.tools.call(toolRequest),
                     }) as Promise<Awaited<ReturnType<typeof ctx.fns.tools.call>>>
-                    : ctx.fns.tools.call({ name: call.name, args: call.args, agent });
+                    : ctx.fns.tools.call(toolRequest);
                 return typeof ctx.fns.goal.toolScope === 'function'
                     ? ctx.fns.goal.toolScope({ action: binding ? 'with' : 'clear', binding, onMutation: binding ? onNativeMutation : undefined,
                         fn: invokeTool,

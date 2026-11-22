@@ -1,5 +1,5 @@
 /** Provider registry and connection health cache owned by the models namespace. */
-export type State = {
+export type State = types.models.NativeWebSearchState & {
     /** Unforgeable per-invocation context. Never derive chat consent or a retry pin from SDK input. */
     codexDispatch?: WeakMap<object, { chat?: (route: { connectionId: string; generation: string | null; modelId: string }) => Promise<{ speed?: "fast" | "ultrafast"; verbosity?: "low" | "medium" | "high" }>; pin?: { generation?: string | null }; generation?: string | null }>;
 
@@ -10,6 +10,8 @@ export type State = {
         module: string;
         rel: string;
         definition: types.models.ProviderDefinition;
+        /** A fresh private operation object per registration, even on a same-id/identical-code reload. */
+        native?: types.models.NativeWebSearchOperation;
     }>;
     /** `<connection id>:<Bun.hash(id + updated_at)>:<test|usage>` key; 60 s expiry with in-flight de-duplication. */
     health?: Record<string, {
