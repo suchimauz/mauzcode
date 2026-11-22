@@ -95,3 +95,22 @@ test('switch is off and disabled with the reason when push is unavailable or not
   await waitFor(() => expect(document.querySelector('.settings-row-subtitle')).toHaveTextContent('Push is not configured on this server.'));
   expect(screen.getByRole('switch', { name: 'Push on this device' })).toBeDisabled();
 });
+test('desktop client points to its own notification settings; browsers keep Web Push', async () => {
+  const h = setup();
+  (window as Window & { mauzcodeDesktopLive?: unknown }).mauzcodeDesktopLive = {};
+  try {
+    const view = render(<PushSettingsPanel />);
+    const toggle = await screen.findByRole('switch', { name: 'Push on this device' });
+    await screen.findByText('iPhone · Safari');
+    expect(toggle).toBeDisabled(); expect(toggle).not.toBeChecked();
+    expect(screen.getByRole('status')).toHaveTextContent('«Сервер → Настройки…»');
+    expect(screen.getByRole('status')).toHaveTextContent('«Включить уведомления»');
+    expect(screen.getByRole('status').textContent).toMatch(/⌘,|Ctrl\+,/);
+    expect(h.requestPermission).not.toHaveBeenCalled(); expect(h.register).not.toHaveBeenCalled();
+    view.unmount();
+  } finally { delete (window as Window & { mauzcodeDesktopLive?: unknown }).mauzcodeDesktopLive; }
+  render(<PushSettingsPanel />);
+  const browser = await screen.findByRole('switch', { name: 'Push on this device' });
+  await waitFor(() => expect(browser).not.toBeDisabled());
+  expect(screen.queryByText(/Сервер → Настройки/)).toBeNull();
+});

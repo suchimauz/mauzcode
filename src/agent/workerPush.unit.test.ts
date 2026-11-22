@@ -1,7 +1,7 @@
 import {test,expect,mock} from 'bun:test';
 import worker from './workerLoop';
 import record from '../webPush/recordFailure';
-async function scenario(kind:string, retryCount=0, stale=false) {
+async function scenario(kind:string, retryCount=0, stale=false, desktopOccurrence=mock(async(_o:any)=>{})) {
  let claimed=false; let idle=false; let queued=false; let wake=false; let stamp=0; let lastError:string|null=null;
  let claimedToken:string|null=null;
  const sent=mock(async()=>{});
@@ -27,7 +27,7 @@ async function scenario(kind:string, retryCount=0, stale=false) {
  return {changes:1,rows:[]};
  };
  const noop=async()=>{};
- ctx.fns={input:{expireDue:async()=>0},goal: { delegationConsume: async () => ({ status: 'absent' }),continuationValidateStart:async()=>({action:'run',humanPending:true,suppressIdxs:[],continuationIdxs:[]})},events:{emitAgentsChanged:noop},procs:{env:{mode:()=> 'test'},db:{select,run},log:{warn:noop}},settings:{getNumber:async()=>0},session:{syncAgentState:noop,appendErrorEvent:noop},agent:{ instanceId: () => 'test-instance',
+ ctx.fns={input:{expireDue:async()=>0},goal: { delegationConsume: async () => ({ status: 'absent' }),continuationValidateStart:async()=>({action:'run',humanPending:true,suppressIdxs:[],continuationIdxs:[]})},events:{emitAgentsChanged:noop,desktopOccurrence},procs:{env:{mode:()=> 'test'},db:{select,run},log:{warn:noop}},settings:{getNumber:async()=>0},session:{syncAgentState:noop,appendErrorEvent:noop},agent:{ instanceId: () => 'test-instance',
  recoverOrphanedCompactions:noop,deliverWakes:noop,pollWatches:noop,pollTriggers:noop,wakeWorker:()=>{ctx.state.workerWakePending=true;},autoCompactIfNeeded:noop,
  parkOnUsageLimit:async()=>{if(kind==='park-failed')throw new Error('test park failure');wake=true;},run:async()=>{
  if(kind==='success')return {};
@@ -38,6 +38,7 @@ async function scenario(kind:string, retryCount=0, stale=false) {
  }},webPush:{recallStaleError:noop,notifyError:sent,recordFailure:(o:any)=>record(ctx,null,o)}};
  await worker(ctx,null,{});return sent;
 }
+test('successful owned worker finalization publishes exactly one run occurrence',async()=>{const desktop=mock(async(_o:any)=>{});await scenario('success',0,false,desktop);expect(desktop).toHaveBeenCalledTimes(1);expect(desktop.mock.calls[0]![0]).toMatchObject({agentId:'ab',kind:'run-finished',token:expect.any(String),at:expect.any(Number)});});
 for(const kind of ['success','abort','lost-token','concurrent-post','usage_limit'])test(`worker suppresses terminal push for ${kind}`,async()=>{expect(await scenario(kind)).not.toHaveBeenCalled();});
 test('worker sends for fatal owned finalization',async()=>{expect(await scenario('fatal')).toHaveBeenCalledTimes(1);});
 // Model retries live in run(); a transient failure that escapes run() is terminal for the worker.

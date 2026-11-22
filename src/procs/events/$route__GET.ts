@@ -13,6 +13,9 @@
 export default async function (ctx: Context, session: Session, opts: { req: Request }) {
     const topics = (new URL(opts.req.url).searchParams.get("topics") ?? "")
         .split(",").map(t => t.trim()).filter(Boolean);
+    // mauzcode: opt-in desktop adapter shares this stream, never a public topic.
+    const desktop = new URL(opts.req.url).searchParams.get('desktop') === '1'
+        ? await ctx.fns.events.desktopAccess({req:opts.req}).catch(() => null) : null;
     let cancelStream = () => {};
     const stream = new ReadableStream({
         start(controller) {
@@ -21,10 +24,12 @@ export default async function (ctx: Context, session: Session, opts: { req: Requ
             let keepalive: ReturnType<typeof setInterval> | undefined;
             let unsub = () => {};
             let leave = () => {};
+            let leaveDesktop = () => {};
             const cleanup = () => {
                 if (closed) return;
                 closed = true;
                 if (keepalive) clearInterval(keepalive);
+                leaveDesktop();
                 leave();
                 unsub();
                 try { controller.close(); } catch { /* already closed */ }
@@ -39,7 +44,24 @@ export default async function (ctx: Context, session: Session, opts: { req: Requ
             // the greeting tells it to refresh what it shows — the same message
             // any change sends, which keeps recovery and normal operation on
             // one path instead of two.
-            send({ type: "hello", serverStart: (ctx.state as any).serverStart, refresh: topics });
+            if (desktop) {
+                const state = ((ctx.state as any).events ??= {});
+                const listeners: Map<string,Set<(id:string)=>void>> = state.desktopListeners ??= new Map();
+                const set = listeners.get(desktop.owner) ?? new Set();
+                listeners.set(desktop.owner,set);
+                const hint = async (id:string) => {
+                    const access = await ctx.fns.events.desktopAccess({req:opts.req,id}).catch(() => null);
+                    if (!closed && access?.scope === desktop.scope) {
+                        const record = state.desktopOccurrences?.get(id);
+                        if (!record) return;
+                        record.issued.add(desktop.scope);
+                        send({type:'desktop.occurrence',id,scope:desktop.scope});
+                    }
+                };
+                set.add(hint);
+                leaveDesktop = () => { set.delete(hint); if (!set.size) listeners.delete(desktop.owner); };
+            }
+            send({ type: "hello", serverStart: (ctx.state as any).serverStart, refresh: topics, ...(desktop && {desktop:{version:1,scope:desktop.scope}}) });
             unsub = ctx.fns.procs.events.subscribe({ handler: send, topics });
             // The stream is also the presence: it lasts exactly as long as the tab.
             leave = ctx.fns.procs.events.join({ topics });

@@ -15,6 +15,7 @@ import { LiveComposer } from './components/mauzcode/LiveComposer';
 import { ConnectedPlanningPanel } from './components/mauzcode/ConnectedPlanningPanel';
 import { ConnectedQuestionCard } from './components/mauzcode/ConnectedQuestionCard';
 import { Transcript } from './components/mauzcode/Transcript';
+import { DesktopLiveStatus } from './components/mauzcode/DesktopLiveStatus';
 import { useMauzCode } from './hooks/useMauzCode';
 import { useCanvas } from './hooks/useCanvas';
 import { useTheme } from './hooks/useTheme';
@@ -201,7 +202,7 @@ export function LiveApp() {
     <ChatViewport disabled={archived} widthControlTarget={widthControlTarget}>
     {canvasState.error && <div className="connection-error" role="alert">{canvasState.error} <Button onClick={canvasState.refresh}>Повторить</Button></div>}
     {mauzcode.error && <div className="connection-error" role="alert">{mauzcode.error} <Button onClick={mauzcode.refresh}>Повторить</Button> <a href={`/auth/login?next=${encodeURIComponent(location.pathname + location.search)}`}>Войти в MauzCode</a></div>}
-    {mauzcode.liveError && <div className="transcript-notice" role="status">{mauzcode.liveError}</div>}
+    {window.mauzcodeDesktopLive ? <DesktopLiveStatus /> : mauzcode.liveError && <div className="transcript-notice" role="status">{mauzcode.liveError}</div>}
     {archived && <p className="archived-chat-notice" role="status">Чат в архиве. Разархивируйте его в боковом меню, чтобы продолжить.</p>}
     <fieldset disabled={archived} inert={archived} className={`chat-readonly-boundary ${archived ? 'is-archived' : ''}`} aria-label={archived ? 'Архивный разговор — только чтение' : undefined} onClickCapture={event => { if (archived && (event.target as Element).closest('button,a,input,select,textarea')) { event.preventDefault(); event.stopPropagation(); } }}>
     {isNewSession ? <NewSessionWelcome userName={navigation.user?.name || ''} /> : mauzcode.loading ? <div className="chat-scroll" role="status">Загружаем разговор…</div> : mauzcode.selected && <QuestionHistoryContext.Provider value={historyInputs.filter(input => input.agentId === mauzcode.selected)}><Transcript key={mauzcode.selected} agentId={mauzcode.selected} events={mauzcode.events} page={mauzcode.page} hasOlder={mauzcode.hasOlder} loadingOlder={mauzcode.loadingOlder} loadOlder={mauzcode.loadOlder} outline={mauzcode.outline} loadThrough={mauzcode.loadThrough} /></QuestionHistoryContext.Provider>}
