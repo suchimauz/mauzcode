@@ -347,34 +347,6 @@ it.each([true, false])('supports Claude authorization paste, rejection and retry
   await waitFor(() => expect(within(region).getByRole('status')).toHaveTextContent('Login cancelled'));
 });
 
-it('shows the Gemini same-machine link next to the paste link and code field', async () => {
-  const provider = { id: 'gemini', label: 'Gemini (Google account)', fields: [], transports: ['direct'], actions: [] };
-  const conn = { ...stored, id: 'gm', provider: 'gemini', accountName: 'Google', config: {}, secrets: {} };
-  const posts = mockApi([conn], [provider]);
-  const base = vi.mocked(fetch).getMockImplementation()!;
-  const flow = { flowId: 'gf1', kind: 'authorization-code', status: 'pending', authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=https%3A%2F%2Fcodeassist.google.com%2Fauthcode', callbackAuthorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A4242%2Foauth2callback', callbackListening: true, expiresAt: Date.now() + 60000 };
-  let current: any = null;
-  vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
-    if ((init.method || 'GET') !== 'GET') {
-      const body = JSON.parse(String(init.body));
-      if (body.action === 'action') {
-        posts.push({ body, headers: init.headers });
-        if (body.name === 'loginStatus') return json({ result: { loggedIn: false, needsLogin: true, expiresAt: null, flow: current } });
-        if (body.name === 'login') { current = flow; return json({ result: current }); }
-      }
-    }
-    return base(url, init);
-  });
-  render(<ModelsPanel context={context} />);
-  await expand('Google');
-  const region = await screen.findByRole('region', { name: 'Gemini (Google account) login for Google' });
-  fireEvent.click(await within(region).findByRole('button', { name: 'Log in' }));
-  await within(region).findByRole('textbox', { name: 'Callback URL or authorization code' });
-  expect(within(region).getByRole('link', { name: 'Open Gemini (Google account) authorization' })).toHaveAttribute('href', flow.authorizationUrl);
-  expect(within(region).getByRole('link', { name: 'Browser on this machine' })).toHaveAttribute('href', flow.callbackAuthorizationUrl);
-  expect(within(region).queryByText(/Local callback is listening/)).not.toBeInTheDocument();
-});
-
 function mockContextApi(opts: { failSave?: boolean } = {}) {
   const posts = mockApi([stored]);
   const fetchMock = vi.mocked(fetch);

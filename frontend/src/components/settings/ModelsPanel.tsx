@@ -342,7 +342,7 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle }: { 
     toggleLabel={connection.accountName}
     trailing={enableSwitch} expanded={expanded} onToggle={onToggle}>
     <div className="settings-detail-section" aria-live="polite">{usage ? <UsageView usage={usage} /> : usageError ? <p className="settings-note">{usageError}</p> : <p className="settings-loading">Checking…</p>}</div>
-    {['codex', 'claude', 'qwen', 'gemini'].includes(connection.provider) && connection.providerRegistered && <ProviderLogin connection={connection} actions={actions} />}
+    {['codex', 'claude', 'qwen'].includes(connection.provider) && connection.providerRegistered && <ProviderLogin connection={connection} actions={actions} />}
     {version.canDetect && <div className="settings-detail-section"><Button variant="ghost" size="compact" className="models-redetect" onClick={() => { void version.refresh(); }} disabled={version.loading || actions.busy || actions.context.readOnly}>Re-detect</Button></div>}
     {registered ? <section className="settings-detail-section" aria-label={`Models of ${connection.accountName}`} aria-live="polite"><h4>Models</h4>{!models ? (modelsError ? <p className="settings-note" role="status">{modelsError}</p> : <p className="settings-loading" role="status">Loading models…</p>) : <>
       {models.error && <p className="settings-note" role="status">Discovery failed: {models.error}</p>}
@@ -378,7 +378,7 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle }: { 
   </SettingsRow>;
 }
 
-type LoginFlow = { flowId: string; kind: 'device-code' | 'authorization-code'; status: 'pending' | 'succeeded' | 'failed' | 'expired'; verificationUri?: string; authorizationUrl?: string; callbackAuthorizationUrl?: string; userCode?: string; callbackListening?: boolean; expiresAt: number; message?: string };
+type LoginFlow = { flowId: string; kind: 'device-code' | 'authorization-code'; status: 'pending' | 'succeeded' | 'failed' | 'expired'; verificationUri?: string; authorizationUrl?: string; userCode?: string; callbackListening?: boolean; expiresAt: number; message?: string };
 type LoginStatus = { loggedIn: boolean; needsLogin: boolean; expiresAt: number | null; account?: { name?: string; email?: string; plan?: string } | null; flow: LoginFlow | null };
 
 /** Native provider login; the browser authorization step opens separately from the connection transport. */
@@ -446,10 +446,7 @@ function ProviderLogin({ connection, actions }: { connection: ModelConnectionVie
     {pending && flow && <div className="models-login-code">
       {flow.kind === 'authorization-code' ? <>
         <p><a href={flow.authorizationUrl} target="_blank" rel="noopener noreferrer">Open {providerLabel} authorization</a></p>
-        {flow.callbackAuthorizationUrl ? <>
-        <p><a href={flow.callbackAuthorizationUrl} target="_blank" rel="noopener noreferrer">Browser on this machine</a></p>
-        <p className="settings-note">Use the first link from any browser and paste the code it shows below. The second link works only when this browser runs on the MauzCode machine; login then completes automatically.</p>
-        </> : <p className="settings-note">{flow.callbackListening ? 'Local callback is listening. Login completes automatically when the browser is on this machine; otherwise paste the callback URL below.' : 'Local callback is unavailable. Paste the callback URL from your browser’s address bar, even if that page did not load.'}</p>}
+        <p className="settings-note">{flow.callbackListening ? 'Local callback is listening. Login completes automatically when the browser is on this machine; otherwise paste the callback URL below.' : 'Local callback is unavailable. Paste the callback URL from your browser’s address bar, even if that page did not load.'}</p>
         <form className="ssh-form" onSubmit={event => { void submit(event); }} aria-label="Submit authorization code">
           <Field label="Callback URL or authorization code" value={code} onChange={event => setCode(event.target.value)} autoComplete="off" spellCheck={false} hint="Paste the complete callback URL or the code returned by the provider." />
           {submitError && <p role="alert" className="settings-note">{submitError}</p>}

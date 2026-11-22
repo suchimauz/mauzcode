@@ -148,8 +148,8 @@ describe("aggregated usage, quotas and icons", () => {
         const ctx = await mkTestCtx();
         const res = await ctx.fns.frontendBridge.providerIcons({ req: new Request("http://x/icons") });
         const { icons } = await res.json();
-        expect(Object.keys(icons).sort()).toEqual(["claude", "codex", "custom", "gemini", "minimax-coding", "qwen", "zai-coding"]);
-        for (const id of ["claude", "codex", "custom", "gemini", "minimax-coding", "qwen", "zai-coding"]) expect(icons[id].src).toStartWith("data:image/svg+xml,");
+        expect(Object.keys(icons).sort()).toEqual(["claude", "codex", "custom", "minimax-coding", "qwen", "zai-coding"]);
+        for (const id of ["claude", "codex", "custom", "minimax-coding", "qwen", "zai-coding"]) expect(icons[id].src).toStartWith("data:image/svg+xml,");
         expect(await ctx.fns.frontendBridge.declaredIcon({ icon: "NoSuchIconAnywhere" })).toBeNull();
         expect(await ctx.fns.frontendBridge.declaredIcon({ icon: "javascript:alert(1)" })).toBeNull();
     });

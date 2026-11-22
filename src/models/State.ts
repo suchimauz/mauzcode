@@ -28,12 +28,4 @@ export type State = {
     sessionAffinityWarned?: boolean;
     /** Tail of the serialized setProviderEnabled read-modify-write queue (models.api); rejection-recovered so a failed write cannot block later toggles. */
     disabledProvidersQueue?: Promise<unknown>;
-    /** In-flight Gemini token refresh per connection id; de-duplicates concurrent refreshes. */
-    geminiRefresh?: Record<string, Promise<string>>;
-    /** Per-connection Gemini lock serializing login-flow invalidation and token persistence. */
-    geminiLocks?: Record<string, Promise<void>>;
-    /** In-flight Gemini Code Assist setup per connection id; de-duplicates concurrent onboarding. */
-    geminiSetup?: Record<string, Promise<string>>;
-    /** Process-local Gemini authorization-code login flows by connection id; lost on restart. Secret fields never leave the provider. */
-    geminiLogin?: Record<string, { flowId: string; status: "pending" | "succeeded" | "failed" | "expired"; authorizationUrl: string; callbackAuthorizationUrl?: string; callbackRedirectUri?: string; expiresAt: number; message?: string; verifier: string; state: string; busy: boolean; abort: AbortController; server?: { stop: (force?: boolean) => unknown }; timer?: ReturnType<typeof setTimeout>; done?: Promise<void> }>;
 };
