@@ -5,7 +5,7 @@ import {
   type VoiceSupport,
 } from '../lib/voiceCapture';
 
-export type VoiceCaptureState = 'idle' | 'connecting' | 'listening' | 'finalizing' | 'paused' | 'error';
+export type VoiceCaptureState = 'idle' | 'connecting' | 'listening' | 'finalizing' | 'muted' | 'error';
 export type VoiceErrorCode =
   | 'unauthorized' | 'readOnly' | 'superseded' | 'unconfigured' | 'routeUnavailable' | 'providerAuth' | 'provider'
   | 'timeout' | 'backpressure' | 'protocol' | 'permission' | 'microphone' | 'connection';
@@ -28,14 +28,13 @@ export type VoiceCapture = {
   support: VoiceSupport;
   state: VoiceCaptureState;
   error: VoiceCaptureError | null;
-  /** Server-limit countdown of the current session in ms, or null outside a listening session. */
+  /** Server-limit countdown, shared by listening and connected mute. */
   remainingMs: number | null;
   session: VoiceSessionInfo | null;
   generation: number;
   start: () => Promise<void>;
-  /** Stop audio, finalize pending phrases, release the microphone and stay paused. */
-  pause: () => Promise<boolean>;
-  resume: () => Promise<void>;
+  /** Toggle only a connected run, without changing its deadline or generation. */
+  setMuted: (muted: boolean) => void;
   /** Stop audio and resolve true once every committed phrase is final; false on failure or when nothing ran. */
   finish: () => Promise<boolean>;
   /** Drop the session and every later event immediately. */
@@ -78,6 +77,10 @@ type Run = {
   startTimer?: ReturnType<typeof setTimeout>;
   ready: boolean;
   sending: boolean;
+  muted: boolean;
+  epoch: number;
+  /** Render-clock cutoff for each listening epoch until the worklet drains and acknowledges it. */
+  muteCuts: Map<number, number>;
   phraseFailed?: boolean;
   sequence: number;
   timers: ReturnType<typeof setTimeout>[];
@@ -108,7 +111,7 @@ function microphoneError(error: unknown): VoiceCaptureError {
 
 /**
  * One capture controller per chat composer: microphone → AudioWorklet (mono, resampled, PCM16 frames) → one
- * `/voice/session` WebSocket per generation. Nothing happens on mount; only `start`/`resume` request the microphone.
+ * `/voice/session` WebSocket per generation. Nothing happens on mount; only `start` request the microphone.
  */
 export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoiceCaptureOptions): VoiceCapture {
   const support = useMemo(() => voiceCaptureSupport(browserEnv()), []);
@@ -220,7 +223,7 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
         if (r.phraseFailed) return fail(r, { code: 'provider', message: MESSAGES.provider });
         const settle = r.settle;
         release(r, false, true);
-        if (!settle) { setState('idle'); setRemainingMs(null); }
+        if (!settle) { setState('idle'); setRemainingMs(null); setSession(null); }
         return;
       }
       case 'error': {
@@ -235,7 +238,7 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     if (!support.ok || target.current.readOnly || !target.current.agentId) return;
     if (run.current) return;
     const g = ++generationRef.current;
-    const r: Run = { generation: g, ready: false, sending: false, sequence: 0, timers: [], released: false };
+    const r: Run = { generation: g, ready: false, sending: false, sequence: 0, muted: false, epoch: 0, muteCuts: new Map(), timers: [], released: false };
     run.current = r;
     setGeneration(g); setError(null); setSession(null); setRemainingMs(null); setState('connecting');
     let stream: MediaStream;
@@ -270,9 +273,20 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
       const source = context.createMediaStreamSource(stream);
       r.source = source;
       node.port.onmessage = (event: MessageEvent) => {
-        const data = event.data as { type?: string; pcm?: ArrayBuffer };
-        if (data?.type === 'frame' && data.pcm) sendFrame(r, data.pcm);
-        else if (data?.type === 'flushed') { r.flushed?.(); r.flushed = undefined; }
+        if (!current(r)) return;
+        const data = event.data as { type?: string; pcm?: ArrayBuffer; epoch?: number; boundary?: boolean; inputEnd?: number };
+        if (data?.type === 'frame' && data.pcm) {
+          // Frames and gate ACKs arrive FIFO. A newer user toggle can overtake their delivery:
+          // keep proven pre-mute audio up to each cut, but replace any ambiguous PCM with silence.
+          // A boundary tail already went through the worklet's safe-cut check before it was posted.
+          const cut = data.epoch === undefined ? undefined : r.muteCuts.get(data.epoch);
+          const safe = data.boundary || (cut !== undefined && data.inputEnd !== undefined && data.inputEnd <= cut) ||
+            (data.epoch === r.epoch && !r.muted);
+          sendFrame(r, safe ? data.pcm : new ArrayBuffer(data.pcm.byteLength));
+        } else if (data?.type === 'gated' && data.epoch !== undefined) {
+          r.muteCuts.delete(data.epoch - 1);
+          if (data.epoch === r.epoch && !r.muted && !r.settle) r.stream?.getTracks().forEach(track => { track.enabled = true; });
+        } else if (data?.type === 'flushed') { r.flushed?.(); r.flushed = undefined; }
       };
       // The worklet outputs silence; it is connected only to keep the graph pulling input.
       source.connect(node); node.connect(context.destination);
@@ -301,17 +315,28 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     }
   }, [support.ok]);
 
-  const end = useCallback(async (after: 'idle' | 'paused'): Promise<boolean> => {
+  const setMuted = useCallback((muted: boolean) => {
     const r = run.current;
-    if (!r || r.released) {
-      // After a reviewed draft is sent from an errored/stopped panel it stays open on pause.
-      if (after === 'paused' && mounted.current) { setState('paused'); setError(null); }
-      return false;
+    if (!r?.ready || !r.node || !r.context || r.settle || r.muted === muted) return;
+    const cut = r.context.currentTime;
+    r.muted = muted;
+    // Keep tracks disabled until the *current* unmute is acknowledged on the render thread.
+    if (muted) {
+      r.muteCuts.set(r.epoch, cut);
+      r.stream?.getTracks().forEach(track => { track.enabled = false; });
     }
+    try { r.node.port.postMessage({ type: 'gate', muted, epoch: ++r.epoch, cut }); }
+    catch { return fail(r, { code: 'microphone', message: MESSAGES.audioStopped }); }
+    setState(muted ? 'muted' : 'listening');
+  }, []);
+
+  const finish = useCallback(async (): Promise<boolean> => {
+    const r = run.current;
+    if (!r || r.released) return false;
     if (!r.ready) {
       // Nothing was streamed yet: there is nothing to finalize.
       release(r, true);
-      setState(after); setRemainingMs(null); setSession(null);
+      setState('idle'); setRemainingMs(null); setSession(null);
       return true;
     }
     if (r.socket?.readyState !== 1) { fail(r, { code: 'connection', message: MESSAGES.connection }); return false; }
@@ -333,7 +358,7 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     r.timers.push(setTimeout(() => fail(r, { code: 'timeout', message: 'Voice finalization timed out.' }), FINISH_TIMEOUT_MS));
     try { r.socket?.send(JSON.stringify({ type: 'finish' })); } catch { fail(r, { code: 'connection', message: MESSAGES.connection }); }
     const ok = await done;
-    if (ok && mounted.current && generationRef.current === r.generation) { setState(after); setRemainingMs(null); }
+    if (ok && mounted.current && generationRef.current === r.generation) { setState('idle'); setRemainingMs(null); setSession(null); }
     return ok;
   }, []);
 
@@ -345,10 +370,6 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
   }, []);
 
   const start = useCallback(async () => { if (!run.current) await begin(); }, [begin]);
-  const resume = useCallback(async () => { if (!run.current) await begin(); }, [begin]);
-  const pause = useCallback(() => end('paused'), [end]);
-  const finish = useCallback(() => end('idle'), [end]);
-
   // Navigation, read-only transition and unmount release the microphone and drop later events.
   useEffect(() => {
     mounted.current = true;
@@ -369,5 +390,5 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     return () => { window.removeEventListener('pagehide', leave); mounted.current = false; };
   }, [cancel]);
 
-  return { support, state, error, remainingMs, session, generation, start, pause, resume, finish, cancel };
+  return { support, state, error, remainingMs, session, generation, start, setMuted, finish, cancel };
 }

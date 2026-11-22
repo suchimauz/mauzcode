@@ -38,14 +38,14 @@ Available now:
   selector itself never requests the microphone or opens `/voice/session`;
 - browser capture (`frontend/src/hooks/useVoiceCapture.ts`): secure-context and AudioWorklet
   checks, microphone → AudioWorklet → mono PCM16 frames over one `/voice/session` socket per
-  generation, remaining-time countdown, pause/resume and cleanup on navigation, read-only loss and
+  generation, remaining-time countdown, connected mute/unmute and cleanup on navigation, read-only loss and
   socket loss;
 - two entry points next to the route selector of an open editable chat, sharing that one capture
   controller: **inline voice input** at the caret of the ordinary editor and **voice mode**, a panel
   that temporarily replaces the editor (see [Dictate in a chat](#dictate-in-a-chat));
 - explicit send from either entry point: stop capture, wait for the final words, then submit the
   draft and attachments using the ordinary send action (the ordinary queue when the chat is busy).
-  Neither entry point sends on silence, pause, or stop.
+  Neither entry point sends on silence, mute, or stop.
 - per-connection **network routes**: a voice connection can reach its recognizer directly, through a
   saved SOCKS5 proxy or through a pinned SSH tunnel, for model discovery, the connection check and
   live dictation alike (see [Network route](#network-route)).
@@ -83,12 +83,20 @@ browser  ──/voice/session (WebSocket)──▶  MauzCode server  ──wss�
 - The endpoint requires the normal owner session cookie, an exact origin match, the `owner` role and
   an editable chat owned by that user. One session per owner and chat: a second tab supersedes the
   first, and a chat that becomes read-only ends the session with `readOnly`.
-- Bounds: 5-minute session, 30-second idle timeout, 16 KiB frame, 1 MiB buffered upstream, 10-second
-  finish deadline. Exceeding one ends the session with a visible error instead of dropping audio.
+- After `ready`, the five-minute session limit runs from the original connection. A separate 30-second
+  idle guard ends the session if no valid audio frames arrive. Other bounds: 16 KiB per frame,
+  1 MiB buffered upstream and 10 seconds to finish. Exceeding a bound ends the session with a visible error.
 
-The browser client of this protocol is `useVoiceCapture`; the composer's entry points below are its
-only consumers. A resume opens a new socket with a new `generation`, so events of a paused or
-cancelled session can never reach the draft.
+In the dedicated panel, mute disables the microphone track but keeps the audio graph, browser socket,
+provider stream and draft generation. The worklet drains the known pre-mute tail and, on the audio
+render clock, generates **zero-valued PCM frames**, even with no input channel. These are ordinary
+sequenced frames, not a keepalive message: the relay stays active and can finish recognizing speech
+from before mute. Muted microphone sound is neither transmitted nor saved for unmute. Unmuting
+resumes fresh input on the same sequence and countdown. A suspended client that sends no frames can
+still hit the idle guard; continuous silence does not extend the five-minute limit.
+
+`useVoiceCapture` opens a new socket and generation only on an explicit start after a run has ended.
+No terminal event (including loss of access, timeout or supersession) automatically restarts the mic.
 
 ## Dictate in a chat
 
@@ -104,14 +112,20 @@ edit a recognized word yourself, later corrections of that phrase are ignored.
 
 **Voice mode** (waveform icon). Replaces the message field with a panel that shows the recording
 state, the remaining time of the five-minute session and the message text, and starts recording at
-the caret. It edits the same draft and keeps your attachments. While focus is inside the panel:
+the caret. It edits the same draft and keeps your attachments. With focus on the frame or transcript:
 
 | Key | Button | Effect |
 | --- | --- | --- |
-| Space | Pause / Continue recording | Pause finalizes the current phrase and releases the microphone; continue starts a new session after the dictated text. |
-| — | Clear dictation | Removes every phrase dictated into this draft that you have not edited — in voice mode or with inline input, including earlier visits; typed text, phrases you corrected and attachments stay. Sending the message starts a new draft. |
-| Enter | Send | Finishes the last phrase, then sends the text and attachments once. On acknowledgement the panel stays open on pause with an empty draft. |
+| Space | Mute / Unmute microphone | Turns the microphone off or on without reconnecting. The waveform stops while muted, but the countdown continues and earlier speech can still be finalized in place. After the run ends, the control offers an explicit new start or retry. |
+| Backspace | Delete last word (click or tap) | Removes the last unedited dictated word in draft order, including its trailing punctuation. Late revisions cannot restore it. |
+| Ctrl+Backspace | Hold the same button for 600 ms | Clears all unedited dictation in this draft, from inline input and earlier panel visits too. Typed text, manually corrected phrases and attachments survive both delete actions. |
+| Enter | Send | From listening or mute, ends capture and waits for the final words before sending the text and attachments once through the ordinary send/queue path. After acknowledgement the panel stays open with an empty draft and the mic off; there is no live session. |
 | Escape | Exit | Stops recording and returns focus to the message field with the visible text, without sending. Clicking the voice mode icon again does the same. |
+
+For example, if you typed `Note:` then dictated `хорошая погода сегодня!`, a tap removes `сегодня!`,
+leaving `Note: хорошая погода`. A hold clears the rest of the dictation, leaving `Note:`. Neither
+operation changes whether the mic is muted. Desktop tooltips list the shortcuts; touch help describes
+tap and hold instead. A held button does not delete another word on release.
 
 If recognition fails during send, nothing is submitted. Review the visible text (Exit to edit),
 then explicitly send again. If the message acknowledgement is lost, retrying the unchanged draft
@@ -119,10 +133,10 @@ uses the same request key and endpoint, including its attachments while the page
 
 The shortcuts work only while focus is on the panel itself or its message text, never for typing
 elsewhere. A focused button inside the panel keeps its own keys — Space and Enter press it and Escape
-does nothing there; use the Exit button to leave. Text fields keep all their keys. Screen readers hear only state changes — recording, paused, a send acknowledgement, an error, dictation moved to
-another tab, one minute and ten seconds left — never the recognized words; the text is readable by
-moving through the panel. Opening dictation for the same chat in another tab stops this one with a
-visible notice; the text stays and you can continue.
+does nothing there; use the Exit button to leave. Text fields keep all their keys. Screen readers hear
+state and time updates rather than each new word; the transcript can be read by navigating to it.
+Opening dictation for the same chat in another tab stops this run with a visible notice; the draft
+stays, but recording again requires a new start.
 
 ### Look up a dictation error
 
@@ -590,14 +604,14 @@ This page was checked against the code, not only against the design notes:
 - `bun run frontend:test -- frontend/src/test/voice-panel.test.tsx frontend/src/test/inline-dictation.test.ts`
   — voice mode through the real `LiveComposer` with a fake capture controller (no microphone,
   socket or network): one controller for both modes, focus into the panel and back to the editor,
-  pause/resume with Space, late events of paused or cancelled generations ignored, selective clear
-  keeping typed text, corrections and attachments, keys ignored outside the panel and on its
+  mute/unmute with Space, pre-mute revisions accepted and cancelled generations ignored, word and
+  full dictation deletion keeping typed text, corrections and attachments, keys ignored outside the panel and on its
   buttons and text fields, one polite live region carrying only state changes and
   the 1 min / 10 s thresholds, read-only loss and chat switch;
 - `bun run frontend:test -- frontend/src/test/voice-submission.test.tsx` — both entry points through
   `LiveComposer`, synthetic media, a local voice socket double and mocked HTTP: final words and
   attachments, ordinary send vs queue, duplicate Enter, stale sessions, failed recognition, stable
-  retries and a paused panel after acknowledgement.
+  retries and a disconnected panel after acknowledgement.
 
 These frontend checks use neither a real microphone nor a live provider.
 

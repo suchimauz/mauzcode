@@ -113,6 +113,32 @@ export class InlineDictation {
   /** True while some phrase still owns non-empty text, i.e. `clear` would change the draft. */
   get owned() { return this.spans.some(s => !s.detached && s.end > s.start); }
 
+  private get lastOwned() {
+    return this.spans.reduce<Span | undefined>((last, span) => !span.detached && span.end > span.start && (!last || span.end > last.end) ? span : last, undefined);
+  }
+
+  get lastOwnedEnd() { return this.lastOwned?.end ?? -1; }
+
+  /** Freeze this phrase, keeping the remaining prefix eligible for another word deletion or a full clear. */
+  deleteLastWord(): string {
+    const span = this.lastOwned;
+    if (!span) return this.text;
+    const body = this.text.slice(span.start, span.end);
+    let cut = 0;
+    for (const segment of new Intl.Segmenter(undefined, { granularity: 'word' }).segment(body)) {
+      if (segment.isWordLike) cut = segment.index;
+    }
+    const prefix = body.slice(0, cut).trimEnd();
+    // Keep an existing owned trailing separator only when it still separates the prefix from adjacent text.
+    const insert = prefix && /\s$/.test(body) && !space(this.text[span.end]) ? ' ' : '';
+    const change = { at: span.start + prefix.length, oldEnd: span.end, insert };
+    this.edit(change);
+    span.done = true;
+    span.detached = false; // unlike a manual edit, truncation does not release the prefix
+    this.lastEdits = [change];
+    return this.text;
+  }
+
   /** Where a continuation would go: after the last phrase in core order, else the start point. */
   get end() { return this.position(Number.MAX_SAFE_INTEGER); }
 
@@ -196,6 +222,21 @@ export class DraftDictation {
 
   /** True while some phrase of this draft still owns unedited text, i.e. `clear` would change the draft. */
   get owned() { return this.sessions.some(session => session.owned); }
+
+  /** Delete in visible draft order, independently of session age and recognition callback order. */
+  deleteLastWord(value: string): string {
+    this.observe(value);
+    let owner: InlineDictation | undefined;
+    let end = -1;
+    for (const session of this.sessions) {
+      const candidate = session.lastOwnedEnd;
+      if (candidate > end) { owner = session; end = candidate; }
+    }
+    if (!owner) return value;
+    const text = owner.deleteLastWord();
+    this.replay(owner);
+    return text;
+  }
 
   /** Remove every unedited phrase of this draft from `current`; typed text and corrected phrases stay. */
   clear(current: string): string {

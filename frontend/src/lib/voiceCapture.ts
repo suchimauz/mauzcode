@@ -172,8 +172,9 @@ export function createPcmFramer(frameSamples: number, minSamples: number) {
 
 /**
  * Source of the AudioWorklet module. The processor mixes inputs to mono, resamples to the announced rate and posts
- * whole PCM16 frames (`{ type: 'frame', pcm }`, buffer transferred). It stays silent until `configure`; `flush`
- * emits the tail and answers `flushed`; `stop` ends processing.
+ * whole PCM16 frames tagged with the local toggle epoch. A gate drains or silences the pending tail before the
+ * microphone track can be enabled again. Muted render quanta supply zeros even without an input channel. `flush`
+ * drains the terminal tail and answers `flushed`; `stop` ends processing.
  */
 export function voiceWorkletSource(): string {
   return `const createResampler = ${createResampler.toString()};
@@ -182,18 +183,22 @@ const createPcmFramer = ${createPcmFramer.toString()};
 class VoiceCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.resampler = null; this.framer = null; this.stopped = false;
+    this.resampler = null; this.framer = null; this.stopped = false; this.muted = false; this.epoch = 0; this.inputEnd = 0;
     this.port.onmessage = event => {
       const m = event.data || {};
       if (m.type === 'configure') {
         this.resampler = createResampler(sampleRate, m.sampleRate);
         this.framer = createPcmFramer(m.frameSamples, m.minSamples);
+      } else if (m.type === 'gate' && this.resampler && m.epoch > this.epoch) {
+        // A render quantum may have overtaken the main-thread mute. Discard an ambiguous
+        // partial buffer rather than draining microphone samples beyond the requested cut.
+        const safe = this.muted || this.inputEnd <= m.cut;
+        this.epoch = m.epoch;
+        this.drain(safe, true);
+        this.muted = m.muted;
+        this.port.postMessage({ type: 'gated', epoch: this.epoch });
       } else if (m.type === 'flush') {
-        if (this.resampler && this.framer) {
-          for (const frame of this.framer.push(floatToPcm16(this.resampler.flush()))) this.post(frame);
-          const last = this.framer.flush();
-          if (last) this.post(last);
-        }
+        this.drain(true, false);
         this.resampler = null; this.framer = null;
         this.port.postMessage({ type: 'flushed' });
       } else if (m.type === 'stop') {
@@ -201,14 +206,29 @@ class VoiceCaptureProcessor extends AudioWorkletProcessor {
       }
     };
   }
-  post(frame) { this.port.postMessage({ type: 'frame', pcm: frame.buffer }, [frame.buffer]); }
-  process(inputs) {
+  drain(safe, boundary) {
+    if (!this.resampler || !this.framer) return;
+    for (const frame of this.framer.push(floatToPcm16(this.resampler.flush()))) {
+      if (!safe) frame.fill(0);
+      this.post(frame, boundary);
+    }
+    const last = this.framer.flush();
+    if (last) { if (!safe) last.fill(0); this.post(last, boundary); }
+  }
+  post(frame, boundary = false) {
+    this.port.postMessage({ type: 'frame', epoch: this.epoch, inputEnd: this.inputEnd, boundary, pcm: frame.buffer }, [frame.buffer]);
+  }
+  process(inputs, outputs) {
     if (this.stopped) return false;
+    if (!this.resampler || !this.framer) return true;
     const channels = inputs[0];
-    if (!this.resampler || !this.framer || !channels || !channels.length || !channels[0]) return true;
-    const length = channels[0].length;
+    const length = this.muted ? (outputs?.[0]?.[0]?.length ?? 128) : channels?.[0]?.length;
+    if (!length) return true;
     const mono = new Float32Array(length);
-    for (const channel of channels) for (let i = 0; i < length; i++) mono[i] += channel[i] / channels.length;
+    if (!this.muted) {
+      this.inputEnd = currentTime + length / sampleRate;
+      for (const channel of channels) for (let i = 0; i < length; i++) mono[i] += channel[i] / channels.length;
+    }
     for (const frame of this.framer.push(floatToPcm16(this.resampler.process(mono)))) this.post(frame);
     return true;
   }

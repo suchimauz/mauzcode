@@ -4,6 +4,7 @@ import { voiceWorkletSource } from '../../lib/voiceCapture';
 /* Synthetic browser surface: tracks, AudioContext + AudioWorklet (running the real worklet source), WebSocket. */
 
 class FakeTrack {
+  enabled = true;
   stopped = false;
   readyState: 'live' | 'ended' = 'live';
   onended: (() => void) | null = null;
@@ -21,6 +22,7 @@ let streams: FakeStream[] = [];
 
 class FakeAudioContext {
   sampleRate = 48000;
+  currentTime = 0;
   state: 'running' | 'suspended' | 'closed' = 'running';
   destination = {};
   processor?: typeof Object;
@@ -30,10 +32,10 @@ class FakeAudioContext {
     addModule: async (url: string) => {
       this.modules.push(url);
       // Run the exact module source the hook serialized, as AudioWorkletGlobalScope would.
-      new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', voiceWorkletSource())(
+      new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', 'clock', voiceWorkletSource().replace(/\bcurrentTime\b/g, 'clock.currentTime'))(
         class { port = { onmessage: null, postMessage: () => undefined }; },
         (_name: string, ctor: typeof Object) => { this.processor = ctor; },
-        this.sampleRate,
+        this.sampleRate, this,
       );
     },
   };
@@ -49,7 +51,7 @@ class FakeNode {
   disconnected = false;
   onprocessorerror: (() => void) | null = null;
   port: { onmessage: ((e: MessageEvent) => void) | null; postMessage: (m: unknown) => void };
-  constructor(context: FakeAudioContext) {
+  constructor(private context: FakeAudioContext) {
     this.processor = new (context.processor as unknown as new () => Processor)();
     // Bridge both ends of the MessagePort synchronously.
     this.processor.port.postMessage = (m: unknown) => this.port.onmessage?.({ data: m } as MessageEvent);
@@ -62,6 +64,7 @@ class FakeNode {
   feed(ms: number, rate = 48000) {
     for (let i = 0; i < Math.round(rate * ms / 1000 / 128); i++) {
       this.processor.process([[Float32Array.from({ length: 128 }, (_, k) => 0.3 * Math.sin(2 * Math.PI * 1000 * (i * 128 + k) / rate))]]);
+      this.context.currentTime += 128 / rate;
     }
   }
 }

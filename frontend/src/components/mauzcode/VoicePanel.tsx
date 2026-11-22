@@ -1,16 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Delete, Pause, Play, RotateCcw, Send, X } from 'lucide-react';
+import { Delete, MicOff, Mic, RotateCcw, Send, X } from 'lucide-react';
 import type { VoiceCapture, VoiceCaptureState } from '../../hooks/useVoiceCapture';
 import './voice-panel.css';
 
 const STATE_LABEL: Record<VoiceCaptureState, string> = {
-  idle: 'Запись остановлена', connecting: 'Подключение…', listening: 'Идёт запись', finalizing: 'Завершение распознавания…', paused: 'Пауза', error: 'Ошибка',
+  idle: 'Запись остановлена', connecting: 'Подключение…', listening: 'Идёт запись', finalizing: 'Завершение распознавания…', muted: 'Микрофон выключен', error: 'Ошибка',
 };
-/**
- * Only these state changes are announced (never phrase text). Finalizing is shown but not announced: a pause passes
- * through it, and the user hears only "recording" and "paused" for it.
- */
-const ANNOUNCE: Partial<Record<VoiceCaptureState, string>> = { listening: 'Идёт запись', paused: 'Пауза' };
 const MOVED = 'Диктовка перешла в другую вкладку';
 const THRESHOLDS = [{ ms: 60_000, text: 'Осталась 1 минута записи' }, { ms: 10_000, text: 'Осталось 10 секунд записи' }];
 
@@ -47,12 +42,15 @@ export type VoicePanelProps = {
   attachments?: ReactNode;
   onToggle: () => void;
   onClear: () => void;
+  onDeleteWord: () => void;
   canClear: boolean;
   onExit: () => void;
   /** The ordinary composer send; no action on silence, pause, exit, or a recognition event. */
   onSend: () => void;
   canSubmit: boolean;
   busy: boolean;
+  /** Changes only on successful ordinary submission; finish or mute alone is not a send. */
+  sentCount?: number;
   /** The composer's last send failure, shown in the panel's single error line when there is no capture error. */
   sendError?: string;
   /** The model picker, shown at the left of the input bar (icon only on a touch device). */
@@ -62,22 +60,23 @@ export type VoicePanelProps = {
 };
 
 /**
- * Dedicated voice mode shown instead of the ordinary editor. Shortcuts are bound to this container only: Space pauses or
- * resumes, Enter requests send, Escape stops capture and returns to the editor. They never fire for typing outside the
+ * Dedicated voice mode shown instead of the ordinary editor. Shortcuts are bound to this container only: Space controls
+ * the microphone, Enter requests send, Escape stops capture and returns to the editor. They never fire for typing outside the
  * panel, and a focused button or text field inside it keeps its native keys. Every shortcut has a labelled button.
  * One polite live region announces state changes and the 1 min / 10 s thresholds; transcript text is never in it.
  * It reuses the ordinary input frame: the transcript replaces the text, the add button stays disabled on the first line,
- * and the bar holds the model, waveform with time, clear, pause/resume, exit and send. The state is conveyed by the
+ * and the bar holds the model, waveform with time, delete, microphone, exit and send. The state is conveyed by the
  * waveform, the toggle icon, the time and the accent frame (the state label is screen-reader only). Tooltips name the
  * shortcuts; there is no hint line. See voice-panel.css.
  */
-export function VoicePanel({ capture, text, attachments, onToggle, onClear, canClear, onExit, onSend, busy, canSubmit, sendError, model, leading }: VoicePanelProps) {
+export function VoicePanel({ capture, text, attachments, onToggle, onClear, onDeleteWord, canClear, onExit, onSend, busy, canSubmit, sendError, sentCount = 0, model, leading }: VoicePanelProps) {
   const root = useRef<HTMLElement>(null);
   const id = useId();
   const coarse = useCoarsePointer();
   const [announcement, setAnnouncement] = useState('');
   const announced = useRef<{ state: VoiceCaptureState | null; error: string | null; generation: number; thresholds: Set<number> }>({ state: null, error: null, generation: -1, thresholds: new Set() });
   const { state, error, remainingMs, generation } = capture;
+  const lastSent = useRef(sentCount);
 
   // Voice mode takes focus so its shortcuts work at once; leaving returns focus to the editor (composer's job).
   useLayoutEffect(() => { root.current?.focus({ preventScroll: true }); }, []);
@@ -90,10 +89,10 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, canC
       if (seen.state !== 'error' || seen.error !== message) setAnnouncement(message);
       seen.state = state; seen.error = message; return;
     }
-    if (seen.state !== state) { seen.state = state; seen.error = null; const text = ANNOUNCE[state]; if (text) setAnnouncement(text); }
+    if (seen.state !== state) { seen.state = state; seen.error = null; setAnnouncement(STATE_LABEL[state]); }
   }, [state, error, generation]);
   useEffect(() => {
-    if (remainingMs == null || state !== 'listening') return;
+    if (remainingMs == null || (state !== 'listening' && state !== 'muted')) return;
     const seen = announced.current;
     // Only the tightest threshold reached is announced; one already passed is never repeated in this generation.
     const reached = THRESHOLDS.filter(t => remainingMs <= t.ms && !seen.thresholds.has(t.ms));
@@ -101,14 +100,23 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, canC
     reached.forEach(t => seen.thresholds.add(t.ms));
     setAnnouncement(reached[reached.length - 1].text);
   }, [remainingMs, state]);
+  useEffect(() => {
+    if (lastSent.current !== sentCount) { lastSent.current = sentCount; setAnnouncement('Сообщение отправлено'); }
+  }, [sentCount]);
 
-  const running = state === 'listening' || state === 'connecting';
-  const toggleLabel = running ? 'Пауза' : 'Продолжить запись';
+  const connected = state === 'listening' || state === 'muted';
+  const toggleLabel = { listening: 'Выключить микрофон', muted: 'Включить микрофон', connecting: 'Отменить подключение', idle: 'Начать запись', error: 'Повторить запись', finalizing: 'Завершение распознавания' }[state];
   const toggleDisabled = busy || state === 'finalizing';
 
   const keyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (busy || event.defaultPrevented || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (busy || event.defaultPrevented || event.nativeEvent.isComposing || event.metaKey || event.altKey) return;
     if (ownsKeys(event.target)) return;
+    if (event.key === 'Backspace' && !event.shiftKey) {
+      event.preventDefault();
+      if (!event.repeat && canClear) (event.ctrlKey ? onClear : onDeleteWord)();
+      return;
+    }
+    if (event.ctrlKey) return;
     if (event.key === ' ' || event.key === 'Spacebar') { event.preventDefault(); if (!event.repeat && !toggleDisabled) onToggle(); }
     else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!event.repeat && canSubmit) onSend(); }
     else if (event.key === 'Escape') { event.preventDefault(); onExit(); }
@@ -118,12 +126,24 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, canC
   const errorText = state === 'error' && error
     ? <>{error.code === 'superseded' ? `${MOVED}.` : error.message}{error.errorId && <> ID: <code>{error.errorId}</code></>} {sendError || 'Текст сохранён; можно продолжить запись или вернуться к редактированию.'}</>
     : sendError ? <>{sendError}</> : null;
-  const ToggleIcon = running ? Pause : state === 'error' ? RotateCcw : Play;
-  const clearTitle = canClear ? 'Очистить диктовку' : 'Надиктованного текста нет';
+  const ToggleIcon = state === 'listening' ? MicOff : state === 'connecting' ? X : state === 'error' ? RotateCcw : Mic;
+  const deleteHelp = coarse
+    ? 'Коснитесь, чтобы удалить последнее слово. Удерживайте 600 мс, чтобы очистить диктовку.'
+    : 'Удалить последнее слово: щелчок или Backspace. Очистить диктовку: удержание 600 мс или Ctrl+Backspace.';
+  const gesture = useRef<{ id: number; x: number; y: number; timer?: ReturnType<typeof setTimeout>; down: boolean; suppress: boolean } | null>(null);
+  const latestClear = useRef(onClear);
+  const cancelPress = () => {
+    if (gesture.current) { clearTimeout(gesture.current.timer); gesture.current.suppress = true; }
+  };
+  useLayoutEffect(() => { latestClear.current = onClear; if (busy || !canClear) cancelPress(); }, [busy, canClear, onClear]);
+  useLayoutEffect(() => {
+    window.addEventListener('blur', cancelPress);
+    return () => { window.removeEventListener('blur', cancelPress); cancelPress(); };
+  }, []);
 
   // The ordinary input frame: transcript in the text area, controls in the bar, the error line inside the frame.
   return <section ref={root} className={`voice-panel message-input has-bar${leading ? ' has-leading' : ''}`} tabIndex={-1} aria-label="Голосовой режим" aria-describedby={`${id}-state ${id}-keys`} data-state={state} data-error={errorText ? true : undefined} data-can-clear={canClear || undefined} onKeyDown={keyDown}>
-    <p id={`${id}-keys`} className="sr-only">Пробел — пауза или продолжение, Enter — отправить, Escape — выйти в поле ввода. Клавиши работают, пока фокус на самой панели или в тексте сообщения; на кнопках действуют их собственные клавиши.</p>
+    <p id={`${id}-keys`} className="sr-only">Пробел — действие кнопки микрофона, Backspace — удалить последнее слово, Ctrl+Backspace — очистить диктовку, Enter — отправить, Escape — выйти в поле ввода. Клавиши работают, пока фокус на самой панели или в тексте сообщения; на кнопках действуют их собственные клавиши.</p>
     <span id={`${id}-state`} className="sr-only">{STATE_LABEL[state]}</span>
     {attachments}
     <div className="message-input-row">{leading && <span className="message-input-leading">{leading}</span>}
@@ -137,8 +157,28 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, canC
       {model}
       <span className="composer-inbar-spacer" />
       <span className="voice-panel-wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>
-      <span className="voice-panel-time">{remainingMs != null && state === 'listening' && <><span className="sr-only">осталось </span><time>{clock(remainingMs)}</time></>}</span>
-      <button type="button" className="voice-panel-button voice-panel-clear" aria-label="Очистить диктовку" title={clearTitle} hidden={coarse && !canClear} disabled={busy} aria-disabled={canClear ? undefined : true} onClick={() => { if (canClear) onClear(); }}>
+      <span className="voice-panel-time">{remainingMs != null && connected && <><span className="sr-only">осталось </span><time>{clock(remainingMs)}</time></>}</span>
+      <button type="button" className="voice-panel-button voice-panel-clear" aria-label="Удалить последнее слово" title={canClear ? deleteHelp : 'Надиктованного текста нет'} aria-description={deleteHelp} aria-keyshortcuts="Backspace Control+Backspace" hidden={coarse && !canClear} disabled={busy} aria-disabled={canClear ? undefined : true}
+        onPointerDown={e => {
+          if (!e.isPrimary || e.button !== 0 || busy || !canClear) return;
+          cancelPress();
+          const press = { id: e.pointerId, x: e.clientX, y: e.clientY, down: true, suppress: false, timer: setTimeout(() => {
+            press.suppress = true; latestClear.current();
+          }, 600) };
+          gesture.current = press;
+        }}
+        onPointerMove={e => { const p = gesture.current; if (p && p.down && p.id === e.pointerId && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) cancelPress(); }}
+        onPointerLeave={e => { if (gesture.current?.down && gesture.current.id === e.pointerId) cancelPress(); }}
+        onPointerCancel={e => { if (gesture.current?.id === e.pointerId) cancelPress(); }} onBlur={cancelPress}
+        onPointerUp={e => { const p = gesture.current; if (p && p.id === e.pointerId) { clearTimeout(p.timer); p.down = false; } }}
+        onContextMenu={e => { if (gesture.current?.down) e.preventDefault(); }}
+        onClick={e => {
+          // Keyboard and assistive activation have detail zero, independent of any abandoned press.
+          if (e.detail !== 0 && (!gesture.current || gesture.current.suppress)) return;
+          if (busy || !canClear) return;
+          if (e.detail !== 0) gesture.current = null;
+          onDeleteWord();
+        }}>
         <Delete size={16} aria-hidden="true" />
       </button>
       <button type="button" className="voice-panel-button voice-panel-toggle" aria-label={toggleLabel} title={coarse ? toggleLabel : `${toggleLabel} (Пробел)`} aria-keyshortcuts="Space" disabled={toggleDisabled} onClick={onToggle}>

@@ -96,16 +96,22 @@ function submission(index: number) {
   return { path, text: body.get('text'), files: body.getAll('files'), id };
 }
 
-it.each(['panel', 'inline'] as const)('%s: double Enter waits for the last words and freezes all actions through acknowledgement', async mode => {
+it.each([['panel', false], ['panel', true], ['inline', false]] as const)('%s (muted: %s): double Enter waits for the last words and locks controls through acknowledgement', async (mode, muted) => {
   const { target, ws, entry, accepted, file, view } = await mount(mode, { text: 'Typed' });
   const late = ws.onmessage!;
   let ack!: () => void;
   post.mockImplementationOnce(() => new Promise(resolve => { ack = () => resolve(json({ ok: true })); }));
   act(() => ws.receive(phrase('first', false)));
+  if (muted) {
+    key(region(), ' ');
+    expect(region()).toHaveAttribute('data-state', 'muted');
+    expect(streams[0].tracks[0]).toMatchObject({ enabled: false, stopped: false });
+    expect(ws.controls().map(e => e.type)).toEqual(['start']);
+  }
   key(target, 'Enter'); key(target, 'Enter');
   if (mode === 'panel') {
     key(region(), 'Escape'); key(region(), ' ');
-    expect(within(region()).getByRole('button', { name: /Очистить/ })).toBeDisabled();
+    expect(within(region()).getByRole('button', { name: 'Удалить последнее слово' })).toBeDisabled();
   }
   await userEvent.click(entry);
   await act(flush);
@@ -120,13 +126,19 @@ it.each(['panel', 'inline'] as const)('%s: double Enter waits for the last words
   expect(submission(0)).toMatchObject({ path: mode === 'inline' ? '/agent/a/queue' : '/agent/a', text: 'Typed final words', files: [file] });
   key(target, 'Enter'); fireEvent.click(screen.getByRole('button', { name: mode === 'panel' ? /^Отправить/ : 'В очередь' }));
   expect(post).toHaveBeenCalledTimes(1); expect(accepted).not.toHaveBeenCalled();
+  if (mode === 'panel') expect(within(region()).getByRole('status')).not.toHaveTextContent('Сообщение отправлено');
   await act(async () => { ack(); await flush(); });
   await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
   act(() => late({ data: JSON.stringify(phrase('stale', true)) }));
   expect(editor().textContent).toBe('');
   expect(screen.queryByText('notes.txt')).toBeNull();
   expect(getUserMedia).toHaveBeenCalledTimes(1);
-  if (mode === 'panel') expect(region()).toHaveAttribute('data-state', 'paused');
+  if (mode === 'panel') {
+    expect(region()).toHaveAttribute('data-state', 'idle');
+    expect(within(region()).getByRole('button', { name: 'Начать запись' })).toBeEnabled();
+    await waitFor(() => expect(within(region()).getByRole('status')).toHaveTextContent('Сообщение отправлено'));
+    expect(ws.readyState).toBe(3); expect(sockets).toHaveLength(1);
+  }
 });
 
 it('inline: a click before the first transcript still finishes speech, even in a running chat', async () => {
@@ -137,12 +149,13 @@ it('inline: a click before the first transcript still finishes speech, even in a
   expect(submission(0)).toMatchObject({ path: '/agent/a/queue', text: 'only phrase', files: [] });
 });
 
-it.each(['inline', 'panel'] as const)('%s: unconfirmed last phrase leaves the visible draft and files; only a deliberate next action sends', async mode => {
+it.each([['inline', false], ['panel', false], ['panel', true]] as const)('%s (muted: %s): a failed finish retains the draft and files; only a deliberate next action sends', async (mode, muted) => {
   const { target, ws, file, accepted } = await mount(mode);
   act(() => ws.receive(phrase('review me', false)));
+  if (muted) { key(target, ' '); expect(region()).toHaveAttribute('data-state', 'muted'); }
   key(target, 'Enter'); await act(flush);
   await act(async () => {
-    if (mode === 'panel') { ws.receive({ type: 'phraseFailed', id: 'p', order: 0, reason: 'provider' }); ws.receive({ type: 'completed' }); }
+    if (mode === 'panel' && !muted) { ws.receive({ type: 'phraseFailed', id: 'p', order: 0, reason: 'provider' }); ws.receive({ type: 'completed' }); }
     else ws.drop();
   });
   expect(post).not.toHaveBeenCalled(); expect(accepted).not.toHaveBeenCalled();
@@ -154,7 +167,12 @@ it.each(['inline', 'panel'] as const)('%s: unconfirmed last phrase leaves the vi
   if (mode === 'inline') { const el = editor(); el.textContent = 'corrected'; fireEvent.input(el); }
   key(target, 'Enter'); await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
   expect(submission(0)).toMatchObject({ text: mode === 'inline' ? 'corrected' : 'review me', files: [file] });
-  if (mode === 'panel') expect(region()).toHaveAttribute('data-state', 'paused');
+  if (mode === 'panel') {
+    expect(region()).toHaveAttribute('data-state', 'idle');
+    expect(within(region()).getByRole('button', { name: 'Начать запись' })).toBeEnabled();
+    await waitFor(() => expect(within(region()).getByRole('status')).toHaveTextContent('Сообщение отправлено'));
+    expect(ws.readyState).toBe(3); expect(sockets).toHaveLength(1);
+  }
   expect(getUserMedia).toHaveBeenCalledOnce();
 });
 
@@ -170,25 +188,29 @@ it.each([true, false])('uncertain request (initially running: %s) keeps the endp
   key(region(), 'Enter'); await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
   expect(post).toHaveBeenCalledTimes(2); expect(submission(1)).toEqual(original);
   expect(ws.controls().filter(c => c.type === 'finish')).toHaveLength(1);
-  expect(region()).toHaveAttribute('data-state', 'paused'); expect(getUserMedia).toHaveBeenCalledOnce();
+  expect(region()).toHaveAttribute('data-state', 'idle'); expect(getUserMedia).toHaveBeenCalledOnce();
 });
 
-it.each(['navigate', 'readOnly'] as const)('%s during finish discards stale continuation and does not send to either chat', async transition => {
-  const { ws, accepted, view } = await mount('inline', { text: 'draft' });
+it.each([['inline', 'navigate'], ['inline', 'readOnly'], ['panel', 'navigate'], ['panel', 'readOnly']] as const)('%s: %s discards stale events and sends to neither chat', async (mode, transition) => {
+  const { target, ws, accepted, view } = await mount(mode, { text: 'draft' });
   const late = ws.onmessage!;
-  key(editor(), 'Enter'); await act(flush);
+  // Leave the dedicated panel muted; the inline run already has a pending send.
+  key(target, mode === 'panel' ? ' ' : 'Enter'); await act(flush);
+  if (mode === 'panel') expect(region()).toHaveAttribute('data-state', 'muted');
   view.rerender(<LiveComposer agentId={transition === 'navigate' ? 'b' : 'a'} readOnly={transition === 'readOnly'} running={false} onAccepted={accepted} />);
   await act(async () => { late({ data: JSON.stringify(phrase('wrong chat', true)) }); late({ data: JSON.stringify({ type: 'completed' }) }); });
   expect(post).not.toHaveBeenCalled(); expect(accepted).not.toHaveBeenCalled();
   expect(editor()).not.toHaveTextContent('wrong chat'); expect(streams[0].tracks[0].stopped).toBe(true);
+  expect(ws.readyState).toBe(3); expect(sockets).toHaveLength(1);
 });
 
-it.each(['inline', 'panel'] as const)('%s: send joins a stop or pause that is already finalizing', async mode => {
+it.each(['inline', 'panel'] as const)('%s: send joins an inline stop or explicitly finishes a connected mute', async mode => {
   const { entry, target, ws, accepted } = await mount(mode, { files: false });
   if (mode === 'panel') key(region(), ' '); else await userEvent.click(entry);
   await act(flush);
   expect(post).not.toHaveBeenCalled();
-  key(target, 'Enter'); key(target, 'Enter');
+  expect(ws.controls().map(c => c.type)).toEqual(mode === 'panel' ? ['start'] : ['start', 'finish']);
+  key(target, 'Enter'); key(target, 'Enter'); await act(flush);
   await act(async () => { ws.receive(phrase('last words', true)); ws.receive({ type: 'completed' }); });
   await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
   expect(ws.controls().map(c => c.type)).toEqual(['start', 'finish']);
@@ -199,5 +221,5 @@ it('finalizing silence with no draft or attachments does not create a request', 
   const { ws, accepted } = await mount('panel', { files: false });
   key(region(), 'Enter'); await act(flush);
   await act(async () => ws.receive({ type: 'completed' }));
-  expect(region()).toHaveAttribute('data-state', 'paused'); expect(post).not.toHaveBeenCalled(); expect(accepted).not.toHaveBeenCalled();
+  expect(region()).toHaveAttribute('data-state', 'idle'); expect(post).not.toHaveBeenCalled(); expect(accepted).not.toHaveBeenCalled();
 });

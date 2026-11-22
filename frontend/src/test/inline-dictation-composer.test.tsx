@@ -31,7 +31,7 @@ vi.mock('../hooks/useVoiceCapture', async () => {
       const f = fake.current; f.onPhrase = onPhrase; f.state = state; f.set = setState;
       return {
         support: { ok: true }, state, error: null, remainingMs: null, session: null, generation: f.generation,
-        start: f.start, finish: f.finish, cancel: f.cancel, pause: vi.fn(), resume: vi.fn(),
+        start: f.start, finish: f.finish, cancel: f.cancel, setMuted: vi.fn(),
       };
     },
   };

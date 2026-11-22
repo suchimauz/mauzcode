@@ -32,6 +32,14 @@ beforeAll(async () => {
 }, 20000);
 afterAll(async () => { await chrome?.stop(); });
 
+async function waitForTrace(description: string, condition: () => boolean) {
+  const deadline = Date.now() + 5000;
+  while (!condition()) {
+    if (Date.now() >= deadline) throw new Error(`Voice trace timed out: ${description}`);
+    await Bun.sleep(20);
+  }
+}
+
 // Compare all files (not merely known audio extensions) at persistence checkpoints, including uploads/blobs.
 async function files(dir: string): Promise<string[]> {
   const paths = await readdir(dir, { recursive: true });
@@ -70,6 +78,7 @@ for (const mode of ['inline', 'panel'] as const) test.skipIf(skipFixture)(`${mod
       if (url.pathname === '/favicon.ico') return new Response(null, { status: 204 });
       // Inert model-picker/context badges: never query a model catalogue or inference service.
       if (req.method === 'GET' && url.pathname === '/ui-lab-api/models') return Response.json({ agentId: agent.id, model: agent.model, label: 'Mock', icon: null, models: [], effort: { requested: 'auto', applied: 'auto', supported: [], mode: 'auto' } });
+      if (req.method === 'GET' && url.pathname === `${base}/codex-controls`) return Response.json({ route: agent.model, speeds: [], verbosities: [], noticePending: false });
       if (req.method === 'GET' && url.pathname === `/api/v1/agents/${agent.id}/context`) return Response.json({ budget: null });
       const queuePost = req.method === 'POST' && url.pathname === `${base}/queue`;
       if (!(queuePost || (req.method === 'GET' && (gets.has(url.pathname) || url.pathname === '/voice/session')))) {
@@ -86,11 +95,12 @@ for (const mode of ['inline', 'panel'] as const) test.skipIf(skipFixture)(`${mod
     expect(anonymous.status).toBe(401);
     const initialFiles = await files(dir);
     const rows = (sql: string) => ctx.fns.procs.db.select({ sql, params: [agent.id] });
-    const checkpoint = async (queued: string[] = []) => {
+    const checkpoint = async (queued?: string) => {
       expect(await rows('SELECT role FROM messages WHERE agent_id=?')).toEqual([]);
-      expect(await rows('SELECT text,status,files FROM agent_turn_queue WHERE agent_id=? ORDER BY sequence')).toEqual(queued.map(text => ({ text, status: 'pending', files: [] })));
+      const queuedFiles = [{ name: 'note.txt', type: expect.stringMatching(/^text\/plain(?:;|$)/), size: 7, data: Buffer.from('fixture').toString('base64') }];
+      expect(await rows('SELECT text,status,files FROM agent_turn_queue WHERE agent_id=? ORDER BY sequence')).toEqual(queued ? [{ text: queued, status: 'pending', files: queuedFiles }] : []);
       expect(await rows('SELECT id FROM attachments WHERE agent_id=?')).toEqual([]);
-      expect(posts).toBe(queued.length);
+      expect(posts).toBe(queued ? 1 : 0);
       expect(await files(dir)).toEqual(initialFiles);
     };
     const page = tab = await openVoiceTab(chrome!, KEY);
@@ -107,6 +117,13 @@ for (const mode of ['inline', 'panel'] as const) test.skipIf(skipFixture)(`${mod
       await page.evaluate(`${editor}.focus()`);
       await page.command('Input.insertText', { text: 'left right' });
       await page.evaluate(`getSelection().collapse(${editor}.firstChild, 5); ${editor}.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true,key:'ArrowLeft'}))`);
+    }
+    if (mode === 'panel') {
+      await page.evaluate(`${editor}.focus()`);
+      await page.command('Input.insertText', { text: 'Note:' });
+      await page.evaluate(`{ const input = document.querySelector('input[type=file]'); const dt = new DataTransfer();
+        dt.items.add(new File(['fixture'], 'note.txt', {type:'text/plain'})); input.files = dt.files;
+        input.dispatchEvent(new Event('change', {bubbles:true})); }`);
     }
     await page.evaluate(`${entry}.click()`);
     // Require non-silent PCM to travel through the actual capture path *before* scripting a transcript.
@@ -152,24 +169,59 @@ for (const mode of ['inline', 'panel'] as const) test.skipIf(skipFixture)(`${mod
       await page.wait(`${editor}.textContent === 'left middle last right' && ${entry}.getAttribute('aria-pressed') === 'false'`);
       await checkpoint();
     } else {
-      const toggle = `${panel}.querySelector('[aria-keyshortcuts="Space"]')`;
-      await page.evaluate(`${toggle}.click()`); await revise(first); await finish(first, 'first');
-      await page.wait(`${panel}.dataset.state === 'paused' && ${panel}.querySelector('.voice-panel-transcript').textContent === 'first'`);
-      await checkpoint();
-      await page.evaluate(`${toggle}.click()`);
-      const second = await audio(1);
-      // Two rapid explicit gestures must join the in-flight finalization, not queue twice.
+      const button = (label: string) => `${panel}.querySelector('[aria-label="${label}"]')`;
+      const transcript = `${panel}.querySelector('.voice-panel-transcript').textContent`;
+      const removeAttachment = button('Убрать note.txt');
+      const draft = (text: string, state: string) => page.wait(`${transcript} === ${JSON.stringify(text)} && ${removeAttachment} && ${panel}.dataset.state === '${state}'`);
+      const backspace = async (modifiers = 0) => {
+        await page.evaluate(`${panel}.focus()`);
+        for (const type of ['keyDown', 'keyUp']) await page.command('Input.dispatchKeyEvent', { type, key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, modifiers });
+      };
+      let closed = false;
+      void first.closed.then(() => { closed = true; });
+      const open = () => {
+        expect([page.sockets.length, upstream.connections.length, page.closedSockets(), closed]).toEqual([1, 1, 0, false]);
+      };
+      await draft('Note:', 'listening');
+      await page.evaluate(`${button('Выключить микрофон')}.click()`);
+      await page.wait(`${panel}.dataset.state === 'muted' && ${button('Включить микрофон')}`);
+      await page.evaluate(`window.dispatchEvent(new CustomEvent('fixture:marker', {detail:true}))`);
+      await revise(first); await finish(first, 'first second');
+      await draft('Note: first second', 'muted');
+      await page.wait(`${button('Удалить последнее слово')}`);
+      await backspace(); await draft('Note: first', 'muted');
+      await checkpoint(); open();
+      // Observe fresh wire frames, not elapsed wall time or the UI mute indicator.
+      const start = page.pcmFrames.length;
+      await waitForTrace('eight new muted frames', () => page.pcmFrames.length - start >= 8);
+      expect(page.pcmFrames.slice(start).every(frame => frame.every(sampleByte => sampleByte === 0))).toBe(true);
+      await page.evaluate(`window.dispatchEvent(new CustomEvent('fixture:marker', {detail:false}))`);
+      const offset = first.received.filter(p => p.type === 'input_audio_buffer.append').length;
+      await page.evaluate(`${button('Включить микрофон')}.click()`);
+      await tone(first, offset); await draft('Note: first', 'listening');
+      await backspace(2); await draft('Note:', 'listening');
+      await checkpoint(); open();
+      // Submit the very same file with the final text through the ordinary queue.
       await page.evaluate(`{ const send = ${panel}.querySelector('[aria-keyshortcuts="Enter"]'); send.click(); send.click(); }`);
-      await revise(second); await finish(second, 'last');
-      await page.wait(`document.body.dataset.accepted === '1' && ${panel}.dataset.state === 'paused'`);
-      await checkpoint(['first last']);
+      await revise(first, 2); await finish(first, 'last', 2);
+      await page.wait(`document.body.dataset.accepted === '1' && ${panel}.dataset.state === 'idle' && ${button('Начать запись')}`);
+      await checkpoint('Note: last');
+      // Search the complete trace, including frames queued around unmute, for the 2.4 kHz marker.
+      const marker = (pcm: Buffer) => {
+        let crossings = 0;
+        for (let i = 2; i < pcm.length; i += 2) if (pcm.readInt16LE(i - 2) <= 0 && pcm.readInt16LE(i) > 0) crossings++;
+        return crossings * 24000 / (pcm.length / 2) > 1500;
+      };
+      expect(page.pcmFrames.some(marker)).toBe(false);
+      expect(first.received.filter(p => p.type === 'input_audio_buffer.append').some(p => marker(Buffer.from(p.audio, 'base64')))).toBe(false);
     }
-    const count = mode === 'inline' ? 1 : 2;
-    expect(page.sockets).toEqual(Array(count).fill(origin.replace('http:', 'ws:') + '/voice/session'));
-    expect(page.frames.filter(f => f.sent && f.type !== 'pcm').map(f => f.type)).toEqual(Array.from({ length: count }, () => ['start', 'finish']).flat());
+    await first.closed;
+    await waitForTrace('browser socket close', () => page.closedSockets() === 1);
+    expect(page.sockets).toEqual([origin.replace('http:', 'ws:') + '/voice/session']);
+    expect(page.frames.filter(f => f.sent && f.type !== 'pcm').map(f => f.type)).toEqual(['start', 'finish']);
     expect(page.frames.some(f => f.sent && f.type === 'pcm')).toBe(true);
-    expect(page.frames.filter(f => !f.sent && f.type === 'completed')).toHaveLength(count);
-    expect(upstream.connections).toHaveLength(count);
+    expect(page.frames.filter(f => !f.sent && f.type === 'completed')).toHaveLength(1);
+    expect(upstream.connections).toHaveLength(1);
     await privacy(); expect(unexpected).toEqual([]);
   } finally { try { await tab?.close(); } finally { server?.stop(true); upstream.stop(); await rm(dir, { recursive: true, force: true }); } }
 }, 60000);

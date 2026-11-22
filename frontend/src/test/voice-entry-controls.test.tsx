@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { VoiceEntryControls, type VoiceEntryHandlers } from '../components/mauzcode/VoiceEntryControls';
+import { VoiceEntryControls, useVoiceEntryHub, type VoiceEntryHandlers } from '../components/mauzcode/VoiceEntryControls';
 import { LiveComposer } from '../components/mauzcode/LiveComposer';
 import { NewSessionComposer } from '../components/mauzcode/NewSessionComposer';
 import type { VoiceCapture } from '../hooks/useVoiceCapture';
@@ -137,6 +137,33 @@ describe('voice entry points in the input bar', () => {
     act(() => hook.onPhrase?.({ ...event, id: 'p2' }));
     expect(handlers.inline.onPhrase).toHaveBeenCalledWith({ ...event, id: 'p2' });
     expect(handlers.panel.onPhrase).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the panel as the sole phrase consumer and blocks inline entry across a connected mute', async () => {
+    serve(readyChat);
+    const handlers = { inline: handler(), panel: handler() };
+    function Controls({ state }: { state: VoiceCapture['state'] }) {
+      const hub = useVoiceEntryHub({ agentId: 'chat-1' });
+      return <VoiceEntryControls agentId="chat-1" handlers={handlers} hub={{ ...hub, capture: { ...hub.capture, state } }} />;
+    }
+    const view = render(<Controls state="idle" />);
+    const panel = await screen.findByRole('button', { name: PANEL });
+    const inline = screen.getByRole('button', { name: INLINE });
+    await waitFor(() => expect(panel).not.toHaveAttribute('aria-disabled'));
+    await userEvent.click(panel);
+    const states = ['listening', 'muted', 'listening'] as const;
+    for (const [revision, state] of states.entries()) {
+      view.rerender(<Controls state={state} />);
+      expect(panel).toHaveAttribute('aria-pressed', 'true');
+      expect(inline).toHaveAttribute('aria-disabled', 'true');
+      await userEvent.click(inline);
+      const event = { type: 'phrase' as const, generation: 1, id: 'p', order: 0, revision, text: `word ${revision}`, final: revision === 2 };
+      act(() => hook.onPhrase?.(event));
+      expect(handlers.panel.onPhrase).toHaveBeenLastCalledWith(event);
+    }
+    expect(handlers.panel.onActivate).toHaveBeenCalledOnce();
+    expect(handlers.inline.onPhrase).not.toHaveBeenCalled();
+    expect(handlers.inline.onActivate).not.toHaveBeenCalled();
   });
 
   it('a mode without a consumer is disabled with an explanation and never activates', async () => {
