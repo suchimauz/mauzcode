@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Circle, CircleCheck, CircleDot, ListChecks } from 'lucide-react';
+import { Circle, CircleCheck, CircleDot, ListChecks } from 'lucide-react';
 import { getTodos, type TodoList, type TodoStatus } from '../../lib/todos';
 import { subscribeLive } from '../../sdk/live';
-import './queue-dock.css';
+import { Dock, DockBadge, DockHeader } from './ComposerDock';
 import './todo-dock.css';
 
 const statusLabel: Record<TodoStatus, string> = { pending: 'Ожидает', active: 'В работе', done: 'Готово' };
@@ -10,7 +10,7 @@ const plural = (count: number) => count % 10 === 1 && count % 100 !== 11 ? 'за
 
 function Marker({ status }: { status: TodoStatus }) {
   const Icon = status === 'done' ? CircleCheck : status === 'active' ? CircleDot : Circle;
-  return <Icon size={14} className="todo-marker" data-status={status} aria-hidden="true" />;
+  return <Icon size={14} className="dock-row-marker todo-marker" data-status={status} aria-hidden="true" />;
 }
 
 /** Read-only dock with the open agent's own todos; refreshed only by live `todos`/`all` hints and resync. */
@@ -44,23 +44,20 @@ export function TodoDock({ agentId }: { agentId: string }) {
   if (!tasks.length || done === tasks.length) return null;
   const active = tasks.filter(task => task.status === 'active');
   const summary = active.length > 1 ? `В работе ${active.length} ${plural(active.length)}` : (active[0]?.title ?? tasks.find(task => task.status === 'pending')?.title ?? '');
-  return <section className="queue-dock todo-dock" aria-label="Задачи агента">
-    <button type="button" className="queue-header todo-header" aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded(value => !value)}>
-      <ListChecks size={16} className="queue-lead" aria-hidden="true" />
-      {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-      <span className="todo-summary">{summary}</span>
-      {todos?.paused && <span className="todo-paused">Пауза</span>}
-      <span className="todo-progress" aria-label={`Выполнено ${done} из ${tasks.length}`}>{done}/{tasks.length}</span>
-    </button>
-    {expanded && <div id={listId} className="todo-body">
+  return <Dock className="todo-dock" label="Задачи агента" expanded={expanded}>
+    <DockHeader icon={<ListChecks size={16} />} expanded={expanded} controls={listId} onToggle={() => setExpanded(value => !value)}
+      meta={<>{todos?.paused && <DockBadge>Пауза</DockBadge>}<span aria-label={`Выполнено ${done} из ${tasks.length}`}>{done}/{tasks.length}</span></>}>
+      {summary}
+    </DockHeader>
+    {expanded && <div id={listId} className="dock-body todo-body">
       {todos?.title && <p className="todo-title">{todos.title}</p>}
-      <ol className="queue-list todo-list">{tasks.map(task => <li key={task.id} className="queue-row todo-row" data-status={task.status}>
+      <ol className="dock-list">{tasks.map(task => <li key={task.id} className="dock-row todo-row" data-status={task.status}>
         <Marker status={task.status} />
         <span className="sr-only">{statusLabel[task.status]}: </span>
         {task.instructions
-          ? <details className="todo-details"><summary className="todo-text">{task.title}</summary><p>{task.instructions}</p></details>
-          : <span className="todo-text">{task.title}</span>}
+          ? <details className="dock-row-text todo-details"><summary className="todo-text">{task.title}</summary><p className="dock-row-secondary">{task.instructions}</p></details>
+          : <span className="dock-row-text todo-text">{task.title}</span>}
       </li>)}</ol>
     </div>}
-  </section>;
+  </Dock>;
 }

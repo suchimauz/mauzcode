@@ -39,11 +39,25 @@ it('shows the active todo with a counter and expands into the read-only list', a
   expect(screen.queryAllByRole('listitem')).toHaveLength(0);
 });
 
+it('stacks by the shell mark only, so an open nested todo detail never keeps the dock expanded', async () => {
+  vi.mocked(getTodos).mockResolvedValue(list(['done', 'done', 'active', 'pending']));
+  render(<TodoDock agentId="a" />);
+  const header = await screen.findByRole('button', { name: /Write tests/ });
+  const dock = screen.getByRole('region', { name: 'Задачи агента' });
+  expect(dock).not.toHaveAttribute('data-expanded');
+  fireEvent.click(header);
+  expect(dock).toHaveAttribute('data-expanded', 'true');
+  expect(header).toHaveAttribute('aria-controls', screen.getByRole('list').parentElement!.id);
+  (screen.getByText('Cover edge cases').closest('details') as HTMLDetailsElement).open = true;
+  fireEvent.click(header);
+  expect(dock).not.toHaveAttribute('data-expanded');
+});
+
 it('counts several active todos and marks a paused list', async () => {
   vi.mocked(getTodos).mockResolvedValue(list(['active', 'active', 'pending'], { paused: true }));
   render(<TodoDock agentId="a" />);
   expect(await screen.findByText('В работе 2 задачи')).toBeInTheDocument();
-  expect(screen.getByText('Пауза')).toBeInTheDocument();
+  expect(screen.getByText('Пауза')).toHaveClass('dock-badge');
 });
 
 it('refreshes on own todos/all hints and resync, never on team hints or other agents', async () => {

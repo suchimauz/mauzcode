@@ -1,0 +1,58 @@
+/* Shared anatomy of the panels stacked above the composer: shell, header, meta, badge, body rows, notice. */
+.dock { position: relative; margin: 0 16px -1px; padding: 2px 0; border: 0; border-radius: 16px 16px 0 0; background: var(--surface); color: var(--text); overflow: hidden; }
+.dock::after { content: ''; position: absolute; inset: 0; border: .5px solid var(--line); border-bottom: none; border-radius: inherit; pointer-events: none; }
+/* Stacked docks read as one card: only the first keeps rounded corners; later ones join it with a single divider. */
+.dock + .dock { border-radius: 0; }
+/* A dock expanded through its disclosure stands apart: tinted surface, its own rounded top, and a gap before it.
+   Only the shell's explicit mark counts, so nested disclosures and always-open bodies never change the stack. */
+/* --surface-raised equals --surface in light theme; mix in the hover tint so both themes show the lift. */
+.dock[data-expanded="true"] { background: color-mix(in srgb, var(--hover-solid) 55%, var(--surface)); }
+.dock + .dock[data-expanded="true"] { margin-top: 6px; border-radius: 16px 16px 0 0; }
+.dock[data-expanded="true"] + .dock { margin-top: 6px; border-radius: 16px 16px 0 0; }
+/* A dock separated from the next one by that gap is a closed card: bottom edge and rounded bottom corners. */
+.dock:has(+ .dock[data-expanded="true"]), .dock[data-expanded="true"]:has(+ .dock) { margin-bottom: 0; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
+.dock:has(+ .dock[data-expanded="true"])::after, .dock[data-expanded="true"]:has(+ .dock)::after { border-bottom: .5px solid var(--line); }
+
+/* Header: one disclosure button (icon, chevron, summary, meta) and sibling actions. */
+.dock-header { display: flex; align-items: center; min-height: 36px; }
+.dock-toggle { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 6px 12px; box-sizing: border-box; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dock-toggle--static { cursor: default; }
+.dock-toggle:is(button):hover:not(:disabled) { background: var(--surface-raised); }
+.dock-toggle:disabled { cursor: default; }
+.dock-lead { display: inline-flex; flex: none; color: var(--text-caption); }
+.dock-chevron { flex: none; color: var(--text-secondary); }
+.dock-chevron--empty { width: 14px; }
+.dock-summary { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 24px; font-weight: 500; }
+.dock-meta { display: flex; align-items: center; flex: none; gap: 6px; font-size: 12px; line-height: 20px; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--text-caption); white-space: nowrap; }
+.dock-actions { display: flex; align-items: center; flex: none; gap: var(--space-1); padding-right: 5px; }
+.dock-badge { display: inline-flex; align-items: center; gap: 4px; flex: none; box-sizing: border-box; height: 20px; padding: 0 7px; border: .5px solid var(--line); border-radius: 999px; font-size: 12px; line-height: 19px; font-weight: 400; color: var(--text-secondary); white-space: nowrap; }
+
+/* Body: hairline under the header, one shared scroll cap, uniform rows. */
+.dock-body { margin: 0; padding: 0; max-height: var(--dock-body-max, min(220px, 30vh)); overflow-y: auto; box-shadow: inset 0 1px var(--line); }
+.dock-list { list-style: none; margin: 0; padding: 0; }
+.dock-row { display: flex; align-items: flex-start; gap: 10px; min-height: 36px; padding: 8px 12px; box-sizing: border-box; }
+.dock-row + .dock-row { box-shadow: inset 0 1px var(--line); }
+/* Leading 14px markers sit on the first 20px text line. */
+.dock-row-marker { flex: none; margin-top: 3px; color: var(--text-caption); }
+.dock-row-text { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
+.dock-row-secondary { font-size: 12px; line-height: 18px; color: var(--text-secondary); overflow-wrap: anywhere; }
+/* Compact row actions are centred on the first text line without growing the row. */
+.dock-row-actions { display: flex; align-items: center; flex: none; gap: var(--space-1); margin: -4px -7px -4px 0; }
+
+/* Notice: one line at the bottom, errors as alerts, information as status. */
+.dock-notice { margin: 0; padding: 6px 12px; font-size: 12px; line-height: 18px; color: var(--text-secondary); box-shadow: inset 0 1px var(--line); overflow-wrap: anywhere; }
+.dock-notice-action { margin-left: 8px; padding: 0; color: inherit; background: transparent; border: 0; font: inherit; text-decoration: underline; cursor: pointer; }
+.dock-notice-action:disabled { cursor: default; opacity: .6; }
+
+.dock button:focus-visible, .dock summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+@media (pointer: coarse) {
+  .dock-header, .dock-toggle { min-height: 44px; }
+  .dock-row:has(.dock-row-actions) { padding-block: 12px; }
+  .dock-row-actions { margin-block: -12px; }
+}
+
+/* Inline text inputs inside dock bodies (queue editor, goal form). */
+.dock-input { min-width: 0; box-sizing: border-box; height: 32px; min-height: 32px; padding: 3px 12px; resize: none; overflow-y: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--input-bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; transition: border-color var(--duration-feedback); }
+.dock-input:focus, .dock-input:focus-visible { outline: none; border-color: var(--text-muted); }
+.dock-input::placeholder { color: var(--text-muted); }
+@media (pointer: coarse) { .dock-input { font-size: 16px; } }

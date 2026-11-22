@@ -26,7 +26,7 @@ it('shows only positive kind counts in wake, cron, watch order and expands by ke
   ]));
   render(<TriggerDock agentId="a" />);
   const header = await screen.findByRole('button', { name: 'Триггеры — Разовый: 2, Расписание: 1, Условие: 3' });
-  expect([...header.querySelectorAll('.trigger-count')].map(node => node.textContent)).toEqual(['Разовый2', 'Расписание1', 'Условие3']);
+  expect([...header.querySelectorAll('.dock-badge')].map(node => node.textContent)).toEqual(['Разовый2', 'Расписание1', 'Условие3']);
   expect(header).toHaveAttribute('aria-expanded', 'false');
   header.focus(); fireEvent.keyDown(header, { key: 'Enter' }); fireEvent.click(header);
   expect(header).toHaveAttribute('aria-expanded', 'true');

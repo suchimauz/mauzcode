@@ -1,16 +1,7 @@
-.trigger-dock .trigger-header { gap: 8px; height: auto; min-height: 36px; flex-wrap: wrap; }
-.trigger-dock .trigger-header .trigger-title { flex: 0 0 auto; }
-.trigger-dock .trigger-header .trigger-counts { flex: 1 1 auto; display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 4px 6px; min-width: 0; font-weight: 400; }
-/* `.queue-header span` stretches every span; counts stay compact chips grouped next to the title. */
-.trigger-dock .trigger-header .trigger-count { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 0 7px; border: .5px solid var(--line); border-radius: 999px; font-size: 12px; line-height: 20px; color: var(--text-secondary); white-space: nowrap; }
-.trigger-dock .trigger-count b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
-.trigger-dock .trigger-header .trigger-stale { flex: none; font-size: 12px; font-weight: 400; color: var(--text-caption); }
-.trigger-list { box-shadow: inset 0 1px var(--line); max-height: min(220px, 30vh); }
-.trigger-row { align-items: flex-start; }
-.trigger-kind-icon { flex: none; margin-top: 3px; color: var(--text-caption); }
+.trigger-counts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; min-width: 0; }
+.trigger-count b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
 .trigger-row[data-status="checking"] .trigger-kind-icon { color: var(--success); }
-.trigger-text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
-.trigger-purpose { font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
-.trigger-meta { font-size: 12px; line-height: 18px; color: var(--text-secondary); overflow-wrap: anywhere; }
-.trigger-notice { margin: 0; padding: 6px 12px; font-size: 12px; line-height: 18px; color: var(--text-secondary); box-shadow: inset 0 1px var(--line); }
-.trigger-notice button { margin-left: 8px; color: inherit; background: transparent; border: 0; text-decoration: underline; cursor: pointer; }
+.trigger-text { display: flex; flex-direction: column; }
+/* Kind badges may wrap under a narrow width; the title keeps its natural size. */
+.trigger-dock .dock-summary { flex: 0 0 auto; }
+.trigger-dock .dock-meta { flex: 1 1 auto; justify-content: flex-end; min-width: 0; white-space: normal; }

@@ -13,10 +13,16 @@ function queue(items = [row]) { return { waitingForInput: false, items, sending:
 it('shows one row immediately, collapses multiple rows, and locks collapse during editing', async () => {
   const q = queue(); const view = render(<QueueDock queue={q} running />);
   expect(screen.getByText('First message')).toBeVisible(); expect(screen.queryByRole('button', { name: /В очереди/ })).toBeNull();
+  // One message: static header with the count, no disclosure, and the dock joins the stack as collapsed.
+  expect(screen.getByText('В очереди: 1')).toBeVisible();
+  expect(screen.getByRole('region', { name: 'Очередь сообщений' })).not.toHaveAttribute('data-expanded');
+  expect(view.container.querySelector('[aria-expanded]')).toBeNull();
   view.rerender(<QueueDock queue={{ ...q, items: [row, { ...row, id: 'two', text: 'Second' }] }} running />);
   expect(screen.queryByText('First message')).toBeNull(); fireEvent.click(screen.getByRole('button', { name: /В очереди/ }));
   fireEvent.click(screen.getAllByRole('button', { name: 'Редактировать сообщение' })[0]);
   expect(screen.getByRole('button', { name: /В очереди/ })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /В очереди/ })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('region', { name: 'Очередь сообщений' })).toHaveAttribute('data-expanded', 'true');
   const editor = screen.getByRole('textbox'); fireEvent.change(editor, { target: { value: 'Changed' } }); fireEvent.keyDown(editor, { key: 'Enter' });
   await waitFor(() => expect(q.perform).toHaveBeenCalledWith([row], 'edit', 'Changed'));
   await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull());

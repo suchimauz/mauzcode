@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { AlarmClock, ChevronDown, ChevronRight, Eye, Play, Repeat, Search, X } from 'lucide-react';
+import { AlarmClock, Eye, Play, Repeat, Search, X } from 'lucide-react';
 import { getArmedTriggers, kindLabel, outcomeMessage, postTriggerAction, type ArmedTrigger, type ArmedTriggerSnapshot, type TriggerKind } from '../../lib/triggers';
 import { subscribeLive } from '../../sdk/live';
 import { IconButton } from '../ui/IconButton';
-import './queue-dock.css';
+import { Dock, DockBadge, DockHeader, DockNotice } from './ComposerDock';
 import './trigger-dock.css';
 
 const order: TriggerKind[] = ['at', 'cron', 'watch'];
@@ -81,30 +81,31 @@ export function TriggerDock({ agentId }: { agentId: string }) {
   if (!triggers.length && !notice) return null;
   const counts = order.map(kind => ({ kind, count: triggers.filter(trigger => trigger.kind === kind).length })).filter(group => group.count > 0);
   const summary = counts.map(group => `${kindLabel[group.kind]}: ${group.count}`).join(', ');
-  return <section className="queue-dock trigger-dock" aria-label="Триггеры агента">
-    {triggers.length > 0 && <button type="button" className="queue-header trigger-header" aria-expanded={expanded} aria-controls={listId} aria-label={`Триггеры — ${summary}${stale ? ', данные могут быть устаревшими' : ''}`} onClick={() => setExpanded(value => !value)}>
-      <AlarmClock size={16} className="queue-lead" aria-hidden="true" />
-      {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-      <span className="trigger-title">Триггеры</span>
-      <span className="trigger-counts" aria-hidden="true">{counts.map(group => { const Icon = KindIcon[group.kind]; return <span key={group.kind} className="trigger-count" data-kind={group.kind}><Icon size={13} />{kindLabel[group.kind]}<b>{group.count}</b></span>; })}</span>
-      {stale && <span className="trigger-stale" aria-hidden="true">устарело?</span>}
-    </button>}
-    {expanded && triggers.length > 0 && <ol id={listId} className="queue-list trigger-list">{triggers.map(trigger => {
+  return <Dock className="trigger-dock" label="Триггеры агента" expanded={expanded && triggers.length > 0}>
+    {triggers.length > 0 && <DockHeader icon={<AlarmClock size={16} />} expanded={expanded} controls={listId} onToggle={() => setExpanded(value => !value)}
+      label={`Триггеры — ${summary}${stale ? ', данные могут быть устаревшими' : ''}`}
+      meta={<>
+        <span className="trigger-counts" aria-hidden="true">{counts.map(group => { const Icon = KindIcon[group.kind]; return <DockBadge key={group.kind} className="trigger-count" data-kind={group.kind}><Icon size={13} />{kindLabel[group.kind]}<b>{group.count}</b></DockBadge>; })}</span>
+        {stale && <span aria-hidden="true">устарело?</span>}
+      </>}>
+      Триггеры
+    </DockHeader>}
+    {expanded && triggers.length > 0 && <ol id={listId} className="dock-body dock-list">{triggers.map(trigger => {
       const Icon = KindIcon[trigger.kind];
       const busy = pending[trigger.id];
       const runLabel = trigger.kind === 'watch' ? 'Проверить сейчас' : 'Запустить сейчас';
-      return <li key={trigger.id} className="queue-row trigger-row" data-kind={trigger.kind} data-status={trigger.status}>
-        <Icon size={14} className="trigger-kind-icon" aria-hidden="true" />
-        <div className="trigger-text">
-          <span className="trigger-purpose" title={trigger.purpose}><span className="sr-only">{kindLabel[trigger.kind]}: </span>{trigger.purpose || 'Без описания'}</span>
-          <span className="trigger-meta">{[kindLabel[trigger.kind], timeLabel(trigger), trigger.kind === 'cron' && trigger.cronExpression ? `${trigger.cronExpression}${trigger.timezone ? ` · ${trigger.timezone}` : ''}` : '', trigger.kind === 'watch' && trigger.mode === 'edge' ? 'при каждом переходе' : ''].filter(Boolean).join(' · ')}</span>
+      return <li key={trigger.id} className="dock-row trigger-row" data-kind={trigger.kind} data-status={trigger.status}>
+        <Icon size={14} className="dock-row-marker trigger-kind-icon" aria-hidden="true" />
+        <div className="dock-row-text trigger-text">
+          <span title={trigger.purpose}><span className="sr-only">{kindLabel[trigger.kind]}: </span>{trigger.purpose || 'Без описания'}</span>
+          <span className="dock-row-secondary">{[kindLabel[trigger.kind], timeLabel(trigger), trigger.kind === 'cron' && trigger.cronExpression ? `${trigger.cronExpression}${trigger.timezone ? ` · ${trigger.timezone}` : ''}` : '', trigger.kind === 'watch' && trigger.mode === 'edge' ? 'при каждом переходе' : ''].filter(Boolean).join(' · ')}</span>
         </div>
-        <div className="queue-actions">
+        <div className="dock-row-actions">
           <IconButton size="compact" label={`${runLabel}: ${trigger.purpose}`} tooltip={runLabel} disabled={!!busy || trigger.status === 'checking'} onClick={() => void act(trigger, 'run')}>{trigger.kind === 'watch' ? <Search size={15} /> : <Play size={15} />}</IconButton>
           <IconButton size="compact" label={`Отменить триггер: ${trigger.purpose}`} tooltip="Отменить" disabled={!!busy} onClick={() => void act(trigger, 'cancel')}><X size={15} /></IconButton>
         </div>
       </li>;
     })}</ol>}
-    {notice && <p role="status" className="trigger-notice">{notice}{!triggers.length && <button type="button" onClick={() => setNotice('')}>Скрыть</button>}</p>}
-  </section>;
+    {notice && <DockNotice tone="info" action={!triggers.length ? { label: 'Скрыть', onClick: () => setNotice('') } : undefined}>{notice}</DockNotice>}
+  </Dock>;
 }

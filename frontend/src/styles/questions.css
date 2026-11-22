@@ -50,10 +50,10 @@
 .question-composer-stack { position:relative; min-width:0; }
 .question-pet-perch { height:0; z-index:1; pointer-events:none; }
 .question-composer-stack.has-question .question-pet-perch,
-.question-composer-stack:has(.queue-dock) .question-pet-perch { margin-inline:16px; }
-.question-composer-stack.has-question .queue-list { max-height:min(15dvh, 120px); }
+.question-composer-stack:has(.dock) .question-pet-perch { margin-inline:16px; }
+.question-composer-stack.has-question { --dock-body-max:min(15dvh, 120px); }
 /* Queue continues the question's side edges, not a second floating rounded card. */
-.question-composer-stack.has-question .queue-dock { border-radius:0; }
+.question-composer-stack.has-question .dock { border-radius:0; }
 @media(max-width:600px) {
   .question-header { padding-inline:16px; }
   .question-card h2 { margin-inline:16px; }
@@ -62,7 +62,7 @@
 }
 @media(max-height:650px) {
   .question-composer-stack.has-question .question-card { max-height:34dvh; }
-  .question-composer-stack.has-question .queue-list { max-height:10dvh; }
+  .question-composer-stack.has-question { --dock-body-max:10dvh; }
 }
 
 /* One native button covers the collapsed strip; no nested interactive copy. */

@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { CornerDownLeft, ChevronDown, ChevronRight, Pause, Pencil, Play, Target } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { CornerDownLeft, Pause, Pencil, Play, Target } from 'lucide-react';
 import { changeGoal, getGoal, goalStatus, type GoalAction, type GoalSnapshot } from '../../lib/goal';
 import { Button } from '../ui/Button';
 import { useAutoGrow } from '../../hooks/useAutoGrow';
 import { IconButton } from '../ui/IconButton';
-import './queue-dock.css';
+import { Dock, DockHeader, DockNotice } from './ComposerDock';
 import './goal-dock.css';
 
 export function GoalDock(props: GoalDockProps) {
@@ -23,6 +23,7 @@ function AgentGoalDock({ agentId, running, disabled, editor, onClose, onAccepted
   const [busy, setBusy] = useState(false);
   const locked = useRef(false);
   const objectiveInput = useRef<HTMLTextAreaElement>(null);
+  const bodyId = useId(), statusId = useId();
   useAutoGrow(objectiveInput, editing ? objective : '');
   const refresh = useRef<(force?: boolean) => Promise<void>>(async () => {});
   useEffect(() => {
@@ -54,16 +55,18 @@ function AgentGoalDock({ agentId, running, disabled, editor, onClose, onAccepted
     finally { locked.current = false; setBusy(false); await refresh.current(true); }
   };
   if (!goal && !editor && !editing) return null;
-  return <section className="queue-dock goal-dock" aria-label="Цель агента">
-    <div className="queue-row">
-      <Target size={16} className="queue-lead" />
-      <button type="button" className="goal-summary" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}<span className="queue-preview">{goal?.objective || 'Новая цель'}</span></button>
-      <div className="goal-actions">
-        {goal && <span className="goal-status-dot" data-status={goal.status} role="status" aria-label={goalStatus[goal.status]} title={goalStatus[goal.status]} />}
-        {goal && <IconButton size="compact" label="Редактировать цель" tooltip="Редактировать цель" disabled={disabled || busy} onClick={() => { setObjective(goal.objective); setBudget(goal.tokenBudget?.toString() || ''); setEditing(true); setExpanded(true); }}><Pencil size={16} /></IconButton>}
-        {goal && goal.status !== 'complete' && <IconButton size="compact" label={goal.status === 'active' ? 'Приостановить цель' : 'Продолжить цель'} tooltip={goal.status === 'active' ? 'Приостановить цель' : 'Продолжить цель'} disabled={disabled || busy || (goal.status !== 'active' && (running || !!snapshot?.owner?.runToken))} onClick={() => void perform(goal.status === 'active' ? 'pause' : 'resume')}>{goal.status === 'active' ? <Pause size={16} /> : <Play size={16} />}</IconButton>}
-      </div>
-    </div>
+  // Editing forces the body open; the disclosure then shows as expanded and cannot collapse the form.
+  const open = expanded || editing;
+  return <Dock className="goal-dock" label="Цель агента" expanded={open}>
+    <DockHeader icon={<Target size={16} />} expanded={open} disabled={editing} controls={bodyId} describedBy={goal ? statusId : undefined} onToggle={() => setExpanded(value => !value)}
+      actions={goal && <>
+        <span id={statusId} className="goal-status-dot" data-status={goal.status} role="status" aria-label={goalStatus[goal.status]} title={goalStatus[goal.status]} />
+        <IconButton size="compact" label="Редактировать цель" tooltip="Редактировать цель" disabled={disabled || busy} onClick={() => { setObjective(goal.objective); setBudget(goal.tokenBudget?.toString() || ''); setEditing(true); setExpanded(true); }}><Pencil size={16} /></IconButton>
+        {goal.status !== 'complete' && <IconButton size="compact" label={goal.status === 'active' ? 'Приостановить цель' : 'Продолжить цель'} tooltip={goal.status === 'active' ? 'Приостановить цель' : 'Продолжить цель'} disabled={disabled || busy || (goal.status !== 'active' && (running || !!snapshot?.owner?.runToken))} onClick={() => void perform(goal.status === 'active' ? 'pause' : 'resume')}>{goal.status === 'active' ? <Pause size={16} /> : <Play size={16} />}</IconButton>}
+      </>}>
+      {goal?.objective || 'Новая цель'}
+    </DockHeader>
+    {open && <div id={bodyId} className="dock-body">
     {expanded && goal && !editing && <div className="goal-details"><p>{goal.objective}</p><span>Токены: {goal.tokensUsed.toLocaleString('ru-RU')}{goal.tokenBudget === null ? ' · без лимита' : ` / ${goal.tokenBudget.toLocaleString('ru-RU')}`} · Время: {Math.floor(goal.timeUsedSeconds / 60)} мин</span></div>}
     {expanded && goal && !editing && (idle
       ? <GoalRemoval key={`${goal.goalId}:${goal.revision}`} objective={goal.objective} disabled={disabled || busy} onConfirm={() => void perform('clear')} />
@@ -74,14 +77,15 @@ function AgentGoalDock({ agentId, running, disabled, editor, onClose, onAccepted
       if (event.key !== 'Enter' || event.shiftKey || event.target instanceof HTMLButtonElement) return;
       event.preventDefault(); event.currentTarget.requestSubmit();
     }}>
-      <label>Цель<textarea ref={objectiveInput} rows={1} autoFocus className="queue-editor" value={objective} onChange={event => setObjective(event.target.value)} disabled={busy || disabled} /></label>
-      <label>Бюджет токенов<input className="queue-editor" type="number" min="1" step="1" placeholder="Без лимита" value={budget} onChange={event => setBudget(event.target.value)} disabled={busy || disabled} /></label>
+      <label>Цель<textarea ref={objectiveInput} rows={1} autoFocus className="dock-input" value={objective} onChange={event => setObjective(event.target.value)} disabled={busy || disabled} /></label>
+      <label>Бюджет токенов<input className="dock-input" type="number" min="1" step="1" placeholder="Без лимита" value={budget} onChange={event => setBudget(event.target.value)} disabled={busy || disabled} /></label>
       {!snapshot?.enabled && <span role="status">{snapshot ? 'Goal отключён на сервере.' : 'Загрузка цели…'}</span>}
       {!goal && <span>Цель будет сохранена на паузе. Нажмите «Продолжить цель», чтобы запустить.</span>}
       <div className="goal-form-actions"><Button size="compact" variant="secondary" disabled={busy} onClick={close}>Отмена</Button><Button size="compact" variant="primary" type="submit" aria-label="Сохранить цель" disabled={disabled || busy || !snapshot?.enabled || !objective.trim()}>Enter <CornerDownLeft size={14} aria-hidden="true" /></Button></div>
     </form>}
-    {error && <div className="queue-error" role="alert">{error} <button type="button" disabled={busy} onClick={() => { setError(''); void refresh.current(); }}>Обновить цель</button></div>}
-  </section>;
+    </div>}
+    {error && <DockNotice tone="error" action={{ label: 'Обновить цель', disabled: busy, onClick: () => { setError(''); void refresh.current(); } }}>{error}</DockNotice>}
+  </Dock>;
 }
 
 function GoalRemoval({ objective, disabled, onConfirm }: { objective: string; disabled: boolean; onConfirm: () => void }) {

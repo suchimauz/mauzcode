@@ -14,6 +14,22 @@ it('shows the goal and expands accounting; pauses the displayed snapshot', async
   fireEvent.click(screen.getByRole('button', { name: 'Приостановить цель' }));
   await waitFor(() => expect(changeGoal).toHaveBeenCalledWith('a', snapshot, 'pause', undefined));
 });
+it('uses one header disclosure with sibling actions and a described status dot', async () => {
+  vi.mocked(getGoal).mockResolvedValue(snapshot); vi.mocked(changeGoal).mockResolvedValue({});
+  render(<GoalDock {...props} />);
+  const header = await screen.findByRole('button', { name: 'Проверить проект' });
+  const status = screen.getByRole('status', { name: 'В работе' });
+  expect(header).not.toContainElement(status);
+  expect(header).toHaveAttribute('aria-describedby', status.id);
+  expect(header).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(screen.getByRole('button', { name: 'Приостановить цель' }));
+  await waitFor(() => expect(changeGoal).toHaveBeenCalled());
+  expect(header).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(screen.getByRole('button', { name: 'Редактировать цель' }));
+  expect(screen.getByLabelText('Цель')).toBeInTheDocument();
+  expect(header).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('region', { name: 'Цель агента' })).toHaveAttribute('data-expanded', 'true');
+});
 it('creates a paused goal through the existing API with an explicit budget', async () => {
   const empty = { ...snapshot, goal: null }; vi.mocked(getGoal).mockResolvedValue(empty);
   render(<GoalDock {...props} editor={{ text: 'Новая задача' }} />);
