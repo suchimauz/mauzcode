@@ -7,7 +7,7 @@ test('/trigger is a catalogued human request: bare and argument forms, replay, c
     expect((await ctx.fns.commands.list({})).map((c: any) => c.name)).toEqual(['plan', 'compact', 'trigger']);
     expect(await ctx.fns.commands.parse({ text: '/trigger' })).toEqual({ name: 'trigger', args: '' });
     expect(await ctx.fns.commands.parse({ text: '/trigger  in 20 minutes check the build ' })).toEqual({ name: 'trigger', args: 'in 20 minutes check the build' });
-    expect(await ctx.fns.commands.parse({ text: '/plan off' })).toEqual({ name: 'plan', mode: 'execute', task: '' });
+    expect(await ctx.fns.commands.parse({ text: '/plan off' })).toEqual({ name: 'plan', args: 'off' });
     await ctx.fns.procs.db.run({ sql: "INSERT INTO agent_planning(agent_id,mode,revision,proposal,updated_at) VALUES (?,'plan',2,'{\"status\":\"pending\"}'::jsonb,?)", params: [agent.id, Date.now()] });
     const first = await ctx.fns.commands.dispatch({ agentId: agent.id, text: '/trigger in 20 minutes check the build', requestId: 'k' });
     expect(first).toMatchObject({ ok: true, command: 'trigger', scheduled: true });

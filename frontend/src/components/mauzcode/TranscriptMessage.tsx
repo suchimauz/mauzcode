@@ -69,6 +69,7 @@ export function TranscriptMessage({ event, agentId, latestIdx }: { event: ChatEv
         {event.author && !event.author.id.startsWith('agent:') && event.navigationEligible !== false && <HumanAuthor author={event.author} />}
         {attachments}
         {!!displayText && <div className="user-message-bubble">{command ? <>{command.prefix}<span className="user-command-token">{command.token}</span>{command.suffix}</> : displayText}</div>}
+        {command && event.command?.kind === 'prompt' && event.text && <div className="user-message-bubble">{event.text}</div>}
       </div>
       <div className="user-message-actions">
         {hasTime && <time dateTime={date.toISOString()} title={date.toLocaleString()}>{date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</time>}

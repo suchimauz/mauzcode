@@ -14,7 +14,7 @@ function ui(running = false, readOnly = false) {
 it('places active Plan in the status row above the input, with no review card or duplicate planning fetch; exits via commands', async () => {
   let exited = false;
   const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === '/commands') return json({ version: 1, commands: [], csrfToken: 'token' });
+    if (url === '/commands?version=2&agentId=a') return json({ version: 2, sections: [], commands: [], csrfToken: 'token' });
     if (init?.method === 'POST') { exited = true; return json({ ok: true, status: 'completed' }); }
     if (url.endsWith('/planning')) return json({ ...state, mode: exited ? 'execute' : 'plan' });
     return json({ budget: null });
@@ -38,7 +38,7 @@ it.each([[true, false], [false, true]])('locks mode exit when running=%s readOnl
   vi.stubGlobal('fetch', fetcher); render(ui(running, readOnly));
   const badge = await screen.findByRole('button', { name: 'Plan — выйти из режима планирования' });
   expect(badge).toBeDisabled(); await userEvent.click(badge);
-  expect(fetcher.mock.calls.every(([url]) => url !== '/commands')).toBe(true);
+  expect(fetcher.mock.calls.every(([url]) => !url.startsWith('/commands?'))).toBe(true);
 });
 it('retains both real proposal review actions while the footer shows Plan', async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => json(url.endsWith('/planning') ? { ...state, proposal: { id: 'p', inputId: 'i', plan: 'Real plan', status: 'pending', createdAt: 1 } } : { budget: null })));

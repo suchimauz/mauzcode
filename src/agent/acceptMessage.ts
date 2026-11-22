@@ -51,7 +51,7 @@ export default async function (
         if (!text && files.length === 0) return Response.json({ error: "empty input" }, { status: 400 });
         // Commands are control-plane input: toggles never enter the transcript or schedule inference.
         try {
-            const command = text.startsWith('/') ? await ctx.fns.commands.parse({ text }) : null;
+            const command = text.startsWith('/') ? await ctx.fns.commands.parse({ text, agentId: id }) : null;
             if (command) {
                 if (files.length) return Response.json({ error: 'command_attachments', message: 'Commands do not accept attachments' }, { status: 400 });
                 await ctx.fns.projects.principal({});

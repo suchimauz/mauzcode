@@ -63,8 +63,15 @@ export default async function (ctx: Context, _session: Session | null, _opts?: {
             // lose its edges, an edited one must gain the new ones. Best-effort
             // — an index that cannot update is not a reason to stop reloading.
             await ctx.fns.code.index({ rel }).catch(() => {});
-            if (!exists) { errors.delete(rel); needTypes = true; continue; } // deleted: types only, fn stays in memory
             try {
+                if (!exists) {
+                    // mauzcode: remove source-owned command declarations on unlink, without importing a missing file.
+                    if (['command','commandKind','commandSection'].includes(entry.kind) && isLoaded(ctx, entry.kind)) {
+                        await collectStateFile(ctx, {...entry, removed:true}, srcDir + '/' + rel);
+                        needReload = true;
+                    }
+                    errors.delete(rel); needTypes = true; continue;
+                }
                 if (entry.kind === 'fn') {
                     await ctx.fns.procs.repl.load({ name: dottedName(entry) });
                     needTypes = true;

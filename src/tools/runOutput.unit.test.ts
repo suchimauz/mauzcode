@@ -4,6 +4,7 @@ import appendRunOutput from './appendRunOutput';
 import endRun from './endRun';
 import runs from './runs';
 import authorizeRunRead from './authorizeRunRead';
+import iconKeys from '../ui/iconKeys';
 import presentation from './presentation';
 import summaryTemplate from './summaryTemplate';
 import summaryFormat from './summaryFormat';
@@ -23,6 +24,7 @@ function fixture(owners: Record<string, string | null> = { a: 'u1', b: 'u2' }, u
     const refreshes: string[] = [];
     const ctx: any = { state: { tools: { registry: new Map([bash, plugin, evalTool].map(t => [t.key, t])) } }, fns: {} };
     const bind = (fn: any) => (o: any) => fn(ctx, null, o);
+    ctx.fns.ui = { iconKeys: bind(iconKeys) };
     ctx.fns.tools = {
         beginRun: bind(beginRun), appendRunOutput: bind(appendRunOutput), endRun: bind(endRun), runs: bind(runs),
         authorizeRunRead: bind(authorizeRunRead), presentation: bind(presentation), summaryTemplate: bind(summaryTemplate),

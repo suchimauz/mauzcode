@@ -9,6 +9,11 @@ import type { ChatEvent } from '../lib/mauzcode';
 const start: ChatEvent = { idx: 1, ts: 10, type: 'command_invocation', commandName: 'plan', commandText: '/plan', operationId: 'op1', requestId: 'r1', status: 'running', text: '/plan' };
 const end: ChatEvent = { ...start, idx: 3, ts: 30, type: 'command_result', status: 'completed', text: 'Planning mode enabled' };
 describe('real command events', () => {
+  it('shows the typed prompt above its expansion as plain human text', () => {
+    const event: ChatEvent = { idx: 1, ts: 10, type: 'user', text: 'Review <b>this</b>', command: { name: 'project:review', kind: 'prompt', text: '/project:review this' } };
+    const {container} = render(<TranscriptMessage agentId="a" event={event} />);
+    expect([...container.querySelectorAll('.user-message-bubble')].map(node => node.textContent)).toEqual(['/project:review this', 'Review <b>this</b>']);
+  });
   it('pairs operation IDs, preserving original index and unrelated commands', () => {
     const other = { ...start, idx: 2, operationId: 'op2' };
     expect(coalesceCommands([start, other, end])).toEqual([{ ...end, idx: 1, ts: 10 }, other]);

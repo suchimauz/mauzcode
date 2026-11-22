@@ -27,14 +27,17 @@ This protects the normal product workflow, not against arbitrary code running wi
 
 ## HTTP contract
 
-- `GET /commands` → `{version:1, commands:[{name,description,inputHint,attachments,usage}], csrfToken}`.
+- `GET /commands?version=2&agentId=:id` → `{version:2, sections:[{id,label,order}], commands, csrfToken}` (`Cache-Control: no-store`). Omit `agentId` for the new-session composer: only static flags apply; commands requiring a session are disabled.
+- Every v2 command retains `name` (without the slash), `description`, `inputHint`, `attachments` and `usage`, and adds `kind`, `label`, `icon`, `section`, `order`, `enabled` and an optional `reason`. `args` may include `placeholder` and static `options:[{value,label?,description?}]`; free text remains valid. A `client` command has `clientAction` (`attach-file`, `open-goal`, or `{type:'open-canvas',kind,args}`); clients hide actions they don't support.
+- `GET /commands` and `?version=1` return the compatibility shape `{version:1, commands:[{name,description,inputHint,attachments,usage}], csrfToken}` and omit `client` commands.
+- Mobile: `GET /v1/agents/:id/commands` (also `/api/v1/agents/:id/commands`) returns v2 by default for the path agent; `?version=1` requests compatibility. Uses the same authenticated request principal as the native messages API.
 - `POST /agent/:id/commands` JSON `{text,requestId}` + `x-csrf-token` → `{ok,command,scheduled,planning,messageIdx?,sendAt?,attachments:[]}`.
 - Existing `POST /agent/:id` text/form/multipart and mobile messages also dispatch slash commands. New-session bridge calls the same acceptance path; bare `/plan` does not start inference.
 - `GET /agent/:id/planning` → `{version:1,agentId,mode,revision,scope:'session',advisory:true,runningPolicy:'reject',pending:null,proposal,csrfToken}`; `Cache-Control: no-store`.
 - `proposal` is null or `{id,inputId,plan,status:'pending'|'approved'|'kept',createdAt}`.
 - `POST /agent/:id/planning/review` JSON `{proposalId,decision:'approve'|'keep',expectedRevision}` + `x-csrf-token` → `{ok,planning,scheduled,duplicate?}`.
 
-The command catalog is currently a core catalog with `plan` and `compact`, not an extensible plugin registry. New commands require a descriptor and parser/dispatch implementation.
+The command registry combines built-ins, plugins, and user/project declarations. Commands hidden by an agent's frozen preset are unknown at dispatch; disabled commands cannot be submitted. Availability checks run concurrently with a 500 ms timeout after static and preset filtering. Plugin checks return `{enabled:boolean,reason?:string}` given `{agentId,command}`. Presets are guardrails, not a sandbox.
 
 Durable events `planning_mode` (`text,mode,revision`) and `planning_proposal` (`text,proposalId,inputId,status,revision`) invalidate UI state. They are included in mobile/web transcript serialization. Clients should refetch authoritative planning state, not infer approvals from event prose. Native review uses `/input/:id` but delegates to the same exact review controller rather than generic input submission.
 

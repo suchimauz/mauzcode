@@ -8,7 +8,9 @@ import propose from './propose';
 import review from './review';
 import dispatch from '../commands/dispatch';
 import parse from '../commands/parse';
-import list from '../commands/list';
+import planDeclaration from '../commands/$command_plan.json';
+import plan from './command';
+import finishOperation from '../commands/finishOperation';
 import submit from '../input/submit';
 
 function fixture() {
@@ -22,6 +24,7 @@ function fixture() {
   select:async({sql,params}:any)=>{
    if(sql.includes('FROM agents')) return [{id:'a',run_state:state.runState,archived_at:state.archivedAt??null,next_run_at:state.queued}];
    if(sql.includes('FROM agent_planning')) return state.mode?[{mode:state.mode,revision:state.revision,proposal:structuredClone(state.proposal)}]:[];
+   if(sql.startsWith('SELECT request_id FROM agent_command_requests')) return [];
    if(sql.includes('FROM agent_command_requests')) return state.requests[params[1]]?[state.requests[params[1]]]:[];
    if(sql.includes('FROM messages')) return [];
    if(sql.includes('AS blocking FROM inputs')) return state.inputs[params[0]]?[{agent_id:'a',blocking:false}]:[];
@@ -33,6 +36,7 @@ function fixture() {
     state.mode=p[1];state.revision++;state.proposal=null;
    } else if(sql.startsWith('UPDATE agent_planning SET proposal')) {state.proposal=JSON.parse(p[0]);state.revision++;}
    else if(sql.startsWith('UPDATE agent_planning SET mode')){state.mode=p[0];state.revision++;state.proposal=JSON.parse(p[1]);}
+   else if(sql.startsWith('UPDATE agent_command_requests')) state.requests[p[2]].result=JSON.parse(p[0]);
    else if(sql.startsWith('INSERT INTO agent_command_requests')) state.requests[p[1]]={command_text:p[2],result:JSON.parse(p[3])};
    else if(sql.startsWith('UPDATE agents')) state.queued=p[0];
    else if(sql.startsWith('INSERT INTO inputs')) state.inputs[p[0]]={id:p[0],agentId:p[1],kind:'planning-review',state:'open',spec:JSON.parse(p[2])};
@@ -42,7 +46,7 @@ function fixture() {
    return {changes:1,rows:[]};
   },
  };
- ctx.fns={procs:{db,events:{refresh:()=>{}}},projects:{principal:async()=> 'user:owner'},auth:{verifyCsrf:async({token}:any)=>token==='ok'},agent:{wakeWorker:()=>{},current:async()=>({id:'a'}),renderEventHtml:async()=>'<p>event</p>'},session:{syncAgentState:async()=>{},appendMessage:async({message}:any)=>{state.messages.push(message);return {idx:state.messages.length-1};},appendEvent:async({event}:any)=>state.events.push(event)},planning:{read:(o:any)=>read(ctx,session,o),assertIdle:(o:any)=>assertIdle(ctx,session,o),publish:async()=>{notifications++;}},commands:{recordEvent:async(event:any)=>state.events.push(event),list:()=>list(ctx,session,{}),parse:(o:any)=>parse(ctx,session,o)},input:{get:async({id}:any)=>state.inputs[id],isWaiting:async()=>Object.values(state.inputs).some((i:any)=>i.state==='open'&&i.spec?._agentWait===true),complete:async(o:any)=>{
+ ctx.fns={procs:{db,events:{refresh:()=>{}}},projects:{principal:async()=> 'user:owner'},auth:{verifyCsrf:async({token}:any)=>token==='ok'},agent:{wakeWorker:()=>{},current:async()=>({id:'a'}),renderEventHtml:async()=>'<p>event</p>'},session:{syncAgentState:async()=>{},appendMessage:async({message}:any)=>{state.messages.push(message);return {idx:state.messages.length-1};},appendEvent:async({event}:any)=>state.events.push(event)},planning:{read:(o:any)=>read(ctx,session,o),assertIdle:(o:any)=>assertIdle(ctx,session,o),publish:async()=>{notifications++;}},commands:{recordEvent:async(event:any)=>state.events.push(event),candidates:()=>[{command:planDeclaration,enabled:true}],finishOperation:(o:any)=>finishOperation(ctx,session,o),parse:(o:any)=>parse(ctx,session,o)},input:{get:async({id}:any)=>state.inputs[id],isWaiting:async()=>Object.values(state.inputs).some((i:any)=>i.state==='open'&&i.spec?._agentWait===true),complete:async(o:any)=>{
   expect(o.authority).toBe(ctx.state.input.kinds['planning-review'].completionAuthority);
   const input=state.inputs[o.id]; if(input?.state!=='open') return {completed:false,scheduled:false};
   input.state=o.state;input.result=o.result;state.messages.push({content:o.summary,result:o.result,message_type:'input'});
@@ -50,6 +54,7 @@ function fixture() {
   if(scheduled) state.queued=Date.now();
   return {completed:true,scheduled};
  }}};
+ ctx.state.commands={registry:{plan:planDeclaration},kinds:{action:{dispatch:plan}}};
  const command=(text:string,key=text)=>dispatch(ctx,session,{agentId:'a',text,requestId:key});
  const proposal=(plan='Exact plan\n1. Read only\n2. Report')=>propose(ctx,session,{plan});
  const decide=(decision:'approve'|'keep',revision=state.revision,id=state.proposal?.id)=>review(ctx,session,{req,agentId:'a',proposalId:id,decision,expectedRevision:revision});
@@ -80,7 +85,7 @@ test('explicit off stays execute; on and task arguments retain their parsed sche
 test('default execute is distinct from task tracking; parse discovery rejects unknown commands and allows paths',async()=>{
  const f=fixture();expect((await read(f.ctx,null,{agentId:'a'})).mode).toBe('execute');
  expect(await parse(f.ctx,null,{text:'hello'})).toBeNull();expect(await parse(f.ctx,null,{text:'/tmp/file'})).toBeNull();
- expect(await parse(f.ctx,null,{text:'/plan off'})).toEqual({name:'plan',mode:'execute',task:''});
+ expect(await parse(f.ctx,null,{text:'/plan off'})).toEqual({name:'plan',args:'off'});
  await expect(parse(f.ctx,null,{text:'/plna'})).rejects.toThrow('Unknown command');
 });
 test('bare toggle does not create a turn or queue work and replays idempotently',async()=>{

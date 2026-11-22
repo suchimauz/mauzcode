@@ -13,7 +13,7 @@ import { MascotPicker } from './MascotPicker';
 import { AgentPresetPicker } from './AgentPresetPicker';
 import { normalizeMascotChoice } from '../../lib/mascots';
 import { ApiError } from '../../lib/mauzcode';
-import { validateCommand } from '../../lib/commands';
+import { runClientCommand, validateCommand } from '../../lib/commands';
 import type { NavigationProject } from '../../lib/navigation';
 import { clearNewSessionDraft, getNewSessionDefaults, hasRemovedSessionFields, persistNewSessionDraft, resolveNewSessionPreset, submitNewSession, type AgentPresetOption, type NewSessionDraft } from '../../lib/newSession';
 import './composer-footer.css';
@@ -74,7 +74,13 @@ export function NewSessionComposer({ draft, onChange, projects, onCreated, onPen
     lock.current = true; setBusy(true); setError('');
     const snapshot = pending || { ...draft, ...(presetId ? { presetId } : {}), text: draft.text.trim(), fileCount: files.length };
     const snapshotFiles = pending ? shownFiles : [...files];
-    try { await validateCommand(snapshot.text, snapshotFiles.length); }
+    try {
+      const resolved = await validateCommand(snapshot.text, snapshotFiles.length);
+      if (resolved?.command.kind === 'client') {
+        await runClientCommand(resolved.command.clientAction, resolved.args, { file: () => picker.current?.click() });
+        change({ text: '' }); lock.current = false; setBusy(false); return;
+      }
+    }
     catch (err) { setError(err instanceof Error ? err.message : String(err)); lock.current = false; setBusy(false); return; }
     pendingFiles.set(snapshot.requestKey, snapshotFiles);
     setPending(snapshot);
@@ -96,7 +102,7 @@ export function NewSessionComposer({ draft, onChange, projects, onCreated, onPen
     <div className="new-session-chips"><Menu.Root><Menu.Trigger className="new-session-chip" disabled={busy || !!pending} aria-label="Выбрать Workspace"><FolderOpen size={16} strokeWidth={1} /><span>{available.find(p => p.id === shown.projectId)?.title || 'Выбрать Workspace'}</span></Menu.Trigger><Menu.Portal><Menu.Positioner side="top" align="start" sideOffset={8} collisionPadding={12} className="floating-positioner"><Menu.Popup className="workspace-view-menu" aria-label="Workspace"><Menu.RadioGroup value={draft.projectId} onValueChange={projectId => change({ projectId })}>{available.map(p => <Menu.RadioItem value={p.id} key={p.id} className="workspace-menu-item" title={[p.dir,p.host].filter(Boolean).join(' · ')}><FolderOpen size={14} strokeWidth={1} /><span>{p.title}</span><Menu.RadioItemIndicator><Check size={14} strokeWidth={1} /></Menu.RadioItemIndicator></Menu.RadioItem>)}</Menu.RadioGroup></Menu.Popup></Menu.Positioner></Menu.Portal></Menu.Root><AgentPresetPicker presets={presets.list} value={presetId} disabled={locked} onChange={presetId => change({ presetId })} /><MascotPicker value={mascot} disabled={locked} onChange={mascot => change({ mascot })} /></div>
     <div ref={anchor} className="composer-input-anchor"><CrabMascot page={mascot === 'random' ? null : { mascot, agentId: 'new-session-preview', events: [], olderBefore: null, hasOlder: false, isRunning: false, runState: 'idle', lastError: null, partial: null }} /><MessageInput bar={{ start: <ModelPicker onReadyChange={setModelReady} agentId="" running={false} busy={busy || !!pending} revision={0} onSaved={() => {}} onBusyChange={() => {}} draft={{ model: shown.model, effort: shown.effort, onChange: (model, effort) => change({ model, effort }) }} /> }} leading={<ComposerAddButton open={menuOpen} disabled={locked} onClick={() => setMenuOpen(open => !open)} />} commandsEnabled commandMenuOpen={menuOpen} onCommandMenuClose={() => setMenuOpen(false)} onFile={() => picker.current?.click()} attachments={shownFiles.length > 0 ? <PendingAttachments files={shownFiles} disabled={locked} onRemove={index => { if (!locked) { setFiles(files.filter((_, i) => i !== index)); change({}); } }} /> : undefined} onFiles={addFiles} hasAttachments={shownFiles.length > 0} value={shown.text} placeholder="How can I help you today?" disabled={busy || !!pending} sendDisabled={!modelReady} onChange={text => change({ text })} onSend={() => { void send(); }} /></div>
     {dragging && anchor.current?.closest('.chat-panel') && createPortal(<div className="chat-file-drop-overlay" aria-hidden="true">Отпустите файлы, чтобы прикрепить</div>, anchor.current.closest('.chat-panel')!)}
-    <input ref={picker} type="file" multiple hidden disabled={locked} onChange={event => { addFiles(Array.from(event.target.files || [])); event.target.value = ''; }} />
+    <input ref={picker} type="file" multiple hidden disabled={!!pending} onChange={event => { addFiles(Array.from(event.target.files || [])); event.target.value = ''; }} />
     <div className="composer-footer new-session-footer"><div className="composer-metrics-row"><span className="new-session-draft-label">{shown.title?.trim() || 'New Session'}</span><span className="composer-metrics-context new-session-context" data-level="unknown"><Circle size={14} strokeWidth={2} aria-hidden="true" /><span>—</span><span className="sr-only">Контекст ещё не создан</span></span></div></div>
     {!available.length && <p className="transcript-notice">Добавьте Workspace в навигации, чтобы начать разговор.</p>}
     {error && <p className="connection-error" role="alert">{error} {pending && 'Первое сообщение ожидает подтверждения; повтор использует тот же ключ и не создаёт второй чат.'}</p>}

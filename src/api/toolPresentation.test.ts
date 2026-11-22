@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import eventsRoute from './$route_v1_agents_$id_events_GET';
 import detailRoute from './$route_v1_agents_$id_events_$idx_GET';
+import iconKeys from '../ui/iconKeys';
 import presentation from '../tools/presentation';
 import summaryTemplate from '../tools/summaryTemplate';
 import summaryFormat from '../tools/summaryFormat';
@@ -21,6 +22,7 @@ const tools = [
 function ctxWith(events: any[], payload?: any) {
     const ctx: any = { state: { tools: { registry: new Map(tools.map(t => [t.key, t])) } }, fns: {} };
     const bind = (fn: any) => (o: any) => fn(ctx, null, o);
+    ctx.fns.ui = { iconKeys: bind(iconKeys) };
     ctx.fns.tools = { presentation: bind(presentation), summaryTemplate: bind(summaryTemplate), summaryFormat: bind(summaryFormat), normalizePresentation: bind(normalizePresentation), redactArgs: bind(redactArgs), declaration: bind(declaration), list: bind(list), runs: () => [] };
     ctx.fns.auth = { author: async () => null };
     ctx.fns.mentions = { parse: async () => [] };

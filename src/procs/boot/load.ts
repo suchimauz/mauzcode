@@ -175,7 +175,8 @@ export async function apply(ctx: Context, entries: any[], mounted: any[], opts: 
         if (failedImport.has(entry)) continue; // already reported; re-importing it would throw outside any handler
         (byKind.get(entry.kind) ?? byKind.set(entry.kind, []).get(entry.kind)!).push(entry);
     }
-    for (const kind of [...Object.keys(loaders), ...byKind.keys()]) {
+    // mauzcode: each collector receives exactly one authoritative batch (never a second, empty one).
+    for (const kind of new Set([...Object.keys(loaders), ...byKind.keys()])) {
         let files = byKind.get(kind);
         if (!files) {
             // mauzcode: when the last file of a kind disappears, its loader was skipped and a keyed
@@ -196,7 +197,8 @@ export async function apply(ctx: Context, entries: any[], mounted: any[], opts: 
             continue;
         }
         try {
-            await loader(ctx, null, { entries: files });
+            // mauzcode: distinguish an authoritative mount scan (including removals) from a single hot save.
+            await loader(ctx, null, { entries: files, full: true });
         } catch (error: any) {
             const message = `[$loader ${kind}] ${error?.message ?? error}`;
             console.error(message);

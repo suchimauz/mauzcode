@@ -23,6 +23,7 @@
   pointer-events: none;
   position: absolute;
 }
+.command-editor[data-argument-hint]::after { content: attr(data-argument-hint); color: var(--text-muted, #888); pointer-events: none; }
 .command-editor[aria-disabled="true"] { opacity: .6; cursor: default; }
 .command-editor .command-chip {
   display: inline;

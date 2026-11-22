@@ -39,6 +39,27 @@ That API's documentation includes portable authoring guidance. This file is the 
 
 `src/$main.ts` boots the Proxy registry; `src/$test.ts` provides test contexts. `src/agent/` drives turns; `src/session/` owns persistence; `src/llm/` dispatches providers. `.runtime/` holds instance-generated ports, tokens and assets. `.mauzcode/_runtime/sessions` is legacy SQLite data, **not current storage**.
 
+## Chat commands
+
+A file `reviews/$command_summary.md` declares `/reviews:summary`:
+
+```markdown
+---
+kind: prompt
+label: Review summary
+description: Summarize the requested changes
+icon: book
+section: commands
+---
+Summarize these changes: {{args}}
+```
+
+A JSON object or a TypeScript default export satisfying `types.commands.Command` uses the same metadata; set `template` explicitly instead of providing a Markdown body. The file stem supplies the name. Only core `commands` and `planning` files can set `builtin: true` for a short name. `project` and `user` namespaces are reserved. Optional `args.options` accepts up to 100 `{value,label?,description?}` entries, at most 200 characters per string. Use a key from `ui.iconKeys({})`; unknown icons fall back to `wrench` with a warning.
+
+`$commandSection_reviews.json` containing `{"label":"Reviews","order":30}` declares section `reviews`. Alternatively export `sections = [{id:'reviews', label:'Reviews', order:30}]` from a command module. `$commandKind_<kind>.ts` default-exports a `types.commands.KindHandler`: `validate(command, ctx)` throws on invalid data, `describe(command, ctx)` supplies public catalogue fields and optional `dispatch(ctx,session,opts)` implements execution. Commands of missing kinds remain unavailable until their kind loads. Reload the plugin after removing declarations; disabling or replacing it also withdraws its declarations. File-level validation diagnostics name the source.
+
+For `kind: action`, `fn` must name a runtime action handler, not an arbitrary tool. Explicitly type its third parameter `types.commands.ActionInput` and return type `Promise<types.commands.ActionResult>` (callable contract: `types.commands.ActionHandler`); the loader verifies this metadata. For `prompt`, only `{{args}}` is substituted as literal human text. Project files may declare only prompts; user files may also declare client actions, never server function references.
+
 ## Create and document
 
 Create runtime procedures through `procs.dev.createFunction`, after inspecting its live schema. Supply capability-focused `summary` and `description`, explicit `params` (including `[]`), `returnType` and `body`. It validates source and metadata, typechecks, and normally activates the function; consult the live contract for offline/dry-run options and root selection. Do not assume that a selected target workspace is a runtime source root.

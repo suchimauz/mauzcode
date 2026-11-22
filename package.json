@@ -89,6 +89,7 @@
       "controlPlane": {},
       "procs/repl": {},
       "external": {},
+      "commands": {},
       "agent": {},
       "cron": {},
       "models": {},

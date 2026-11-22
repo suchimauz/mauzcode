@@ -4,11 +4,6 @@
 // an unknown icon becomes the wrench, an unknown category "tools", a broken
 // summary is dropped (the resolver's safe fallback applies) — each reported as
 // a warning so the loader can say which declaration to fix.
-const ICONS = [
-    "file", "file-plus", "file-edit", "search", "terminal", "code", "answer", "checklist", "check",
-    "delegate", "flag", "form", "canvas", "archive", "compass", "book", "target", "comment",
-    "comment-check", "plug", "unplug", "stop", "info", "ticket", "clock", "user", "list", "status", "wrench",
-] as const;
 const CATEGORIES = ["files", "search", "commands", "agent", "git", "tools"] as const;
 
 /**
@@ -26,7 +21,8 @@ export default function (
     },
 ): { presentation: { label?: string; icon: string; category: string; summary?: string } | null; warnings: string[]; icons: string[]; categories: string[] } {
     const warnings: string[] = [];
-    const base = { icons: [...ICONS] as string[], categories: [...CATEGORIES] as string[] };
+    const ICONS = ctx.fns.ui.iconKeys({});
+    const base = { icons: ICONS, categories: [...CATEGORIES] as string[] };
     const raw = opts.presentation;
     if (raw === undefined || raw === null) return { presentation: null, warnings, ...base };
     if (typeof raw !== "object" || Array.isArray(raw)) {

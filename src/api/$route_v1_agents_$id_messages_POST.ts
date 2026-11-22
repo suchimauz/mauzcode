@@ -27,7 +27,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { r
     }
     if (!text && files.length === 0) return Response.json({ error: "empty_message", message: "Message text or an attachment is required" }, { status: 400 });
     try {
-        if (text.startsWith('/') && await ctx.fns.commands.parse({ text })) {
+        if (text.startsWith('/') && await ctx.fns.commands.parse({ text, agentId: id })) {
             if (files.length) return Response.json({ error: 'command_attachments' }, { status: 400 });
             await ctx.fns.projects.principal({});
             const result = await ctx.fns.commands.dispatch({ agentId: id, text, requestId: opts.req.headers.get('idempotency-key') || Bun.randomUUIDv7() });

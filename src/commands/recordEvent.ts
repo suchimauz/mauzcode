@@ -39,7 +39,7 @@ export default async function (
         error?: string;
     },
 ): Promise<void> {
-    const argsText=opts.commandText.replace(/^\/[\w-]+\s*/, '');
+    const argsText=opts.commandText.trimStart().slice(opts.commandName.length + 1).trimStart();
     const event={...opts,argsText,ts:Date.now()};
 
     await ctx.fns.session.appendEvent({id:opts.agentId,event});

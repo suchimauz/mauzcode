@@ -1,55 +1,73 @@
-/**
- * Atomically accept a slash command without sending toggles to the model
- *
- * Use from authenticated chat submission routes. Bare /plan toggles the locked durable mode; explicit arguments retain their parsed behavior. Deduplicate command text by request key, reject running transitions and schedule only an explicit task in the same transaction as mode change.
- * @param opts.agentId Existing target session.
- * @param opts.text Complete command text.
- * @param opts.requestId Client idempotency key; generate a UUID if absent.
- */
-export default async function (
-    ctx: Context,
-    session: Session | null,
-    opts: {
-        /** Existing target session. */
-        agentId: string;
-        /** Complete command text. */
-        text: string;
-        /** Client idempotency key; generate a UUID if absent. */
-        requestId: string;
-    },
-): Promise<Record<string, unknown>> {
-    const command=await ctx.fns.commands.parse({text:opts.text});
-    if(!command) throw Object.assign(new Error('Expected a slash command'),{status:400,code:'invalid_command'});
-    if(!opts.requestId || opts.requestId.length>200) throw Object.assign(new Error('Invalid requestId'),{status:400});
-    const text=opts.text.trim(); if(text.length>200000) throw Object.assign(new Error('Command is too long'),{status:413});
-    if(command.name==='compact') return ctx.fns.commands.compact({agentId:opts.agentId,text,requestId:opts.requestId});
-    if(command.name==='trigger') return ctx.fns.commands.trigger({agentId:opts.agentId,text,requestId:opts.requestId});
-    const operationId=Bun.randomUUIDv7();
-    const result=await ctx.fns.procs.db.transaction({fn:async()=>{
-    await ctx.fns.procs.db.select({sql:'SELECT id FROM agents WHERE id=? FOR UPDATE',params:[opts.agentId]});
-    const prior=(await ctx.fns.procs.db.select({sql:'SELECT command_text,result FROM agent_command_requests WHERE agent_id=? AND request_id=?',params:[opts.agentId,opts.requestId]}))[0];
-    if(prior){if(prior.command_text!==text) throw Object.assign(new Error('Idempotency key reused for a different command'),{status:409,code:'idempotency_conflict'}); return {...(typeof prior.result==='string'?JSON.parse(prior.result):prior.result),duplicate:true};}
-    const priorMessage=(await ctx.fns.procs.db.select({sql:'SELECT idx FROM messages WHERE agent_id=? AND client_request_id=? LIMIT 1',params:[opts.agentId,opts.requestId]}))[0];
-    if(priorMessage) throw Object.assign(new Error('Idempotency key already belongs to a chat message'),{status:409,code:'idempotency_conflict'});
-    await ctx.fns.planning.assertIdle({agentId:opts.agentId});
-    await ctx.fns.commands.recordEvent({agentId:opts.agentId,type:'command_invocation',commandName:command.name,commandText:text,requestId:opts.requestId,operationId,status:'running',text});
-    const now=Date.now(); const state=await ctx.fns.planning.read({agentId:opts.agentId});
-    const mode=text==='/plan'?(state.mode==='plan'?'execute':'plan'):command.mode;
-    if(state.proposal?.status==='pending') await ctx.fns.procs.db.run({sql:"UPDATE inputs SET state='cancelled',error='Planning command superseded this proposal',updated_at=? WHERE id=? AND state='open'",params:[now,state.proposal.inputId]});
-    await ctx.fns.procs.db.run({sql:'INSERT INTO agent_planning(agent_id,mode,revision,proposal,updated_at) VALUES (?,?,1,NULL,?) ON CONFLICT(agent_id) DO UPDATE SET mode=excluded.mode,revision=agent_planning.revision+1,proposal=NULL,updated_at=excluded.updated_at',params:[opts.agentId,mode,now]});
-    let messageIdx:number|undefined;
-    if(command.task){
-    const message=await ctx.fns.session.appendMessage({id:opts.agentId,message:{role:'user',content:command.task,message_type:'planning_task'}}); messageIdx=message.idx;
-    const event={type:'user',text:command.task,messageIdx,ts:now,command:{name:'plan',text,argsText:command.task,requestId:opts.requestId,operationId}};
-    await ctx.fns.session.appendEvent({id:opts.agentId,event,ts:now});
-    await ctx.fns.procs.db.run({sql:'UPDATE agents SET stopped_at=NULL,last_error=NULL,next_run_at=?,updated_at=? WHERE id=?',params:[now,now,opts.agentId]});
+/** Claim a visible command, execute its registered kind outside the transaction, and persist the result. */
+export default async function (ctx: Context, session: Session | null, opts: {
+    /** Existing target session. */ agentId: string;
+    /** Entire typed command (preserved in human-facing metadata). */ text: string;
+    /** Stable client key, 1–200 characters. */ requestId: string;
+}): Promise<Record<string, unknown>> {
+    const {agentId, text, requestId} = opts;
+    const fail = (status: number, code: string, message: string): never => {throw Object.assign(new Error(message), {status, code});};
+    if (!requestId || requestId.length > 200) fail(400, 'invalid_request', 'Invalid requestId');
+    if (text.length > 200000) fail(413, 'command_too_long', 'Command is too long');
+    const active = ctx.state.commands.activeOperations ??= new Set<string>();
+    const priorSql = 'SELECT command_text,result FROM agent_command_requests WHERE agent_id=? AND request_id=?';
+    const replay = async (row: Record<string, any>) => {
+        if (row.command_text !== text) fail(409, 'idempotency_conflict', 'Idempotency key reused for a different command');
+        const stored = typeof row.result === 'string' ? JSON.parse(row.result) : row.result;
+        if (stored.status === 'running' && !active.has(stored.operationId)) {
+            const error = 'The operation owner is no longer available. Inspect the session before starting a new attempt.';
+            Object.assign(stored, {ok: false, status: 'interrupted', error, finishedAt: Date.now()});
+            await ctx.fns.procs.db.run({sql: 'UPDATE agent_command_requests SET result=?::jsonb WHERE agent_id=? AND request_id=?', params: [JSON.stringify(stored), agentId, requestId]});
+            await ctx.fns.commands.recordEvent({agentId, type: 'command_result', commandName: stored.command, commandText: text, requestId, operationId: stored.operationId, status: 'interrupted', text: error, error});
+        }
+        return {...stored, duplicate: true};
+    };
+    // Replays must work even if this very request scheduled work, or its plugin was removed.
+    const existing = await ctx.fns.procs.db.transaction({fn: async () => {
+        const [row] = await ctx.fns.procs.db.select({sql: priorSql + ' FOR UPDATE', params: [agentId, requestId]});
+        return row ? replay(row) : null;
+    }}) as Record<string, unknown> | null;
+    if (existing) return existing;
+    const parsed = await ctx.fns.commands.parse({text, agentId});
+    if (!parsed) return fail(400, 'invalid_command', 'Expected a slash command');
+    const [entry] = await ctx.fns.commands.candidates({agentId, name: parsed.name});
+    const command = entry?.command;
+    const kind = command && ctx.state.commands.kinds?.[command.kind];
+    const execute = kind?.dispatch;
+    const operationId = Bun.randomUUIDv7();
+    const claim = await ctx.fns.procs.db.transaction({fn: async () => {
+        const [owner] = await ctx.fns.procs.db.select({sql: 'SELECT id,archived_at FROM agents WHERE id=? FOR UPDATE', params: [agentId]});
+        if (!owner) fail(404, 'not_found', 'Agent not found');
+        const [prior] = await ctx.fns.procs.db.select({sql: priorSql + ' FOR UPDATE', params: [agentId, requestId]});
+        if (prior) return replay(prior);
+        if (!command || !kind || !entry) return fail(400, 'unknown_command', `Unknown command /${parsed.name}`);
+        if (!execute) fail(400, 'client_only', 'This command runs only in the client');
+        if (!entry.enabled) fail(409, entry.code ?? 'command_unavailable', entry.reason ?? 'Command is disabled');
+        if (owner!.archived_at != null) fail(409, 'archived', 'Restore this archived chat first');
+        const [message] = await ctx.fns.procs.db.select({sql: 'SELECT idx FROM messages WHERE agent_id=? AND client_request_id=? LIMIT 1', params: [agentId, requestId]});
+        if (message) fail(409, 'idempotency_conflict', 'Idempotency key already belongs to a chat message');
+        if (command.blockWhileRunning) {
+            await ctx.fns.planning.assertIdle({agentId});
+            const [running] = await ctx.fns.procs.db.select({sql: "SELECT request_id FROM agent_command_requests WHERE agent_id=? AND result->>'command'=? AND result->>'status'='running' LIMIT 1", params: [agentId, parsed.name]});
+            if (running) fail(409, 'command_running', 'Another command is pending; retry its original request key to inspect it');
+        }
+        const accepted = {ok: true, command: parsed.name, requestId, operationId, status: 'running', scheduled: false, createdAt: Date.now()};
+        await ctx.fns.procs.db.run({sql: 'INSERT INTO agent_command_requests(agent_id,request_id,command_text,result) VALUES (?,?,?,?::jsonb)', params: [agentId, requestId, text, JSON.stringify(accepted)]});
+        await ctx.fns.commands.recordEvent({agentId, type: 'command_invocation', commandName: parsed.name, commandText: text, requestId, operationId, status: 'running', text});
+        active.add(operationId); // Visible before commit: a retry must never recover a live claim.
+        return accepted;
+    }}).catch(error => { active.delete(operationId); throw error; }) as Record<string, unknown>;
+    if ('duplicate' in claim) return claim;
+    let outcome: types.commands.ActionResult;
+    try {
+        outcome = await execute!(ctx, session, {agentId, text, requestId, operationId, command: command!, args: parsed.args});
+        if (!outcome || !['completed','running'].includes(outcome.status)) throw new Error('Invalid command handler result');
+    } catch (error) {
+        try { return await ctx.fns.commands.finishOperation({agentId, requestId, operationId, error: String((error as Error).message ?? error)}); }
+        finally { active.delete(operationId); }
     }
-    const planning=await ctx.fns.planning.read({agentId:opts.agentId});
-    const accepted={ok:true,command:command.name,requestId:opts.requestId,operationId,status:'completed',createdAt:now,finishedAt:now,scheduled:!!command.task,planning,...(messageIdx===undefined?{}:{messageIdx,sendAt:now}),attachments:[]};
-    await ctx.fns.procs.db.run({sql:'INSERT INTO agent_command_requests(agent_id,request_id,command_text,result) VALUES (?,?,?,?::jsonb)',params:[opts.agentId,opts.requestId,text,JSON.stringify(accepted)]});
-    await ctx.fns.commands.recordEvent({agentId:opts.agentId,type:'command_result',commandName:command.name,commandText:text,requestId:opts.requestId,operationId,status:'completed',text:mode==='execute'?'Planning mode disabled':command.task?'Planning mode enabled; task accepted':'Planning mode enabled (advisory, not a sandbox)'});
-    return accepted;
-    }}) as Record<string,unknown>;
-    if(!result.duplicate) await ctx.fns.planning.publish({agentId:opts.agentId,proposal:true,wake:result.scheduled===true,operationId,requestId:opts.requestId});
-    return result;
+    return ctx.fns.commands.finishOperation({agentId, requestId, operationId, outcome}).catch(error => {
+        // The handler is no longer executing; a retry can report the uncertain outcome.
+        active.delete(operationId);
+        throw error;
+    });
 }
