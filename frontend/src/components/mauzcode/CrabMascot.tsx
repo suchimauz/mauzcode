@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import crab from './crab-sheets.json';
 import deepy from './deepy-sheets.json';
 import whalegirl from './whalegirl-sheets.json';
@@ -13,14 +13,15 @@ type State = keyof typeof crab | 'idle-spout';
 type Sheet = { frames: number; box: number[]; still: number; columns?: number; durs?: number[] };
 const catalog: Record<'crab' | 'deepy' | 'whalegirl', Record<string, Sheet>> = { crab, deepy, whalegirl };
 /** Original dsh-claude sprites; see public/mascot/NOTICE.md and LICENSE. */
-export function CrabMascot({ page }: { page: EventPage | null }) {
+/** `control` replaces the pet's own poke button; it receives the pet-specific hit-area class name. */
+export function CrabMascot({ page, control }: { page: EventPage | null; control?: (className: string) => ReactNode }) {
   const kind = page?.mascot ? mascotCatalog[page.mascot]?.kind : undefined;
-  if (kind === 'tokibean') return <TokibeanMascot key={`${page!.agentId}:${page!.mascot}`} page={page} pet={page!.mascot as TokibeanPet} />;
-  if (kind === 'image') return <ImageMascot key={`${page!.agentId}:${page!.mascot}`} page={page} pet={page!.mascot as ImagePet} />;
+  if (kind === 'tokibean') return <TokibeanMascot key={`${page!.agentId}:${page!.mascot}`} page={page} pet={page!.mascot as TokibeanPet} control={control} />;
+  if (kind === 'image') return <ImageMascot key={`${page!.agentId}:${page!.mascot}`} page={page} pet={page!.mascot as ImagePet} control={control} />;
   const pet = page?.mascot && page.mascot in catalog ? page.mascot as keyof typeof catalog : 'crab';
-  return <AnimatedPet key={`${page?.agentId ?? 'new'}:${pet}`} page={page} pet={pet} />;
+  return <AnimatedPet key={`${page?.agentId ?? 'new'}:${pet}`} page={page} pet={pet} control={control} />;
 }
-function AnimatedPet({ page, pet }: { page: EventPage | null; pet: keyof typeof catalog }) {
+function AnimatedPet({ page, pet, control }: { page: EventPage | null; pet: keyof typeof catalog; control?: (className: string) => ReactNode }) {
   const sheets = catalog[pet];
   const frameMs = pet === 'deepy' ? 50 : 80;
   const gutter = pet === 'whalegirl' ? 0 : 1;
@@ -77,11 +78,11 @@ function AnimatedPet({ page, pet }: { page: EventPage | null; pet: keyof typeof 
   const style = { '--crab-width': `${sheet.box[2] * 2}px`, '--crab-height': `${sheet.box[3] * 2}px`, '--crab-left': `${sheet.box[0] * 2}px`, '--crab-top': `${sheet.box[1] * 2}px`, '--crab-sheet-width': `${cellWidth * columns * 2}px`, '--crab-sheet-height': `${cellHeight * Math.ceil(sheet.frames / columns) * 2}px`, '--crab-body': `url("${url}${pet === 'crab' ? '-body.png' : pet === 'deepy' ? '.svg' : '.png'}")`, '--crab-ink': pet === 'crab' ? `url("${url}-ink.png")` : 'none' } as CSSProperties;
   return <div className="crab-mascot" style={style} data-pet={pet} data-animation={state}>
     <span className="crab-window" aria-hidden="true"><span ref={strip} className="crab-strip" /></span>
-    <button type="button" className="crab-hit" aria-label={`Поиграть с ${pet === 'crab' ? 'крабом' : pet === 'deepy' ? 'Deepy' : 'Whalegirl'}`} disabled={!!page?.isRunning}
+    {control ? control('crab-hit') : <button type="button" className="crab-hit" aria-label={`Поиграть с ${pet === 'crab' ? 'крабом' : pet === 'deepy' ? 'Deepy' : 'Whalegirl'}`} disabled={!!page?.isRunning}
       onPointerDown={e => { if (e.button !== 0) return; press.current = { x: e.clientX, y: e.clientY }; e.currentTarget.setPointerCapture(e.pointerId); }}
       onPointerMove={e => { if (press.current && Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 8) setReaction('drag'); }}
       onPointerUp={e => { const start = press.current; press.current = null; quietSince.current = Date.now(); setIdle('idle'); setReaction(reaction === 'drag' ? 'happy' : idle === 'sleeping' ? 'waking' : start && e.clientX < e.currentTarget.getBoundingClientRect().left + 24 ? 'poke-left' : 'poke-right'); }}
       onPointerCancel={() => { press.current = null; setReaction(null); }}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); quietSince.current = Date.now(); setIdle('idle'); setReaction(idle === 'sleeping' ? 'waking' : 'tickle'); } }} />
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); quietSince.current = Date.now(); setIdle('idle'); setReaction(idle === 'sleeping' ? 'waking' : 'tickle'); } }} />}
   </div>;
 }

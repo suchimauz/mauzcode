@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { EventPage } from '../../lib/mauzcode';
 import { mascotActivity } from '../../lib/mascotActivity';
 import { mascotNames } from '../../lib/mascots';
@@ -9,7 +9,7 @@ import './image-mascot.css';
 const EXTRA_AFTER_MS = 20000, EXTRA_MS = 6000;
 
 /** Per-state animated GIF/SVG pets. Shown only through <img>, so artwork can never run scripts. */
-export function ImageMascot({ page, pet }: { page: EventPage | null; pet: ImagePet }) {
+export function ImageMascot({ page, pet, control }: { page: EventPage | null; pet: ImagePet; control?: (className: string) => ReactNode }) {
   const manifest = imageMascots[pet];
   const life = useMascotLife(page);
   const [poke, setPoke] = useState(0);
@@ -34,8 +34,8 @@ export function ImageMascot({ page, pet }: { page: EventPage | null; pet: ImageP
   const style = { '--pet-width': `${(right - left) * scale}px`, '--pet-height': `${manifest.height}px`, '--art-width': `${sw * scale}px`, '--art-height': `${sh * scale}px`, '--art-left': `${-left * scale}px`, '--art-top': `${-top * scale}px` } as CSSProperties;
   return <div className="image-mascot" style={style} data-pet={pet} data-animation={file.replace(/\.\w+$/, '')}>
     {life.reduced ? <StillImage src={src} /> : <img className="image-mascot-art" src={src} alt="" aria-hidden="true" draggable={false} decoding="async" />}
-    <button type="button" className="image-mascot-hit" aria-label={`Поиграть с ${mascotNames[pet]}`} disabled={!!page?.isRunning}
-      onClick={() => { setPoke(count => count + 1); setExtra(null); life.poke(); }} />
+    {control ? control('image-mascot-hit') : <button type="button" className="image-mascot-hit" aria-label={`Поиграть с ${mascotNames[pet]}`} disabled={!!page?.isRunning}
+      onClick={() => { setPoke(count => count + 1); setExtra(null); life.poke(); }} />}
   </div>;
 }
 

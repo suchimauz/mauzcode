@@ -9,7 +9,10 @@
 .new-session-composer { width: 100%; }
 .new-session-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 0 4px; margin-bottom: 10px; }
 .new-session-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 50%; height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--text-secondary); font: 500 13px/20px var(--font-sans); white-space: nowrap; }
-.mascot-picker { max-width: 100%; }
+.new-session-composer .mascot-picker-trigger { cursor: pointer; touch-action: auto; }
+.new-session-composer .mascot-picker-trigger:active { cursor: pointer; }
+.new-session-composer .mascot-picker-trigger:hover { background: color-mix(in srgb, var(--hover) 60%, transparent); border-radius: 8px; }
+.new-session-composer .mascot-picker-badge { position: absolute; right: -2px; top: -2px; padding: 2px; box-sizing: content-box; border-radius: 999px; background: var(--surface); color: var(--text-secondary); border: 1px solid var(--line-strong); }
 .new-session-chip span { overflow: hidden; text-overflow: ellipsis; }
 .new-session-chip svg { flex-shrink: 0; color: var(--text); }
 button.new-session-chip:hover { background: var(--hover); }

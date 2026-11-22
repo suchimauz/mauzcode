@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { EventPage } from '../../lib/mauzcode';
 import { mascotActivity, type MascotActivity } from '../../lib/mascotActivity';
 import { mascotNames } from '../../lib/mascots';
@@ -27,7 +27,7 @@ export function tokibeanFrame(activity: MascotActivity, life: { reaction: 'done'
 }
 
 /** Vendored Tokibean canvas skin driven by chat activity. No upstream app, hooks or network. */
-export function TokibeanMascot({ page, pet }: { page: EventPage | null; pet: TokibeanPet }) {
+export function TokibeanMascot({ page, pet, control }: { page: EventPage | null; pet: TokibeanPet; control?: (className: string) => ReactNode }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [hover, setHover] = useState(false);
   const life = useMascotLife(page);
@@ -51,7 +51,7 @@ export function TokibeanMascot({ page, pet }: { page: EventPage | null; pet: Tok
   }, [pet, life.reduced, key]);
   return <div className="tokibean-mascot" data-pet={pet} data-animation={frame.state} data-note={frame.extra.toolNote ?? undefined}>
     <canvas ref={canvas} className="tokibean-canvas" width={WIDTH} height={HEIGHT} aria-hidden="true" />
-    <button type="button" className="tokibean-hit" aria-label={`Поиграть с ${mascotNames[pet]}`} disabled={!!page?.isRunning}
-      onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)} onClick={life.poke} />
+    {control ? control('tokibean-hit') : <button type="button" className="tokibean-hit" aria-label={`Поиграть с ${mascotNames[pet]}`} disabled={!!page?.isRunning}
+      onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)} onClick={life.poke} />}
   </div>;
 }
