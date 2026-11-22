@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AgentPresetsPanel } from '../components/settings/AgentPresetsPanel';
 import { SETTINGS_TABS } from '../components/settings/SettingsDialog';
@@ -95,4 +96,48 @@ it('shows an error and retries', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(await screen.findByRole('region', { name: 'Standard' })).toBeVisible();
   expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+it('tells a non-owner that only owners can view presets, without Retry', async () => {
+  mock(json({ error: 'Forbidden' }, 403));
+  render(<AgentPresetsPanel />);
+  expect(await screen.findByText('Only owners can view agent presets.')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('aborts the previous request on Retry and the current one on unmount', async () => {
+  const signals: AbortSignal[] = [];
+  let first = true;
+  vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+    signals.push(init!.signal!);
+    if (first) { first = false; return Promise.resolve(json({ error: 'Temporarily down' }, 500)); }
+    return new Promise<Response>((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))));
+  }));
+  const view = render(<AgentPresetsPanel />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+  expect(signals).toHaveLength(2);
+  expect(signals[1]!.aborted).toBe(false);
+  view.unmount();
+  expect(signals[1]!.aborted).toBe(true);
+});
+
+it('a new load aborts the previous in-flight request (StrictMode remount)', async () => {
+  const signals: AbortSignal[] = [];
+  vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => { signals.push(init!.signal!); return Promise.resolve(json(body())); }));
+  render(<StrictMode><AgentPresetsPanel /></StrictMode>);
+  expect(await screen.findByRole('region', { name: 'Standard' })).toBeVisible();
+  expect(signals.length).toBeGreaterThanOrEqual(2);
+  expect(signals.slice(0, -1).every(s => s.aborted)).toBe(true);
+  expect(signals.at(-1)!.aborted).toBe(false);
+});
+
+it('names the focusable prompt block after its preset', async () => {
+  mock(json(body()));
+  render(<AgentPresetsPanel />);
+  await screen.findByRole('region', { name: 'Standard' });
+  const standard = expand('Standard');
+  const prompt = within(standard).getByLabelText('Prompt for Standard');
+  expect(prompt).toHaveAttribute('tabindex', '0');
+  expect(prompt.textContent).toBe('Be careful.\n  Indented.');
 });

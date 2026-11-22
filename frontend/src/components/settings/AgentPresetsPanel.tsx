@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { ApiError } from '../../lib/mauzcode';
 import { getAgentPresets, type AgentPresetsState, type AgentPresetView } from '../../lib/agentPresets';
 import { Button } from '../ui/Button';
 import { SettingsGroup, SettingsRow } from './SettingsGroup';
@@ -32,7 +33,7 @@ function PresetRow({ preset, isDefault, expanded, onToggle }: { preset: AgentPre
     </div>
     <div className="preset-rule">
       <h4>Prompt</h4>
-      {preset.prompt ? <pre className="preset-prompt" tabIndex={0}>{preset.prompt}</pre> : <p className="preset-none">none</p>}
+      {preset.prompt ? <pre className="preset-prompt" tabIndex={0} aria-label={`Prompt for ${preset.name}`}>{preset.prompt}</pre> : <p className="preset-none">none</p>}
     </div>
     <p className="preset-meta">Sort order {preset.sortOrder} · {preset.builtin ? 'Managed by code' : `Updated ${formatTime(preset.updatedAt)}`}</p>
   </SettingsRow>;
@@ -41,19 +42,29 @@ function PresetRow({ preset, isDefault, expanded, onToggle }: { preset: AgentPre
 /** Owner-only read-only view of code-managed and custom presets and the default selection. */
 export function AgentPresetsPanel() {
   const [data, setData] = useState<AgentPresetsState | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<{ text: string; forbidden: boolean } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const current = useRef<AbortController | null>(null);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    setError(''); setData(null);
-    try { setData(await getAgentPresets(signal)); }
-    catch (cause) { if (!signal?.aborted) setError(cause instanceof Error ? cause.message : 'Could not load agent presets.'); }
+  // Every load aborts the previous request; already loaded presets stay visible while a reload is in flight.
+  const load = useCallback(async () => {
+    current.current?.abort();
+    const controller = new AbortController();
+    current.current = controller;
+    setError(null);
+    try {
+      const next = await getAgentPresets(controller.signal);
+      if (!controller.signal.aborted) setData(next);
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      const forbidden = cause instanceof ApiError && cause.status === 403;
+      setError({ forbidden, text: forbidden ? 'Only owners can view agent presets.' : cause instanceof Error ? cause.message : 'Could not load agent presets.' });
+    }
   }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
+    void load();
+    return () => { current.current?.abort(); current.current = null; };
   }, [load]);
 
   return <section className="settings-panel" aria-label="Agent presets">
@@ -61,8 +72,9 @@ export function AgentPresetsPanel() {
       <h2>Agent presets</h2>
       <p className="settings-note">Read-only. Built-ins are managed by code; custom presets are stored in the database. Preset changes apply only to new agents; existing agents keep their snapshot. Presets are a guardrail, not a sandbox.</p>
     </header>
-    {error
-      ? <div className="settings-feedback is-error" role="alert">{error} <Button variant="ghost" onClick={() => { void load(); }}>Retry</Button></div>
+    {error?.forbidden
+      ? <p className="settings-note" role="status">{error.text}</p>
+      : error ? <div className="settings-feedback is-error" role="alert">{error.text} <Button variant="ghost" onClick={() => { void load(); }}>Retry</Button></div>
       : !data ? <p className="settings-loading" role="status">Loading agent presets…</p>
       : <>
         {data.defaultPresetMissing && <p className="settings-feedback is-error" role="alert">The default preset <code>{data.defaultPresetId}</code> does not exist. New sessions without an explicit preset cannot be created.</p>}
