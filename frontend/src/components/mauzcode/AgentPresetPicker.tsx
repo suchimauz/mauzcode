@@ -8,6 +8,8 @@ export function AgentPresetPicker({ presets, value, disabled, onOpen, chipRef }:
   const label = presets.find(preset => preset.id === value)?.name ?? 'Режим';
   return <button ref={chipRef} type="button" className="new-session-chip agent-preset-picker" disabled={disabled || !presets.length} aria-haspopup="dialog" aria-label={`Режим агента: ${label}`} onClick={onOpen}><Network size={16} strokeWidth={1} aria-hidden="true" /><span>{label}</span></button>;
 }
+/** Phone layout (bottom sheet): no search autofocus, so the on-screen keyboard does not cover the list. */
+const isSheet = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 560px)').matches;
 const matches = (preset: AgentPresetOption, query: string) => !query || `${preset.name} ${preset.description}`.toLowerCase().includes(query);
 /**
  * Modal "Режим агента" dialog: presets in the given (server sort) order with a search field.
@@ -18,6 +20,7 @@ export function AgentPresetDialog({ open, presets, value, defaultId, onConfirm, 
   const base = useId();
   const search = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(value);
   // Every opening starts from the current choice and an empty search.
@@ -37,12 +40,12 @@ export function AgentPresetDialog({ open, presets, value, defaultId, onConfirm, 
       setSelected(visible[next].id);
     } else if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); confirm(); }
   };
-  return <Dialog.Root open={open} onOpenChange={next => { if (!next) onClose(); }}><Dialog.Portal><Dialog.Backdrop className="preset-dialog-backdrop" /><Dialog.Popup className="preset-dialog" aria-describedby={undefined} initialFocus={search} finalFocus={finalFocus}>
+  return <Dialog.Root open={open} onOpenChange={next => { if (!next) onClose(); }}><Dialog.Portal><Dialog.Backdrop className="preset-dialog-backdrop" /><Dialog.Popup ref={popup} className="preset-dialog" aria-describedby={undefined} initialFocus={() => isSheet() ? popup.current : search.current} finalFocus={finalFocus}>
     <header className="preset-dialog-header"><Dialog.Title>Режим агента</Dialog.Title>
       <input ref={search} className="preset-dialog-search" type="search" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls={`${base}-list`} aria-activedescendant={selected && index >= 0 ? optionId(selected) : undefined} aria-label="Поиск режима" placeholder="Поиск режима" autoComplete="off" spellCheck={false} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={onKeyDown} />
     </header>
     <div ref={list} className="preset-dialog-list" id={`${base}-list`} role="listbox" aria-label="Режимы агента">
-      {visible.map(preset => <div key={preset.id} id={optionId(preset.id)} role="option" aria-selected={preset.id === selected} aria-describedby={preset.description ? `${optionId(preset.id)}-description` : undefined} className={`preset-row${preset.id === selected ? ' is-selected' : ''}`} onMouseDown={event => event.preventDefault()} onClick={() => { setSelected(preset.id); search.current?.focus(); }} onDoubleClick={() => onConfirm(preset.id)}>
+      {visible.map(preset => <div key={preset.id} id={optionId(preset.id)} role="option" aria-selected={preset.id === selected} aria-describedby={preset.description ? `${optionId(preset.id)}-description` : undefined} className={`preset-row${preset.id === selected ? ' is-selected' : ''}`} onMouseDown={event => event.preventDefault()} onClick={() => { setSelected(preset.id); if (!isSheet()) search.current?.focus(); }} onDoubleClick={() => onConfirm(preset.id)}>
         <Network size={16} strokeWidth={1} aria-hidden="true" />
         <span className="preset-row-text"><span className="preset-row-name"><span>{preset.name}</span>{preset.id === defaultId && <span className="preset-row-badge">по умолчанию</span>}</span>{preset.description && <span className="preset-row-description" id={`${optionId(preset.id)}-description`}>{preset.description}</span>}</span>
         <span className="preset-row-check" aria-hidden="true"><Check size={14} strokeWidth={2} /></span>

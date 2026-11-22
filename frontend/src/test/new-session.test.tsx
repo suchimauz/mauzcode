@@ -280,6 +280,17 @@ it('Search filters by name and description, keeps the selection and shows Нич
   await userEvent.keyboard('{Enter}');
   expect(await screen.findByRole('button', { name: 'Режим агента: Minimal' })).toBeInTheDocument();
 });
+it('Phone bottom sheet: the search field is not focused automatically', async () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('max-width: 560px'), media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+  await withPresets(); render(<Draft />);
+  const dialog = await screen.findByRole('dialog', { name: 'Режим агента' });
+  await waitFor(() => expect(dialog).toHaveFocus());
+  expect(screen.getByRole('combobox')).not.toHaveFocus();
+  await userEvent.click(screen.getByRole('option', { name: /Creator/ }));
+  expect(screen.getByRole('combobox')).not.toHaveFocus();
+  await userEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
+  expect(await screen.findByRole('button', { name: 'Режим агента: Creator' })).toBeInTheDocument();
+});
 it('Many presets: all ten are listed in the scrollable list', async () => {
   const { getNewSessionDefaults } = await import('../lib/newSession');
   const many = Array.from({ length: 10 }, (_, i) => ({ id:`p${i}`, name:`Preset ${i}`, description:`Mode ${i}`, sortOrder:i }));
