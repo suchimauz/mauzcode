@@ -1,0 +1,62 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root{color-scheme:light dark;--bg:#f5f5f7;--card:#fff;--line:#d9d9de;--mut:#6e6e73;--acc:#0a84ff;--fg:#1d1d1f}
+@media(prefers-color-scheme:dark){:root{--bg:#1c1c1e;--card:#2c2c2e;--line:#3a3a3c;--mut:#98989d;--fg:#f5f5f7}}
+body{margin:0;font:14px -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+.bar{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);align-items:center;flex-wrap:wrap}
+.bar button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:6px 14px;cursor:pointer;font:inherit}
+.bar button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.sep{width:1px;height:22px;background:var(--line);margin:0 6px}.mut{color:var(--mut);font-size:12px}
+.stage{position:relative;height:calc(100vh - 58px);display:flex;align-items:center;justify-content:center}
+.wrap{width:min(680px,92%)}h2{font-weight:600;font-size:22px;text-align:center;margin:0 0 18px}
+.label{font-size:12px;color:var(--mut);margin:0 0 6px 2px;display:flex;justify-content:space-between}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.pill{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:6px 12px;cursor:pointer;font:inherit}
+.pill.sel{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 15%,var(--card));color:var(--acc);font-weight:600}
+.pill.more{color:var(--mut)}
+.desc{font-size:12px;color:var(--mut);margin:0 0 10px 4px;min-height:16px}
+.composer{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px}
+.composer textarea{width:100%;border:0;background:transparent;color:var(--fg);font:inherit;resize:none;height:60px;outline:none}
+.chips{display:flex;gap:6px;align-items:center}.chip{border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--mut)}
+.send{margin-left:auto;background:var(--acc);color:#fff;border:0;border-radius:999px;width:30px;height:30px}
+.overlay{position:absolute;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
+.modal{background:var(--card);border-radius:18px;padding:18px;width:min(480px,90%);box-shadow:0 20px 60px rgba(0,0,0,.3);display:flex;flex-direction:column;max-height:80%}
+.modal h3{margin:0 0 10px}
+.search{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);color:var(--fg);font:inherit;margin-bottom:10px}
+.list{overflow:auto;display:flex;flex-direction:column;gap:2px}
+.row{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;cursor:pointer;border:0;background:transparent;color:var(--fg);text-align:left;font:inherit}
+.row:hover{background:var(--bg)}.row.sel{background:color-mix(in srgb,var(--acc) 15%,transparent)}
+.row b{min-width:90px}.row span{color:var(--mut);font-size:12px;flex:1}.row i{font-style:normal;font-size:11px;color:var(--acc)}
+.foot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:var(--mut)}
+.ok{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:8px 16px;font:inherit;cursor:pointer}
+.hidden{display:none}
+</style></head><body>
+<div class="bar"><button class="on" data-v="a">A. Плашка</button><button data-v="b">B. Модалка</button><span class="sep"></span><span class="mut">Пресетов:</span><button class="n" data-n="4">4</button><button class="n on" data-n="7">7</button><button class="n" data-n="10">10</button></div>
+<div class="stage" id="a"><div class="wrap"><h2>Новая сессия</h2>
+<div class="label"><span>Режим агента</span></div><div class="pills" id="pills"></div><div class="desc" id="desc"></div>
+<div class="composer"><textarea placeholder="Опишите задачу…"></textarea><div class="chips"><span class="chip">📁 mauzcode</span><button class="send">↑</button></div></div></div></div>
+<div class="stage hidden" id="b"><div class="wrap"><h2>Новая сессия</h2><div class="composer"><textarea placeholder="Опишите задачу…"></textarea><div class="chips"><span class="chip">📁 mauzcode</span><span class="chip" id="chipB">⎔ Standard</span><button class="send">↑</button></div></div></div>
+<div class="overlay" id="ov"><div class="modal"><h3>Режим агента</h3><input class="search" id="q" placeholder="Поиск… (↑↓ — выбрать, Enter — продолжить)"><div class="list" id="list"></div>
+<div class="foot"><span>Esc — оставить по умолчанию</span><button class="ok" id="ok">Продолжить</button></div></div></div></div>
+<script>
+const ALL=[["standard","Standard","Код и задачи: спеки, ревью, исследование, браузер"],["creator","Creator","Все runtime-функции и все плагины"],["minimal","Minimal","Только shell, read, write, edit"],["redmine","Redmine","Задачи, время, комментарии Redmine"],["review","Review","Только чтение и ревью кода"],["research","Research","Веб-поиск и браузер, без записи"],["ops","Ops","Деплой и SSH-серверы"],["docs","Docs","Документация и OpenSpec"],["frontend","Frontend","React/Vite и браузер"],["data","Data","SQL и аналитика"]];let n=7,sel='standard',view='a',expanded=false;const VISIBLE=5;
+function presets(){return ALL.slice(0,n)}
+function renderA(){const p=presets();const vis=expanded||p.length<=VISIBLE?p:p.slice(0,VISIBLE-1);
+ if(!vis.some(x=>x[0]===sel)){const s=p.find(x=>x[0]===sel);vis[vis.length-1]=s}
+ let h=vis.map(([id,nm])=>'<button class="pill'+(id===sel?' sel':'')+'" data-id="'+id+'">'+nm+(id==='standard'?' ·&nbsp;по&nbsp;умолч.':'')+'</button>').join('');
+ if(p.length>vis.length)h+='<button class="pill more" id="more">Ещё '+(p.length-vis.length)+' ▾</button>';
+ else if(expanded&&p.length>VISIBLE)h+='<button class="pill more" id="less">Свернуть ▴</button>';
+ pills.innerHTML=h;desc.textContent=ALL.find(x=>x[0]===sel)[2];
+ pills.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{sel=b.dataset.id;renderA()});
+ const m=document.getElementById('more');if(m)m.onclick=()=>{expanded=true;renderA()};const l=document.getElementById('less');if(l)l.onclick=()=>{expanded=false;renderA()}}
+function renderB(){const f=q.value.toLowerCase();const p=presets().filter(x=>(x[1]+x[2]).toLowerCase().includes(f));
+ list.innerHTML=p.map(([id,nm,d])=>'<button class="row'+(id===sel?' sel':'')+'" data-id="'+id+'"><b>'+nm+'</b><span>'+d+'</span>'+(id==='standard'?'<i>по умолчанию</i>':'')+'</button>').join('')||'<div class="mut" style="padding:8px">Ничего не найдено</div>';
+ list.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{sel=b.dataset.id;renderB();chipB.textContent='⎔ '+ALL.find(x=>x[0]===sel)[1]})}
+function render(){a.classList.toggle('hidden',view!=='a');b.classList.toggle('hidden',view!=='b');if(!presets().some(x=>x[0]===sel))sel='standard';renderA();renderB();chipB.textContent='⎔ '+ALL.find(x=>x[0]===sel)[1]}
+document.querySelectorAll('[data-v]').forEach(x=>x.onclick=()=>{view=x.dataset.v;document.querySelectorAll('[data-v]').forEach(y=>y.classList.toggle('on',y===x));ov.classList.remove('hidden');q.value='';render();if(view==='b')q.focus()});
+document.querySelectorAll('.n').forEach(x=>x.onclick=()=>{n=+x.dataset.n;expanded=false;document.querySelectorAll('.n').forEach(y=>y.classList.toggle('on',y===x));render()});
+q.oninput=renderB;ok.onclick=()=>ov.classList.add('hidden');
+document.addEventListener('keydown',e=>{if(view!=='b'||ov.classList.contains('hidden'))return;const p=presets().filter(x=>(x[1]+x[2]).toLowerCase().includes(q.value.toLowerCase()));const i=p.findIndex(x=>x[0]===sel);
+ if(e.key==='ArrowDown'&&p.length){sel=p[(i+1)%p.length][0];renderB();e.preventDefault()}if(e.key==='ArrowUp'&&p.length){sel=p[(i-1+p.length)%p.length][0];renderB();e.preventDefault()}
+ if(e.key==='Enter'||e.key==='Escape'){if(e.key==='Escape')sel='standard';ov.classList.add('hidden');render()}});
+render();
+</script></body></html>
