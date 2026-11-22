@@ -18,7 +18,7 @@ function RuleList({ label, items }: { label: string; items: string[] }) {
 
 /** One preset row: name, id, badges and default marker; expanded details hold description, rule chips, prompt and metadata. */
 function PresetRow({ preset, isDefault, expanded, onToggle }: { preset: AgentPresetView; isDefault: boolean; expanded: boolean; onToggle: () => void }) {
-  return <SettingsRow as="section" aria-label={preset.name} className="preset-row" toggleLabel={preset.name}
+  return <SettingsRow as="section" aria-label={preset.name} className="settings-preset-row" toggleLabel={preset.name}
     label={<><span>{preset.name}</span>
       <span className={`settings-badge ${preset.builtin ? 'is-success' : 'is-pending'}`}>{preset.builtin ? 'Built-in' : 'Custom'}</span>
       {isDefault && <span className="settings-badge is-accent">Default for new sessions</span>}</>}
