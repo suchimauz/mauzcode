@@ -18,7 +18,7 @@ function fixture() {
             if (sql.includes('SELECT *')) return rows.filter(r => r.id === params[0]);
             return [{ i: -1 }];
         },
-    } }, agent: { renderEventHtml: async () => '', current: async () => ({ id: 'a' }) }, session: { appendEvent: async () => {} }, webPush: { notifyInput: async () => {} } } };
+    } }, events: { desktopOccurrence: async () => {} }, agent: { renderEventHtml: async () => '', current: async () => ({ id: 'a' }) }, session: { appendEvent: async () => {} }, webPush: { notifyInput: async () => {} } } };
     return { ctx, rows, waiting: (since?: number) => isWaiting(ctx, null, { agentId: 'a', since }) };
 }
 describe('durable ordinary input wait', () => {

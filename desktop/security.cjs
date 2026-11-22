@@ -22,4 +22,8 @@ function sameOrigin(value, origin) {
   const url = webURL(value);
   return !!url && url.origin === origin;
 }
-module.exports = { serverURL, webURL, sameOrigin };
+function needsHttpConsent(url) {
+  const { protocol, hostname } = new URL(url);
+  return protocol === 'http:' && hostname !== 'localhost' && !hostname.endsWith('.localhost') && hostname !== '[::1]' && !/^127(?:\.\d+){3}$/.test(hostname);
+}
+module.exports = { serverURL, webURL, sameOrigin, needsHttpConsent };

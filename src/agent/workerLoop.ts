@@ -486,6 +486,12 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
             return;
         }
 
+        // Only visible, top-level chats can produce desktop alerts. The DB check in
+        // desktopOccurrence revalidates the owner and committed state before delivery.
+        if (advanceCursor && !agent.parentId && !goalContinuation && !goalAuthority && !failureBinding) {
+            await ctx.fns.events.desktopOccurrence({ agentId, kind: 'run-finished', token: runToken, at: ts }).catch(() => {});
+        }
+
         // A provider that asked to wait gets a wait: this agent parks until that moment
         // and continues the same work by itself. Its messages stay unread (the cursor did
         // not advance) and no error is recorded, because nothing is broken.

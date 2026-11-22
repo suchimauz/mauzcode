@@ -82,6 +82,14 @@ After a non-htmx DOM render changes `data-live-topic` regions, call
 state subscriber to resync on the next hello; unchanged sets do not reconnect. Hidden HTTP/1 tabs
 wait until visible. Existing htmx swap handling retains its fresh-markup behavior.
 
+## Desktop live adapter (v1)
+
+The sandboxed desktop main frame adds `desktop=1` to **the existing** `/procs/events` request and keeps its one stream open in the tray, including on HTTP/1. The capability in `hello` is available only with a signed named-user session. Old servers, unbound open/legacy sessions and unavailable native notifications do not prevent chat. A local retry replaces the EventSource on the same page; its next hello runs the same gap resync as an automatic reconnect. Neither path submits a composer message. There is no offline catch-up queue or delivery after Quit.
+
+An input becomes eligible after its open card is committed. A successful run becomes eligible only after its worker owns the finalization, with no scheduled follow-up, pending input or park. Both require an unarchived, top-level nav chat owned by an active named user. A private owner listener rechecks the current session before sending an opaque occurrence hint. This is not a user-selectable broadcast topic. Before display and again on click the shell checks the active window, origin, session scope and opt-in, and resolves `GET /events/desktop?id=…` with the isolated profile. The response supplies the canonical chat ID; the page cannot supply notification text or a destination. Server occurrence records are bounded (4,096, at most one day); restart/eviction invalidates them. Reconnects do not replay alerts. Desktop profiles do not enable browser Web Push; browser delivery on other devices is unchanged.
+
+In the desktop client the open chat replaces the generic polling notice with `DesktopLiveStatus`: a polite live region driven only by `mauzcodeLive.getStatus/onStatus` that reports loss (with the `Ctrl/Cmd+R` retry hint), then a brief recovery message. It opens no socket, reloads nothing, never submits or moves focus, so the composer draft stays intact. Browsers keep the existing notice; Push settings in the desktop client point to «Сервер → Настройки… → Разрешения» instead of browser Web Push.
+
 ## Gaps and resync
 
 A gap is any period in which events may have been lost:

@@ -1,32 +1,25 @@
 {
   "name": "mauzcode-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0-pilot.1",
   "private": true,
-  "description": "Minimal secure desktop client for an existing MauzCode server",
+  "description": "Secure desktop client for an existing MauzCode server",
   "author": "MauzCode contributors",
   "main": "main.cjs",
   "scripts": {
     "dev": "electron .",
-    "test": "bun test ./security.test.ts ./navigation.test.ts ./lifecycle.test.ts ./icons.test.ts ./prefetch-electron.test.ts",
+    "test": "bun test",
     "icons": "bun ../script/generate-icons.ts",
-    "check": "bun build main.cjs preload.cjs renderer.js --target=node --external electron --outdir .check",
+    "check": "bun build main.cjs preload.cjs remote-preload.cjs renderer.js --target=node --external electron --external electron-updater --outdir .check",
     "prefetch:win": "bun run prefetch-electron.cjs",
-    "build:win": "bun run prefetch:win && electron-builder --win nsis --x64",
-    "build:mac": "electron-builder --mac dmg --arm64 --x64"
+    "build:win": "bun run prefetch:win && electron-builder --config tools/builder.cjs --win nsis --x64 --publish never",
+    "build:mac": "electron-builder --config tools/builder.cjs --mac dmg zip --arm64 --x64 --publish never",
+    "build:linux": "electron-builder --config tools/builder.cjs --linux AppImage --x64 --publish never",
+    "inventory": "node tools/inventory.cjs"
   },
+  "dependencies": { "electron-updater": "6.6.2" },
   "devDependencies": {
     "electron": "44.9.0",
     "electron-builder": "26.15.3"
   },
-  "trustedDependencies": ["electron"],
-  "build": {
-    "appId": "dev.mauzcodecode.desktop",
-    "productName": "MauzCode",
-    "directories": { "output": "dist" },
-    "files": ["main.cjs", "navigation.cjs", "lifecycle.cjs", "assets/**/*", "security.cjs", "preload.cjs", "renderer.js", "index.html", "styles.css", "package.json"],
-    "asar": true,
-    "win": { "target": "nsis", "icon": "assets/icon.ico" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
-    "mac": { "target": "dmg", "icon": "assets/icon.icns", "category": "public.app-category.productivity" }
-  }
+  "trustedDependencies": ["electron"]
 }

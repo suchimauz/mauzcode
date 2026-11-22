@@ -1,62 +1,42 @@
 import { describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 const attachNavigation = require('./navigation.cjs');
+const origin = 'https://mauzcode.test';
 function fixture() {
-  let url = 'https://mauzcode.test/';
-  const contents = Object.assign(new EventEmitter(), { getURL: () => url });
-  const failures: string[] = [], pages: any[] = [];
-  let ready = 0;
-  const navigation = attachNavigation({ contents, origin: 'https://mauzcode.test', fail: (reason: string) => failures.push(reason),
-    ready: () => { ready++; }, pageError: (...args: any[]) => pages.push(args) });
-  function navigate(code = 200, target = 'https://mauzcode.test/') {
-    url = target;
-    contents.emit('did-start-navigation', {}, url, false, true);
-    contents.emit('did-navigate', {}, url, code);
-    contents.emit('did-finish-load');
+  let url = origin, handler: Function = () => {};
+  const contents = Object.assign(new EventEmitter(), { getURL: () => url, setWindowOpenHandler: (h: Function) => { handler = h; } });
+  const failures: string[] = [], pages: any[] = [], external: string[] = []; let starts = 0;
+  attachNavigation({ contents, origin, start: () => starts++, ready: (...v: any[]) => pages.push(v), failure: (v: string) => failures.push(v), external: (v: string) => external.push(v) });
+  function navigate(code: number, href = origin + '/') {
+    contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false }); url = href;
+    contents.emit('did-navigate', {}, url, code); contents.emit('did-finish-load');
   }
-  function failure(code = -105, main = true) { contents.emit('did-fail-load', {}, code, 'failed', url, main); }
-  return { contents, navigation, navigate, failure, failures, pages, get ready() { return ready; } };
+  function failure(code: number, main = true) { contents.emit('did-fail-load', {}, code, 'err', url, main); }
+  return { contents, navigate, failure, failures, pages, external, get starts() { return starts; }, popup: (url: string) => handler({ url }) };
 }
-describe('desktop navigation errors', () => {
-  for (const code of [401, 403, 404, 500]) {
-    test(`initial HTTP ${code} still reports connection failure`, () => {
-      const f = fixture(); f.navigate(code); expect(f.failures).toEqual([`HTTP ${code}.`]); expect(f.ready).toBe(0); expect(f.pages).toEqual([]);
-    });
-    test(`later HTTP ${code} keeps connection and original response`, () => {
-      const f = fixture(); f.navigate(); f.navigate(code, 'https://mauzcode.test/redmine401');
-      expect(f.failures).toEqual([]); expect(f.ready).toBe(1); expect(f.pages).toEqual([[`HTTP ${code}.`, { http: true }]]);
-      f.failure(-379); expect(f.pages).toHaveLength(1);
-      f.navigate(); expect(f.failures).toEqual([]); expect(f.ready).toBe(1);
-    });
-  }
-  test('login page and redirects within origin can finish the initial connection', () => {
-    const f = fixture(); f.navigate(200, 'https://mauzcode.test/auth?returnTo=%2F'); expect(f.ready).toBe(1); expect(f.failures).toEqual([]);
+describe('Electron main-frame navigation policy', () => {
+  for (const code of [403, 404, 500]) test(`HTTP ${code} preserves original error response; never a loaded app`, () => {
+    const f = fixture(); f.navigate(code); f.failure(-379); expect(f.failures).toEqual([`HTTP ${code}.`]); expect(f.pages).toEqual([]);
+    f.navigate(200); expect(f.pages).toHaveLength(1);
   });
-  for (const code of [-105, -102, -202, -379]) {
-    test(`initial network/TLS/load failure ${code} fails once`, () => {
-      const f = fixture(); f.failure(code); f.navigation.failedLoad(code, 'promise rejection'); f.contents.emit('did-finish-load');
-      expect(f.failures).toHaveLength(1); expect(f.ready).toBe(0);
-    });
-    test(`later network/TLS/load failure ${code} allows retry without setup`, () => {
-      const f = fixture(); f.navigate(); f.failure(code); expect(f.failures).toEqual([]); expect(f.pages).toHaveLength(1);
-      f.navigate(); expect(f.ready).toBe(1);
-    });
-  }
-  test('aborted navigations and failed subresources do not disconnect', () => {
-    const f = fixture(); f.failure(-3); f.failure(-105, false); f.navigate();
-    f.failure(-3); f.failure(-105, false); expect(f.ready).toBe(1); expect(f.failures).toEqual([]); expect(f.pages).toEqual([]);
+  test('401 is a sign-in response, not a network error; final authorization belongs to the session check', () => {
+    const f = fixture(); f.navigate(401, origin + '/auth/login'); f.failure(-379); expect(f.pages).toEqual([[origin + '/auth/login', 401]]); expect(f.failures).toEqual([]);
   });
-  test('uncommitted, cross-origin and fragment loads do not count as connection success', () => {
-    const f = fixture(); f.contents.emit('did-finish-load'); expect(f.ready).toBe(0);
-    f.navigate(200, 'https://evil.test/'); expect(f.ready).toBe(0);
-    f.contents.emit('did-start-navigation', {}, 'https://mauzcode.test/#x', true, true); f.contents.emit('did-finish-load'); expect(f.ready).toBe(0);
+  test('separates TLS, network and renderer failures; abort/iframes do not disconnect', () => {
+    const f = fixture(); f.failure(-3); f.failure(-105, false); expect(f.failures).toBeEmpty();
+    f.failure(-202); f.failure(-105); f.contents.emit('render-process-gone', {}, {reason:'crashed'});
+    expect(f.failures[0]).toContain('TLS'); expect(f.failures[1]).toContain('-105'); expect(f.failures[2]).toContain('интерфейса');
+    f.contents.emit('did-finish-load'); expect(f.pages).toBeEmpty();
   });
-  test('renderer crash before initial load fails; after load preserves connection for retry', () => {
-    const initial = fixture(); initial.contents.emit('render-process-gone', {}, { reason: 'crashed' }); expect(initial.failures).toHaveLength(1);
-    const later = fixture(); later.navigate(); later.contents.emit('render-process-gone', {}, { reason: 'crashed' });
-    expect(later.failures).toEqual([]); expect(later.pages[0][0]).toContain('crashed'); later.navigate(); expect(later.ready).toBe(1);
+  test('only committed main documents count; in-page and subframe events do not replace them', () => {
+    const f = fixture(); f.contents.emit('did-finish-load'); expect(f.pages).toBeEmpty(); f.navigate(200);
+    f.contents.emit('did-start-navigation', {isMainFrame:true,isSameDocument:true}); f.contents.emit('did-start-navigation', {isMainFrame:false}); expect(f.starts).toBe(1);
+    f.navigate(204); f.navigate(200,'https://foreign.example/'); expect(f.pages).toHaveLength(1);
   });
-  test('initial timeout reports once and late finish cannot dismiss setup', () => {
-    const f = fixture(); f.navigation.failure('timeout'); f.navigate(); expect(f.failures).toEqual(['timeout']); expect(f.ready).toBe(0);
+  test('guards redirects, popups and webviews', () => {
+    const f = fixture(); let blocked = 0; const foreign = 'https://external.example/'; const event = {url:foreign,preventDefault() { blocked++; }};
+    f.contents.emit('will-navigate', {...event,url:origin+'/ok'}); f.contents.emit('will-redirect',{...event,isMainFrame:false}); expect(blocked).toBe(0);
+    f.contents.emit('will-navigate', event); f.contents.emit('will-redirect',{...event,isMainFrame:true}); f.contents.emit('will-attach-webview',event);
+    expect(f.popup(foreign)).toEqual({action:'deny'}); expect(f.external).toEqual([foreign,foreign,foreign]); expect(blocked).toBe(3);
   });
 });

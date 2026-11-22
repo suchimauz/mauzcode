@@ -26,3 +26,9 @@
 .attachment-link { display: block; padding-block: 6px; }
 @media (max-width: 1000px) { .agent-search { font-size: 16px; } }
 .markdown a:hover, .attachment-link:hover, .live-tool a:hover, .connection-error a:hover { color: var(--link-hover); }
+/* Desktop client only: live transport status above the transcript; never takes focus from the composer. */
+.desktop-live-status:empty { display: none; }
+.desktop-live-status { margin: 8px 16px 0; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 12px; line-height: 1.6; color: var(--text); background: var(--accent-soft); overflow-wrap: anywhere; }
+.desktop-live-status.is-restored { background: var(--success-soft); }
+.desktop-live-status span { color: var(--text-secondary); }
+.desktop-live-status kbd { font: inherit; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; }

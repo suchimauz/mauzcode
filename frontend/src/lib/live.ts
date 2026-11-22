@@ -2,6 +2,8 @@ export type LiveStatus = 'connecting' | 'connected' | 'disconnected';
 export type LiveEvent = { type?: string; topic?: string; agentId?: string };
 declare global {
   interface Window {
+    /** Present only in the sandboxed desktop client; the page never calls it for status UI. */
+    mauzcodeDesktopLive?: unknown;
     mauzcodeLive?: {
       subscribe: (options: { name: string; types?: string[]; onEvent: (event: LiveEvent) => void; resync: (reason: string) => void }) => () => void;
       refreshTopics?: () => void;

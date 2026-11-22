@@ -1,8 +1,22 @@
 import { expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 import { runInNewContext } from 'node:vm';
 
 const script = await Bun.file(new URL('./client.js', import.meta.url)).text();
-function browser(protocol = 'http/1.1', visibility = 'visible') {
+test('desktop retry reconnects the same page and resyncs once without submitting its draft',()=>{
+ let retry!:()=>void, resyncs=0, submissions=0, support:any='unknown';
+ const page=new Window({url:'https://chat.example/a/chat'});
+ page.document.body.innerHTML='<form><textarea name="draft"></textarea></form><aside data-live-topic="chat"></aside>';
+ const form=page.document.querySelector('form')!, draft=page.document.querySelector('textarea')!;
+ form.addEventListener('submit',e=>{e.preventDefault();submissions++}); draft.value='unsent draft';
+ const b=browser('http/1.1','visible',{onRetry:(fn:()=>void)=>retry=fn,status:()=>{},capability:(s:any)=>support=s},page.document);
+ b.live.subscribe({onEvent:()=>{},resync:()=>resyncs++});
+ const hello={data:JSON.stringify({type:'hello',serverStart:1})};b.sources[0].onmessage(hello);expect(support).toBeNull();
+ b.sources[0].onerror();retry();b.retry();expect(b.sources).toHaveLength(2);b.sources[1].onmessage(hello);
+ expect(resyncs).toBe(1);expect(page.document.querySelector('textarea')).toBe(draft);expect(draft.value).toBe('unsent draft');expect(submissions).toBe(0);
+ b.document.visibilityState='hidden';b.handlers.visibilitychange!();expect(b.sources[1].closed).toBe(false);
+});
+function browser(protocol = 'http/1.1', visibility = 'visible', desktop?:any, page?:Window['document']) {
     const handlers: Record<string, Function> = {};
     const timers = new Map<number, Function>();
     let timer = 0;
@@ -15,13 +29,13 @@ function browser(protocol = 'http/1.1', visibility = 'visible') {
     const regions: any[] = [];
     const document = {
         visibilityState: visibility,
-        querySelectorAll: () => regions,
+        querySelectorAll: (selector:string) => page ? page.querySelectorAll(selector) : regions,
         addEventListener: (name: string, fn: Function) => { handlers[name] = fn; },
         dispatchEvent: () => {},
     };
-    const window: any = { addEventListener: (name: string, fn: Function) => { handlers[name] = fn; } };
+    const window: any = { mauzcodeDesktopLive:desktop, addEventListener: (name: string, fn: Function) => { handlers[name] = fn; } };
     runInNewContext(script, { window, document, EventSource: Source, performance: { getEntriesByType: () => [{ nextHopProtocol: protocol }] },
-        console: { error: () => {} }, location: { reload: () => {} }, CustomEvent: class {},
+        console: { error: () => {} }, location: { reload: () => {throw Error('unexpected reload')} }, CustomEvent: class {},
         setTimeout: (fn: Function) => { timers.set(++timer, fn); return timer; }, clearTimeout: (id: number) => timers.delete(id) });
     return { regions, live: window.mauzcodeLive, document, handlers, sources, retry: () => { const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach(fn => fn()); } };
 }

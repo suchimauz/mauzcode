@@ -12,12 +12,16 @@
   if (window.__mauzcodeEventsInstalled) return;
   window.__mauzcodeEventsInstalled = true;
 
+  // mauzcode: optional isolated desktop adapter; browsers retain their normal lifecycle.
+  const desktop = window.mauzcodeDesktopLive;
+  desktop?.onRetry(() => { resyncPending = true; planned = false; connect(); });
   let es;
   let status = 'disconnected';
   const statusListeners = new Set();
   function setStatus(next) {
     if (status === next) return;
     status = next;
+    desktop?.status(next);
     for (const listener of [...statusListeners]) {
       try { listener(status); } catch (error) { console.error('mauzCodeLive status:', error); }
     }
@@ -141,6 +145,8 @@
   }
 
   function handle(data) {
+    if (data?.type === 'desktop.occurrence') { desktop?.hint(data.scope,data.id); return; }
+    if (data?.type === 'hello') desktop?.capability(data.desktop?.version === 1 ? data.desktop.scope : null);
     deliver(data);
     // Server restarted under us — reload to pick up the new process.
     if (data?.type === 'hello') {
@@ -194,7 +200,7 @@
   // protocol carried it; nothing to configure.
   function keepWhileHidden() {
     const proto = performance.getEntriesByType?.('navigation')?.[0]?.nextHopProtocol || '';
-    return proto === 'h2' || proto === 'h3' || proto.startsWith('h3-');
+    return !!desktop || proto === 'h2' || proto === 'h3' || proto.startsWith('h3-');
   }
   const mayConnect = () => document.visibilityState === 'visible' || keepWhileHidden();
 
@@ -214,7 +220,7 @@
     // and deciding the event was not ours.
     const want = topics();
     setStatus('connecting');
-    const source = new EventSource('/procs/events' + (want.length ? '?topics=' + encodeURIComponent(want.join(',')) : ''));
+    const source = new EventSource('/procs/events' + (desktop ? '?desktop=1&' : '?') + 'topics=' + encodeURIComponent(want.join(',')));
     es = source;
     es.onopen = () => { if (es === source) setStatus('connected'); };
     es.onmessage = (e) => {

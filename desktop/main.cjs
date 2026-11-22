@@ -1,159 +1,156 @@
 'use strict';
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, session, Tray, nativeImage, powerMonitor } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, session, Tray, nativeImage, powerMonitor, Notification, systemPreferences } = require('electron');
 const path = require('node:path');
-const fs = require('node:fs/promises');
-const { createHash } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
-const { serverURL, webURL, sameOrigin } = require('./security.cjs');
-const attachNavigation = require('./navigation.cjs');
+const { serverURL, webURL, sameOrigin, needsHttpConsent } = require('./security.cjs');
+const { openProfile, partitionFor } = require('./profile.cjs');
+const { stageConnection, probeSession, reasonFor } = require('./connection.cjs');
+const { createNativeAccess } = require('./native-access.cjs');
+const { createNotifications } = require('./notifications.cjs');
+const { createUpdates } = require('./updates.cjs');
+const { buildShellMenu } = require('./shell-menu.cjs');
 
 app.enableSandbox();
-let setupWindow;
-let remoteWindow;
-let savedURL = '';
-let status = '';
-let connecting = false;
-let externalPrompt = false;
-const localURL = pathToFileURL(path.join(__dirname, 'index.html')).href;
-const preferences = { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, webviewTag: false };
-const configPath = () => path.join(app.getPath('userData'), 'server.json');
-const assets = name => path.join(__dirname, 'assets', name);
-const lifecycle = require('./lifecycle.cjs')({ app, Tray, Menu, nativeImage, powerMonitor,
-  platform: process.platform, assets, getWindows: () => [setupWindow, remoteWindow], createWindow: () => updateSetup(status) });
-
-function updateSetup(message = '') {
-  status = message;
-  if (!setupWindow || setupWindow.isDestroyed()) {
-    setupWindow = new BrowserWindow({ icon: assets('icon.png'), width: 620, height: 470, minWidth: 480, minHeight: 400, title: 'MauzCode — сервер', webPreferences: { ...preferences, preload: path.join(__dirname, 'preload.cjs') } });
-    lifecycle.attach(setupWindow);
-    setupWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    setupWindow.webContents.on('will-navigate', event => event.preventDefault());
-    setupWindow.on('closed', () => { setupWindow = null; });
-    void setupWindow.loadFile(path.join(__dirname, 'index.html')).catch(error => { console.error('Cannot load setup window:', error); app.quit(); });
-  } else {
-    setupWindow.webContents.send('setup:state', { url: savedURL, status });
-    setupWindow.show();
-    setupWindow.focus();
+const resource = name => path.join(__dirname, name);
+const localURL = pathToFileURL(resource('index.html')).href;
+const secure = { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, webviewTag: false };
+const profiles = new WeakSet();
+let setup, active, candidate, store, native, notices, updates;
+let savedURL = '', status = '', generation = 0, externalPrompt = false;
+const alive = win => win && !win.isDestroyed();
+const lifecycle = require('./lifecycle.cjs')({ app, Tray, Menu, nativeImage, powerMonitor, platform: process.platform,
+  assets: name => resource('assets/' + name), getWindows: () => [candidate?.signingIn && candidate.window, setup, active?.window], createWindow: () => showSetup() });
+const getActive = () => !lifecycle.isQuitting() && active?.ready && alive(active.window) ? active : null;
+function restore(win) { if (alive(win)) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } }
+function state() {
+  const mic = native.state(), n = notices.status();
+  return { url: savedURL, status, connected: !!active?.ready, connecting: !!candidate, version: app.getVersion(),
+    liveStatus: active?.ready ? ({ unknown: 'unsupported', connected: 'connected', connecting: 'reconnecting', disconnected: 'offline' })[n.live] : '',
+    permissions: { microphone: mic.microphoneGranted, microphoneSupported: mic.microphoneSupported, microphoneReason: mic.microphoneReason, notifications: n.enabled, notificationSupport: n.supported }, update: updates.state() };
+}
+function changed() { if (alive(setup) && setup.webContents.getURL() === localURL) setup.webContents.send('setup:state', state()); }
+function showSetup(message) {
+  if (lifecycle.isQuitting()) return;
+  if (message !== undefined) status = message;
+  if (alive(setup)) { changed(); restore(setup); return; }
+  const win = setup = new BrowserWindow({ width: 720, height: 740, minWidth: 460, minHeight: 410, icon: resource('assets/icon.png'), title: 'MauzCode — настройки', webPreferences: { ...secure, preload: resource('preload.cjs') } });
+  lifecycle.attach(win, () => !active && !candidate);
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  for (const event of ['will-navigate', 'will-redirect', 'will-attach-webview']) win.webContents.on(event, e => e.preventDefault());
+  win.on('close', e => { if (candidate && !lifecycle.isQuitting()) { e.preventDefault(); candidate.control.cancel(); } });
+  win.on('closed', () => { if (setup === win) setup = null; if (!lifecycle.isQuitting()) restore(active?.window); });
+  void win.loadFile(resource('index.html')).catch(() => { if (alive(win)) { dialog.showErrorBox('MauzCode', 'Не удалось загрузить локальные настройки.'); lifecycle.quit(); } });
+}
+async function openExternal(record, value) {
+  const url = webURL(value);
+  if (!url || record !== active || !record.ready || externalPrompt) return;
+  const revision = record.generation; externalPrompt = true;
+  try {
+    const { response } = await dialog.showMessageBox(record.window, { type: 'question', title: 'Внешняя ссылка', message: 'Открыть ссылку в системном браузере?', detail: url.origin, buttons: ['Отмена', 'Открыть'], defaultId: 0, cancelId: 0, noLink: true });
+    if (response === 1 && getActive() === record && revision === record.generation) await shell.openExternal(url.href);
+  } catch { if (active === record) showSetup('Не удалось открыть системный браузер.'); }
+  finally { externalPrompt = false; }
+}
+function invalidate(record) {
+  record.ready = false; record.generation = ++generation;
+  native.deactivate(record.window, true); notices.clear();
+}
+function prepareSession(origin) {
+  const partition = partitionFor(origin), profile = session.fromPartition(partition);
+  if (!profiles.has(profile)) {
+    native.attach(profile);
+    profile.cookies.on('changed', (_e, cookie) => {
+      // Do not read the cookie value. Session cookie names are configurable on the server.
+      const record = getActive(); if (record?.origin !== origin || !cookie.httpOnly) return;
+      const domain = (cookie.domain || '').replace(/^\./, ''), host = new URL(origin).hostname;
+      if (host !== domain && !host.endsWith('.' + domain)) return;
+      notices.clear(); notices.activate();
+    });
+    profiles.add(profile);
+  }
+  return { partition, profile };
+}
+function connect(value, allowHttp = false) {
+  if (candidate) return { ok: false, error: 'Сначала завершите или отмените текущую проверку.' };
+  let win, url;
+  try {
+    url = serverURL(value); const origin = new URL(url).origin;
+    if (needsHttpConsent(url) && allowHttp !== true) return { ok: false, error: 'Подтвердите подключение без шифрования.' };
+    const { partition, profile } = prepareSession(origin);
+    win = new BrowserWindow({ width: 1280, height: 850, minWidth: 640, minHeight: 480, show: false, icon: resource('assets/icon.png'), title: 'MauzCode', webPreferences: { ...secure, partition, preload: resource('remote-preload.cjs') } });
+    const record = { window: win, origin, generation: ++generation, ready: false, signingIn: false };
+    lifecycle.attach(win, () => active === record);
+    record.control = stageConnection({ url, profile, window: win,
+      signingIn() { record.signingIn = true; status = 'Сервер доступен. Войдите в окне сервера или отмените проверку.'; changed(); restore(win); },
+      promote() {
+        if (candidate !== record || !alive(win)) throw Error('Candidate no longer active');
+        store.save(url); // The only write of server.json. Sync and atomic; the old chat is still intact if it fails.
+        const old = active; if (old) { old.control.retire(); invalidate(old); }
+        savedURL = url; active = record; candidate = null; record.ready = true; status = '';
+        if (alive(old?.window)) old.window.destroy();
+        if (alive(setup)) setup.destroy(); restore(win); notices.activate();
+      },
+      failed(message, quiet) {
+        if (candidate !== record) return;
+        candidate = null; if (!quiet) showSetup(message);
+        if (alive(win)) win.destroy();
+      },
+      onStart() { invalidate(record); },
+      onDocument(href, httpCode) {
+        record.ready = httpCode !== 401 && !/^\/auth\//.test(new URL(href).pathname); record.generation = ++generation;
+        status = record.ready ? '' : 'Сервер доступен. Нужен вход.'; if (record.ready) notices.activate(); changed();
+      },
+      pageError(message, http) {
+        invalidate(record); status = message;
+        if (http) changed(); else showSetup(message); // Preserve HTTP response bodies and the last working address.
+      }, openExternal: target => void openExternal(record, target)
+    });
+    win.once('closed', () => {
+      if (candidate === record) record.control.cancel();
+      if (active === record) { active = null; record.control.retire(); invalidate(record); }
+    });
+    candidate = record; status = 'Проверяем сервер…'; changed(); void record.control.start(); return { ok: true };
+  } catch (e) { if (alive(win)) win.destroy(); return { ok: false, error: url ? 'Не удалось открыть серверный профиль.' : e.message }; }
+}
+async function retry() {
+  if (candidate) { if (candidate.signingIn) restore(candidate.window); return { ok: true }; }
+  const record = getActive();
+  if (!record) { if (savedURL) { showSetup(); return connect(savedURL, true); } showSetup(); return { ok: true }; }
+  if (notices.retry()) return { ok: true }; // Existing transport resyncs via read-only requests; never reload a healthy draft.
+  try {
+    const result = await probeSession(record.window.webContents.session, record.origin, AbortSignal.timeout(10000));
+    if (record === getActive()) { if (result === 'login') { showSetup(); return connect(savedURL, true); } status = 'Сервер доступен.'; changed(); }
+  } catch (e) { if (record === getActive()) showSetup(reasonFor(e)); }
+  return { ok: true };
+}
+function trusted(event) { return alive(setup) && event.sender === setup.webContents && event.senderFrame === setup.webContents.mainFrame && event.senderFrame?.url === localURL; }
+function local(channel, fn) { ipcMain.handle(channel, (event, ...args) => { if (!trusted(event)) throw Error('Forbidden'); return fn(...args); }); }
+async function action(name) {
+  switch (name) {
+    case 'cancel': candidate?.control.cancel(); return { ok: true };
+    case 'back': if (candidate) candidate.control.cancel(true); if (alive(active?.window)) { setup.destroy(); restore(active.window); return { ok: true }; } return retry();
+    case 'retry': return retry();
+    case 'mic-grant': return { ok: await native.grantMicrophone() };
+    case 'mic-revoke': return { ok: native.revokeMicrophone() };
+    case 'notifications-on': return { ok: notices.status().supported && notices.setEnabled(true) };
+    case 'notifications-off': return { ok: notices.setEnabled(false) };
+    case 'update-check': case 'update-download': case 'update-later': case 'update-restart': await updates.action(name.slice(7)); return { ok: true };
+    default: return { ok: false, error: 'Неизвестное действие.' };
   }
 }
-
-async function openExternal(value) {
-  const url = webURL(value);
-  if (!url || externalPrompt) return;
-  externalPrompt = true;
-  try {
-    const { response } = await dialog.showMessageBox({ type: 'question', title: 'Внешняя ссылка', message: 'Открыть ссылку в системном браузере?', detail: url.href, buttons: ['Отмена', 'Открыть'], defaultId: 0, cancelId: 0, noLink: true });
-    if (response === 1) await shell.openExternal(url.href);
-  } catch (error) {
-    updateSetup(`Не удалось открыть браузер: ${error.message}`);
-  } finally { externalPrompt = false; }
-}
-
-async function connect(value) {
-  if (connecting) return { ok: false, error: 'Подождите завершения подключения.' };
-  connecting = true;
-  try {
-    const url = serverURL(value);
-    const origin = new URL(url).origin;
-    await fs.mkdir(app.getPath('userData'), { recursive: true });
-    const temporary = configPath() + '.tmp';
-    await fs.writeFile(temporary, JSON.stringify({ url }), { mode: 0o600 });
-    await fs.rename(temporary, configPath());
-    savedURL = url;
-    updateSetup('Подключение…');
-    if (remoteWindow && !remoteWindow.isDestroyed()) remoteWindow.destroy();
-    // A separate persistent Chromium profile per origin also isolates cookies across ports.
-    const partition = 'persist:mauzcode-' + createHash('sha256').update(origin).digest('hex');
-    const profile = session.fromPartition(partition);
-    profile.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-    profile.setPermissionCheckHandler(() => false);
-    if (!profile.__mauzcodeDownloadsBlocked) {
-      profile.on('will-download', event => event.preventDefault());
-      profile.__mauzcodeDownloadsBlocked = true;
-    }
-    const window = new BrowserWindow({ icon: assets('icon.png'), width: 1280, height: 850, minWidth: 640, minHeight: 480, show: false, title: 'MauzCode', webPreferences: { ...preferences, partition } });
-    lifecycle.attach(window);
-    remoteWindow = window;
-    let failed = false;
-    let reportingPageError = false;
-    const timer = setTimeout(() => navigation.failure('Сервер не ответил за 30 секунд.'), 30000);
-    function fail(reason) {
-      if (failed || window.isDestroyed()) return;
-      failed = true;
-      clearTimeout(timer);
-      updateSetup(`Не удалось открыть ${origin}. ${reason} Проверьте адрес, VPN/сеть и сертификат, затем повторите подключение.`);
-      window.destroy();
-    }
-    window.on('closed', () => { clearTimeout(timer); if (remoteWindow === window) remoteWindow = null; });
-    window.webContents.setWindowOpenHandler(({ url: target }) => { void openExternal(target); return { action: 'deny' }; });
-    const guardNavigation = (event, target) => {
-      if (!sameOrigin(target, origin)) {
-        event.preventDefault();
-        void openExternal(target);
-      }
-    };
-    window.webContents.on('will-navigate', guardNavigation);
-    window.webContents.on('will-redirect', (event, target, _inPlace, isMainFrame) => { if (isMainFrame) guardNavigation(event, target); });
-    window.webContents.on('will-attach-webview', event => event.preventDefault());
-    const navigation = attachNavigation({ contents: window.webContents, origin, fail,
-      ready() {
-        clearTimeout(timer);
-        if (!failed && !window.isDestroyed()) {
-          window.show();
-          if (setupWindow && !setupWindow.isDestroyed()) setupWindow.destroy();
-        }
-      },
-      pageError(reason, options = {}) {
-        console.warn('Desktop page error:', reason);
-        // HTTP responses stay visible, including real browser login/error pages.
-        if (options.http || reportingPageError || window.isDestroyed()) return;
-        reportingPageError = true;
-        void dialog.showMessageBox(window, { type: 'warning', title: 'Не удалось открыть страницу',
-          message: reason, detail: 'Соединение с MauzCode сохранено. Можно повторить загрузку или вернуться назад через меню «Вид».',
-          buttons: ['Оставить страницу', 'Повторить'], defaultId: 0, cancelId: 0, noLink: true
-        }).then(({ response }) => {
-          if (response === 1 && !window.isDestroyed()) window.webContents.reload();
-        }).catch(error => console.error('Cannot show page error:', error)).finally(() => { reportingPageError = false; });
-      }
-    });
-    void window.loadURL(url).catch(error => navigation.failedLoad(error.errno, error.message));
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: error.message };
-  } finally { connecting = false; }
-}
-
-function trustedSender(event) {
-  return setupWindow && event.sender === setupWindow.webContents && event.senderFrame === setupWindow.webContents.mainFrame && event.senderFrame.url === localURL;
-}
-ipcMain.handle('setup:state', event => {
-  if (!trustedSender(event)) throw new Error('Forbidden');
-  return { url: savedURL, status };
-});
-ipcMain.handle('setup:connect', (event, value) => {
-  if (!trustedSender(event)) throw new Error('Forbidden');
-  return connect(value);
-});
-
-if (lifecycle.primary) app.whenReady().then(async () => {
+if (lifecycle.primary) app.whenReady().then(() => {
+  store = openProfile(app.getPath('userData'));
+  native = createNativeAccess({ dialog, systemPreferences, platform: process.platform, getActive, preferences: store, changed });
+  notices = createNotifications({ ipcMain, Notification, getActive, preferences: store, changed, restore: () => restore(active?.window) });
+  updates = createUpdates({ app, changed });
+  // Squirrel may still decline an update. Enter quit mode only once Electron actually starts quitting.
+  if (process.platform === 'darwin') require('electron').autoUpdater.on('before-quit-for-update', lifecycle.beginQuit);
+  local('setup:state', state); local('setup:connect', (url, options) => connect(url, options?.allowHttp === true)); local('setup:action', action);
+  app.on('before-quit', () => { candidate?.control.cancel(true); if (active) { active.control.retire(); invalidate(active); } });
   lifecycle.start();
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
-    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
-    { label: 'Сервер', submenu: [
-      { label: 'Сменить сервер…', accelerator: 'CmdOrCtrl+,', click: () => updateSetup() },
-      { label: 'Повторить подключение', accelerator: 'CmdOrCtrl+R', click: async () => { if (savedURL) { const result = await connect(savedURL); if (!result.ok) updateSetup(result.error); } else updateSetup(); } },
-      { type: 'separator' }, { role: 'quit', label: 'Выйти' }
-    ] },
-    { label: 'Правка', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
-    { label: 'Вид', submenu: [
-      { label: 'Назад', accelerator: 'Alt+Left', click: () => { const history = remoteWindow?.webContents.navigationHistory; if (history?.canGoBack()) history.goBack(); } },
-      { label: 'Повторить страницу', accelerator: 'CmdOrCtrl+Shift+R', click: () => { if (remoteWindow && !remoteWindow.isDestroyed()) remoteWindow.webContents.reload(); } },
-      { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }
-    ] }
-  ]));
-  try { savedURL = serverURL(JSON.parse(await fs.readFile(configPath(), 'utf8')).url); }
-  catch (error) { if (error.code !== 'ENOENT') status = 'Сохранённый адрес не удалось прочитать. Введите его заново.'; }
-  updateSetup(status);
-  if (savedURL) { const result = await connect(savedURL); if (!result.ok) updateSetup(result.error); }
-}).catch(error => { console.error('Desktop startup failed:', error); app.quit(); });
-
+  Menu.setApplicationMenu(buildShellMenu({ Menu, platform: process.platform, settings: () => showSetup(),
+    retry: () => void retry(), back: () => { const history = (candidate?.signingIn ? candidate : active)?.window.webContents.navigationHistory; if (history?.canGoBack()) history.goBack(); },
+    reload: () => { if (!candidate && alive(active?.window)) active.window.webContents.reload(); }, quit: lifecycle.quit }));
+  try { savedURL = store.saved(); } catch { status = 'Не удалось прочитать сохранённый адрес. Введите его заново.'; }
+  showSetup(); if (savedURL) { const result = connect(savedURL, true); if (!result.ok) showSetup(result.error); }
+}).catch(() => { dialog.showErrorBox('MauzCode', 'Не удалось запустить клиент.'); app.quit(); });

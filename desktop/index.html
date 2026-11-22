@@ -4,23 +4,100 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; img-src data:">
-  <title>MauzCode — подключение</title>
+  <title>MauzCode — настройки</title>
   <link rel="icon" data-brand-icon href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%23252a34%22%2F%3E%3Cpath%20d%3D%22M21%2015q-7%200-7%207v4q0%206-6%206%206%200%206%206v4q0%207%207%207M43%2015q7%200%207%207v4q0%206%206%206-6%200-6%206v4q0%207-7%207%22%20fill%3D%22none%22%20stroke%3D%22%236ee7b7%22%20stroke-width%3D%224.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Cpath%20d%3D%22m23%2025%203.5-8%204.5%206.5M33%2023.5l4.5-6.5%203.5%208%22%20fill%3D%22none%22%20stroke%3D%22%23fb7185%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2226.5%22%20cy%3D%2231%22%20r%3D%223%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2237.5%22%20cy%3D%2231%22%20r%3D%223%22%20fill%3D%22%23fff%22%2F%3E%3Cpath%20d%3D%22M27%2039q2.5%202.5%205%200%202.5%202.5%205%200%22%20fill%3D%22none%22%20stroke%3D%22%23a78bfa%22%20stroke-width%3D%222.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E">
   <link rel="stylesheet" href="styles.css">
   <script src="renderer.js" defer></script>
 </head>
 <body>
   <main>
-    <h1>MauzCode</h1>
-    <p>Подключитесь к своему серверу. Приложение не запускает сервер локально.</p>
-    <form id="connection">
-      <label for="server">Адрес сервера</label>
-      <input id="server" type="url" placeholder="https://mauzcode.example.com" required maxlength="4096" autocomplete="url" spellcheck="false" autofocus aria-describedby="hint">
-      <p id="hint">HTTP допустим в доверенной внутренней сети; для других сетей используйте HTTPS. Не добавляйте пароль или токен в адрес.</p>
-      <button type="submit">Подключиться / повторить</button>
-    </form>
-    <p id="status" role="status" aria-live="polite"></p>
-    <small>Адрес и штатная браузерная сессия сохраняются на этом компьютере. Сменить сервер можно в меню «Сервер».</small>
+    <header>
+      <h1>MauzCode</h1>
+      <p id="intro">Подключитесь к своему серверу MauzCode. Приложение не запускает сервер на этом компьютере.</p>
+    </header>
+
+    <section aria-labelledby="server-title">
+      <h2 id="server-title">Сервер</h2>
+      <p id="current" hidden>Текущий сервер: <strong id="current-url"></strong></p>
+      <form id="connection" novalidate>
+        <label for="server">Адрес сервера</label>
+        <input id="server" type="url" placeholder="https://mauzcode.example.com" required maxlength="4096" autocomplete="url" spellcheck="false" autofocus aria-describedby="examples hint">
+        <ul id="examples" class="examples" aria-label="Примеры адресов">
+          <li><code>https://mauzcode.example.com</code> — сервер в интернете (рекомендуется)</li>
+          <li><code>http://192.168.1.20:3000</code> — локальная сеть или VPN, без шифрования</li>
+          <li><code>http://localhost:3000</code> — сервер на этом компьютере</li>
+        </ul>
+        <p id="hint" class="hint">Не добавляйте пароль или токен в адрес. Вход выполняется на странице сервера.</p>
+        <div id="http-warning" class="notice warning" role="group" aria-labelledby="http-warning-text" hidden>
+          <p id="http-warning-text"><strong>Соединение не зашифровано.</strong> По HTTP пароль, сессия и сообщения передаются открытым текстом. VPN не делает такой адрес защищённым для браузера, и микрофон для него недоступен. Используйте HTTP только в доверенной сети; в остальных случаях выберите HTTPS.</p>
+          <label class="check"><input id="allow-http" type="checkbox"> Я понимаю риск и хочу подключиться по HTTP</label>
+        </div>
+        <p id="form-error" class="field-error" role="alert" hidden></p>
+        <div class="actions">
+          <button id="connect" type="submit" class="primary">Проверить и подключиться</button>
+          <button id="cancel" type="button" hidden>Отменить проверку</button>
+        </div>
+      </form>
+    </section>
+
+    <section aria-labelledby="status-title">
+      <h2 id="status-title">Состояние</h2>
+      <p id="connection-state" class="state" data-tone="idle">Не подключено</p>
+      <p id="status" role="status" aria-live="polite"></p>
+      <p id="live-status" class="hint" hidden></p>
+      <div class="actions">
+        <button id="back" type="button" hidden>Вернуться к чату</button>
+        <button id="retry" type="button" hidden>Повторить подключение</button>
+      </div>
+      <details>
+        <summary>Что означают ошибки</summary>
+        <dl>
+          <dt>Нужен вход</dt>
+          <dd>Сервер доступен, но просит войти. Войдите на его странице в окне приложения — это не сбой сети. Новый адрес сохранится только после успешного входа.</dd>
+          <dt>Вход через внешний провайдер (OIDC)</dt>
+          <dd>Если вход уводит на сайт другого провайдера, в пилотной версии он не поддерживается. Вернитесь к прежнему чату или выберите другой сервер; сохранённый сервер и сессия не меняются.</dd>
+          <dt>Ошибка сертификата</dt>
+          <dd>Сертификат HTTPS недействителен. Обойти проверку в приложении нельзя: исправьте сертификат на сервере или обратитесь к администратору.</dd>
+          <dt>Сервер недоступен или это не MauzCode</dt>
+          <dd>Проверьте адрес, сеть и VPN. Если по адресу открывается другая страница (например, вход в Wi-Fi), приложение не сможет подтвердить сервер MauzCode.</dd>
+          <dt>Связь потеряна</dt>
+          <dd>Открытый чат переподключится сам, когда сеть вернётся. Неотправленные действия автоматически не повторяются; можно нажать «Повторить подключение».</dd>
+        </dl>
+      </details>
+    </section>
+
+    <section aria-labelledby="permissions-title">
+      <h2 id="permissions-title">Разрешения</h2>
+      <div class="row">
+        <div>
+          <h3 id="mic-title">Микрофон</h3>
+          <p id="mic-state" class="hint"></p>
+        </div>
+        <button id="mic-toggle" type="button" aria-describedby="mic-title mic-state"></button>
+      </div>
+      <div class="row">
+        <div>
+          <h3 id="notify-title">Уведомления</h3>
+          <p id="notify-state" class="hint"></p>
+        </div>
+        <button id="notify-toggle" type="button" aria-describedby="notify-title notify-state"></button>
+      </div>
+    </section>
+
+    <section aria-labelledby="about-title">
+      <h2 id="about-title">Версия и обновления</h2>
+      <p>Установлена версия <strong id="version">—</strong></p>
+      <p id="update-state" aria-live="polite"></p>
+      <div class="actions">
+        <button id="update-check" type="button">Проверить обновления</button>
+        <button id="update-download" type="button" class="primary" hidden>Скачать обновление</button>
+        <button id="update-restart" type="button" class="primary" hidden>Перезапустить и обновить</button>
+        <button id="update-later" type="button" hidden>Позже</button>
+      </div>
+    </section>
+
+    <p id="action-error" class="field-error" role="alert" hidden></p>
+    <footer class="hint">Адрес и браузерная сессия хранятся только на этом компьютере. Эти настройки открываются через меню «Сервер» → «Настройки…».</footer>
   </main>
 </body>
 </html>
