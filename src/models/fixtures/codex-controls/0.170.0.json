@@ -1,0 +1,20 @@
+{
+  "codexCli": "0.170.0",
+  "upstreamCommit": "29eb79e9866b3262a777fdf8195c1b9e63684c91",
+  "bundledModelExcerpt": {
+    "slug": "gpt-5.5",
+    "additional_speed_tiers": ["fast"],
+    "service_tiers": [{ "id": "priority", "name": "Fast", "description": "1.5x speed, increased usage" }],
+    "support_verbosity": true,
+    "default_verbosity": "low"
+  },
+  "upstreamUltrafastTestModelOverride": {
+    "additional_speed_tiers": [],
+    "service_tiers": [{ "id": "ultrafast", "name": "ultrafast", "description": "" }]
+  },
+  "capturedRequests": [
+    { "path": "/v1/responses", "model": "gpt-5.5" },
+    { "path": "/v1/responses", "model": "gpt-5.5", "service_tier": "priority" },
+    { "path": "/v1/responses", "model": "gpt-5.5", "service_tier": "ultrafast" }
+  ]
+}

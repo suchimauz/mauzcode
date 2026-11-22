@@ -15,7 +15,7 @@ export default function (
         requested?: string;
     },
 ): { requested: types.models.ReasoningLevel | "auto"; applied: types.models.ReasoningLevel | "auto"; supported: Array<types.models.ReasoningLevel | "auto">; defaultEffort: types.models.ReasoningLevel | "auto"; mode: "none" | "catalogue"; downgraded: boolean } {
-    const order: types.models.ReasoningLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+    const order: types.models.ReasoningLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
         const allowed = ["auto", ...order];
         const requested = (allowed.includes(String(opts.requested)) ? opts.requested : "auto") as types.models.ReasoningLevel | "auto";
         const levels = (opts.reasoning?.supported ?? []).filter(level => order.includes(level));

@@ -82,9 +82,10 @@ export default async function (
         signal?.addEventListener("abort", onAbort, { once: true });
     });
 
+    const pin: { generation?: string | null } | undefined = view.provider === "codex" ? {} : undefined;
     for (let attempt = 1; ; attempt++) {
         try {
-            const result = await ctx.fns.models.inference.stream({
+            const attemptRequest: Parameters<typeof ctx.fns.models.inference.stream>[0] = {
                 connectionId: opts.connectionId, model: opts.model, instructions,
                 messages: [{ role: "user", content: user }], sessionId, signal,
                 ...(opts.tools !== undefined ? { tools: opts.tools } : {}),
@@ -93,14 +94,16 @@ export default async function (
                 ...(opts.maxTokens !== undefined ? { maxTokens: opts.maxTokens } : {}),
                 ...(native ? { responseFormat: format } : {}),
                 ...(opts.providerOptions !== undefined ? { providerOptions: opts.providerOptions } : {}),
-            });
+            };
+            if (pin) ((ctx.state.models ??= {}).codexDispatch ??= new WeakMap()).set(attemptRequest, { pin });
+            const result = await ctx.fns.models.inference.stream(attemptRequest);
             const text = format ? ctx.fns.models.inference.structured({ action: "normalize", format, text: result.text }) : result.text;
             return { text, finishReason: result.finishReason, usage: result.usage, ...(result.reasoning ? { reasoning: result.reasoning } : {}), attempts: attempt, ignored };
         } catch (error) {
             if (signal?.aborted) throw error;
             const failure = error && typeof error === "object" && "failure" in error ? (error as { failure: types.models.FailureInfo }).failure : null;
             const decision = ctx.fns.models.inference.retryDecision({ failure, attempt });
-            if (!decision.retry || (deadlineAt !== undefined && Date.now() + decision.delayMs >= deadlineAt)) throw error;
+            if ((pin && !pin.generation) || !decision.retry || (deadlineAt !== undefined && Date.now() + decision.delayMs >= deadlineAt)) throw error;
             await wait(decision.delayMs);
         }
     }

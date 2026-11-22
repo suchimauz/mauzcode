@@ -1,7 +1,7 @@
 /**
  * Validate the model and reasoning effort of a child before it exists
  *
- * Shared by every delegation entry point (`agent.delegate`, the Goal publication path, `session.fork` callers and `sharedAgent.delegate`). Resolves the exact provider/accountName:modelId route through models.resolveRoute, re-asserts provider, connection and model availability, and checks the requested effort against the cached catalogue `reasoning.supported` (models.listModels with cacheOnly; never a provider request). An omitted model inherits the parent route unchanged and is not re-validated; an omitted effort means auto, which the connection normalizes for the target model and which is never inherited. Every failure names the rejected value and points at models.selectable (the `list_models` tool) so the caller can choose again; nothing is created, so a rejected delegation leaves no orphan child.
+ * Shared by every delegation entry point (`agent.delegate`, the Goal publication path, `session.fork` callers and `sharedAgent.delegate`). Resolves the exact provider/accountName:modelId route through models.resolveRoute, re-asserts provider, connection and model availability, and checks the requested effort against the cached catalogue `reasoning.supported` (models.listModels with cacheOnly; never a provider request). An omitted model inherits the parent route unchanged and is re-validated when explicitly requesting max; an omitted effort means auto, which the connection normalizes for the target model and which is never inherited. Every failure names the rejected value and points at models.selectable (the `list_models` tool) so the caller can choose again; nothing is created, so a rejected delegation leaves no orphan child.
  * @param opts.model Exact provider/accountName:modelId route for the child; omitted inherits the parent's route.
  * @param opts.reasoningEffort Requested child preference; omitted means auto.
  * @param opts.parentModel Model route of the delegating agent used when no model is given.
@@ -18,13 +18,14 @@ export default async function (
         parentModel?: string | null;
     } = {},
 ): Promise<{ model: string; reasoningEffort: types.models.ReasoningLevel | "auto" }> {
-    const levels: (types.models.ReasoningLevel | "auto")[] = ["auto", "off", "minimal", "low", "medium", "high", "xhigh"];
+    const levels: (types.models.ReasoningLevel | "auto")[] = ["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
     const effort = opts.reasoningEffort ? opts.reasoningEffort : "auto";
     if (!levels.includes(effort)) {
         throw new Error(`delegation: unsupported reasoning effort ${String(effort)}; call list_models for the levels each model supports`);
     }
-    const requested = String(opts.model ?? "").trim();
-    if (!requested) return { model: ctx.fns.agent.requireModel({ model: opts.parentModel }), reasoningEffort: effort };
+    const explicit = String(opts.model ?? "").trim();
+    const requested = explicit || ctx.fns.agent.requireModel({ model: opts.parentModel });
+    if (!explicit && effort !== "max") return { model: requested, reasoningEffort: effort };
     // resolveRoute already rejects a globally disabled provider, a disabled or missing connection
     // and an owner-disabled model; route is the exact value the child stores.
     let resolved: Awaited<ReturnType<typeof ctx.fns.models.resolveRoute>>;

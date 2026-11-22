@@ -80,7 +80,16 @@ export default async function (
         try {
          signal.throwIfAborted();
          let response: Response;
-         if (t.kind === 'direct') response = await bounded(globalThis.fetch(url.href, {...opts.init, signal, redirect:'error'}));
+         const admit = opts.init && ctx.state?.models?.codexHandoff?.get(opts.init);
+         if (t.kind === 'direct' && admit) {
+          let pending!: Promise<Response>;
+          await admit(body => {
+           signal.throwIfAborted();
+           pending = globalThis.fetch(url.href, {...opts.init, body, signal, redirect:'error'});
+           void pending.catch(() => {}); // response may settle before the local transaction commits
+          });
+          response = await bounded(pending);
+         } else if (t.kind === 'direct') response = await bounded(globalThis.fetch(url.href, {...opts.init, signal, redirect:'error'}));
          else {
           const request = new Request(url.href, {...opts.init, signal, redirect: 'error'});
           if (!['GET', 'POST'].includes(request.method)) throw configError('Proxy supports only GET and POST');
@@ -98,7 +107,7 @@ export default async function (
            proxy = {host:'127.0.0.1', port:acquired.port};
           }
           signal.throwIfAborted();
-          response = await bounded(ctx.fns.socksProxy.request({proxy, url:url.href, method:request.method as 'GET'|'POST', headers:Object.fromEntries(request.headers), body, signal, timeoutMs:timeout, headerTimeoutMs:headerTimeout, idleTimeoutMs:idleTimeout, onDone:release}));
+          response = await bounded(ctx.fns.socksProxy.request({proxy, url:url.href, method:request.method as 'GET'|'POST', headers:Object.fromEntries(request.headers), body, ...(admit ? { admit } : {}), signal, timeoutMs:timeout, headerTimeoutMs:headerTimeout, idleTimeoutMs:idleTimeout, onDone:release}));
          }
          clearTimeout(headerTimer); headerTimer = undefined;
          if (signal.aborted) { await response.body?.cancel(signal.reason); throw signal.reason; }
@@ -116,5 +125,5 @@ export default async function (
           async cancel(reason) { cleanup(); await reader!.cancel(reason).catch(() => undefined); controller.abort(error('Response cancelled')); }
          });
          return new Response(body, {status:response.status, statusText:response.statusText, headers:response.headers});
-        } catch (cause) { cleanup(); throw error('Model transport failed', cause); }
+        } catch (cause) { cleanup(); if (cause && typeof cause === 'object' && 'failure' in cause) throw cause; throw error('Model transport failed', cause); }
 }

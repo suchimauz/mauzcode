@@ -43,8 +43,8 @@ test("root model procedures are exactly the minimal facade plus providers, disab
     const roots = [...new Bun.Glob("*.ts").scanSync(import.meta.dir)]
         .filter(file => !file.endsWith(".test.ts") && !file.startsWith("$") && /^[a-z]/.test(file))
         .map(file => file.slice(0, -3)).sort();
-    expect(roots).toEqual([...Object.keys(baseline.procedures), "disabledProviders", "displayNames", "resolveRoute", "selectable", "setContextLimits", "tokenPrice"].sort());
-    expect(roots).toEqual(["action", "api", "call", "compact", "countTokens", "create", "disabledProviders", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "selectable", "setContextLimits", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
+    expect(roots).toEqual([...Object.keys(baseline.procedures), "canReplayCodex", "disabledProviders", "displayNames", "resolveRoute", "selectable", "setContextLimits", "tokenPrice"].sort());
+    expect(roots).toEqual(["action", "api", "call", "canReplayCodex", "compact", "countTokens", "create", "disabledProviders", "displayNames", "get", "list", "listModels", "providers", "refreshAll", "remove", "resolveRoute", "selectable", "setContextLimits", "setModelEnabled", "stream", "test", "tokenPrice", "update", "usage"]);
 });
 
 test("original public model signatures, async declarations, types and HTTP route contracts survive", async () => {
@@ -68,6 +68,7 @@ test("original public model signatures, async declarations, types and HTTP route
         if (name === "ModelInfo.ts") actual = actual.replace("default:types.models.ReasoningLevel;}", "default:types.models.ReasoningLevel}");
         if (name === "ReasoningCapabilities.ts") actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
         if (name === "ReasoningResolution.ts") actual = actual.replace('applied:types.models.ReasoningLevel|"auto";', 'applied:types.models.ReasoningLevel;').replace("wire?:string;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
+        if (name === "Checkpoint.ts" || name === "ProviderState.ts") actual = actual.replace("binding?:string;", "");
         // usageRefreshMs is an intentional optional SDK addition (provider-paced usage cache).
         if (name === "ProviderDefinition.ts") actual = actual.replace("usageRefreshMs?:number;", "");
         // extend-models-sdk-for-anthropic-routes: optional native reasoning block capture.

@@ -11,6 +11,8 @@ export default async function (
         conn: types.models.ResolvedConnection;
         /** res input used by the codex checked protocol helper. */
         res: Response;
+        /** Credentials that issued the request, never reread on a 401. */
+        auth: { generation: string | null; credentialRevision: number };
     },
 ): Promise<Response> {
     const { conn, res } = opts;
@@ -19,7 +21,7 @@ export default async function (
         const text = await res.text().catch(() => "");
         let error: Record<string, unknown> | null = null;
         try { const j = JSON.parse(text); error = (j?.error && typeof j.error === "object" ? j.error : j) as Record<string, unknown>; } catch { /* non-JSON body: classify by status */ }
-        if (res.status === 401) await ctx.fns.models.provider.codex.codexAuth({ conn, op: "markLogin" });
+        if (res.status === 401) await ctx.fns.models.provider.codex.codexAuth({ conn, op: "markLogin", auth: opts.auth });
         const f = ctx.fns.models.provider.codex.codexFailure({ phase: "http", status: res.status, error, retryAfter: res.headers.get("retry-after") });
         throw ctx.fns.models.inference.failure(f);
 }

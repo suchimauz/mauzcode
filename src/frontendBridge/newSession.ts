@@ -20,18 +20,18 @@ export default async function (
     const owner=await ctx.fns.projects.principal({});
     if(req.method==='POST'&&!await ctx.fns.auth.verifyCsrf({req,token:req.headers.get('x-csrf-token')||''}))return reply({error:'Invalid request token'},403);
     const catalogue=await ctx.fns.frontendBridge.modelCatalogue({});
-    const defaultModel=await ctx.fns.settings.modelDefault({}).catch(()=>'');
+    const defaultModel=String((await ctx.fns.procs.db.select({sql:'SELECT value FROM kv WHERE key=?',params:['last-model']}))[0]?.value ?? '');
     const models=await Promise.all(catalogue.models.map(async ({reasoning:_r,...option})=>({...option,icon:await ctx.fns.frontendBridge.iconData({model:option.model})})));
     const reasoningOf=(model:string)=>catalogue.models.find(m=>m.model===model)?.reasoning??null;
     const enabledDefault=models.find(m=>!m.disabled&&m.model===defaultModel)?.model??models.find(m=>!m.disabled)?.model??'';
-    const efforts=['auto','off','minimal','low','medium','high','xhigh'];
+    const efforts=['auto','off','minimal','low','medium','high','xhigh','max'];
     if(req.method==='GET'){
         const url=new URL(req.url),model=url.searchParams.get('model')||enabledDefault,requested=url.searchParams.get('effort')||'auto';
         if(!models.some(m=>m.model===model&&!m.disabled)||!efforts.includes(requested))return reply({error:'Invalid model or effort'},400);
         // Menu fields only: access patterns, plugin grants and prompt additions stay server-side.
         const presets=(await ctx.fns.agentPreset.list({})).map(p=>({id:p.id,name:p.name,description:p.description,sortOrder:p.sort_order}));
         const defaultPresetId=await ctx.fns.settings.getString({module:'agentPreset',scopeType:'global',key:'default',fallback:'standard'});
-        return reply({version:1,presets,defaultPresetId,model,label:models.find(m=>m.model===model)?.label??(model?(await ctx.fns.models.displayNames({routes:[model]}))[model]??model:''),icon:await ctx.fns.frontendBridge.iconData({model}),defaultModel:enabledDefault,models,groups:catalogue.groups,effort:ctx.fns.frontendBridge.modelEffort({reasoning:reasoningOf(model),requested}),csrfToken:await ctx.fns.auth.csrfToken({req})});
+        return reply({version:1,presets,defaultPresetId,model,label:models.find(m=>m.model===model)?.label??model,icon:await ctx.fns.frontendBridge.iconData({model}),defaultModel:enabledDefault,models,groups:catalogue.groups,effort:ctx.fns.frontendBridge.modelEffort({reasoning:reasoningOf(model),requested}),csrfToken:await ctx.fns.auth.csrfToken({req})});
     }
     const contentType=req.headers.get('content-type')?.split(';')[0]?.trim();
     const allowed=['requestKey','projectId','model','effort','mascot','presetId','text','title'];

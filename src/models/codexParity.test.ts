@@ -26,13 +26,18 @@ async function setup(opts: { transport?: types.models.TransportSpec; config?: Re
     ctx.state.models.codexRefresh = {};
     ctx.state.models.loginFlows = {};
     const legacy: string[] = [];
-    for (const ns of LEGACY) for (const name of Object.keys(ctx.state.registry[ns] ?? {}))
+    for (const ns of LEGACY) for (const name of Object.keys(ctx.state.registry[ns] ?? {})) {
+        // This is the transaction participant for cache/auth invalidation, not legacy chat dispatch.
+        if (ns === "session" && name === "reconcileCodexControls") continue;
         ctx.state.registry[ns][name] = () => { legacy.push(`${ns}.${name}`); throw new Error(`legacy ${ns}.${name} called`); };
+    }
     const calls: Call[] = [];
     const replies: Reply[] = [];
     ctx.state.registry.models.transport.validateTransport = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec }) => o.transport;
     ctx.state.registry.models.transport.fetch = async (_c: unknown, _s: unknown, o: { transport: types.models.TransportSpec; url: string; init?: RequestInit }) => {
-        calls.push({ url: o.url, method: o.init?.method ?? "GET", headers: Object.fromEntries(new Headers(o.init?.headers).entries()), body: String(o.init?.body ?? ""), transport: o.transport, signal: o.init?.signal ?? undefined });
+        const record = (body: string) => { calls.push({ url: o.url, method: o.init?.method ?? "GET", headers: Object.fromEntries(new Headers(o.init?.headers).entries()), body, transport: o.transport, signal: o.init?.signal ?? undefined }); };
+        const admit = o.init && ctx.state.models?.codexHandoff?.get(o.init);
+        if (admit) await admit(record); else record(String(o.init?.body ?? ""));
         if (o.url.includes("/codex/models")) return Response.json({ models: opts.models ?? [] });
         const r = replies.shift();
         if (!r) return new Response("no reply queued", { status: 500 });
@@ -40,7 +45,9 @@ async function setup(opts: { transport?: types.models.TransportSpec; config?: Re
     };
     const view = await ctx.fns.models.create({ provider: "codex", accountName: "me", config: opts.config ?? {}, secrets: {}, transport: opts.transport ?? { kind: "direct" } });
     const { conn } = await ctx.fns.models.connections.resolve({ id: view.id });
-    await ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", tokens: { id_token: ID_TOKEN, access_token: TOKEN, refresh_token: "rt-SECRET" } });
+    const intent = crypto.randomUUID();
+    await ctx.fns.procs.db.run({sql:'UPDATE llm_connections SET codex_login_intent=? WHERE id=?',params:[intent,conn.id]});
+    await ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", intent, tokens: { id_token: ID_TOKEN, access_token: TOKEN, refresh_token: "rt-SECRET" } });
     const stream = (o: Partial<Parameters<typeof ctx.fns.models.stream>[0]> = {}): Promise<types.models.StreamResult> =>
         ctx.fns.models.stream({ connectionId: view.id, model: "gpt-5", instructions: "sys", messages: [{ role: "user", content: "hi" }], sessionId: "s1", ...o });
     return { ctx, calls, replies, view, legacy, stream };
@@ -84,7 +91,7 @@ describe("codex SDK request parity", () => {
                 { type: "function_call_output", call_id: "c2", output: "(image attached below)" },
                 { type: "message", role: "user", content: [{ type: "input_image", detail: "auto", image_url: "data:image/jpeg;base64,BBB" }] },
             ],
-            text: { verbosity: "medium" }, prompt_cache_key: "s1",
+            prompt_cache_key: "s1",
             reasoning: { effort: "high", summary: "auto" }, tools: tools.map(t => ({ type: "function", ...t, strict: false })), parallel_tool_calls: true,
         });
         expect(legacy).toEqual([]);
@@ -104,9 +111,124 @@ describe("codex SDK request parity", () => {
         const { calls, replies, stream } = await setup();
         replies.push(sse([done()]), sse([done()]));
         await stream({ responseFormat: { type: "json_schema", name: "r", schema: { type: "object" } } });
-        expect(JSON.parse(calls.at(-1)!.body).text).toEqual({ verbosity: "medium", format: { type: "json_schema", name: "r", schema: { type: "object" }, strict: true } });
+        expect(JSON.parse(calls.at(-1)!.body).text).toEqual({ format: { type: "json_schema", name: "r", schema: { type: "object" }, strict: true } });
         await expect(stream({ providerOptions: { x: 1 } })).rejects.toMatchObject({ code: "INVALID_INPUT" });
         expect(replies).toHaveLength(1);
+    });
+
+    test("trusted upstream tier captures on both SDK paths; independent verbosity, format and max", async () => {
+        const evidence = await Bun.file(`${import.meta.dir}/fixtures/codex-controls/0.170.0.json`).json();
+        const { ctx, view, calls, stream, replies } = await setup({ models: [{ ...evidence.bundledModelExcerpt, slug: "gpt-5", service_tiers: [...evidence.bundledModelExcerpt.service_tiers, ...evidence.upstreamUltrafastTestModelOverride.service_tiers], supported_reasoning_levels: ["high", "max"], default_reasoning_level: "future" }] });
+        await ctx.fns.models.listModels({ id: view.id, refresh: true });
+        for (const sdk of ["stream", "call"]) for (const [index, speed] of ["standard", "fast", "ultrafast"].entries()) {
+            for (const verbosity of ["default", "low", "medium", "high"]) {
+                const responseFormat = { type: "json_schema" as const, name: "obj", schema: { type: "object" } };
+                const options = { providerOptions: { speed, verbosity }, reasoningEffort: speed === "standard" ? "auto" : "max", responseFormat };
+                replies.push(sse([{ type: "response.output_text.delta", delta: "{}" }, done()]));
+                if (sdk === "stream") await stream(options);
+                else await ctx.fns.models.call({ connectionId: view.id, model: "gpt-5", user: "go", ...options });
+                const wire = JSON.parse(calls.at(-1)!.body);
+                expect(wire.service_tier).toBe(evidence.capturedRequests[index].service_tier);
+                expect(wire.text).toEqual({ format: { ...responseFormat, strict: true }, ...(verbosity === "default" ? {} : { verbosity }) });
+                expect(wire.reasoning).toEqual(speed === "standard" ? undefined : { effort: "max", summary: "auto" });
+            }
+        }
+        expect(calls.every(call => call.headers["chatgpt-account-id"] === ACCOUNT)).toBe(true);
+    });
+
+    test.each(["explicit", "default", "unknown"])("generation change during authentication: %s", async mode => {
+        const { ctx, view, calls, replies, stream } = await setup({ models: [{ slug: "gpt-5", additional_speed_tiers: ["fast"] }] });
+        await ctx.fns.models.listModels({ id: view.id, refresh: true });
+        const provider = ctx.state.registry.models.provider.codex;
+        const wireAuth = provider.codexWireAuth;
+        let changed = false;
+        provider.codexWireAuth = async (c: Context, s: Session | null, o: {conn: types.models.ResolvedConnection}) => {
+            if (!changed) {
+                changed = true;
+                const intent = crypto.randomUUID();
+                await ctx.fns.procs.db.run({ sql: 'UPDATE llm_connections SET codex_login_intent=? WHERE id=?', params: [intent,view.id] });
+                const claims = { exp: Math.floor(Date.now()/1000)+3600, ...(mode === 'unknown' ? {} : { 'https://api.openai.com/auth': { chatgpt_account_id: 'B', organizations: ['A','B'] } }) };
+                await ctx.fns.models.provider.codex.codexAuth({ conn: o.conn, op: 'store', intent, tokens: { access_token: `h.${b64(claims)}.s` } });
+                await ctx.fns.models.listModels({ id:view.id, refresh:true });
+            }
+            return wireAuth(c,s,o);
+        };
+        replies.push(sse([done()]),sse([done()]));
+        if (mode === 'explicit') {
+            await expect(ctx.fns.models.call({connectionId:view.id,model:'gpt-5',user:'hi',providerOptions:{speed:'fast'}})).rejects.toMatchObject({code:'INVALID_INPUT'});
+            expect(calls.filter(c => c.url.endsWith('/responses'))).toHaveLength(0);
+        } else {
+            await stream();
+            await ctx.fns.models.call({connectionId:view.id,model:'gpt-5',user:'hi'});
+            expect(calls.slice(1).map(c => c.headers['chatgpt-account-id'])).toEqual(Array(3).fill(mode === 'unknown' ? undefined : 'B'));
+            expect(calls.filter(c => c.url.endsWith('/responses')).map(c => [JSON.parse(c.body).service_tier, JSON.parse(c.body).text?.verbosity])).toEqual([[undefined,undefined],[undefined,undefined]]);
+        }
+    });
+
+    test("explicit unusable reasoning list never falls back or sends inference", async () => {
+        const { ctx, view, calls, stream } = await setup({models:[{slug:'gpt-5',supported_reasoning_levels:['ultra']}]});
+        await ctx.fns.models.listModels({id:view.id,refresh:true});
+        await expect(stream({reasoningEffort:'high'})).rejects.toMatchObject({code:'CAPABILITY_UNAVAILABLE'});
+        expect(calls.filter(c => c.url.endsWith('/responses'))).toHaveLength(0);
+    });
+
+    test.each(["switch", "relogin", "paid", "unknown", "renew"])("retry fence: %s", async scenario => {
+            const { ctx, view, calls, replies } = await setup({ models: [{ slug: "gpt-5", additional_speed_tiers: ["fast"] }] });
+            const { conn } = await ctx.fns.models.connections.resolve({ id: view.id });
+            const login = async (account: string | null) => {
+                const intent = crypto.randomUUID();
+                await ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET codex_login_intent=? WHERE id=?", params: [intent, view.id] });
+                const token = `h.${b64({ exp: Math.floor(Date.now()/1000)+3600, ...(account ? { "https://api.openai.com/auth": { chatgpt_account_id: account } } : {}) })}.s`;
+                await ctx.fns.models.provider.codex.codexAuth({ conn, op: "store", intent, tokens: { access_token: token, refresh_token: "fixture" } });
+            };
+            if (scenario === "unknown") await login(null);
+            await ctx.fns.models.listModels({ id: view.id, refresh: true });
+            const backoff = Promise.withResolvers<void>();
+            const decide = ctx.state.registry.models.inference.retryDecision;
+            ctx.state.registry.models.inference.retryDecision = (c: Context, s: Session | null, o: Parameters<typeof ctx.fns.models.inference.retryDecision>[0]) => {
+                const result = decide(c, s, o);
+                backoff.resolve();
+                return { ...result, delayMs: 250 };
+            };
+            replies.push(new Response("rate limit", { status: 429 }), sse([done()]));
+            const request = ctx.fns.models.call({ connectionId: view.id, model: "gpt-5", user: "hello", ...(scenario === "paid" ? { providerOptions: { speed: "fast" } } : scenario === "relogin" ? { providerOptions: { speed: "standard", verbosity: "default" } } : {}) });
+            void request.catch(() => {});
+            await backoff.promise;
+            if (scenario === "renew") {
+                // Model a verified same-account renewal's committed credential revision.
+                await ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET codex_credential_revision=codex_credential_revision+1 WHERE id=?", params: [view.id] });
+            } else {
+                await login(scenario === "relogin" ? ACCOUNT : "account-B");
+                await ctx.fns.models.listModels({ id: view.id, refresh: true });
+            }
+            if (scenario === "renew") expect((await request).attempts).toBe(2);
+            else await expect(request).rejects.toMatchObject({ code: scenario === "unknown" ? "RATE_LIMITED" : "INVALID_INPUT" });
+            const posts = calls.filter(call => call.url.endsWith("/responses"));
+            expect(posts).toHaveLength(scenario === "renew" ? 2 : 1);
+            expect(posts.every(call => call.headers["chatgpt-account-id"] === (scenario === "unknown" ? undefined : ACCOUNT))).toBe(true);
+    });
+
+    test("tier rejection is not replayed and does not mutate catalogue", async () => {
+        const { ctx, view, calls, replies } = await setup({ models: [{ slug: "gpt-5", additional_speed_tiers: ["fast"] }] });
+        await ctx.fns.models.listModels({ id: view.id, refresh: true });
+        const cache = () => ctx.fns.procs.db.select({ sql: "SELECT models_cache,models_published_ticket FROM llm_connections WHERE id=?", params: [view.id] });
+        const before = await cache();
+        replies.push(Response.json({error:{code:"unsupported_service_tier"}}, {status:400}));
+        await expect(ctx.fns.models.call({ connectionId:view.id,model:"gpt-5",user:"hello",providerOptions:{speed:"fast"} })).rejects.toMatchObject({code:"INVALID_INPUT",failure:{retryable:false}});
+        expect(calls.filter(call => call.url.endsWith("/responses"))).toHaveLength(1);
+        expect(await cache()).toEqual(before);
+    });
+
+    test("malformed and unadvertised overrides never reach authentication or transport", async () => {
+        const { ctx, view, calls, stream } = await setup();
+        let authCalls = 0;
+        ctx.state.registry.models.provider.codex.codexWireAuth = () => { authCalls++; throw Error("unexpected auth"); };
+        for (const providerOptions of [null, [], 1, "fast", { bogus: 1 }, { speed: "priority" }, { speed: "fast" }, { verbosity: "medium" }, { verbosity: false }] as any[]) {
+            await expect(stream({ providerOptions })).rejects.toMatchObject({ code: "INVALID_INPUT", failure: { retryable: false } });
+            await expect(ctx.fns.models.call({ connectionId: view.id, model: "gpt-5", user: "go", providerOptions })).rejects.toMatchObject({ code: "INVALID_INPUT", failure: { retryable: false } });
+        }
+        expect(authCalls).toBe(0);
+        expect(calls).toHaveLength(0);
     });
 
     test("malformed tool arguments are an explicit parse failure; framing across chunks and CRLF", async () => {
@@ -215,12 +337,49 @@ describe("checkpoints", () => {
         const meta = JSON.parse(calls.at(-1)!.headers["x-codex-turn-metadata"]!);
         expect(meta).toMatchObject({ session_id: "s1", thread_id: "s1", request_kind: "compaction", compaction: { trigger: "manual", reason: "user_requested", implementation: "remote", phase: "standalone_turn", strategy: "memento" } });
         const restored = JSON.parse(JSON.stringify(compacted.checkpoint)) as types.models.Checkpoint;
+        // Replace the loaded verifier module in this isolated context, retaining only the durable test DB key.
+        const freshModule = await import(new URL('./provider/codex/codexBindOpaque.ts?reload', import.meta.url).href);
+        ctx.state.registry.models.provider.codex.codexBindOpaque = freshModule.default;
+        const before=calls.length;
+        for (const bad of [{...restored,binding:undefined}, {...restored,payload:{...restored.payload,encrypted_content:'substituted'}}, {...restored,payload:{...restored.payload,id:'changed'}}]) {
+            await expect(stream({messages:[{type:'checkpoint',checkpoint:bad}]})).rejects.toMatchObject({code:'INVALID_INPUT'});
+        }
+        expect(calls.length).toBe(before);
         replies.push(sse([done()]));
         await stream({ messages: [{ type: "checkpoint", checkpoint: restored }, { role: "user", content: "next" }] });
         expect(JSON.parse(calls.at(-1)!.body).input).toEqual([
             { type: "compaction", id: "cmp1", encrypted_content: "ENC-SECRET" },
             { type: "message", role: "user", content: [{ type: "input_text", text: "next" }] },
         ]);
+    });
+
+    test('late sticky and checkpoint responses remain scoped to A after B replaces A', async () => {
+        const { calls, replies, ctx, view, stream } = await setup();
+        const compact = () => ctx.fns.models.compact({connectionId:view.id,model:'gpt-5',sessionId:'s1',instructions:'',messages:[]});
+        const first = Promise.withResolvers<Response>(), second = Promise.withResolvers<Response>();
+        const entered1 = Promise.withResolvers<void>(), entered2 = Promise.withResolvers<void>();
+        replies.push(() => { entered1.resolve(); return first.promise; }, () => { entered2.resolve(); return second.promise; });
+        const pendingState = stream({runId:'r'}); await entered1.promise;
+        const pendingCheckpoint = compact(); await entered2.promise;
+        await ctx.fns.procs.db.run({sql:'UPDATE llm_connections SET codex_generation=?,codex_credential_revision=codex_credential_revision+1 WHERE id=?',params:[crypto.randomUUID(),view.id]});
+        first.resolve(sse([done()], {'x-codex-turn-state':'private-token'}));
+        second.resolve(sse([{type:'response.output_item.done',item:{type:'compaction',encrypted_content:'private-item'}}, done()]));
+        const {state} = await pendingState, {checkpoint} = await pendingCheckpoint;
+        expect(state?.binding).toMatch(/^[a-f0-9]{64}$/); expect(checkpoint?.binding).toMatch(/^[a-f0-9]{64}$/);
+        const before=calls.length;
+        expect(await ctx.fns.models.canReplayCodex({connectionId:view.id,model:'gpt-5',state})).toBe(false);
+        await expect(stream({runId:'r',state})).rejects.toMatchObject({code:'INVALID_INPUT'});
+        await expect(stream({messages:[{type:'checkpoint',checkpoint:checkpoint!}]})).rejects.toMatchObject({code:'INVALID_INPUT'});
+        expect(calls.length).toBe(before);
+        replies.push(sse([done()],{'x-codex-turn-state':'new-token'})); const fresh=(await stream({runId:'r'})).state!;
+        const count=calls.length;
+        for (const altered of [{...fresh,binding:undefined}, {...fresh,data:{turnState:'private-token'}}, {...fresh,runId:'r2'}]) {
+            await expect(stream({runId:altered.runId,state:altered})).rejects.toMatchObject({code:'INVALID_INPUT'});
+        }
+        expect(calls.length).toBe(count);
+        await ctx.fns.procs.db.run({sql:'UPDATE llm_connections SET codex_generation=NULL WHERE id=?',params:[view.id]});
+        replies.push(sse([done()],{'x-codex-turn-state':'unknown-token'})); expect((await stream({runId:'r'})).state).toBeUndefined();
+        const unknownCount=calls.length; await expect(compact()).rejects.toMatchObject({code:'INVALID_INPUT'}); expect(calls.length).toBe(unknownCount);
     });
 
     test("invalid checkpoint input is rejected before network without echoing payload", async () => {
@@ -364,7 +523,8 @@ describe("architecture and transports", () => {
         }
         for (const f of files) {
             const src = await Bun.file(`${import.meta.dir}/${f}`).text();
-            expect({ f, hit: src.match(/ctx\.fns\.(llm|llms|agent|session|codexAccount|sshAccount)\b|types\.(llm|agent|session)\.|\bimport\s[^;]*from\s+["']\.\.?\//g) }).toEqual({ f, hit: null });
+            const audited = f === "provider/codex/codexAuth.ts" ? src.replaceAll("ctx.fns.session.reconcileCodexControls(", "reconcile(") : src;
+            expect({ f, hit: audited.match(/ctx\.fns\.(llm|llms|agent|session|codexAccount|sshAccount)\b|types\.(llm|agent|session)\.|\bimport\s[^;]*from\s+["']\.\.?\//g) }).toEqual({ f, hit: null });
             // Only the opt-in local version detector may spawn; protocol paths stay CLI-independent.
             expect({ f, spawn: /Bun\.spawn|Bun\.\$|child_process/.test(src) }).toEqual({ f, spawn: f === "provider/codex/codexCliVersion.ts" });
         }

@@ -6,6 +6,8 @@ export type Checkpoint = {
     provider: string;
     connectionId: string;
     model: string;
+    /** Provider-issued origin proof. Persist verbatim; Codex refuses absent or invalid bindings. */
+    binding?: string;
     /** Provider-native opaque item. */
     payload: Record<string, unknown>;
 };

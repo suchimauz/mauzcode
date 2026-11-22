@@ -5,7 +5,7 @@ import codex from "../models/$modelProvider_codex";
 
 beforeAll(async () => { await mkTestCtx(); }, 60000);
 
-async function setup() {
+async function setup(max = false) {
     const ctx: any = await mkTestCtx();
     let requests = 0;
     const forbidden = () => { requests++; throw Error("Provider/secret/network access forbidden"); };
@@ -20,9 +20,10 @@ async function setup() {
     const work = await ctx.fns.models.create({ provider: "codex", accountName: "work" });
     const cache = [
         { id: "fast", label: "Fast", reasoning: { supported: ["low", "medium", "high"], default: "medium" } },
+        ...(max ? [{ id: "max-capable", reasoning: { supported: ["xhigh", "max"] } }] : []),
         { id: "plain" },
     ];
-    await ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET models_cache=?::jsonb, models_cached_at=? WHERE id=?", params: [JSON.stringify(cache), Date.now(), work.id] });
+    await ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET codex_generation='work-generation', models_cache_generation='work-generation', models_cache=?::jsonb, models_cached_at=? WHERE id=?", params: [JSON.stringify(cache), Date.now(), work.id] });
     const parent = await ctx.fns.agent.start({ model: "codex/work:plain", title: "Parent" });
     const children = async () => (await ctx.fns.procs.db.select({ sql: "SELECT id FROM agents WHERE parent_id = ?", params: [parent.id] })).length;
     return { ctx, work, parent, children, requests: () => requests };
@@ -76,6 +77,20 @@ describe("child model selection", () => {
         await expect(attempt("codex/work:plain", "low")).rejects.toThrow(/list_models/);
         await expect(attempt(undefined, "ultra")).rejects.toThrow(/unsupported reasoning effort/);
         expect(await children()).toBe(0);
+    });
+
+    test("max on explicit and inherited routes requires advertised support before child publication", async () => {
+        const { ctx, parent, children, requests } = await setup(true);
+        const attempt = (model?: string) => ctx.fns.agent.delegate({ agent: parent, title: "Max", tasks: [{ id: "a", title: "A" }], model, reasoningEffort: "max" });
+        const before = await ctx.fns.procs.db.select({ sql: "SELECT id, scratchpad::jsonb->'todos' AS todos, next_run_at FROM agents ORDER BY id", params: [] });
+        for (const route of ["codex/work:fast", undefined]) await expect(attempt(route)).rejects.toThrow(/does not support reasoning effort max/);
+        expect(await children()).toBe(0);
+        expect(await ctx.fns.procs.db.select({ sql: "SELECT id, scratchpad::jsonb->'todos' AS todos, next_run_at FROM agents ORDER BY id", params: [] })).toEqual(before);
+        const selected = await attempt("codex/work:max-capable");
+        expect(await loaded(ctx, selected.id)).toMatchObject({ model: "codex/work:max-capable", reasoningEffort: "max" });
+        parent.model = "codex/work:max-capable";
+        expect(await loaded(ctx, (await attempt()).id)).toMatchObject({ model: "codex/work:max-capable", reasoningEffort: "max" });
+        expect(requests()).toBe(0);
     });
 
     test("sharedAgent.delegate honours the options and validates before the fork", async () => {

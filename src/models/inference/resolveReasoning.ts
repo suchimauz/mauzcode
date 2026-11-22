@@ -21,7 +21,7 @@ export default function (
         profile?: types.models.ReasoningCapabilities | null;
     },
 ): types.models.ReasoningResolution {
-    const order: types.models.ReasoningLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+    const order: types.models.ReasoningLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
     const invalid = (message: string) => ctx.fns.models.inference.failure({ message, status: 400, info: { code: "INVALID_INPUT", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
     const requested = (opts.preference ?? "auto") as types.models.ReasoningLevel | "auto";
     if (requested !== "auto" && !order.includes(requested)) throw invalid(`Unknown reasoning preference ${JSON.stringify(String(opts.preference).slice(0, 40))}`);

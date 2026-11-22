@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import resolve from "./resolveReasoningEffort";
 const ctx = {} as Context;
-const levels = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 test("Claude effort matrix preserves requested/applied/mode/downgrade/reason contract", async () => {
     for (const model of ["claude-opus-5", "claude-sonnet-5", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5", "unknown"]) {
         const adaptive = /(?:opus|sonnet)-(?:5|4-6)/.test(model);

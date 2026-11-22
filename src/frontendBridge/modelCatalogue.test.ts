@@ -133,5 +133,5 @@ test('a globally disabled provider: models flagged disabled, groups not enabled 
     // Every catalogue call for a disabled provider is cacheOnly; none may hit the provider list.
     expect(calls.filter(o => o.id === 'c2' || o.id === 'c5').every(o => o.cacheOnly === true)).toBe(true);
     expect(calls.some(o => o.id === 'c5' && !o.cacheOnly)).toBe(false);
-    expect(calls.find(o => o.id === 'c1')!.cacheOnly).toBeUndefined();
+    expect(calls.find(o => o.id === 'c1')!.cacheOnly).toBe(true);
 });

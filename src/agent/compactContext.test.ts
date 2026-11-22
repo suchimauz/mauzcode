@@ -159,11 +159,12 @@ describe("agent.compactContext", () => {
     const agent = await seeded(ctx);
     agent.model = "codex/work:gpt-test";
     await ctx.fns.session.save({ agent });
-    let compactOpts: any;
+    let compactOpts: any, current = true;
+    ctx.state.registry.models.canReplayCodex = (_c: any, _s: any, opts: any) => current && opts.checkpoint?.binding === 'issued';
     ctx.state.registry.models.compact = (_c: any, _s: any, opts: any) => {
       compactOpts = opts;
       const item = { type: "compaction", id: "cmp", encrypted_content: "opaque" };
-      return { item, checkpoint: { kind: "native-checkpoint", version: 1, provider: "codex", connectionId: "connection", model: "gpt-test", payload: item }, responseId: "resp", usage: { prompt_tokens: 10, completion_tokens: 1 } };
+      return { item, checkpoint: { kind: "native-checkpoint", version: 1, provider: "codex", binding:'issued', connectionId: "connection", model: "gpt-test", payload: item }, responseId: "resp", usage: { prompt_tokens: 10, completion_tokens: 1 } };
     };
     ctx.state.registry.models.call = () => { throw new Error("text summarizer must not run"); };
     const result = await ctx.fns.agent.compactContext({ agent });
@@ -173,8 +174,14 @@ describe("agent.compactContext", () => {
     const generation = agent.sleepContext.generations.at(-1);
     const stored = await ctx.fns.session.getMessages({ id: generation.contextAgentId });
     expect(stored[0].message_type).toBe("codex_compaction");
+    expect(generation.sourceDigest).toMatch(/^[a-f0-9]{64}$/);
     const request = await ctx.fns.agent.buildLlmRequest({ agent });
-    expect(request.messages).toContainEqual({ type: "checkpoint", checkpoint: { kind: "native-checkpoint", version: 1, provider: "codex", connectionId: "connection", model: "gpt-test", payload: { type: "compaction", id: "cmp", encrypted_content: "opaque" } } });
+    expect(request.messages).toContainEqual({ type: "checkpoint", checkpoint: { kind: "native-checkpoint", version: 1, provider: "codex", binding:'issued', connectionId: "connection", model: "gpt-test", payload: { type: "compaction", id: "cmp", encrypted_content: "opaque" } } });
+    current = false;
+    const fallback = await ctx.fns.agent.buildLlmRequest({agent});
+    expect(fallback.context.fallback).toBe('incompatible_checkpoint');
+    expect(fallback.messages.some((m:any)=>m.type==='checkpoint')).toBe(false);
+    expect(fallback.messages.some((m:any)=>m.content==='0:'+'x'.repeat(16000))).toBe(true);
   });
 
 

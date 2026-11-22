@@ -8,7 +8,7 @@ function harness(turns: any[]) {
     const agent: any = { id: 'fixture', model: 'mock/default:test', scratchpad: {}, messages: [], events: [] };
     const noop = async () => {};
     const append = async ({ message }: any) => { const row = { ...message, idx: messages.length }; messages.push(row); return row; };
-    const ctx: any = { fns: {
+    const ctx: any = { state: {}, fns: {
         input: { isWaiting: async () => false }, // No ordinary-question gate in these lifecycle scenarios.
         planning: { read: async ({agentId}: any) => ({version:1,agentId,mode:'execute',revision:0,scope:'session',advisory:true,runningPolicy:'reject',pending:null,proposal:null}) },
         goal: { delegationScope: async ({ fn }: any) => fn(), runBindingCapture: async () => ({ kind: 'disabled', allowContinuation: false }) },
@@ -53,6 +53,14 @@ for (const change of ['none','route','compaction'] as const) test(`continuation 
  const oldRun=calls[0].runId;await h.execute();
  expect(calls[2].runId).not.toBe(oldRun);expect(calls[2].state).toBeUndefined();
  expect(JSON.stringify(h.agent.scratchpad)).not.toContain('opaque');
+});
+test('chat discards stale Codex sticky state between tool calls without cancelling its run',async()=>{
+ const h=harness([]);const calls:any[]=[];let active=true;
+ h.ctx.fns.models.resolveRoute=async()=>({provider:'codex',connectionId:'c',model:'gpt'});
+ h.ctx.fns.models.canReplayCodex=async()=>active;
+ h.ctx.fns.models.stream=async(o:any)=>{calls.push(o);return calls.length===1?{state:{provider:'codex',connectionId:'c',sessionId:'fixture',runId:o.runId,binding:'issued',data:{turnState:'A-token'}},toolCalls:[{id:'t',name:'read',args:{}}]}:{text:'answer'};};
+ h.ctx.fns.tools.call=async()=>{active=false;return {output:'ok'};};
+ await h.execute(); expect(calls).toHaveLength(2);expect(calls[1].runId).toBe(calls[0].runId);expect(calls[1].state).toBeUndefined();
 });
 test('durable procedure creates observed start and terminal detects interleaved users',async()=>{
     const calls:any[]=[]; const ctx:any={fns:{procs:{db:{run:async(o:any)=>calls.push(o)}}}};

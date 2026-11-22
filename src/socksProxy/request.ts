@@ -27,6 +27,8 @@ export default async function (
         headers?: Record<string,string>;
         /** POST bytes capped at eight MiB. */
         body?: Uint8Array;
+        /** Optional transport-owned gate for a POST; supplies final wire bytes synchronously at handoff. */
+        admit?: (send: (body: string) => void) => Promise<void>;
         /** Cancel through body EOF. */
         signal?: AbortSignal;
         /** Total deadline; defaults to 3000 milliseconds, range 1–3600000. */
@@ -71,6 +73,10 @@ export default async function (
     let verified=false;secure.once('secureConnect',()=>{verified=true});secure.on('error',(e:NodeJS.ErrnoException)=>fail(error(verified?'PROXY_CONNECTION_LOST':'PROXY_TLS',(verified?'TLS connection lost':'TLS verification or handshake failed')+systemCode(e))));
     secure.on('close',()=>{if(!ended&&!res?.complete)fail(error('PROXY_CONNECTION_LOST','TLS connection closed before response completion'))});
     socket.resume();agent.createConnection=()=>secure!;
+    const send=(bytes:Uint8Array|undefined)=>{
+    if(ended||opts.signal?.aborted)throw error('ABORT_ERR','Request cancelled');
+    if(bytes && bytes.byteLength>8*1024*1024)throw error('PROXY_CONFIG','Proxy body exceeds eight MiB');
+    if(bytes)headers['content-length']=String(bytes.byteLength);
     req=https.request({hostname:u.hostname,port:Number(u.port||443),path:u.pathname+u.search,method:opts.method??'GET',headers,agent,maxHeaderSize:32768},incoming=>{
     res=incoming;clearTimeout(headerTimer);touch();
     res.on('error',()=>fail(error('PROXY_CONNECTION_LOST','Response stream failed')));res.on('aborted',()=>fail(error('PROXY_CONNECTION_LOST','Response stream aborted')));res.on('close',()=>{if(!ended&&!res?.complete)fail(error('PROXY_CONNECTION_LOST','Incomplete response'))});
@@ -80,7 +86,10 @@ export default async function (
     const body=new ReadableStream<Uint8Array>({start(c){controller=c;res!.on('readable',()=>{touch();pump()});res!.on('end',()=>{if(ended)return;ended=true;c.close();cleanup()})},pull(){pump()},cancel(){ended=true;cleanup()}},{highWaterMark:65536,size:chunk=>chunk?.byteLength??0});
     try{const responseHeaders=new Headers();for(let i=0;i<res.rawHeaders.length;i+=2)responseHeaders.append(res.rawHeaders[i]!,res.rawHeaders[i+1]!);const status=res.statusCode??502;if([204,205,304].includes(status)){ended=true;cleanup();settled=true;resolve(new Response(null,{status,headers:responseHeaders}));return}const response=new Response(body,{status,headers:responseHeaders});settled=true;resolve(response)}catch{fail(error('PROXY_PROTOCOL','Invalid HTTP response headers'))}
     });
-    req.on('error',(e:NodeJS.ErrnoException)=>fail(error('PROXY_CONNECTION_LOST','HTTP transport failed'+systemCode(e))));sent=true;req.end(opts.body);if(opts.signal?.aborted)abort();
+    req.on('error',(e:NodeJS.ErrnoException)=>fail(error('PROXY_CONNECTION_LOST','HTTP transport failed'+systemCode(e))));sent=true;req.end(bytes);if(opts.signal?.aborted)abort();
+    };
+    if(opts.admit) void opts.admit(body=>send(new TextEncoder().encode(body))).catch(fail);
+    else send(opts.body);
     }catch{fail(error('PROXY_TLS','TLS transport initialization failed'))}
     });
     }catch(e){finish();throw e}

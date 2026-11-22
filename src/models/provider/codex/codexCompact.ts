@@ -16,7 +16,10 @@ export default async function (
     const { conn, req } = opts;
     
             const a = await ctx.fns.models.provider.codex.codexWireAuth({ conn: conn });
-            const converted = ctx.fns.models.provider.codex.codexInput({ messages: req.messages });
+            if (!a.generation) throw ctx.fns.models.inference.failure({ message: 'Codex compaction needs a verified account. Reconnect the account and retry.', status: 400, info: {code:'INVALID_INPUT', classification:'invalid_input', acceptance:'none', retryable:false, replaySafe:true} });
+            const messages = req.messages.map(m => m?.type === 'checkpoint' ? structuredClone(m) : m);
+            const converted = ctx.fns.models.provider.codex.codexInput({ messages });
+            await ctx.fns.models.provider.codex.codexCheckOpaque({connectionId: conn.id, generation: a.generation, model:req.model, messages});
             const compaction = { trigger: "manual", reason: "user_requested", implementation: "remote", phase: "standalone_turn", strategy: "memento" };
             const turnMetadata = JSON.stringify({ session_id: req.sessionId, thread_id: req.sessionId, turn_id: crypto.randomUUID(), request_kind: "compaction", compaction });
             const body = {
@@ -37,5 +40,9 @@ export default async function (
             if (!completed) throw ctx.fns.models.provider.codex.codexWireInterrupted({ error: new Error("no terminal event"), signal: req.signal });
             if (!item || typeof item.encrypted_content !== "string" || !item.encrypted_content) throw bad("Codex compaction returned no valid checkpoint item");
             if (!responseId) throw bad("Codex compaction completed without a response id");
-            return { item: { type: "compaction", ...(typeof item.id === "string" && item.id ? { id: item.id } : {}), encrypted_content: item.encrypted_content }, responseId, usage };
+            const payload = { type: 'compaction' as const, ...(typeof item.id === 'string' && item.id ? { id: item.id } : {}), encrypted_content: item.encrypted_content };
+            const checkpoint: types.models.Checkpoint = {kind:'native-checkpoint', version:1, provider:conn.provider, connectionId:conn.id, model:req.model, payload};
+            const binding = await ctx.fns.models.provider.codex.codexBindOpaque({generation:a.generation, checkpoint, issue:true});
+            if (!binding) throw bad('Cannot authenticate this Codex checkpoint');
+            return { item: payload, checkpoint: {...checkpoint, binding}, responseId, usage };
 }

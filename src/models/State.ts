@@ -1,5 +1,10 @@
 /** Provider registry and connection health cache owned by the models namespace. */
 export type State = {
+    /** Unforgeable per-invocation context. Never derive chat consent or a retry pin from SDK input. */
+    codexDispatch?: WeakMap<object, { chat?: (route: { connectionId: string; generation: string | null; modelId: string }) => Promise<{ speed?: "fast" | "ultrafast"; verbosity?: "low" | "medium" | "high" }>; pin?: { generation?: string | null }; generation?: string | null }>;
+
+    /** Transport-only final admission, keyed by the exact request init created by the provider. */
+    codexHandoff?: WeakMap<RequestInit, (send: (body: string) => void) => Promise<void>>;
     providers?: Record<string, {
         owner: string;
         module: string;
@@ -14,6 +19,8 @@ export type State = {
     }>;
     /** In-flight Codex token refresh per connection id; de-duplicates concurrent refreshes. */
     codexRefresh?: Record<string, Promise<string>>;
+    /** Immutable refresh results, keyed by connection, issuing generation and revision. */
+    codexBoundRefresh?: Record<string, Promise<{ generation: string | null; credentialRevision: number; loggedIn: boolean; needsLogin: boolean; accountId: string | null; expiresAt: number | null; accessToken?: string }>>;
     /** Process-local provider login flows (Codex, Claude, Qwen) by connection id; lost on restart. */
     loginFlows?: Record<string, types.models.LoginFlow>;
     /** In-flight Qwen token refresh per connection id; de-duplicates concurrent refreshes. */

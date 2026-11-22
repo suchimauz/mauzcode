@@ -42,7 +42,7 @@ parameters:
       description: "Exact child route from list_models; omitted inherits yours."
     reasoningEffort:
       type: string
-      enum: [auto, off, minimal, low, medium, high, xhigh]
+      enum: [auto, off, minimal, low, medium, high, xhigh, max]
       description: "Child effort supported by its model; omitted means auto."
   required: [title, tasks]
   additionalProperties: false

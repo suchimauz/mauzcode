@@ -1,4 +1,4 @@
-type Auth = { token: string; accountId: string | null };
+type Auth = Readonly<{ token: string; accountId: string | null; generation: string | null; credentialRevision: number }>;
 
 /**
  * Resolve Codex access token and account identity from scoped authorization.
@@ -17,5 +17,5 @@ export default async function (
     const { conn } = opts;
     
         const r = await ctx.fns.models.provider.codex.codexAuth({ conn, op: "token" });
-        return { token: r.accessToken!, accountId: r.accountId };
+        return Object.freeze({ token: r.accessToken!, accountId: r.accountId, generation: r.generation, credentialRevision: r.credentialRevision });
 }

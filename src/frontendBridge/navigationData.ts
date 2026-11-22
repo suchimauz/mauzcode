@@ -24,12 +24,12 @@ export default async function (
     const catalogue=new Map((await ctx.fns.frontendBridge.modelCatalogue({})).models.map(m=>[m.model,m]));
     // Routes no longer in the catalogue (stale selections) get names from the same resolver.
     const stale=[...new Set(iconRows.map(row=>String(row.model??'')))].filter(model=>model&&!catalogue.has(model));
-    const staleNames:Record<string,string>=stale.length?await ctx.fns.models.displayNames({routes:stale}).catch(()=>({})):{};
+    const staleNames:Record<string,string>=stale.length?await ctx.fns.models.displayNames({routes:stale,labels:{},offline:true}).catch(()=>({})):{};
     const modelLabel=(model:string)=>catalogue.get(model)?.label??staleNames[model]??(model.slice(model.indexOf(':',Math.max(0,model.indexOf('/')))+1)||model);
     const icons=new Map(await Promise.all(iconRows.map(async row=>[String(row.id),await ctx.fns.frontendBridge.iconData({icon:row.icon,model:row.model})] as const)));
     // Reasoning comes from the cached connection catalogue; share one projection per distinct pair.
     const efforts=new Map<string,{requested:types.models.ReasoningLevel|'auto';applied:types.models.ReasoningLevel|'auto';label:string|null;downgraded:boolean}>();
-    const labels:Record<types.models.ReasoningLevel|'auto',string>={auto:'Default',off:'Off',minimal:'Minimal',low:'Low',medium:'Medium',high:'High',xhigh:'Max'};
+    const labels:Record<types.models.ReasoningLevel|'auto',string>={auto:'Default',off:'Off',minimal:'Minimal',low:'Low',medium:'Medium',high:'High',xhigh:'Extra high',max:'Max'};
     const metadata=new Map(await Promise.all(iconRows.map(async row=>{
         const model=String(row.model??'');
         const requested=String(row.reasoning_effort??'auto');
