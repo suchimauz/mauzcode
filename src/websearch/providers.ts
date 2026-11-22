@@ -19,6 +19,7 @@ export default async function (ctx: Context, _session: Session | null, _opts?: {
     /** Whether it is the `websearch.defaultEngine` setting. */
     isDefault: boolean;
 }>> {
+    await ctx.fns.websearch.requireAccess({ name: 'websearch.providers' });
     const providers = Object.values(ctx.state.websearch?.providers ?? {});
     const defaultEngine = await ctx.fns.settings.getString({ module: 'websearch', scopeType: 'global', key: 'defaultEngine', fallback: 'google-browser' });
     const listed = await Promise.all(providers.map(async provider => {

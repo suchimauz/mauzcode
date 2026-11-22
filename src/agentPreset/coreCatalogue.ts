@@ -371,6 +371,10 @@ export default function (
             "classification": "creator",
             "patterns": []
         },
+        "websearch": {
+            "classification": "internal",
+            "patterns": []
+        },
         "webPush": {
             "classification": "creator",
             "patterns": []

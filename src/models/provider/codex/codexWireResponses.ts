@@ -66,6 +66,7 @@ export default async function (
                 signal?.throwIfAborted();
                 if (handedOff) throw stale();
                 if (dispatch?.pin) dispatch.pin.generation = a.generation;
+                if (a.accountId && a.generation) conn.attestNativeWebSearch?.({ generation: a.generation, revision: String(a.credentialRevision) });
                 send(JSON.stringify(wire)); // synchronous transport handoff; never await network I/O under this lock
                 handedOff = true;
             } });

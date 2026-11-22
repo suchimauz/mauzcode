@@ -38,6 +38,7 @@ export default async function (
     attempts: number;
     durationMs: number;
 }> {
+    await ctx.fns.websearch.requireAccess({ name: 'websearch.read' });
     const url = String(opts.url ?? '').trim();
     if (!/^https?:\/\//i.test(url)) throw new Error('websearch.read: url must be HTTP or HTTPS');
     const maxChars = Math.max(1_000, Math.min(50_000, Math.trunc(Number(opts.maxChars ?? 30_000))));

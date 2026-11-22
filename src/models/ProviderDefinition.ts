@@ -20,6 +20,8 @@ export type ProviderDefinition = {
             piAi?: string[];
         };
     };
+    /** Explicit, account-bound link retrieval for the tool step issued by this provider. Never an inference tool. */
+    nativeWebSearch?: types.models.NativeWebSearchOperation;
     fields: types.models.FieldSpec[];
     transports: types.models.TransportSpec["kind"][];
     /** Test this connection only; use conn.fetch and never log conn.secret results. */

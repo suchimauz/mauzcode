@@ -87,6 +87,16 @@ export default async function (
     });
     callCtx = Object.create(callCtx);
     callCtx.toolRun = run;
+    const inference = ctx.state?.models?.nativeSearchDispatch?.get(opts);
+    const stepEnd = new AbortController();
+    if (inference) {
+        ctx.state.models.nativeSearchDispatch!.delete(opts);
+        if (inference.origin.agent === opts.agent) {
+            (ctx.state.models.nativeSearchSteps ??= new WeakMap()).set(run, {
+                decision: inference, signal: AbortSignal.any([run.controller.signal, stepEnd.signal]),
+            });
+        }
+    }
     const parentSignal: AbortSignal | undefined = (ctx as any).runSignal ?? opts.agent?.abortController?.signal;
     const cancelWithRun = () => {
         run.aborted = true;
@@ -100,6 +110,7 @@ export default async function (
     // implementation is picked up without touching the declaration.
     const fn = String(tool.fn).split(".").reduce((node: any, seg: string) => node?.[seg], callCtx.fns);
     if (typeof fn !== "function") {
+        stepEnd.abort();
         parentSignal?.removeEventListener('abort', cancelWithRun);
         ctx.fns.tools.endRun({ id: run.id });
         return { output: `Error: tool "${tool.wireName}" declares fn "${tool.fn}", but nothing is registered under that name`, isError: true, handlerExecuted: false };
@@ -167,6 +178,7 @@ export default async function (
         }
         isError = true;
     } finally {
+        stepEnd.abort();
         parentSignal?.removeEventListener('abort', cancelWithRun);
         if (rejectAbort) run.controller.signal.removeEventListener('abort', rejectAbort);
         // Unconditional: an indicator that outlives its work is the same lie

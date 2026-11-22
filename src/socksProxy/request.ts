@@ -29,6 +29,8 @@ export default async function (
         body?: Uint8Array;
         /** Optional transport-owned gate for a POST; supplies final wire bytes synchronously at handoff. */
         admit?: (send: (body: string) => void) => Promise<void>;
+        /** Internal synchronous observer of the final HTTP handoff, after proxy negotiation. */
+        onHandoff?: () => void;
         /** Cancel through body EOF. */
         signal?: AbortSignal;
         /** Total deadline; defaults to 3000 milliseconds, range 1–3600000. */
@@ -77,6 +79,7 @@ export default async function (
     if(ended||opts.signal?.aborted)throw error('ABORT_ERR','Request cancelled');
     if(bytes && bytes.byteLength>8*1024*1024)throw error('PROXY_CONFIG','Proxy body exceeds eight MiB');
     if(bytes)headers['content-length']=String(bytes.byteLength);
+    opts.onHandoff?.();
     req=https.request({hostname:u.hostname,port:Number(u.port||443),path:u.pathname+u.search,method:opts.method??'GET',headers,agent,maxHeaderSize:32768},incoming=>{
     res=incoming;clearTimeout(headerTimer);touch();
     res.on('error',()=>fail(error('PROXY_CONNECTION_LOST','Response stream failed')));res.on('aborted',()=>fail(error('PROXY_CONNECTION_LOST','Response stream aborted')));res.on('close',()=>{if(!ended&&!res?.complete)fail(error('PROXY_CONNECTION_LOST','Incomplete response'))});

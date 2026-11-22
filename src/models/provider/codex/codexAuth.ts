@@ -11,9 +11,11 @@ type Result = Fence & { loggedIn: boolean; needsLogin: boolean; accountId: strin
 export default async function (
     ctx: Context, session: Session | null, opts: {
         /** Connection providing scoped OAuth transport. */
-        conn: types.models.ResolvedConnection;
-        /** Status never refreshes or returns a token. Only token may return credentials. */
-        op: "status" | "token" | "store" | "markLogin" | "clear";
+        conn: types.models.ResolvedConnection | types.models.NativeWebSearchConnection;
+        /** Status never refreshes or returns a token. Native reads require a one-use locked SDK proof. */
+        op: "nativeRead" | "status" | "token" | "store" | "markLogin" | "clear";
+        /** SDK-issued one-use proof for a locked search credential read. */
+        proof?: types.models.NativeWebSearchProof;
         /** Fresh OAuth response from the issuer. */
         tokens?: { id_token?: string; access_token: string; refresh_token?: string };
         /** Login intent reserved before requesting a device code. */
@@ -79,6 +81,15 @@ export default async function (
         if (committed) try { await ctx.fns.procs.events.refresh({ topic: "llm-models", reason: "models-codex-auth" }); } catch { /* committed; UI may resync later */ }
         return out as Result;
     };
+    if (opts.op === "nativeRead") {
+        const proof = opts.proof;
+        if (!proof || !ctx.state.models?.nativeSearchConnections?.has(conn) || ctx.state.models.nativeSearchReads?.get(proof) !== conn) throw changed();
+        ctx.state.models.nativeSearchReads.delete(proof);
+        const cur = await read(false); // SDK holds this connection's row lock; never renew here.
+        if (cur.generation !== proof.generation || String(cur.credentialRevision) !== proof.revision || !cur.value?.accountId || !cur.value.accessToken || cur.value.needsLogin || !(cur.value.expiresAt > Date.now() + 60_000)) throw changed();
+        return result(cur, true);
+    }
+    if (opts.op !== 'markLogin' && ctx.state.models?.nativeSearchConnections?.has(conn)) throw changed();
     if (opts.op === "store" && !opts.tokens) throw new Error("Tokens required");
     if (opts.op === "clear" || opts.op === "store" || opts.op === "markLogin") return mutate(opts.op, opts.tokens, opts.auth);
     const cur = await read(false);
@@ -111,6 +122,7 @@ export default async function (
         }
         try {
             if (!refreshToken) { await mutate("markLogin", undefined, cur, owner); throw loginRequired(); }
+            if (!('fetch' in conn)) throw changed();
             const res = await conn.fetch("https://auth.openai.com/oauth/token", { method: "POST", signal: AbortSignal.timeout(60_000),
                 headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
                 body: new URLSearchParams({ grant_type: "refresh_token", client_id: "app_EMoamEEZ73f0CkXaXp7hrann", refresh_token: refreshToken }).toString() });

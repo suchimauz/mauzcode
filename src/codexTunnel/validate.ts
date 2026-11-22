@@ -16,7 +16,8 @@ export default async function (
     },
 ): Promise<{hostname:string;path:string;method:string}> {
     const u=new URL(opts.url); const method=opts.method??'GET';
-    const routes:Record<string,string>={'auth.openai.com/oauth/token':'POST','chatgpt.com/backend-api/codex/responses':'POST','chatgpt.com/backend-api/codex/responses/compact':'POST','chatgpt.com/backend-api/codex/models':'GET','chatgpt.com/backend-api/wham/usage':'GET'};
+    if(u.pathname==='/backend-api/codex/alpha/search' && opts.url!=='https://chatgpt.com/backend-api/codex/alpha/search')throw Error('Endpoint refused');
+    const routes:Record<string,string>={'auth.openai.com/oauth/token':'POST','chatgpt.com/backend-api/codex/responses':'POST','chatgpt.com/backend-api/codex/alpha/search':'POST','chatgpt.com/backend-api/codex/responses/compact':'POST','chatgpt.com/backend-api/codex/models':'GET','chatgpt.com/backend-api/wham/usage':'GET'};
     if(u.protocol!=='https:'||u.username||u.password||u.hash||(u.port&&u.port!=='443')||routes[u.hostname+u.pathname]!==method||(u.search&&u.pathname!=='/backend-api/codex/models'))throw new Error('Codex tunnel destination or method is not allowed');
     return {hostname:u.hostname,path:u.pathname+u.search,method};
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { sdkCtx } from './sdkFixture.entry';
-import search from './search';
+import search from '../../../../src/websearch/search';
 
 const originalFetch = globalThis.fetch;
 const originalTimer = globalThis.setTimeout;
