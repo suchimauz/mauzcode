@@ -226,7 +226,7 @@ describe("openai-realtime against the fake realtime server", () => {
         await conn.send(transcription("completed", second, { transcript: "second" }));
         expect(await session.finish()).toEqual({ ok: true });
         expect(events.find(e => e.type === "phraseFailed")).toMatchObject({ order: 0, reason: "provider" });
-        expect(finals(events)).toEqual([{ order: 2, text: "third" }, { order: 1, text: "second" }]);
+        expect(finals(events)).toEqual([{ order: 1, text: "second" }, { order: 2, text: "third" }]);
         safeEvents(events);
         await conn.closed;
     });

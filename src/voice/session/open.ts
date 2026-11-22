@@ -8,7 +8,7 @@
  * - **Identity and order.** Core is the only source of `order`: it numbers phrases in the sequence it commits audio.
  *   Allocation happens inside the same serialized chain that calls the provider, so the numbers always follow the
  *   audio order even when a transport floods frames. For provider-side turn detection, the provider reports its own
- *   boundaries in audio order and core allocates their orders. Core commits only a remaining turn at finish.
+ *   boundaries in audio order and core allocates their orders. Core waits for provider-selected coverage rather than guessing a manual commit.
  * - **Revisions.** Every phrase gets a stable `id`, a strictly increasing `revision` and the complete text, never a
  *   delta; exactly one `final` is delivered per order, and an event for a settled or unknown order is dropped.
  * - **Concurrency.** Phrase state is kept per order, so interleaved and out-of-order provider events stay correct: a
@@ -54,9 +54,13 @@ export default async function (
     let endCode: types.voice.ErrorCode | null = null;
 
     // One entry per order core has committed; a settled entry accepts no further revision.
-    const orders = new Map<number, { id: string; text: string; revision: number; settled: boolean }>();
+    const orders = new Map<number, { id: string; text: string; revision: number }>();
     // Upstream turn identity → core order, used only for provider-selected boundaries.
     const providerOrders = new Map<string, number>();
+    const terminals = new Map<number, types.voice.SessionEvent>();
+    let nextTerminal = 0;
+    let draftFailed = false;
+    let boundaryActive = false;
     let serverCommittedBytes = 0;
     let sentBytes = 0;
     let ready = false;
@@ -79,6 +83,8 @@ export default async function (
         generation,
         committed: nextOrder,
         settled: settledCount,
+        retainedPhrases: orders.size + terminals.size,
+        retainedTurns: providerOrders.size,
         audioBytes: sentBytes,
         audioWindows: Math.floor(sentBytes / vad.frameBytes),
         usage: { audioSeconds: usage.audioSeconds },
@@ -121,6 +127,7 @@ export default async function (
         vad = { ...vad, carry: new Uint8Array(0), held: [], energies: [] };
         orders.clear();
         providerOrders.clear();
+        terminals.clear();
         unsettled = 0;
         releaseWaiters();
     };
@@ -151,18 +158,30 @@ export default async function (
     };
 
     /** Allocate a phrase for one commit and register it as unsettled. */
+    const maxLiveOrders = 256;
     const allocate = (): number => {
+        if (nextOrder - nextTerminal >= maxLiveOrders) throw ctx.fns.voice.session.failure({ code: "backpressure" });
         const order = nextOrder++;
-        orders.set(order, { id: `${sessionId}:${order}`, text: "", revision: 0, settled: false });
+        orders.set(order, { id: `${sessionId}:${order}`, text: "", revision: 0 });
         unsettled++;
         return order;
+    };
+
+    // Release terminal text immediately once every earlier phrase has a terminal event.
+    const deliverTerminal = (order: number, event: types.voice.SessionEvent): void => {
+        terminals.set(order, event);
+        while (terminals.has(nextTerminal)) {
+            const ready = terminals.get(nextTerminal)!;
+            terminals.delete(nextTerminal++);
+            deliver(ready);
+        }
     };
 
     /** Settle one order and wake a waiting finish once nothing is pending. Returns its terminal revision. */
     const settle = (order: number): number => {
         const entry = orders.get(order);
-        if (!entry || entry.settled) return 0;
-        entry.settled = true;
+        if (!entry) return 0;
+        orders.delete(order);
         unsettled--;
         settledCount++;
         entry.revision++;
@@ -188,12 +207,15 @@ export default async function (
             if (vad.turnDetection !== "server" || typeof event.turnId !== "string" || !event.turnId ||
                 providerOrders.has(event.turnId)) return;
             if (!Number.isSafeInteger(event.endByte) || event.endByte % 2 !== 0 ||
-                event.endByte <= serverCommittedBytes || event.endByte > sentBytes) {
+                event.endByte <= 0 || event.endByte > sentBytes) {
                 endWith("provider", "unknown", { reason: "sequenceMismatch" });
                 return;
             }
+            if (event.endByte <= serverCommittedBytes) return; // Replay of an already covered turn.
+            if (nextOrder - nextTerminal >= maxLiveOrders) { endWith("backpressure"); return; }
             serverCommittedBytes = event.endByte;
             providerOrders.set(event.turnId, allocate());
+            releaseWaiters();
             return;
         }
         if (event.type === "usage") {
@@ -203,23 +225,27 @@ export default async function (
         }
         if (event.type !== "revision" && event.type !== "final" && event.type !== "failed") return;
         const order = "order" in event ? event.order : providerOrders.get(event.turnId);
-        if (order === undefined) return;
+        // Core never issues a manual commit on a provider-turn model. Only its bound
+        // native turn ID can settle that order or release the matching correlation.
+        if (order === undefined || (vad.turnDetection === "server" && !("turnId" in event))) return;
         const entry = orders.get(order);
-        if (!entry || entry.settled) return;
+        if (!entry) return;
         if (event.type === "revision") {
             entry.text = typeof event.text === "string" ? event.text : entry.text;
             entry.revision++;
             deliver({ type: "phrase", id: entry.id, order, revision: entry.revision, text: entry.text, final: false });
             return;
         }
+        if ("turnId" in event) providerOrders.delete(event.turnId);
         if (event.type === "failed") {
+            draftFailed = true;
             settle(order);
-            deliver({ type: "phraseFailed", id: entry.id, order, reason: "provider" });
+            deliverTerminal(order, { type: "phraseFailed", id: entry.id, order, reason: "provider" });
             return;
         }
         entry.text = typeof event.text === "string" ? event.text : entry.text;
         const revision = settle(order);
-        deliver({ type: "phrase", id: entry.id, order, revision, text: entry.text, final: true });
+        deliverTerminal(order, { type: "phrase", id: entry.id, order, revision, text: entry.text, final: true });
     };
 
     const signal = controller.signal;
@@ -311,16 +337,19 @@ export default async function (
         if (state !== "open") return;
         const frame = pcm instanceof Uint8Array ? pcm : new Uint8Array(0);
         if (!frame.byteLength) return;
+        if (boundaryActive && frame.some(byte => byte !== 0)) { endWith("protocol"); return; }
         if (queuedBytes + frame.byteLength > limits.maxBufferedBytes) {
             // The consumer pushes faster than the provider accepts: end visibly instead of dropping audio silently.
             endWith("backpressure");
             return;
         }
-        const pushed = ctx.fns.voice.session.vadPush({ state: vad, pcm: frame });
-        vad = pushed.state;
         queuedBytes += frame.byteLength;
         try {
-            await enqueue(() => applyPlan(pushed.steps));
+            await enqueue(async () => {
+                const pushed = ctx.fns.voice.session.vadPush({ state: vad, pcm: frame });
+                vad = pushed.state;
+                await applyPlan(pushed.steps);
+            });
         } finally {
             queuedBytes -= frame.byteLength;
         }
@@ -329,11 +358,11 @@ export default async function (
     const commitNow = async (): Promise<number | undefined> => {
         if (state !== "open" || vad.turnDetection === "server") return undefined;
         // Everything the detector still holds is this phrase's audio; the explicit commit closes it exactly there.
-        const flushed = ctx.fns.voice.session.vadFlush({ state: vad });
-        vad = flushed.state;
-        if (!flushed.committed) return undefined;
-        // Allocation happens in the chain, so an explicit commit cannot overtake an earlier queued plan.
-        const committed = await enqueue(() => applyPlan(flushed.steps));
+        const committed = await enqueue(async () => {
+            const flushed = ctx.fns.voice.session.vadFlush({ state: vad });
+            vad = flushed.state;
+            return applyPlan(flushed.steps);
+        });
         return isClosed() ? undefined : committed?.[0];
     };
 
@@ -342,25 +371,34 @@ export default async function (
         await release;
     };
 
-    const finish = async (): Promise<{ ok: boolean; code?: types.voice.ErrorCode }> => {
-        if (state !== "open") {
+    const boundary = async (terminal: boolean): Promise<{ ok: boolean; code?: types.voice.ErrorCode }> => {
+        if (boundaryActive || state !== "open") {
             await diagnostic;
             return { ok: false, ...(endCode ? { code: endCode } : {}) };
         }
-        state = "closing";
+        boundaryActive = true;
+        if (terminal) state = "closing";
         const timer = setTimeout(() => endWith("timeout", "timeout", { reason: "finishTimeout" }), limits.finishTimeoutMs);
         try {
             // Inspect the remaining audio inside the chain, after any boundaries reported by queued appends.
-            await enqueue(async () => {
+            const coverage = await enqueue(async () => {
                 const flushed = ctx.fns.voice.session.vadFlush({ state: vad, serverCommittedBytes });
                 vad = flushed.state;
                 await applyPlan(flushed.steps);
+                return flushed.awaitCoverage ?? 0;
             });
-            if (!isClosed()) {
-                await withAbort(voice.finish());
-                while (unsettled > 0) await new Promise<void>(resolve => settleWaiters.push(resolve));
+            // Keep the append chain available: server VAD can need post-cut digital silence
+            // to announce its turn. The cut is an immutable absolute PCM watermark.
+            while (!isClosed() && serverCommittedBytes < (coverage ?? 0)) {
+                await new Promise<void>(resolve => settleWaiters.push(resolve));
             }
+            if (terminal && !isClosed()) await withAbort(voice.finish());
+            while (!isClosed() && unsettled > 0) await new Promise<void>(resolve => settleWaiters.push(resolve));
             if (!isClosed()) {
+                if (!terminal) {
+                    if (draftFailed) return { ok: false, code: "provider" };
+                    return { ok: true };
+                }
                 close();
                 stream = undefined; // A successful provider finish has already released its resources.
                 deliver({ type: "completed" });
@@ -369,13 +407,14 @@ export default async function (
         } catch (error) {
             providerFailed(error);
         } finally {
+            boundaryActive = false;
             clearTimeout(timer);
         }
         await diagnostic;
         return { ok: false, ...(endCode ? { code: endCode } : {}) };
     };
 
-    return { sessionId, route, append, commit: commitNow, finish, cancel, status };
+    return { sessionId, route, append, commit: commitNow, settle: () => boundary(false), finish: () => boundary(true), cancel, status };
 }
 
 type DiagnosticCause = "authentication" | "rateLimit" | "timeout" | "unknown";

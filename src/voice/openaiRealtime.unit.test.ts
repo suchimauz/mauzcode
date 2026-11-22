@@ -326,9 +326,31 @@ test("an invalid_request_error answering the setup update fails opening and send
     controller.abort();
 }));
 
-test("overflowing the pre-acknowledgement buffer is a sequenceMismatch", () => withSocket(async next => {
-    const { socket, failures, controller } = await liveStream(next);
+test("hundreds of drafts ignore stale item traffic after the bounded duplicate window", () => withSocket(async next => {
+    const { stream, socket, events, failures, controller } = await eventStream(next);
     try {
+        for (let i = 0; i < 320; i++) {
+            await stream.append(audio(100));
+            await stream.commit(i);
+            if (i > 140) socket.receive(event("completed", `item_${i - 140}`, { transcript: "ancient" }));
+            socket.receive(committed(`item_${i}`));
+            socket.receive(event("completed", `item_${i}`, { transcript: `${i}` }));
+            if (i > 0) {
+                socket.receive(event("completed", "item_0", { transcript: "stale" }));
+                socket.receive(event("delta", `item_${i - 1}`, { delta: "late" }));
+            }
+            expect(events.splice(0)).toEqual([{ type: "final", order: i, text: `${i}` }]);
+        }
+        expect(failures).toEqual([]);
+        await stream.finish();
+        expect(socket.readyState).toBe(LocalSocket.CLOSED);
+    } finally { controller.abort(); }
+}));
+
+test("overflowing the pre-acknowledgement buffer is a sequenceMismatch", () => withSocket(async next => {
+    const { stream, socket, failures, controller } = await liveStream(next);
+    try {
+        await stream.append(audio(100));
         for (let index = 0; index <= 8; index++) socket.receive(event("delta", `item_${index}`, { delta: "x" }));
         expect(failures).toHaveLength(1);
         expect(failures[0]).toMatchObject({ code: "provider", diagnosticReason: "sequenceMismatch" });

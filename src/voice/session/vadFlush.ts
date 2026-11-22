@@ -1,12 +1,12 @@
 /**
  * Close the buffered audio of a session with one final ordered step plan
  *
- * Use on `finish`, after the last frame, so nothing a user said is left uncommitted. For client turns the held
+ * Use at an explicit draft boundary or `finish`, after the last frame, so nothing a user said is left uncommitted. For client turns the held
  * windows and the partial window are forwarded before committing. For provider turns the audio is already sent,
- * so only request a boundary when speech remains beyond the last upstream commit. Empty or silence-only tails
+ * so report the speech offset for which core must wait for positive upstream coverage. Empty or silence-only tails
  * never create a new phrase.
  * @param opts.state Detector state after the last voice.session.vadPush.
- * @param opts.serverCommittedBytes Exclusive byte offset of the last provider-selected boundary, if any.
+ * @param opts.serverCommittedBytes Last provider-selected boundary as an exclusive byte offset; defaults to zero.
  */
 export default function (
     ctx: Context,
@@ -14,10 +14,10 @@ export default function (
     opts: {
         /** Detector state after the last voice.session.vadPush. */
         state: types.voice.VadState;
-        /** Exclusive byte offset of the last provider-selected boundary, if any. */
+        /** Last provider-selected boundary as an exclusive byte offset; defaults to zero. */
         serverCommittedBytes?: number;
     },
-): { state: types.voice.VadState; steps: types.voice.VadStep[]; committed: boolean } {
+): { state: types.voice.VadState; steps: types.voice.VadStep[]; committed: boolean; awaitCoverage?: number } {
     const tailStart = opts.state.pushedBytes - opts.state.carry.byteLength;
     const consumed = opts.serverCommittedBytes ?? 0;
     const tail = opts.state.carry.subarray(Math.max(0, consumed - tailStart));
@@ -35,8 +35,16 @@ export default function (
         lastSpeechByte: 0,
     };
     if (state.turnDetection === "server") {
-        const committed = opts.state.lastSpeechByte > consumed || tailSpeech;
-        return { state, steps: committed ? [{ type: "commit" }] : [], committed };
+        let awaitCoverage = opts.state.lastSpeechByte;
+        if (tailSpeech) {
+            const samples = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
+            for (let end = tail.byteLength & ~1; end >= 2; end -= 2) {
+                if (Math.abs(samples.getInt16(end - 2, true)) / 32768 < state.limits.speechRms) continue;
+                awaitCoverage = Math.max(awaitCoverage, opts.state.pushedBytes - tail.byteLength + end);
+                break;
+            }
+        }
+        return { state, steps: [], committed: false, awaitCoverage };
     }
     if (!opts.state.hasSpeech && !tailSpeech) return { state, steps: [], committed: false };
 

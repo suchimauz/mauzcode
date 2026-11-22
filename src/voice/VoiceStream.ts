@@ -11,10 +11,8 @@ export type VoiceStream = {
     append: (pcm: Uint8Array) => Promise<void>;
     /**
      * Ask the provider for one ordered phrase boundary. `order` is assigned by core in the sequence it commits,
-     * and the provider must report every later event for that phrase with the same `order`. A model with its own
-     * turn detection only receives this call at finish, for audio not covered by a reported boundary. If auto-VAD
-     * consumed that same tail before the manual commit reached upstream, the adapter must settle the requested
-     * order from the existing upstream item instead of committing an empty buffer or reporting a duplicate turn.
+     * and the provider must report every later event for that phrase with the same `order`. Models with provider-selected turns report coverage via committed events;
+     * core never infers from a missing event that a manual commit is safe.
      */
     commit: (order: number) => Promise<void>;
     /** Stop accepting audio, settle every committed phrase and release upstream resources on success. */

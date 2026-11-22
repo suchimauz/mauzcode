@@ -1,6 +1,6 @@
 import { useCallback, useId, useRef, useState, type MutableRefObject } from 'react';
 import { AudioWaveform, Mic } from 'lucide-react';
-import { useVoiceCapture, type VoiceCapture, type VoicePhraseEvent } from '../../hooks/useVoiceCapture';
+import { useVoiceCapture, type UseVoiceCaptureOptions, type VoiceCapture, type VoicePhraseEvent } from '../../hooks/useVoiceCapture';
 import type { VoiceChatRoute } from '../../lib/voice';
 import type { VoiceSupport } from '../../lib/voiceCapture';
 import { VoiceRoutePicker, voiceRouteSummary, type VoiceRouteView } from './VoiceRoutePicker';
@@ -38,14 +38,14 @@ export type VoiceEntryHub = {
   handlers: MutableRefObject<VoiceEntryHandlers>;
 };
 
-export function useVoiceEntryHub({ agentId, readOnly = false }: { agentId: string; readOnly?: boolean }): VoiceEntryHub {
+export function useVoiceEntryHub(options: Omit<UseVoiceCaptureOptions, 'onPhrase'>): VoiceEntryHub {
   const [owner, setOwner] = useState<VoiceEntryMode | null>(null);
   const ownerRef = useRef<VoiceEntryMode | null>(null);
   const handlers = useRef<VoiceEntryHandlers>({});
   const onPhrase = useCallback((event: VoicePhraseEvent) => {
     const mode = ownerRef.current; if (mode) handlers.current[mode]?.onPhrase(event);
   }, []);
-  const capture = useVoiceCapture({ agentId, readOnly, onPhrase });
+  const capture = useVoiceCapture({ ...options, onPhrase });
   const claim = useCallback((mode: VoiceEntryMode) => { ownerRef.current = mode; setOwner(mode); }, []);
   return { capture, owner, claim, handlers };
 }

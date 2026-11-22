@@ -22,6 +22,7 @@ export type UseVoicePanelOptions = {
 };
 
 export type VoicePanelController = {
+  nextDraft: () => void;
   open: boolean;
   /** Consumer of the panel entry point for `VoiceEntryControls`; activation while open leaves the panel. */
   handler: VoiceEntryHandler;
@@ -64,7 +65,7 @@ export function useVoicePanel({ text, onText, caret, capture, dictation, sendLoc
       selection = { start: previous.end, end: previous.end };
     }
     session.current = dictation.begin(latestText.current, selection, c.generation);
-    void c.start();
+    void c.start('panel');
   };
   const close = (focusEditor: boolean) => {
     if (!isOpen.current) return;
@@ -111,5 +112,5 @@ export function useVoicePanel({ text, onText, caret, capture, dictation, sendLoc
       latestText.current = result.text; update.current(result.text);
     },
   };
-  return { open, handler, toggle, deleteWord: () => removeDictation('word'), clear: () => removeDictation('all'), canClear: open && dictation.owned, exit: () => close(true), returns };
+  return { nextDraft: () => { latestText.current = ''; session.current = dictation.begin('', null, cap.current.generation - 1); }, open, handler, toggle, deleteWord: () => removeDictation('word'), clear: () => removeDictation('all'), canClear: open && dictation.owned, exit: () => close(true), returns };
 }

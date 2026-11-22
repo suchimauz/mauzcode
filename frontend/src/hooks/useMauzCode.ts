@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getAgents, getEvents, mergeTail, settleRetries, type ChatEvent, type EventPage, type MauzCodeAgent } from '../lib/mauzcode';
 import { liveRefresh } from '../lib/liveRefresh';
 import { useReadReceipt } from './useReadReceipt';
 import { reconcileStream } from '../lib/streamHandoff';
 import { useChatOutline } from './useChatOutline';
+import { useChatSelection } from './useChatSelection';
 const mergeRuns = (older: EventPage['runs'], newer: EventPage['runs']) => [...new Map([...(older ?? []), ...(newer ?? [])].map(run => [run.id, run])).values()].sort((a, b) => a.startIdx - b.startIdx);
 
 export function useMauzCode() {
   const [agents, setAgents] = useState<MauzCodeAgent[]>([]);
-  const [selected, setSelected] = useState(() => new URL(location.href).searchParams.get('newSession') === '1' ? '' : new URL(location.href).searchParams.get('agent') || '');
+  const { selected, current, select } = useChatSelection();
   const [events, setEvents] = useState<ChatEvent[]>([]);
   const [page, setPage] = useState<EventPage | null>(null);
   const [error, setError] = useState('');
@@ -17,14 +18,7 @@ export function useMauzCode() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderBefore, setOlderBefore] = useState<number | null>(null);
   const [hasOlder, setHasOlder] = useState(false);
-  const current = useRef(selected); current.current = selected;
   const generation = useRef(0);
-  const select = useCallback((id: string) => {
-    current.current = id; setSelected(id); const url = new URL(location.href);
-    if (id) { url.searchParams.delete('newSession'); url.searchParams.set('agent', id); url.searchParams.delete('new'); }
-    else { url.searchParams.delete('agent'); url.searchParams.set('new', '1'); }
-    history.replaceState(null, '', url);
-  }, []);
   useEffect(() => {
     const live = liveRefresh({ name: 'react-agent-list', fallbackMs: 10000,
       matches: event => !event.topic || event.topic === 'agents',

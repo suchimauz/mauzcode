@@ -118,7 +118,7 @@ export function runVoiceProviderContract(opts: ContractSuiteOptions): void {
                 expect(await session.finish()).toEqual({ ok: true });
                 const finals = phrases(events).filter(event => event.final);
                 expect(finals.map(({ order, text }) => ({ order, text }))).toEqual([
-                    { order: 1, text: "second" }, { order: 0, text: "first" },
+                    { order: 0, text: "first" }, { order: 1, text: "second" },
                 ]);
                 expect(new Set(finals.map(entry => entry.id)).size).toBe(2);
             } finally {
@@ -184,13 +184,32 @@ export function runVoiceProviderContract(opts: ContractSuiteOptions): void {
             }
         });
 
+        test("explicit settlement flushes a draft, remains open and leaves an empty draft empty", async () => {
+            const { session, events, upstream } = await open();
+            try {
+                const speech = pcmChunk({ sampleRate: session.route.sampleRate, windows: 5, amplitude: 0.5 });
+                for (let draft = 0; draft < 2; draft++) {
+                    await session.append(speech);
+                    const boundary = session.settle();
+                    const id = session.route.model.capabilities.turnDetection === "server"
+                        ? await upstream.reportTurn((draft + 1) * speech.byteLength) : await upstream.acceptCommit(draft);
+                    await upstream.finalize(id, `draft${draft}`);
+                    expect(await boundary).toEqual({ ok: true });
+                    expect(await session.settle()).toEqual({ ok: true });
+                    expect(session.status()).toMatchObject({ committed: draft + 1, settled: draft + 1, state: "open" });
+                }
+                expect(phrases(events).map(event => event.text)).toEqual(["draft0", "draft1"]);
+            } finally { await session.cancel(); }
+        });
+
         test("finish commits one remaining turn and completes only after its final", async () => {
             const { session, events, upstream } = await open();
             try {
                 const speech = pcmChunk({ sampleRate: session.route.sampleRate, windows: 5, amplitude: 0.5 });
                 await session.append(speech);
                 const finish = session.finish();
-                const id = await upstream.acceptCommit(0);
+                const id = session.route.model.capabilities.turnDetection === "server"
+                    ? await upstream.reportTurn(speech.byteLength) : await upstream.acceptCommit(0);
                 expect(events).toEqual([]);
                 await upstream.finalize(id, "last phrase");
                 expect(await finish).toEqual({ ok: true });

@@ -10,17 +10,21 @@ export type VoiceErrorCode =
   | 'unauthorized' | 'readOnly' | 'superseded' | 'unconfigured' | 'routeUnavailable' | 'providerAuth' | 'provider'
   | 'timeout' | 'backpressure' | 'protocol' | 'permission' | 'microphone' | 'connection';
 export type VoiceCaptureError = { code: VoiceErrorCode; message: string; errorId?: string };
-/** Phrase events of the session that produced them; never delivered after cancel, navigation or a newer start. */
+/** Phrase events stay with their originating generation, including while its panel is parked. */
 export type VoicePhraseEvent =
   | { type: 'phrase'; generation: number; id: string; order: number; revision: number; text: string; final: boolean }
   | { type: 'phraseFailed'; generation: number; id: string; order: number; reason: string };
-export type VoiceSessionInfo = { sessionId: string; route: string; destination: VoiceDestination; sampleRate: number };
+export type VoiceSessionInfo = { sessionId: string; route: string; destination: VoiceDestination; sampleRate: number; persistent?: boolean };
+/** One page-local dedicated-start claim. The relay remains the authority across tabs. */
+export type PanelStart = { connect(send: () => void): void; accepted(): void; release(): void };
 
 export type UseVoiceCaptureOptions = {
   agentId: string;
   /** A read-only or archived chat never captures; becoming read-only cancels an active session. */
   readOnly?: boolean;
   onPhrase?: (event: VoicePhraseEvent) => void;
+  /** Order competing dedicated starts by user intent, not by microphone or socket setup latency. */
+  panelStart?: (agentId: string) => PanelStart;
 };
 
 export type VoiceCapture = {
@@ -32,8 +36,11 @@ export type VoiceCapture = {
   remainingMs: number | null;
   session: VoiceSessionInfo | null;
   generation: number;
-  start: () => Promise<void>;
-  /** Toggle only a connected run, without changing its deadline or generation. */
+  start: (mode?: 'inline' | 'panel') => Promise<void>;
+  elapsedMs: number | null;
+  /** Nonterminal boundary; only available on a negotiated panel run. */
+  settle: () => Promise<boolean>;
+  /** Mute also latches while permission or negotiation is pending. */
   setMuted: (muted: boolean) => void;
   /** Stop audio and resolve true once every committed phrase is final; false on failure or when nothing ran. */
   finish: () => Promise<boolean>;
@@ -64,7 +71,16 @@ const MESSAGES: Record<string, string> = {
 };
 const SERVER_CODES = new Set(['unauthorized', 'readOnly', 'superseded', 'unconfigured', 'routeUnavailable', 'providerAuth', 'provider', 'timeout', 'backpressure', 'protocol']);
 
+type Boundary = { id: number; epoch: number; sent: boolean; deadline: number; end: (ok: boolean) => void };
 type Run = {
+  owner: string;
+  mode: 'inline' | 'panel';
+  startClaim?: PanelStart;
+  startSent?: boolean;
+  persistent: boolean;
+  lastBoundary: number;
+  throughOrder: number;
+  boundary?: Boundary;
   generation: number;
   stream?: MediaStream;
   context?: AudioContext;
@@ -85,7 +101,7 @@ type Run = {
   sequence: number;
   timers: ReturnType<typeof setTimeout>[];
   ticker?: ReturnType<typeof setInterval>;
-  settle?: (ok: boolean) => void;
+  finishDone?: (ok: boolean) => void;
   flushed?: () => void;
   released: boolean;
 };
@@ -113,18 +129,19 @@ function microphoneError(error: unknown): VoiceCaptureError {
  * One capture controller per chat composer: microphone → AudioWorklet (mono, resampled, PCM16 frames) → one
  * `/voice/session` WebSocket per generation. Nothing happens on mount; only `start` request the microphone.
  */
-export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoiceCaptureOptions): VoiceCapture {
+export function useVoiceCapture({ agentId, readOnly = false, onPhrase, panelStart }: UseVoiceCaptureOptions): VoiceCapture {
   const support = useMemo(() => voiceCaptureSupport(browserEnv()), []);
   const [state, setState] = useState<VoiceCaptureState>('idle');
   const [error, setError] = useState<VoiceCaptureError | null>(null);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
   const [session, setSession] = useState<VoiceSessionInfo | null>(null);
   const [generation, setGeneration] = useState(0);
   const generationRef = useRef(0);
   const run = useRef<Run | null>(null);
   const mounted = useRef(true);
   const phrase = useRef(onPhrase); phrase.current = onPhrase;
-  const target = useRef({ agentId, readOnly }); target.current = { agentId, readOnly };
+  const target = useRef({ agentId, readOnly, panelStart }); target.current = { agentId, readOnly, panelStart };
 
   const current = (r: Run) => mounted.current && run.current === r && !r.released;
 
@@ -153,6 +170,7 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
   const release = (r: Run, cancel: boolean, ok = false) => {
     if (r.released) return;
     r.released = true;
+    r.boundary?.end(false);
     releaseAudio(r);
     revokeUrl(r);
     r.timers.forEach(clearTimeout); r.timers = []; r.startTimer = undefined;
@@ -161,13 +179,14 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     if (ws) {
       ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
       try {
-        if (cancel && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel' }));
+        if (cancel && r.startSent && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cancel' }));
         if (ws.readyState === 1 || ws.readyState === 0) ws.close(1000);
       } catch { /* already closed */ }
     }
     r.socket = undefined;
+    r.startClaim?.release(); r.startClaim = undefined;
     if (run.current === r) run.current = null;
-    const settle = r.settle; r.settle = undefined;
+    const settle = r.finishDone; r.finishDone = undefined;
     settle?.(ok);
   };
 
@@ -181,7 +200,8 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     const ws = r.socket;
     if (!r.sending || !current(r) || !ws || ws.readyState !== 1) return;
     if (ws.bufferedAmount > MAX_CLIENT_BUFFER) return fail(r, { code: 'backpressure', message: MESSAGES.backpressure });
-    ws.send(encodeFrame(r.sequence++, new Int16Array(pcm)));
+    try { ws.send(encodeFrame(r.sequence++, new Int16Array(pcm))); }
+    catch { fail(r, { code: 'connection', message: MESSAGES.connection }); }
   };
 
   const onServer = (r: Run, data: unknown) => {
@@ -191,42 +211,61 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     if (!message || typeof message !== 'object') return;
     switch (message.type) {
       case 'ready': {
-        if (r.ready || !r.node) return;
+        if (!r.startSent || r.ready || !r.node) return;
         const sampleRate = Number(message.sampleRate);
         let bounds: ReturnType<typeof frameBounds>;
         try { bounds = frameBounds(sampleRate); } catch { return fail(r, { code: 'protocol', message: MESSAGES.protocol }); }
         r.ready = true; r.sending = true;
+        r.startClaim?.accepted();
         clearTimeout(r.startTimer); r.startTimer = undefined;
-        r.node.port.postMessage({ type: 'configure', sampleRate, frameSamples: bounds.target, minSamples: bounds.min });
-        const deadline = Date.now() + VOICE_SESSION_MS;
-        setRemainingMs(VOICE_SESSION_MS);
-        r.ticker = setInterval(() => { if (current(r)) setRemainingMs(Math.max(0, deadline - Date.now())); }, 1000);
-        setSession({ sessionId: String(message.sessionId ?? ''), route: String(message.route ?? ''), destination: message.destination as VoiceDestination, sampleRate });
-        setState('listening');
+        r.node.port.postMessage({ type: 'configure', muted: r.muted, sampleRate, frameSamples: bounds.target, minSamples: bounds.min });
+        r.persistent = r.mode === 'panel' && message.mode === 'panel' && message.settle === true;
+        const started = Date.now();
+        setElapsed(0); setRemainingMs(r.persistent ? null : VOICE_SESSION_MS);
+        r.ticker = setInterval(() => {
+          if (!current(r)) return;
+          const ms = Math.max(0, Date.now() - started);
+          if (r.persistent) setElapsed(ms); else setRemainingMs(Math.max(0, VOICE_SESSION_MS - ms));
+        }, 1000);
+        setSession({ sessionId: String(message.sessionId ?? ''), route: String(message.route ?? ''), destination: message.destination as VoiceDestination, sampleRate, persistent: r.persistent });
+        setState(r.muted ? 'muted' : 'listening');
+        return;
+      }
+      case 'settled': {
+        const b = r.boundary;
+        if (!b?.sent || message.id !== b.id) return;
+        if (typeof message.ok !== 'boolean' || typeof message.throughOrder !== 'number' || !Number.isSafeInteger(message.throughOrder) || message.throughOrder < -1) return fail(r, { code: 'protocol', message: MESSAGES.protocol });
+        const ok = message.ok && !r.phraseFailed && performance.now() < b.deadline;
+        if (ok) r.throughOrder = Math.max(r.throughOrder, message.throughOrder);
+        b.end(ok);
         return;
       }
       case 'phrase':
+        if (typeof message.order === 'number' && message.order <= r.throughOrder) return;
         if (typeof message.id === 'string' && typeof message.text === 'string' && typeof message.order === 'number' && typeof message.revision === 'number') {
           phrase.current?.({ type: 'phrase', generation: r.generation, id: message.id, order: message.order, revision: message.revision, text: message.text, final: message.final === true });
         }
         return;
       case 'phraseFailed':
+        if (typeof message.order === 'number' && message.order <= r.throughOrder) return;
         if (typeof message.id === 'string' && typeof message.order === 'number') {
           // A transport-level completed event also follows failed items. Never authorize a partial
           // submission, and keep a visible interim if this failure arrived while finishing.
           r.phraseFailed = true;
-          if (r.settle) return fail(r, { code: 'provider', message: MESSAGES.provider });
+          if (r.finishDone) return fail(r, { code: 'provider', message: MESSAGES.provider });
           phrase.current?.({ type: 'phraseFailed', generation: r.generation, id: message.id, order: message.order, reason: String(message.reason ?? '') });
         }
         return;
       case 'completed': {
         if (r.phraseFailed) return fail(r, { code: 'provider', message: MESSAGES.provider });
-        const settle = r.settle;
+        const settle = r.finishDone;
         release(r, false, true);
         if (!settle) { setState('idle'); setRemainingMs(null); setSession(null); }
         return;
       }
       case 'error': {
+        // A start may have replaced the old lease before its own provider setup failed.
+        if (!r.ready && r.startSent && message.claimed === true) r.startClaim?.accepted();
         const code = typeof message.code === 'string' && SERVER_CODES.has(message.code) ? message.code as VoiceErrorCode : 'provider';
         const errorId = isVoiceErrorId(message.errorId) ? message.errorId : undefined;
         return fail(r, { code, message: typeof message.message === 'string' && message.message ? message.message : MESSAGES[code], ...(errorId && { errorId }) });
@@ -234,11 +273,12 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     }
   };
 
-  const begin = useCallback(async () => {
+  const begin = useCallback(async (mode: 'inline' | 'panel') => {
     if (!support.ok || target.current.readOnly || !target.current.agentId) return;
     if (run.current) return;
     const g = ++generationRef.current;
-    const r: Run = { generation: g, ready: false, sending: false, sequence: 0, muted: false, epoch: 0, muteCuts: new Map(), timers: [], released: false };
+    const r: Run = { owner: target.current.agentId, mode, persistent: false, lastBoundary: 0, throughOrder: -1, generation: g, ready: false, sending: false, sequence: 0, muted: false, epoch: 0, muteCuts: new Map(), timers: [], released: false };
+    if (mode === 'panel') r.startClaim = target.current.panelStart?.(r.owner);
     run.current = r;
     setGeneration(g); setError(null); setSession(null); setRemainingMs(null); setState('connecting');
     let stream: MediaStream;
@@ -252,6 +292,7 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     // A permission prompt may resolve after cancel, navigation or a newer start: never keep that microphone.
     if (!current(r)) { stream.getTracks().forEach(track => { try { track.stop(); } catch { /* stopped */ } }); return; }
     r.stream = stream;
+    if (r.muted) stream.getTracks().forEach(track => { track.enabled = false; });
     // From here every step is bounded: a hung addModule/resume, a socket stuck in CONNECTING or a missing `ready`
     // ends the attempt and releases microphone, graph, worklet URL and socket.
     r.startTimer = setTimeout(() => fail(r, { code: 'timeout', message: MESSAGES.startTimeout }), START_TIMEOUT_MS);
@@ -285,7 +326,13 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
           sendFrame(r, safe ? data.pcm : new ArrayBuffer(data.pcm.byteLength));
         } else if (data?.type === 'gated' && data.epoch !== undefined) {
           r.muteCuts.delete(data.epoch - 1);
-          if (data.epoch === r.epoch && !r.muted && !r.settle) r.stream?.getTracks().forEach(track => { track.enabled = true; });
+          const b = r.boundary;
+          if (b && !b.sent && data.epoch === b.epoch) {
+            if (performance.now() >= b.deadline) return b.end(false);
+            try { r.lastBoundary = b.id; b.sent = true; r.socket!.send(JSON.stringify({ type: 'settle', id: b.id })); }
+            catch { return fail(r, { code: 'connection', message: MESSAGES.connection }); }
+          }
+          if (data.epoch === r.epoch && !r.muted && !r.finishDone) r.stream?.getTracks().forEach(track => { track.enabled = true; });
         } else if (data?.type === 'flushed') { r.flushed?.(); r.flushed = undefined; }
       };
       // The worklet outputs silence; it is connected only to keep the graph pulling input.
@@ -300,8 +347,12 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
       ws.binaryType = 'arraybuffer';
       ws.onopen = () => {
         if (!current(r)) return;
-        try { ws.send(JSON.stringify({ type: 'start', agentId: target.current.agentId, generation: g })); }
-        catch { fail(r, { code: 'connection', message: MESSAGES.connection }); }
+        const send = () => {
+          if (!current(r) || r.startSent) return;
+          try { ws.send(JSON.stringify({ type: 'start', agentId: r.owner, generation: g, ...(mode === 'panel' && { mode }) })); r.startSent = true; }
+          catch { fail(r, { code: 'connection', message: MESSAGES.connection }); }
+        };
+        if (r.startClaim) r.startClaim.connect(send); else send();
       };
       ws.onmessage = event => onServer(r, event.data);
       ws.onerror = () => fail(r, { code: 'connection', message: MESSAGES.connection });
@@ -315,24 +366,48 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     }
   }, [support.ok]);
 
-  const setMuted = useCallback((muted: boolean) => {
-    const r = run.current;
-    if (!r?.ready || !r.node || !r.context || r.settle || r.muted === muted) return;
-    const cut = r.context.currentTime;
+  function gate(r: Run, muted: boolean) {
+    const cut = r.context?.currentTime ?? 0;
     r.muted = muted;
     // Keep tracks disabled until the *current* unmute is acknowledged on the render thread.
     if (muted) {
       r.muteCuts.set(r.epoch, cut);
       r.stream?.getTracks().forEach(track => { track.enabled = false; });
     }
+    if (!r.ready || !r.node) return;
     try { r.node.port.postMessage({ type: 'gate', muted, epoch: ++r.epoch, cut }); }
     catch { return fail(r, { code: 'microphone', message: MESSAGES.audioStopped }); }
     setState(muted ? 'muted' : 'listening');
+  }
+
+  const setMuted = useCallback((muted: boolean) => {
+    const r = run.current;
+    if (!r || r.finishDone || r.boundary || r.muted === muted || (!muted && !r.ready)) return;
+    gate(r, muted);
+  }, []);
+
+  const settle = useCallback((): Promise<boolean> => {
+    const r = run.current;
+    if (!r?.persistent || !r.node || !r.ready || r.finishDone || r.boundary) return Promise.resolve(false);
+    return new Promise(resolve => {
+      const deadline = performance.now() + FINISH_TIMEOUT_MS;
+      // Consume a wire ID only when its cut is acknowledged and the request is sent.
+      const id = r.lastBoundary + 1;
+      const timer = setTimeout(() => b.end(false), FINISH_TIMEOUT_MS);
+      const b: Boundary = { id, deadline, epoch: r.epoch + 1, sent: false, end(ok) {
+        if (r.boundary !== b) return;
+        r.boundary = undefined; clearTimeout(timer); resolve(ok);
+      } };
+      r.boundary = b;
+      // Even when already muted, a fresh FIFO marker distinguishes this attempt from a timed-out cut.
+      gate(r, true);
+    });
   }, []);
 
   const finish = useCallback(async (): Promise<boolean> => {
     const r = run.current;
     if (!r || r.released) return false;
+    r.boundary?.end(false);
     if (!r.ready) {
       // Nothing was streamed yet: there is nothing to finalize.
       release(r, true);
@@ -340,9 +415,9 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
       return true;
     }
     if (r.socket?.readyState !== 1) { fail(r, { code: 'connection', message: MESSAGES.connection }); return false; }
-    if (r.settle) return new Promise(resolve => { const prior = r.settle!; r.settle = ok => { prior(ok); resolve(ok); }; });
+    if (r.finishDone) return new Promise(resolve => { const prior = r.finishDone!; r.finishDone = ok => { prior(ok); resolve(ok); }; });
     setState('finalizing');
-    const done = new Promise<boolean>(resolve => { r.settle = resolve; });
+    const done = new Promise<boolean>(resolve => { r.finishDone = resolve; });
     // Drain resampler/framer tails before telling the server to finish; the server ignores audio after finish.
     if (r.node) {
       await new Promise<void>(resolve => {
@@ -369,7 +444,7 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     if (mounted.current) { setState('idle'); setRemainingMs(null); setSession(null); setError(null); }
   }, []);
 
-  const start = useCallback(async () => { if (!run.current) await begin(); }, [begin]);
+  const start = useCallback(async (mode: 'inline' | 'panel' = 'inline') => { if (!run.current) await begin(mode); }, [begin]);
   // Navigation, read-only transition and unmount release the microphone and drop later events.
   useEffect(() => {
     mounted.current = true;
@@ -390,5 +465,5 @@ export function useVoiceCapture({ agentId, readOnly = false, onPhrase }: UseVoic
     return () => { window.removeEventListener('pagehide', leave); mounted.current = false; };
   }, [cancel]);
 
-  return { support, state, error, remainingMs, session, generation, start, setMuted, finish, cancel };
+  return { support, state, error, remainingMs, elapsedMs: session?.persistent ? elapsed : null, session, generation, start, setMuted, settle, finish, cancel };
 }

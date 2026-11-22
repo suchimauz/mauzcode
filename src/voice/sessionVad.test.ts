@@ -117,7 +117,7 @@ describe("server-side energy vad", () => {
         expect(recorder.commits).toEqual([0]);
     });
 
-    test("a provider with its own turn detection receives no pause or forced commits, only the finish commit", async () => {
+    test("a provider with its own turn detection receives no pause or forced commits, awaits delayed coverage at finish", async () => {
         const { ctx, route, recorder } = await createSessionFixture({ providerId: "vad-server", turnDetection: "server" });
         const events: types.voice.SessionEvent[] = [];
         const session = await ctx.fns.voice.session.open({ route, onEvent: (event: types.voice.SessionEvent) => events.push(event) });
@@ -132,10 +132,13 @@ describe("server-side energy vad", () => {
         // A delayed provider boundary covers only the first phrase, even though more audio has been sent.
         recorder.emit({ type: "committed", turnId: "upstream-first", endByte: first.byteLength });
         recorder.emit({ type: "final", turnId: "upstream-first", text: "provider turn one" });
-        recorder.autoFinal = () => "finish turn";
-        expect(await session.finish()).toEqual({ ok: true });
+        const finishing = session.finish();
+        await Bun.sleep(1);
+        recorder.emit({ type: "committed", turnId: "second", endByte: session.status().audioBytes });
+        recorder.emit({ type: "final", turnId: "second", text: "finish turn" });
+        expect(await finishing).toEqual({ ok: true });
         expect(await session.finish()).toEqual({ ok: false });
-        expect(recorder.commits).toEqual([1]);
+        expect(recorder.commits).toEqual([]);
         const finals = finalPhrases(events);
         expect(finals.map(entry => entry.order)).toEqual([0, 1]);
         expect(finals.map(entry => entry.text)).toEqual(["provider turn one", "finish turn"]);
@@ -157,6 +160,58 @@ describe("server-side energy vad", () => {
             }
             expect(await session.finish()).toEqual({ ok: true });
             expect(recorder.commits).toEqual([]);
+        });
+    }
+
+    test("many drafts share one stream but retain no delivered text or turn correlations", async () => {
+        const { ctx, route, recorder } = await createSessionFixture({ providerId: "vad-many", turnDetection: "server" });
+        const events: types.voice.SessionEvent[] = [];
+        const session: types.voice.VoiceSession = await ctx.fns.voice.session.open({ route, onEvent: (event: types.voice.SessionEvent) => events.push(event) });
+        const speech = tone(RATE).speech(1);
+        for (let i = 0; i < 320; i++) {
+            await session.append(speech);
+            const endByte = session.status().audioBytes;
+            recorder.emit({ type: "committed", turnId: `turn${i}`, endByte });
+            if (i) {
+                recorder.emit({ type: "committed", turnId: "turn0", endByte: speech.byteLength });
+                recorder.emit({ type: "final", turnId: "turn0", text: "late" });
+            }
+            recorder.emit({ type: "final", turnId: `turn${i}`, text: String(i) });
+            expect(await session.settle()).toEqual({ ok: true });
+            expect(events.splice(0)).toMatchObject([{ order: i, final: true, text: String(i) }]);
+            expect(session.status()).toMatchObject({ retainedPhrases: 0, retainedTurns: 0, committed: i + 1, settled: i + 1 });
+        }
+        await session.cancel();
+        expect(recorder.cancels).toBe(1);
+    });
+
+    for (const outcome of ["final", "timeout", "disconnect", "failed"] as const) {
+        test(`server-turn settlement waits for coverage and final: ${outcome}`, async () => {
+            const { ctx, route, recorder } = await createSessionFixture({ providerId: "vad-boundary", turnDetection: "server" });
+            const events: types.voice.SessionEvent[] = [];
+            const session = await ctx.fns.voice.session.open({ route, config: { finishTimeoutMs: 200 }, onEvent: (event: types.voice.SessionEvent) => events.push(event) });
+            await session.append(tone(RATE).speech(3));
+            let acknowledged = false;
+            const settling = session.settle().then((result: {ok: boolean; code?: types.voice.ErrorCode}) => { acknowledged = true; return result; });
+            await Bun.sleep(2);
+            expect(acknowledged).toBe(false);
+            await session.append(tone(RATE).silence(2)); // Must reach the provider while settlement is pending.
+            if (outcome === "disconnect") recorder.fail("provider");
+            if (outcome === "final" || outcome === "failed") {
+                recorder.emit({ type: "committed", turnId: "turn", endByte: session.status().audioBytes });
+                await Bun.sleep(2);
+                expect(acknowledged).toBe(false);
+                if (outcome === "final") recorder.emit({ type: "final", turnId: "turn", text: "last words" });
+                else recorder.emit({ type: "failed", turnId: "turn", message: "failed" });
+            }
+            expect(await settling).toEqual(outcome === "final" ? { ok: true } : { ok: false, code: outcome === "timeout" ? "timeout" : "provider" });
+            expect(recorder.commits).toEqual([]);
+            expect(recorder.finishes).toBe(0);
+            if (outcome === "final") {
+                expect(session.status().state).toBe("open");
+                expect(finalPhrases(events).map(event => event.text)).toEqual(["last words"]);
+            }
+            await session.cancel();
         });
     }
 

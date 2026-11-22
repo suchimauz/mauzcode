@@ -15,7 +15,9 @@ type Socket = ServerWebSocket<{ state: { ownerId: string; relay?: ReturnType<typ
 type Code = types.voice.ErrorCode;
 type Timer = ReturnType<typeof setTimeout>;
 type Phase = "awaiting" | "starting" | "listening" | "finishing" | "closed";
-type Ready = { type: "ready"; sessionId: string; route: string; destination: types.voice.Destination; sampleRate: number };
+type Mode = "panel" | "inline";
+type Settled = { type: "settled"; id: number; ok: boolean; throughOrder: number; code?: Code };
+type Ready = { type: "ready"; mode: Mode; settle?: true; sessionId: string; route: string; destination: types.voice.Destination; sampleRate: number };
 
 /**
  * Relay voice dictation in one owned editable chat. Start binds a fresh socket to one chat/generation;
@@ -57,6 +59,11 @@ function createRelay(ctx: Context, ws: Socket) {
     const closed = () => phase === "closed";
     let session: types.voice.VoiceSession | undefined;
     let agentId = "";
+    let mode: Mode = "inline";
+    let panelClaimed = false;
+    let lastBoundary = 0;
+    let boundary: { id: number; before: number; started: boolean; result?: Settled } | undefined;
+    let boundaryTimer: Timer | undefined;
     let unregister: (() => void) | undefined;
     let unsubscribe: (() => void) | undefined;
     let idle: Timer | undefined;
@@ -86,6 +93,8 @@ function createRelay(ctx: Context, ws: Socket) {
         clearTimeout(finishTimer);
         clearTimeout(accessDeadline);
         clearInterval(accessPoll);
+        clearTimeout(boundaryTimer);
+        boundary = undefined;
         unregister?.();
         unsubscribe?.();
         audio.length = replies.length = 0;
@@ -95,7 +104,7 @@ function createRelay(ctx: Context, ws: Socket) {
         if (disconnect) return;
         try {
             const errorId = typeof reference === "string" && /^[0-9a-f]{16}$/.test(reference) ? reference : undefined;
-            if (code) ws.send(JSON.stringify({ type: "error", code, message: detail ?? ctx.fns.voice.session.message({ code }), errorId }));
+            if (code) ws.send(JSON.stringify({ type: "error", code, message: detail ?? ctx.fns.voice.session.message({ code }), errorId, claimed: panelClaimed || undefined }));
             ws.close(code ? (code === "backpressure" ? 1013 : 1008) : 1000);
         } catch { /* The peer may have disconnected; resources were already released. */ }
     }
@@ -151,9 +160,21 @@ function createRelay(ctx: Context, ws: Socket) {
             if (pendingCompletion) return complete();
             if (phase === "listening" && performance.now() >= deadline) beginFinish(true);
             if (checking || closed()) return;
-            for (const pcm of audio) if (!closed()) append(pcm);
+            // The boundary belongs between the frames already queued when requested and later silence.
+            for (const pcm of audio) {
+                if (closed()) return;
+                if (boundary && !boundary.started && boundary.before === 0) runBoundary(boundary);
+                append(pcm);
+                if (boundary && !boundary.started) boundary.before--;
+            }
             audio.length = 0;
-            if (phase === "finishing") finish();
+            if (boundary && !boundary.started) runBoundary(boundary);
+            if (boundary?.result) {
+                if (phase !== "finishing" && !send(JSON.stringify(boundary.result))) return;
+                clearTimeout(boundaryTimer);
+                boundary = undefined;
+            }
+            if (phase === "finishing" && !boundary) finish();
         }).catch(() => stop("readOnly"));
     }
 
@@ -181,6 +202,28 @@ function createRelay(ctx: Context, ws: Socket) {
         }
     }
 
+    function runBoundary(active: NonNullable<typeof boundary>) {
+        active.started = true;
+        const handle = session!;
+        void handle.settle().then(result => {
+            if (boundary !== active || closed()) return;
+            if (result.code === "timeout") return stop("timeout", "Voice finalization timed out.");
+            active.result = { type: "settled", id: active.id, ...result, throughOrder: handle.status().committed - 1 };
+            // Access gate also drains buffered final events ahead of the acknowledgement.
+            checkAccess(true);
+        }).catch(() => stop("provider"));
+    }
+
+    function beginBoundary(id: unknown) {
+        if (mode !== "panel" || phase !== "listening" || typeof id !== "number" || !Number.isSafeInteger(id) || id < 1) return stop("protocol");
+        if (id <= lastBoundary) return; // Never repeat a boundary, including after its acknowledgement.
+        if (boundary || id !== lastBoundary + 1) return stop("protocol");
+        lastBoundary = id;
+        boundary = { id, before: audio.length, started: false };
+        boundaryTimer = setTimeout(() => stop("timeout", "Voice finalization timed out."), FINISH_MS);
+        checkAccess(true);
+    }
+
     function finish() {
         if (finishStarted || closed()) return;
         finishStarted = true;
@@ -195,6 +238,12 @@ function createRelay(ctx: Context, ws: Socket) {
         if (phase !== "listening") return;
         phase = "finishing";
         reachedLimit = atLimit;
+        // A terminal finish supersedes an unstarted cut, or waits for an already-running cut
+        // without issuing a positive draft acknowledgement. Both deadlines remain bounded.
+        if (!boundary?.started) {
+            boundary = undefined;
+            clearTimeout(boundaryTimer);
+        }
         clearTimeout(idle);
         clearTimeout(duration);
         finishTimer = setTimeout(() => stop("timeout", "Voice finalization timed out."), FINISH_MS);
@@ -206,7 +255,8 @@ function createRelay(ctx: Context, ws: Socket) {
         idle = setTimeout(() => stop("timeout", message), IDLE_MS);
     }
 
-    async function start(id: string) {
+    async function start(id: string, accepted: Mode) {
+        mode = accepted;
         phase = "starting";
         agentId = id;
         touch("Opening the voice session timed out.");
@@ -215,15 +265,31 @@ function createRelay(ctx: Context, ws: Socket) {
             const order = voice.socketStartOrder = (voice.socketStartOrder ?? 0) + 1;
             const key = JSON.stringify([ownerId, agentId]);
             const leases = (voice.socketSessions ??= new Map());
+            const panels = (voice.panelSessions ??= new Map());
+            const candidates = (voice.socketCandidates ??= new Set());
+            const lease = { ownerId, agentId, panel: mode === "panel", order, supersede: () => stop("superseded") };
+            candidates.add(lease);
+            unregister = () => {
+                candidates.delete(lease);
+                if (leases.get(key) === lease) leases.delete(key);
+                if (panels.get(ownerId) === lease) panels.delete(ownerId);
+            };
             const permission = await access();
             if (closed()) return;
             if (permission !== "edit") return stop(permission);
             const previous = leases.get(key);
-            if (previous && previous.order > order) return stop("superseded");
-            const lease = { order, supersede: () => stop("superseded") };
-            unregister = () => { if (leases.get(key) === lease) leases.delete(key); };
+            const previousPanel = lease.panel ? panels.get(ownerId) : undefined;
+            if ((previous && previous.order > order) || (previousPanel && previousPanel.order > order)) return stop("superseded");
+            candidates.delete(lease);
             leases.set(key, lease);
+            if (lease.panel) { panels.set(ownerId, lease); panelClaimed = true; }
             previous?.supersede();
+            if (previousPanel !== previous) previousPanel?.supersede();
+            // Invalidate older pending claims even if this provider fails before their authorization resolves.
+            for (const candidate of candidates) {
+                if (candidate.order < order && candidate.ownerId === ownerId &&
+                    (candidate.agentId === agentId || (candidate.panel && lease.panel))) candidate.supersede();
+            }
             unsubscribe = ctx.fns.procs.events.subscribe({ topics: ["agents"], handler: event => {
                 if (event.type === "agents.changed" && (!event.agentId || event.agentId === agentId)) checkAccess(true);
             } });
@@ -248,12 +314,14 @@ function createRelay(ctx: Context, ws: Socket) {
             maxPcmBytes = Math.min(FRAME_BYTES - HEADER_BYTES, Math.floor(sampleRate * 0.100) * 2);
             if (minPcmBytes < 2 || maxPcmBytes < minPcmBytes) return stop("routeUnavailable");
             phase = "listening";
-            deadline = performance.now() + SESSION_MS;
-            duration = setTimeout(() => beginFinish(true), SESSION_MS);
+            if (mode === "inline") {
+                deadline = performance.now() + SESSION_MS;
+                duration = setTimeout(() => beginFinish(true), SESSION_MS);
+            }
             touch("Voice recognition stopped after 30 seconds without audio.");
             checkAccess(true);
             // Project the public fields; never serialize the session handle or its resolved connection/model.
-            forward({ type: "ready", sessionId: session.sessionId, route: session.route.route,
+            forward({ type: "ready", mode, settle: mode === "panel" ? true : undefined, sessionId: session.sessionId, route: session.route.route,
                 destination: { kind: destination.kind, label: destination.label }, sampleRate });
         } catch (error) {
             if (!closed()) stop(publicCode(error));
@@ -269,13 +337,15 @@ function createRelay(ctx: Context, ws: Socket) {
                 if (phase === "listening" && performance.now() >= deadline) beginFinish(true);
                 if (typeof message === "string") {
                     if (Buffer.byteLength(message) > CONTROL_BYTES) return stop("backpressure");
-                    const control = JSON.parse(message) as { type?: unknown; agentId?: unknown; generation?: unknown } | null;
+                    const control = JSON.parse(message) as { type?: unknown; agentId?: unknown; generation?: unknown; mode?: unknown; id?: unknown } | null;
+                    if (control?.type === "settle") return beginBoundary(control.id);
                     if (control?.type === "cancel") return stop();
                     if (control?.type === "finish" && (phase === "listening" || phase === "finishing")) return beginFinish(false);
                     if (phase === "awaiting" && control?.type === "start" && typeof control.agentId === "string" &&
                         /^[A-Za-z0-9_-]{1,128}$/.test(control.agentId) && control.agentId !== "new" &&
                         typeof control.generation === "number" && Number.isSafeInteger(control.generation) && control.generation >= 0) {
-                        void start(control.agentId);
+                        if (control.mode !== undefined && control.mode !== "panel" && control.mode !== "inline") return stop("protocol");
+                        void start(control.agentId, control.mode ?? "inline");
                         return;
                     }
                     return stop("protocol");
@@ -290,6 +360,7 @@ function createRelay(ctx: Context, ws: Socket) {
                 audioBytes += bytes;
                 if (audioBytes > BUFFER_BYTES) return stop("backpressure");
                 const pcm = new Uint8Array(message.subarray(HEADER_BYTES));
+                if (boundary && pcm.some(byte => byte !== 0)) return stop("protocol");
                 if (checking) audio.push(pcm);
                 else append(pcm);
             } catch { stop("protocol"); }

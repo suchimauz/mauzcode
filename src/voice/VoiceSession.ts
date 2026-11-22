@@ -21,6 +21,8 @@ export type VoiceSession = {
      * @returns the order of the committed phrase, or `undefined` when there was nothing to commit.
      */
     commit: () => Promise<number | undefined>;
+    /** Settle this draft without releasing the stream; never acknowledge a failed phrase. */
+    settle: () => Promise<{ ok: boolean; code?: types.voice.ErrorCode }>;
     /**
      * Commit the buffered audio and settle every committed phrase within the configured deadline.
      * @returns `ok: true` once nothing is pending; on a bound or provider failure `ok: false` with its code.

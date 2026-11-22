@@ -13,6 +13,10 @@ export type State = {
     }>;
     /** Current dictation socket per authenticated owner and chat; survives endpoint reload. */
     socketSessions?: Map<string, { order: number; supersede: () => void }>;
+    /** Dedicated socket per authenticated owner, independent of the chat lease. */
+    panelSessions?: Map<string, { order: number; supersede: () => void }>;
+    /** Starts awaiting initial authorization; a newer authorized claim invalidates older conflicting starts. */
+    socketCandidates?: Set<{ ownerId: string; agentId: string; panel: boolean; order: number; supersede: () => void }>;
     /** Order of start requests, so a delayed access check cannot supersede a newer lease. */
     socketStartOrder?: number;
 };

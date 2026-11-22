@@ -11,6 +11,7 @@ const MIN_COMMIT_BYTES = SAMPLE_RATE / 10 * 2;
 // gpt-live-transcribe streams deltas before the commit acknowledgement names their item; hold them, bounded.
 const MAX_EARLY_ITEMS = 8;
 const MAX_EARLY_BYTES = MAX_BUFFER_BYTES;
+const MAX_RECENT_ITEMS = 128;
 // Service errors that end the session even when they name a pending commit.
 const TERMINAL_ERRORS = ["rate_limit_exceeded", "rate_limit_error", "server_error", "session_expired"];
 const SOCKET_OPEN = 1;
@@ -25,7 +26,7 @@ const AUTH_ERRORS = [
 type Config = Readonly<Record<string, types.voice.ConfigValue>>;
 type ConfigIssue = NonNullable<ReturnType<NonNullable<types.voice.ProviderDefinition["validateConfig"]>>>;
 type StreamError = Error & { code: types.voice.ErrorCode };
-type Item = { order: number; text: string; settled: boolean };
+type Item = { order: number; text: string };
 type Pending = { order: number; eventId: string };
 
 const provider: types.voice.ProviderDefinition = {
@@ -214,6 +215,7 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
     // Commits awaiting their acknowledgement, FIFO; each carries the event_id an error event can name.
     const pending: Pending[] = [];
     const items = new Map<string, Item>();
+    const recent = new Set<string>(); // Bounded tombstones only; never retain settled transcripts.
     // Transcription events for items not acknowledged yet, in arrival order, bounded by item count and bytes.
     const early = new Map<string, { message: Record<string, unknown>; bytes: number }[]>();
     let earlyBytes = 0;
@@ -232,6 +234,7 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
         clearTimeout(finishTimer);
         pending.length = 0;
         items.clear();
+        recent.clear();
         early.clear();
         earlyBytes = 0;
         const ws = socket;
@@ -346,8 +349,8 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
         if (type === "input_audio_buffer.committed") {
             // The ack binds FIFO to the oldest pending commit. previous_item_id is optional and never decides anything.
             const entry = pending.shift();
-            if (typeof id !== "string" || !id || items.has(id) || entry === undefined) { cleanup(classified(failure("provider"), "sequenceMismatch")); return; }
-            items.set(id, { order: entry.order, text: "", settled: false });
+            if (typeof id !== "string" || !id || items.has(id) || recent.has(id) || entry === undefined) { cleanup(classified(failure("provider"), "sequenceMismatch")); return; }
+            items.set(id, { order: entry.order, text: "" });
             const queued = early.get(id);
             if (queued) {
                 early.delete(id);
@@ -357,11 +360,16 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
                     transcriptionEvent(held.message);
                 }
             }
+            // Unmatched traffic cannot belong to another live item once all sent audio
+            // has an acknowledged commit. Drop it at the boundary, not at session close.
+            if (!pending.length && !bytesSinceCommit) { early.clear(); earlyBytes = 0; }
             return;
         }
         if (!isTranscription(type)) return;
         if (typeof id !== "string" || !id) { cleanup(classified(failure("provider"), "malformedMessage")); return; }
+        if (recent.has(id)) return;
         if (!items.has(id)) {
+            if (!bytesSinceCommit && !pending.length) return; // No new upstream item can exist.
             // gpt-live-transcribe streams text before our commit is acknowledged: hold it until the ack binds the item.
             const bytes = Buffer.byteLength(event.data as string);
             const queued = early.get(id);
@@ -386,7 +394,7 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
     /** Apply one delta, completed or failed event to an item that is already bound to its core order. */
     function transcriptionEvent(message: Record<string, unknown>): void {
         const item = items.get(message.item_id as string);
-        if (!item || item.settled) return; // Duplicate finals, failures and trailing deltas cannot change transcript or usage.
+        if (!item) return; // Duplicate finals, failures and trailing deltas cannot change transcript or usage.
         if (message.type === "conversation.item.input_audio_transcription.delta") {
             if (typeof message.delta !== "string" || item.text.length + message.delta.length > MAX_BUFFER_BYTES) { cleanup(classified(failure("provider"), "malformedMessage")); return; }
             item.text += message.delta;
@@ -395,8 +403,10 @@ async function openRealtime(conn: types.voice.ResolvedConnection, session: types
         }
         const failed = message.type === "conversation.item.input_audio_transcription.failed";
         if (!failed && typeof message.transcript !== "string") { cleanup(classified(failure("provider"), "malformedMessage")); return; }
-        item.settled = true;
-        item.text = "";
+        const id = message.item_id as string;
+        items.delete(id);
+        recent.add(id);
+        if (recent.size > MAX_RECENT_ITEMS) recent.delete(recent.values().next().value!);
         unsettled--;
         if (failed) session.emit({ type: "failed", order: item.order, message: "OpenAI Realtime could not transcribe this phrase." });
         else {
