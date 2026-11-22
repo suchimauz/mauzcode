@@ -50,7 +50,7 @@ With focus on the voice frame or its read-only transcript, Backspace SHALL delet
 
 #### Scenario: Pause without leaving
 - **WHEN** the user speaks, presses Space while listening, then presses Space again before the session ends
-- **THEN** the first press mutes immediately; the second resumes listening on the same browser connection, provider stream and session ID, without requesting the microphone again or resetting the remaining time.
+- **THEN** the first press mutes immediately; the second resumes listening on the same browser connection, provider stream and session ID, without requesting the microphone again or resetting elapsed time.
 - **AND** pre-mute speech can still be finalized in the same draft; a toggle neither sends the draft nor waits for finalization before it takes effect.
 
 #### Scenario: Keep the draft across toggles
@@ -68,14 +68,14 @@ With focus on the voice frame or its read-only transcript, Backspace SHALL delet
 - **THEN** repeat keydowns do not delete further words in the panel, and unrelated key combinations, text editing and native control behavior are not intercepted.
 
 ### Requirement: Compact voice panel
-Voice mode SHALL remain compact, without a visible state heading. The waveform, microphone control, remaining-time label and frame outline SHALL distinguish listening from connected mute; the state SHALL remain exposed to assistive technology. Controls SHALL be icon buttons with accessible names: exit, delete last dictated word, mute or unmute, and send. The delete control SHALL also describe how to clear all dictation. The add button SHALL stay in place but disabled.
+Voice mode SHALL remain compact without a visible state heading. The waveform, mic control and frame outline SHALL distinguish listening from connected mute; the state SHALL be accessible. Time SHALL show elapsed connection time, never a deadline. Icon controls SHALL have accessible names for exit, delete last dictated word, mute/unmute and send. Delete SHALL also describe full dictation clear. The add button SHALL stay in place but disabled.
 
 #### Scenario: Paused state without a heading
 - **WHEN** the user mutes the connected microphone
-- **THEN** the waveform stops animating, the microphone control offers unmute, the original countdown stays visible and continues, and the frame description says the microphone is muted, without a visible state heading.
+- **THEN** the waveform stops animating, the control offers unmute and the frame description says the mic is muted. Elapsed time continues from the original connection, including after returning to this chat; there is no countdown or visible state heading.
 
 ### Requirement: Desktop voice panel layout
-On a fine pointer, voice mode SHALL show the transcript in the text area and, in the input bar, the model picker at the left and, at the right, the waveform with remaining time, clear, microphone toggle, exit and send. No separate shortcut-hint line SHALL be shown; each control's tooltip SHALL name its shortcut. When no dictated text can be cleared, the clear control SHALL stay visible but disabled, with an explanation.
+On a fine pointer, voice mode SHALL show the transcript in the text area and, in the input bar, the model picker at the left and, at the right, the waveform with elapsed time, clear, microphone toggle, exit and send. No separate shortcut-hint line SHALL be shown; each control's tooltip SHALL name its shortcut. When no dictated text can be cleared, the clear control SHALL stay visible but disabled, with an explanation.
 
 #### Scenario: Desktop shortcut hints
 - **WHEN** voice mode opens with a fine pointer
@@ -101,51 +101,57 @@ On a coarse pointer, voice mode SHALL use the same input frame: the transcript s
 - **THEN** the first tap mutes and the second unmutes, with the same connection and privacy guarantees as Space.
 
 ### Requirement: Explicit ordinary send after finalization
-An explicit send from a listening or muted session SHALL stop capture, finish that session and await pending recognition before invoking the ordinary send/queue path exactly once. After success the dedicated panel SHALL remain open with an empty draft, microphone off and no live session; starting again SHALL require explicit activation. Failure SHALL leave the visible draft available for correction or retry without submitting a partial or duplicating a prior request.
+Explicit Send while listening or muted SHALL mute capture, await the draft's final words, and invoke ordinary send/queue once. One deadline SHALL run from Send through the capture gate and relay settlement without restarting. On acknowledgement the panel SHALL stay open with an empty draft and the same healthy session muted until explicit unmute. Failure SHALL preserve the draft and attachments for review without partial or duplicate submission or automatic reconnection.
+
+#### Scenario: Audio worklet does not acknowledge the cut
+- **WHEN** the user presses Enter and the capture gate has not acknowledged the cut by the deadline
+- **THEN** the UI reports failure, unlocks Send, keeps capture muted and preserves the draft and attachments. No settlement or submission is issued for this attempt, even if its acknowledgement arrives after a retry.
 
 #### Scenario: Double Enter with recognition pending
 - **WHEN** Enter is pressed twice during the last phrase and its final result arrives
-- **THEN** one submission includes the final words and existing attachments, goes to the ordinary queue if applicable, and does not restart capture.
+- **THEN** one submission includes the final words and existing attachments, goes to the ordinary queue if applicable, and does not restart capture. Only the user's explicit send authorizes submission.
 
 #### Scenario: Send from mute
 - **WHEN** the user mutes mid-phrase and explicitly sends before its final result arrives
-- **THEN** the session finishes without unmuting, the final words are included once, and after acknowledgement the panel offers to start a new recording, not to unmute the old one.
+- **THEN** the final words are included once without unmuting. After acknowledgement, explicit unmute in the same chat starts the next draft on the same connection; late events for the sent draft cannot populate it.
 
 #### Scenario: Finalization fails
 - **WHEN** the provider disconnects before confirming the last phrase during send
 - **THEN** nothing is sent, capture stops, and the user can edit the visible text and explicitly retry.
+- **WHEN** finalization succeeds but the ordinary send fails or its acknowledgement is lost
+- **THEN** the draft and attachments remain available, the healthy mic stays muted, and an explicit retry of the unchanged submission uses the same request key and endpoint.
 
 ### Requirement: Capture isolation and cleanup
-Capture SHALL require explicit activation. Audio from the microphone during mute SHALL NOT be recognized, transmitted, buffered for replay or released on unmute. Closing the mode, leaving the chat or losing edit access SHALL release the microphone and session, including from mute. Late results from canceled sessions SHALL NOT change a new draft or chat. Permission or provider failures SHALL be visible and leave text entry usable.
+Capture SHALL require explicit activation. Muted mic input SHALL NOT be transmitted, recognized, buffered or replayed. Navigation SHALL mute dedicated mode but stop inline dictation. Explicit exit, page teardown, lost access, takeover or a terminal disconnect SHALL release the affected run. A terminal disconnect SHALL reset dedicated mode, preserve unsent text and attachments and require a fresh explicit start. No termination SHALL automatically send, reconnect or enable the mic.
 
 #### Scenario: Speech during mute is private
-- **WHEN** the user speaks a distinct phrase while muted and then unmutes, including in a rapid sequence of toggles
+- **WHEN** the user speaks a distinct phrase while muted and then unmutes, including in a rapid sequence of toggles or chat switches
 - **THEN** no samples of that phrase reach the server or provider, immediately or later; the muted interval alone produces no dictated text or submission.
 
 #### Scenario: Muted beyond the idle interval
-- **WHEN** a healthy connected panel stays muted for more than 30 seconds but below the original five-minute limit
-- **THEN** mute alone does not time out the connection; unmuting resumes the same session. If the original five-minute limit is reached while muted, the normal timeout is shown and the draft is not sent or reconnected automatically.
+- **WHEN** a healthy connected panel stays muted beyond both the 30-second idle interval and five minutes, including while the owner is viewing another chat
+- **THEN** mute alone causes no timeout or reconnect; manual unmute in the original chat resumes the same session.
 
 #### Scenario: Permission denied
 - **WHEN** the browser denies microphone access
 - **THEN** a recoverable error is shown, the draft and attachments remain unchanged, and normal typing remains possible.
 
 #### Scenario: Switch chats during transcription
-- **WHEN** the user leaves a recording or muted chat and a late result arrives
-- **THEN** capture tracks have stopped and neither the destination chat nor the abandoned session receives that result.
+- **WHEN** the user switches from A to B before a final for pre-switch speech arrives
+- **THEN** only A's still-live draft can receive that revision. It must not overwrite a manual edit or populate B. Events after cancellation or takeover update neither draft. Inline dictation instead stops on leaving its chat and drops late events.
 
 #### Scenario: Exit or connection loss while muted
 - **WHEN** the user exits a muted panel with Escape
 - **THEN** the connection closes, microphone resources are released and focus returns to the editor with the visible draft and attachments, without sending.
-- **WHEN** the connection instead fails, edit access is revoked or another tab takes over
-- **THEN** the ended session cannot be unmuted, the existing cleanup and notification behavior applies, and there is no automatic reconnect or microphone activation.
+- **WHEN** the connection instead fails, edit access is revoked or another tab takes over, even while the user views B
+- **THEN** A's former panel is no longer active on return; the reason is available in A, there is no unmute or automatic restart, and B's editor and microphone are untouched. Loss of edit access does not restore edit controls.
 
 ### Requirement: Screen reader announcements
-Screen reader announcements SHALL be limited to state changes (listening, microphone muted, recording stopped, finalizing, sent, error, moved to another tab, remaining time) and SHALL NOT read interim or final phrase text automatically.
+Screen reader announcements SHALL be limited to state changes (listening, microphone muted, recording stopped, finalizing, sent, error, moved elsewhere). They SHALL NOT read interim or final phrase text, announce a countdown or announce ticking elapsed time automatically.
 
 #### Scenario: Dictating with a screen reader
 - **WHEN** a screen reader user dictates three phrases, mutes and then unmutes
-- **THEN** the transitions to listening, microphone muted and listening are announced, not a disconnect or reconnect; phrase text is available by navigating the panel.
+- **THEN** listening, muted and listening are announced, not a disconnect or reconnect. Phrase text and elapsed time can be read on demand in the owning chat.
 
 ### Requirement: Composer rows around voice mode
 While voice mode is open, the status row above the input and the metrics row below it SHALL stay visible and unchanged. Transient notices, the separate inline-voice error line and the stop-execution button SHALL NOT be shown below the input; they SHALL reappear after leaving voice mode.
@@ -155,11 +161,11 @@ While voice mode is open, the status row above the input and the metrics row bel
 - **THEN** the planning badge stays above the input, the metrics row stays below it, and the notice and stop-execution button are hidden until voice mode closes.
 
 ### Requirement: Voice errors inside the input
-Capture errors and send failures in voice mode SHALL be shown in one error line inside the input frame, together with the error ID when present, and SHALL NOT be rendered below the input.
+Voice or send errors SHALL appear once inside the owning chat's input frame, with the error ID when present. A terminal failure SHALL return the user to the ordinary composer with the notice, not an apparently connected panel. A submission failure with a healthy connection SHALL keep the panel muted. Notices SHALL NOT leak into another chat or be duplicated below the input.
 
 #### Scenario: Error stays inside the input
 - **WHEN** the provider disconnects while listening, or an explicit send fails
-- **THEN** a single error line with the message and error ID appears inside the input frame, the frame shows the error state, the draft remains, and no error line is rendered below the input.
+- **THEN** one message and any error ID appear in the affected chat's input frame, without an extra line below. The draft remains visible; a terminal disconnect resets the panel, whereas a send error alone does not.
 
 ### Requirement: Word deletion and full dictation clear
 In the dedicated voice panel, a short activation of the delete control SHALL remove the last eligible word in visible draft order. A sustained primary mouse or touch press SHALL clear all unedited dictation, as shall Ctrl+Backspace. Both actions SHALL operate only on dictation still owned by this draft, including inline and earlier panel sessions. Neither SHALL change typed text, manually corrected phrases, attachments, microphone or session state, or submit a message.
@@ -184,3 +190,20 @@ In the dedicated voice panel, a short activation of the delete control SHALL rem
 - **THEN** full dictation clear runs once without a preceding word deletion; release or the synthesized click does not delete another word, even if a new phrase has since arrived.
 - **WHEN** the press leaves the button or is canceled before the threshold, or the panel closes or locks during the pending press
 - **THEN** the pending gesture does nothing, without a later timer or click acting on the draft.
+
+### Requirement: Chat-bound voice mode across navigation
+A dedicated voice session SHALL belong to the chat that started it, not the chat on screen. Leaving its chat SHALL immediately force mute, never exit or transfer a healthy session. Returning SHALL show the same panel, draft and connection, still muted. Only an explicit unmute in the owning chat SHALL enable its microphone again.
+
+#### Scenario: Visit another agent and return
+- **WHEN** the user leaves A while listening, views or types in B, then returns to A without starting another voice mode
+- **THEN** B has its own ordinary editor and no access to A's audio or transcript. A returns with its panel open, the same session ID, route and provider stream, and its draft and attachments intact. No new permission request, socket, send or unmute occurs.
+- **AND** explicit unmute in A resumes the existing session. Repeated navigation, back/forward and visiting B while A was already muted have the same outcome.
+
+#### Scenario: Switch during microphone setup
+- **WHEN** the user leaves A before permission, audio setup or the server-ready event for A completes
+- **THEN** late completion for A cannot enable a microphone or open voice mode in B. If the original attempt becomes ready, it is muted in A; return alone cannot turn it on.
+
+#### Scenario: Explicit start elsewhere takes over
+- **WHEN** the user explicitly starts dedicated voice mode in editable B while A owns it
+- **THEN** A's mode ends before B transmits, A retains its unsent draft and attachments, and only B shows a live voice panel. Returning to A shows its ordinary editor, not an unmute action for a dead session.
+- **AND** late phrases, errors and cleanup from A cannot edit or close B. Merely opening B, inspecting its voice routes, or using inline dictation in B does not transfer A's dedicated mode.
