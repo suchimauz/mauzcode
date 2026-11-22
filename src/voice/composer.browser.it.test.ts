@@ -58,13 +58,14 @@ for (const mode of ['inline', 'panel'] as const) test.skipIf(skipFixture)(`${mod
     ctx.env.MAUZCODE_OAUTH_ENCRYPTION_KEY = Buffer.alloc(32, 17).toString('base64');
     const user = await ctx.fns.auth.createUser({ name: 'Voice fixture', email: 'voice@example.invalid', password: 'disposable-voice-fixture-password' });
     const agent = await makeRequestCtx(ctx, { user }).fns.agent.start({ model: 'mock/default:test', workspaceDir: dir });
+    const other = await makeRequestCtx(ctx, { user }).fns.agent.start({ model: 'mock/default:test', workspaceDir: dir });
     expect(agent.createdBy).toBe(user.id);
     // Model an already busy chat without starting any worker or model call.
     await ctx.fns.procs.db.run({ sql: "UPDATE agents SET run_state='running', run_token=? WHERE id=?", params: ['fixture', agent.id] });
     await ctx.fns.voice.create({ provider: 'openai-realtime', accountName: 'loopback', config: { baseUrl: upstream.baseUrl }, secrets: { apiKey: KEY } });
     await ctx.fns.settings.set({ module: 'voice', key: 'defaultRoute', scopeType: 'global', value: 'openai-realtime/loopback:gpt-live-transcribe' });
-    const base = `/agent/${agent.id}`;
-    const gets = new Set(['/voice/api', '/commands', ...['queue', 'todos', 'triggers', 'persistent-goal'].map(s => `${base}/${s}`)]);
+    const bases = [agent, other].map(a => `/agent/${a.id}`);
+    const gets = new Set(['/voice/api', '/commands', ...bases.flatMap(base => ['queue', 'todos', 'triggers', 'persistent-goal'].map(s => `${base}/${s}`))]);
     let cookie = '', posts = 0, leaked = false;
     const unexpected: string[] = [];
     server = Bun.serve({ hostname: '127.0.0.1', port: 0, websocket: ctx.fns.procs.http.socketHandlers({}), async fetch(req, srv) {
@@ -78,9 +79,9 @@ for (const mode of ['inline', 'panel'] as const) test.skipIf(skipFixture)(`${mod
       if (url.pathname === '/favicon.ico') return new Response(null, { status: 204 });
       // Inert model-picker/context badges: never query a model catalogue or inference service.
       if (req.method === 'GET' && url.pathname === '/ui-lab-api/models') return Response.json({ agentId: agent.id, model: agent.model, label: 'Mock', icon: null, models: [], effort: { requested: 'auto', applied: 'auto', supported: [], mode: 'auto' } });
-      if (req.method === 'GET' && url.pathname === `${base}/codex-controls`) return Response.json({ route: agent.model, speeds: [], verbosities: [], noticePending: false });
-      if (req.method === 'GET' && url.pathname === `/api/v1/agents/${agent.id}/context`) return Response.json({ budget: null });
-      const queuePost = req.method === 'POST' && url.pathname === `${base}/queue`;
+      if (req.method === 'GET' && bases.some(base => url.pathname === `${base}/codex-controls`)) return Response.json({ route: agent.model, speeds: [], verbosities: [], noticePending: false });
+      if (req.method === 'GET' && [agent, other].some(a => url.pathname === `/api/v1/agents/${a.id}/context`)) return Response.json({ budget: null });
+      const queuePost = req.method === 'POST' && bases.some(base => url.pathname === `${base}/queue`);
       if (!(queuePost || (req.method === 'GET' && (gets.has(url.pathname) || url.pathname === '/voice/session')))) {
         unexpected.push(`${req.method} ${url.pathname}`); return new Response(null, { status: 404 });
       }
@@ -100,11 +101,12 @@ for (const mode of ['inline', 'panel'] as const) test.skipIf(skipFixture)(`${mod
       const queuedFiles = [{ name: 'note.txt', type: expect.stringMatching(/^text\/plain(?:;|$)/), size: 7, data: Buffer.from('fixture').toString('base64') }];
       expect(await rows('SELECT text,status,files FROM agent_turn_queue WHERE agent_id=? ORDER BY sequence')).toEqual(queued ? [{ text: queued, status: 'pending', files: queuedFiles }] : []);
       expect(await rows('SELECT id FROM attachments WHERE agent_id=?')).toEqual([]);
+      for (const table of ['messages', 'agent_turn_queue']) expect(await ctx.fns.procs.db.select({ sql: `SELECT id FROM ${table} WHERE agent_id=?`, params: [other.id] })).toEqual([]);
       expect(posts).toBe(queued ? 1 : 0);
       expect(await files(dir)).toEqual(initialFiles);
     };
     const page = tab = await openVoiceTab(chrome!, KEY);
-    await page.command('Page.navigate', { url: `${origin}/?agent=${encodeURIComponent(agent.id)}` });
+    await page.command('Page.navigate', { url: `${origin}/?agent=${encodeURIComponent(agent.id)}&agent=${encodeURIComponent(other.id)}` });
     const entry = `document.querySelector('[data-mode="${mode}"]')`;
     const editor = `document.querySelector('[role="textbox"]')`;
     const panel = `document.querySelector('.voice-panel')`;
@@ -186,15 +188,24 @@ for (const mode of ['inline', 'panel'] as const) test.skipIf(skipFixture)(`${mod
       await page.evaluate(`${button('Выключить микрофон')}.click()`);
       await page.wait(`${panel}.dataset.state === 'muted' && ${button('Включить микрофон')}`);
       await page.evaluate(`window.dispatchEvent(new CustomEvent('fixture:marker', {detail:true}))`);
-      await revise(first); await finish(first, 'first second');
-      await draft('Note: first second', 'muted');
-      await page.wait(`${button('Удалить последнее слово')}`);
-      await backspace(); await draft('Note: first', 'muted');
+      await revise(first); await draft('Note: pending', 'muted');
       await checkpoint(); open();
-      // Observe fresh wire frames, not elapsed wall time or the UI mute indicator.
+      const navigate = (index: number) => page.evaluate(`document.querySelector('[data-chat="${index}"]').click()`);
+      await navigate(1);
+      await page.wait(`!${panel} && ${entry} && ${editor}.textContent === ''`);
+      await page.evaluate(`${editor}.focus()`);
+      await page.command('Input.insertText', { text: 'Private B draft' });
+      await page.wait(`${editor}.textContent === 'Private B draft'`);
+      // A pre-mute final arrives with both editors nonempty and only B on screen.
+      await finish(first, 'first second');
+      // Observe fresh wire frames while parked, not elapsed time or the mute indicator.
       const start = page.pcmFrames.length;
       await waitForTrace('eight new muted frames', () => page.pcmFrames.length - start >= 8);
       expect(page.pcmFrames.slice(start).every(frame => frame.every(sampleByte => sampleByte === 0))).toBe(true);
+      expect(await page.evaluate(`${editor}.textContent`)).toBe('Private B draft');
+      await page.evaluate('history.back()'); await draft('Note: first second', 'muted'); open();
+      await page.wait(`${button('Удалить последнее слово')}`);
+      await backspace(); await draft('Note: first', 'muted');
       await page.evaluate(`window.dispatchEvent(new CustomEvent('fixture:marker', {detail:false}))`);
       const offset = first.received.filter(p => p.type === 'input_audio_buffer.append').length;
       await page.evaluate(`${button('Включить микрофон')}.click()`);
@@ -204,7 +215,26 @@ for (const mode of ['inline', 'panel'] as const) test.skipIf(skipFixture)(`${mod
       // Submit the very same file with the final text through the ordinary queue.
       await page.evaluate(`{ const send = ${panel}.querySelector('[aria-keyshortcuts="Enter"]'); send.click(); send.click(); }`);
       await revise(first, 2); await finish(first, 'last', 2);
-      await page.wait(`document.body.dataset.accepted === '1' && ${panel}.dataset.state === 'idle' && ${button('Начать запись')}`);
+      await page.wait(`document.body.dataset.accepted === '1' && ${panel}.dataset.state === 'muted' && ${button('Включить микрофон')}`);
+      await checkpoint('Note: last');
+      open(); expect(await page.evaluate(`document.body.dataset.captures`)).toBe('1');
+      expect(page.frames.filter(f => f.sent && f.type !== 'pcm').map(f => f.type)).toEqual(['start', 'settle']);
+      expect(page.frames.filter(f => !f.sent && f.type === 'settled')).toHaveLength(1);
+      await page.evaluate('history.forward()'); await page.wait(`!${panel} && ${editor}.textContent === 'Private B draft' && ${entry} && !${entry}.hasAttribute('aria-disabled')`);
+      open(); await page.evaluate(`${entry}.click()`);
+      const replacement = await confirmSetup(upstream, 1); await tone(replacement); await first.closed;
+      await page.wait(`${panel}.dataset.state === 'listening' && ${transcript} === 'Private B draft'`);
+      // Leaving the listening owner must mute automatically, even without a mute click.
+      await page.evaluate('history.back()'); await page.wait(`!${panel} && ${editor}.textContent === ''`);
+      await page.evaluate(`window.dispatchEvent(new CustomEvent('fixture:marker', {detail:true}))`);
+      const parked = page.pcmFrames.length;
+      await waitForTrace('automatic mute while B is parked', () => page.pcmFrames.length - parked >= 10);
+      expect(page.pcmFrames.slice(parked + 2).every(frame => frame.every(byte => byte === 0))).toBe(true);
+      replacement.terminate(); await replacement.closed;
+      await page.wait(`!${panel} && ${editor}.textContent === ''`);
+      await navigate(1); await page.wait(`!${panel} && ${editor}.textContent === 'Private B draft'`);
+      await waitForTrace('both sockets closed without automatic replacement', () => page.closedSockets() === 2);
+      expect([page.sockets.length, upstream.connections.length, await page.evaluate(`document.body.dataset.captures`)]).toEqual([2, 2, '2']);
       await checkpoint('Note: last');
       // Search the complete trace, including frames queued around unmute, for the 2.4 kHz marker.
       const marker = (pcm: Buffer) => {
@@ -213,15 +243,17 @@ for (const mode of ['inline', 'panel'] as const) test.skipIf(skipFixture)(`${mod
         return crossings * 24000 / (pcm.length / 2) > 1500;
       };
       expect(page.pcmFrames.some(marker)).toBe(false);
-      expect(first.received.filter(p => p.type === 'input_audio_buffer.append').some(p => marker(Buffer.from(p.audio, 'base64')))).toBe(false);
+      for (const conn of [first, replacement]) expect(conn.received.filter(p => p.type === 'input_audio_buffer.append').some(p => marker(Buffer.from(p.audio, 'base64')))).toBe(false);
     }
-    await first.closed;
-    await waitForTrace('browser socket close', () => page.closedSockets() === 1);
-    expect(page.sockets).toEqual([origin.replace('http:', 'ws:') + '/voice/session']);
-    expect(page.frames.filter(f => f.sent && f.type !== 'pcm').map(f => f.type)).toEqual(['start', 'finish']);
-    expect(page.frames.some(f => f.sent && f.type === 'pcm')).toBe(true);
-    expect(page.frames.filter(f => !f.sent && f.type === 'completed')).toHaveLength(1);
-    expect(upstream.connections).toHaveLength(1);
+    if (mode === 'inline') {
+      await first.closed;
+      await waitForTrace('browser socket close', () => page.closedSockets() === 1);
+      expect(page.sockets).toEqual([origin.replace('http:', 'ws:') + '/voice/session']);
+      expect(page.frames.filter(f => f.sent && f.type !== 'pcm').map(f => f.type)).toEqual(['start', 'finish']);
+      expect(page.frames.some(f => f.sent && f.type === 'pcm')).toBe(true);
+      expect(page.frames.filter(f => !f.sent && f.type === 'completed')).toHaveLength(1);
+      expect(upstream.connections).toHaveLength(1);
+    }
     await privacy(); expect(unexpected).toEqual([]);
   } finally { try { await tab?.close(); } finally { server?.stop(true); upstream.stop(); await rm(dir, { recursive: true, force: true }); } }
 }, 60000);

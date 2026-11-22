@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { VoicePanel as VoiceSettings } from '../components/settings/VoicePanel';
-import { LiveComposer } from '../components/mauzcode/LiveComposer';
+import { ComposerCoordinator, LiveComposer } from '../components/mauzcode/LiveComposer';
 import { flush, getUserMedia, install, nodes, ready, resetMedia, restoreMedia, sockets, streams } from './fixtures/voiceMedia';
 
 // Real composer, capture, worklet and ordinary send/queue clients. Only browser media, sockets,
@@ -27,7 +27,7 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); restoreMedia(); sessionStorage.clear(); });
 
-async function mount(mode: 'inline' | 'panel', { files = true, running = false, text = '' } = {}) {
+async function mount(mode: 'inline' | 'panel', { files = true, running = false, text = '', persistent = false } = {}) {
   if (text) sessionStorage.setItem('mauzcode-ui-draft:a', JSON.stringify({ text, key: 'seed' }));
   const accepted = vi.fn();
   const view = render(<LiveComposer agentId="a" running={running} onAccepted={accepted} />);
@@ -37,7 +37,7 @@ async function mount(mode: 'inline' | 'panel', { files = true, running = false, 
   if (files) await userEvent.upload(screen.getByLabelText('Добавить файлы'), file);
   await userEvent.click(entry);
   const ws = sockets[0];
-  act(() => { ws.open(); ws.receive(ready); nodes[0].feed(130); });
+  act(() => { ws.open(); ws.receive(persistent ? { ...ready, mode: 'panel', settle: true } : ready); nodes[0].feed(130); });
   return { target: mode === 'panel' ? region() : editor(), entry, ws, accepted, view, file };
 }
 
@@ -46,7 +46,7 @@ it.each([
 ] as const)('%s renders the provider failure with a reference only if saved (%s)', async (mode, saved) => {
   const { ws } = await mount(mode, { files: false });
   act(() => ws.receive({ type: 'error', code: 'provider', message: 'Provider unavailable.', ...(saved && { errorId: 'deadbeef1234abcd' }) }));
-  const surface = mode === 'inline' ? screen.getByRole('alert') : region().querySelector('.voice-panel-error');
+  const surface = screen.getByRole('alert');
   expect(surface).toBeVisible();
   expect(surface).toHaveTextContent('Provider unavailable.');
   if (saved) expect(surface).toHaveTextContent('ID: deadbeef1234abcd');
@@ -165,30 +165,25 @@ it.each([['inline', false], ['panel', false], ['panel', true]] as const)('%s (mu
   fireEvent.keyDown(target, { key: 'Enter', repeat: true });
   await act(flush); expect(post).not.toHaveBeenCalled();
   if (mode === 'inline') { const el = editor(); el.textContent = 'corrected'; fireEvent.input(el); }
-  key(target, 'Enter'); await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
+  key(screen.queryByRole('region', { name: modeName.panel }) ?? editor(), 'Enter'); await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
   expect(submission(0)).toMatchObject({ text: mode === 'inline' ? 'corrected' : 'review me', files: [file] });
-  if (mode === 'panel') {
-    expect(region()).toHaveAttribute('data-state', 'idle');
-    expect(within(region()).getByRole('button', { name: 'Начать запись' })).toBeEnabled();
-    await waitFor(() => expect(within(region()).getByRole('status')).toHaveTextContent('Сообщение отправлено'));
-    expect(ws.readyState).toBe(3); expect(sockets).toHaveLength(1);
-  }
+  expect(ws.readyState).toBe(3); expect(sockets).toHaveLength(1);
   expect(getUserMedia).toHaveBeenCalledOnce();
 });
 
-it.each([true, false])('uncertain request (initially running: %s) keeps the endpoint, key, final text and files on retry', async running => {
-  const { ws, accepted, view, file } = await mount('panel', { running });
+it.each([[true, true], [true, false], [false, true], [false, false]])('uncertain request (running %s, negotiated %s) preserves endpoint, key, final text and files', async (running, persistent) => {
+  const { ws, accepted, view, file } = await mount('panel', { running, persistent });
   post.mockRejectedValueOnce(new Error('Lost acknowledgement'));
   await userEvent.click(within(region()).getByRole('button', { name: /Отправить/ }));
-  await act(async () => { ws.receive(phrase('final', true)); ws.receive({ type: 'completed' }); });
+  await act(async () => { ws.receive(phrase('final', true)); ws.receive(persistent ? { type: 'settled', id: 1, ok: true, throughOrder: 0 } : { type: 'completed' }); });
   expect(await screen.findByText(/Lost acknowledgement/)).toBeVisible(); expect(accepted).not.toHaveBeenCalled();
   const original = submission(0);
   expect(original).toMatchObject({ path: running ? '/agent/a/queue' : '/agent/a', text: 'final', files: [file] });
   view.rerender(<LiveComposer agentId="a" running={!running} onAccepted={accepted} />);
-  key(region(), 'Enter'); await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
+  key(region(), 'Enter'); if (persistent) await act(async () => ws.receive({ type: 'settled', id: 2, ok: true, throughOrder: 0 })); await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
   expect(post).toHaveBeenCalledTimes(2); expect(submission(1)).toEqual(original);
-  expect(ws.controls().filter(c => c.type === 'finish')).toHaveLength(1);
-  expect(region()).toHaveAttribute('data-state', 'idle'); expect(getUserMedia).toHaveBeenCalledOnce();
+  expect(ws.controls().filter(c => c.type === 'finish')).toHaveLength(persistent ? 0 : 1);
+  expect(region()).toHaveAttribute('data-state', persistent ? 'muted' : 'idle'); expect(getUserMedia).toHaveBeenCalledOnce();
 });
 
 it.each([['inline', 'navigate'], ['inline', 'readOnly'], ['panel', 'navigate'], ['panel', 'readOnly']] as const)('%s: %s discards stale events and sends to neither chat', async (mode, transition) => {
@@ -222,4 +217,104 @@ it('finalizing silence with no draft or attachments does not create a request', 
   key(region(), 'Enter'); await act(flush);
   await act(async () => ws.receive({ type: 'completed' }));
   expect(region()).toHaveAttribute('data-state', 'idle'); expect(post).not.toHaveBeenCalled(); expect(accepted).not.toHaveBeenCalled();
+});
+
+
+it.each([false, true])('negotiated Send settles once and opens a clean ledger on the same muted connection (initial mute %s)', async muted => {
+  const { ws, accepted, file } = await mount('panel', { persistent: true, text: 'draft' });
+  if (muted) key(region(), ' ');
+  key(region(), 'Enter'); key(region(), 'Enter'); await act(flush);
+  expect(ws.controls().map(m => m.type)).toEqual(['start', 'settle']);
+  await act(async () => { ws.receive(phrase('final', true)); ws.receive({ type: 'settled', id: 1, throughOrder: 0, ok: true }); await flush(); });
+  await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
+  expect(submission(0)).toMatchObject({ text: 'draft final', files: [file] });
+  expect(region()).toHaveAttribute('data-state', 'muted');
+  key(region(), ' '); act(() => { ws.receive(phrase('stale', true)); ws.receive({ ...phrase('next', true), order: 1, id: 'next' }); });
+  expect(editor()).toHaveTextContent(/^next$/); expect(sockets).toHaveLength(1);
+});
+
+it('worklet deadline preserves the muted draft and files, unlocks Send, ignores the stale cut on retry', async () => {
+  const { ws } = await mount('panel', { persistent: true, text: 'draft' });
+  vi.useFakeTimers();
+  try {
+    const deliver = nodes[0].port.onmessage!; nodes[0].port.onmessage = null;
+    key(region(), 'Enter'); await act(async () => { vi.advanceTimersByTime(15_000); await flush(); });
+    expect(region()).toHaveAttribute('data-state', 'muted'); expect(editor()).toHaveTextContent('draft'); expect(screen.getByText('notes.txt')).toBeVisible();
+    expect(within(region()).getByRole('button', { name: 'Отправить' })).toBeEnabled();
+    key(region(), 'Enter'); act(() => deliver({ data: { type: 'gated', epoch: 1 } } as MessageEvent));
+    expect(ws.controls().map(m => m.type)).toEqual(['start']); expect(post).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(15_000); await flush(); });
+  } finally { vi.useRealTimers(); }
+});
+
+
+function workspace() {
+  const accepted = vi.fn();
+  const tree = (id: string | null, denied?: string) => <ComposerCoordinator denied={agent => agent === denied}><section className="chat-panel">{id && <LiveComposer key={id} agentId={id} onAccepted={accepted} running={false} />}</section></ComposerCoordinator>;
+  const view = render(tree('a')); const select = (id: string | null, denied?: string) => view.rerender(tree(id, denied));
+  const start = async (mode: keyof typeof modeName, readyNow = true) => {
+    const entry = await screen.findByRole('button', { name: modeName[mode] });
+    await waitFor(() => expect(entry).not.toHaveAttribute('aria-disabled')); await userEvent.click(entry);
+    const ws = sockets.at(-1)!;
+    if (readyNow) act(() => { ws.open(); ws.receive(mode === 'panel' ? { ...ready, mode, settle: true } : ready); });
+    return ws;
+  };
+  return { select, start, accepted };
+}
+
+it('keyed outlet: A parks across loading; inline B stops, a rejected B never evicts A, accepted B supersedes only A', async () => {
+  const { select, start } = workspace(); const a = await start('panel');
+  act(() => window.dispatchEvent(new PopStateEvent('popstate'))); expect(region()).toHaveAttribute('data-state', 'muted');
+  select(null); select('b'); act(() => a.receive(phrase('only A', true))); expect(editor()).not.toHaveTextContent('only A');
+  const file = new File(['B'], 'only-b.txt'); fireEvent.drop(document.querySelector('.chat-panel')!, { dataTransfer: { types: ['Files'], files: [file] } });
+  const inline = await start('inline'); select('a'); expect(inline.readyState).toBe(3);
+  expect(region()).toHaveAttribute('data-state', 'muted'); expect(editor()).toHaveTextContent('only A'); expect(screen.queryByText('only-b.txt')).toBeNull();
+  select('b'); expect(screen.getByText('only-b.txt')).toBeVisible(); const rejected = await start('panel', false);
+  act(() => { rejected.open(); rejected.receive({ type: 'error', code: 'unauthorized', message: 'Refused' }); });
+  expect(screen.getByRole('alert')).toHaveTextContent('Refused'); select('a'); expect(region()).toHaveAttribute('data-state', 'muted'); expect(a.readyState).toBe(1);
+  select('b'); const b = await start('panel'); expect(a.readyState).toBe(3); expect(b.readyState).toBe(1); select('a');
+  expect(screen.getByRole('alert')).toHaveTextContent('другой чат'); expect(editor()).toHaveTextContent('only A');
+  select('b'); expect(screen.queryByRole('alert')).toBeNull(); expect(region()).toHaveAttribute('data-state', 'muted');
+});
+
+it.each(['denied', 'disconnect'])('parked %s returns only the owner to the editor; no automatic restart', async cause => {
+  const { select, start } = workspace(); const ws = await start('panel'); act(() => ws.receive(phrase('keep', true))); select('b', cause === 'denied' ? 'a' : undefined);
+  if (cause === 'disconnect') act(() => ws.receive({ type: 'error', code: 'provider', message: 'Transport failed', errorId: 'deadbeef1234abcd' }));
+  expect(screen.queryByRole('alert')).toBeNull(); select('a', cause === 'denied' ? 'a' : undefined);
+  expect(screen.getByRole('alert')).toHaveTextContent(cause === 'denied' ? 'нет доступа' : 'deadbeef1234abcd'); expect(editor()).toHaveTextContent('keep');
+  expect(screen.queryByRole('region', { name: modeName.panel })).toBeNull(); expect(sockets).toHaveLength(1); expect(streams[0].tracks[0].stopped).toBe(true);
+});
+
+it('an acknowledged parked send clears only A and leaves its healthy connection muted', async () => {
+  const { select, start, accepted } = workspace(); let ack!: () => void;
+  post.mockImplementationOnce(() => new Promise(resolve => { ack = () => resolve(json({ ok: true })); }));
+  const ws = await start('panel'); key(region(), 'Enter'); select('b');
+  await act(async () => { ws.receive(phrase('from A', true)); ws.receive({ type: 'settled', id: 1, ok: true, throughOrder: 0 }); await flush(); });
+  await waitFor(() => expect(post).toHaveBeenCalledOnce()); expect(submission(0)).toMatchObject({ path: '/agent/a', text: 'from A' });
+  const el = editor(); el.textContent = 'B draft'; fireEvent.input(el); await act(async () => { ack(); await flush(); });
+  expect(accepted).toHaveBeenCalledOnce(); expect(editor()).toHaveTextContent('B draft'); select('a'); expect(region()).toHaveAttribute('data-state', 'muted'); expect(editor().textContent).toBe('');
+});
+
+
+it.each([false, true])('elapsed time survives navigation beyond five minutes without warnings (touch: %s)', async coarse => {
+  const matchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({ ...matchMedia(query), matches: coarse && query === '(pointer: coarse)' })) as typeof window.matchMedia;
+  try {
+    const { start, select } = workspace(); const ws = await start('panel', false);
+    vi.useFakeTimers(); act(() => { ws.open(); ws.receive({ ...ready, mode: 'panel', settle: true }); vi.advanceTimersByTime(290_000); });
+    select('b'); act(() => vi.advanceTimersByTime(21_000)); select('a');
+    expect(region()).toHaveAttribute('data-state', 'muted'); expect(within(region()).getByText('5:11')).toBeVisible();
+    expect(within(region()).getByRole('status')).not.toHaveTextContent(/осталось/i);
+    const toggle = within(region()).getByRole('button', { name: 'Включить микрофон' });
+    if (coarse) fireEvent.click(toggle); else key(region(), ' ');
+    expect(region()).toHaveAttribute('data-state', 'listening'); expect(sockets).toHaveLength(1);
+  } finally { vi.useRealTimers(); window.matchMedia = matchMedia; }
+});
+
+
+it('pagehide tears down the parked owner, not just the current chat', async () => {
+  const { select, start } = workspace(); const a = await start('panel'); act(() => a.receive(phrase('saved', true))); select('b');
+  act(() => window.dispatchEvent(new Event('pagehide'))); select('a');
+  expect(a.readyState).toBe(3); expect(streams[0].tracks[0].stopped).toBe(true); expect(screen.queryByRole('region', { name: modeName.panel })).toBeNull();
+  expect(editor()).toHaveTextContent('saved'); expect(getUserMedia).toHaveBeenCalledOnce();
 });

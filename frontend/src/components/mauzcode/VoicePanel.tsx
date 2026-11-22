@@ -75,7 +75,7 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, onDe
   const coarse = useCoarsePointer();
   const [announcement, setAnnouncement] = useState('');
   const announced = useRef<{ state: VoiceCaptureState | null; error: string | null; generation: number; thresholds: Set<number> }>({ state: null, error: null, generation: -1, thresholds: new Set() });
-  const { state, error, remainingMs, generation } = capture;
+  const { state, error, remainingMs, elapsedMs, generation } = capture;
   const lastSent = useRef(sentCount);
 
   // Voice mode takes focus so its shortcuts work at once; leaving returns focus to the editor (composer's job).
@@ -92,14 +92,14 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, onDe
     if (seen.state !== state) { seen.state = state; seen.error = null; setAnnouncement(STATE_LABEL[state]); }
   }, [state, error, generation]);
   useEffect(() => {
-    if (remainingMs == null || (state !== 'listening' && state !== 'muted')) return;
+    if (elapsedMs != null || remainingMs == null || (state !== 'listening' && state !== 'muted')) return;
     const seen = announced.current;
     // Only the tightest threshold reached is announced; one already passed is never repeated in this generation.
     const reached = THRESHOLDS.filter(t => remainingMs <= t.ms && !seen.thresholds.has(t.ms));
     if (!reached.length) return;
     reached.forEach(t => seen.thresholds.add(t.ms));
     setAnnouncement(reached[reached.length - 1].text);
-  }, [remainingMs, state]);
+  }, [elapsedMs, remainingMs, state]);
   useEffect(() => {
     if (lastSent.current !== sentCount) { lastSent.current = sentCount; setAnnouncement('Сообщение отправлено'); }
   }, [sentCount]);
@@ -157,7 +157,7 @@ export function VoicePanel({ capture, text, attachments, onToggle, onClear, onDe
       {model}
       <span className="composer-inbar-spacer" />
       <span className="voice-panel-wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>
-      <span className="voice-panel-time">{remainingMs != null && connected && <><span className="sr-only">осталось </span><time>{clock(remainingMs)}</time></>}</span>
+      <span className="voice-panel-time">{elapsedMs != null && connected ? <><span className="sr-only">прошло </span><time>{clock(Math.floor(elapsedMs / 1000) * 1000)}</time></> : remainingMs != null && connected && <><span className="sr-only">осталось </span><time>{clock(remainingMs)}</time></>}</span>
       <button type="button" className="voice-panel-button voice-panel-clear" aria-label="Удалить последнее слово" title={canClear ? deleteHelp : 'Надиктованного текста нет'} aria-description={deleteHelp} aria-keyshortcuts="Backspace Control+Backspace" hidden={coarse && !canClear} disabled={busy} aria-disabled={canClear ? undefined : true}
         onPointerDown={e => {
           if (!e.isPrimary || e.button !== 0 || busy || !canClear) return;

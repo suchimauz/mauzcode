@@ -15,6 +15,10 @@ export type SessionStatus = {
     committed: number;
     /** Committed phrases that already reported a final or a failure. */
     settled: number;
+    /** Live and out-of-order terminal records; released when the ordered final is delivered. */
+    retainedPhrases: number;
+    /** Provider-selected turn IDs still awaiting terminal recognition. */
+    retainedTurns: number;
     /** Audio windows submitted to the energy detector. */
     audioWindows: number;
     /** PCM bytes accepted for transcription. */

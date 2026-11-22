@@ -13,7 +13,7 @@ export type MessageInputProps = {
   allowEmptySubmit?: boolean;
   disabled?: boolean; sendDisabled?: boolean; running?: boolean; onStop?: () => void; onSteerAll?: () => void;
   commandMenuOpen?: boolean; onCommandMenuClose?: () => void; onFile?: () => void; agentId?: string;
-  placeholder?: string; hasAttachments?: boolean; pendingVoice?: boolean; attachments?: ReactNode; onFiles?: (files: File[]) => void; commandsEnabled?: boolean;
+  placeholder?: string; hasAttachments?: boolean; pendingVoice?: boolean; attachments?: ReactNode; notice?: ReactNode; onFiles?: (files: File[]) => void; commandsEnabled?: boolean;
   /** Caret access for inline dictation; works the same for `CommandEditor` and the plain `textarea`. */
   caretRef?: Ref<DraftCaretHandle>;
   /** Leading control inside the input, before the text (the composer's add button). The input stays unaware of its menu. */
@@ -31,7 +31,7 @@ export type MessageInputProps = {
  */
 export type DraftCaretHandle = { selection(): { start: number; end: number } | null; select(start: number, end: number): void };
 /** One-line controlled input; grows for wrapped lines, then scrolls at 180px. */
-export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, agentId, value, onChange, onSend, allowEmptySubmit = false, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef, leading, bar }: MessageInputProps) {
+export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, agentId, value, onChange, onSend, allowEmptySubmit = false, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, notice, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef, leading, bar }: MessageInputProps) {
   const input = useRef<HTMLTextAreaElement>(null);
   const menuId = useId();
   const editor = useRef<CommandEditorHandle>(null);
@@ -123,7 +123,7 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
   </IconButton>;
   return <form {...track} className={`message-input${bar ? ' has-bar' : ''}${leading ? ' has-leading' : ''}`} aria-label="Ввод сообщения" onPointerDown={focusFromFrame} onSubmit={event => { event.preventDefault(); if (!disabled && !sendDisabled && canSubmit) onSend(); }} aria-busy={disabled} onDragOver={event => { if (onFiles && !disabled && event.dataTransfer.types.includes('Files')) event.preventDefault(); }} onDrop={event => { if (onFiles && event.dataTransfer.files.length) { event.preventDefault(); if (!disabled) onFiles(Array.from(event.dataTransfer.files)); } }}>
     {menu.open && <CommandMenu sections={menu.sections} id={menuId} commands={menu.matches} index={menu.index} status={menu.status} error={menu.error} onPick={pick} onHover={menu.setIndex} onRetry={menu.retry} />}
-    {attachments}
+    {attachments}{notice}
     <div className="message-input-row">{leading && <span className="message-input-leading">{leading}</span>}<div className="message-input-field">
     {commandsEnabled ? <CommandEditor ref={editor} value={value} onChange={onChange} claimedCommand={activeClaim} onRelease={() => setClaimed(null)} disabled={disabled} placeholder={placeholder} argumentHint={menu.exact && value.trimEnd() === '/'+menu.exact.name && /\s$/.test(value) ? menu.exact.args?.placeholder ?? menu.exact.inputHint : undefined} onFiles={onFiles} onKeyDown={keyDown} aria-label="Сообщение агенту" aria-controls={menu.open ? menuId : undefined} aria-expanded={menu.open} aria-autocomplete="list" aria-haspopup="listbox" aria-activedescendant={menu.open && menu.status === 'ready' && menu.matches.length ? `${menuId}-${menu.index}` : undefined} onBlur={event => { if (!event.currentTarget.closest('.composer-readonly-boundary, .new-session-composer')?.contains(event.relatedTarget)) menu.dismiss(); }} /> : <textarea ref={input} aria-controls={menu.open ? menuId : undefined} aria-autocomplete={commandsEnabled ? 'list' : undefined} aria-haspopup={commandsEnabled ? 'listbox' : undefined} aria-activedescendant={menu.open && menu.status === 'ready' && menu.matches.length ? `${menuId}-${menu.index}` : undefined} aria-label="Сообщение агенту" placeholder={placeholder} rows={1} value={value} disabled={disabled} onPaste={event => { const files = Array.from(event.clipboardData.files); if (onFiles && files.length) { event.preventDefault(); if (!disabled) onFiles(files); } }} onChange={event => onChange(event.target.value)}
       onBlur={event => { if (!event.currentTarget.closest('form')?.contains(event.relatedTarget)) menu.dismiss(); }}

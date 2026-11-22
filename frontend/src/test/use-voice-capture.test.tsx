@@ -15,6 +15,73 @@ async function listen(result: { current: ReturnType<typeof useVoiceCapture> }) {
 beforeEach(resetMedia);
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); restoreMedia(); });
 
+describe('negotiated panel capture', () => {
+  async function panel(negotiated = true) {
+    install(); vi.useFakeTimers();
+    const onPhrase = vi.fn();
+    const { result } = renderHook(() => useVoiceCapture({ agentId: 'A', onPhrase }));
+    await act(async () => { await result.current.start('panel'); });
+    const [socket] = sockets;
+    act(() => { socket.open(); socket.receive(negotiated ? { ...ready, mode: 'panel', settle: true } : ready); });
+    expect(socket.controls()[0]).toMatchObject({ agentId: 'A', mode: 'panel' });
+    return { result, socket, node: nodes[0], onPhrase };
+  }
+
+  it('latches departure before permission and never encodes a marked sample from setup or parked input', async () => {
+    install(); vi.useFakeTimers();
+    const stream = new FakeStream(); let grant!: (stream: FakeStream) => void;
+    getUserMedia.mockImplementationOnce(() => new Promise(resolve => { grant = resolve; }));
+    const { result } = renderHook(() => useVoiceCapture({ agentId: 'A' }));
+    act(() => { void result.current.start('panel'); result.current.setMuted(true); });
+    await act(async () => { grant(stream); await flush(); });
+    expect(stream.tracks[0].enabled).toBe(false);
+    act(() => { sockets[0].open(); sockets[0].receive({ ...ready, mode: 'panel', settle: true }); vi.advanceTimersByTime(310_000); });
+    expect(result.current.state).toBe('muted'); expect(result.current.elapsedMs).toBe(310_000); expect(result.current.remainingMs).toBeNull();
+    nodes[0].feed(200);
+    expect(sockets[0].frames().length).toBeGreaterThan(2);
+    sockets[0].frames().forEach((f, i) => { expect(f.getUint32(0, true)).toBe(i); expect(new Int16Array(f.buffer, 4).every(v => v === 0)).toBe(true); });
+  });
+
+  it('puts the marked tail on the wire before settle and filters revisions through the inclusive cutoff', async () => {
+    const { result, socket, node, onPhrase } = await panel();
+    node.feed(17); let settled!: Promise<boolean>;
+    act(() => { settled = result.current.settle(); });
+    expect(socket.controls().at(-1)).toEqual({ type: 'settle', id: 1 });
+    const tail = socket.sent.at(-2) as ArrayBuffer;
+    expect(new Int16Array(tail, 4).some(v => v !== 0)).toBe(true);
+    act(() => socket.receive({ type: 'settled', id: 1, ok: true, throughOrder: 4 }));
+    await expect(settled).resolves.toBe(true);
+    for (const order of [3, 4, 5]) socket.receive({ type: 'phrase', id: 'p' + order, order, revision: 2, final: true, text: 'test' });
+    expect(onPhrase.mock.calls.map(([p]) => p.order)).toEqual([5]);
+    expect(socket.readyState).toBe(1); expect(result.current.state).toBe('muted');
+  });
+
+  it('times out from the request, rejects stale cuts and replies, and never restarts the deadline', async () => {
+    const { result, socket, node } = await panel();
+    const deliver = node.port.onmessage!;
+    node.port.onmessage = null;
+    let first!: Promise<boolean>, second!: Promise<boolean>, third!: Promise<boolean>;
+    act(() => { first = result.current.settle(); vi.advanceTimersByTime(15_000); });
+    await expect(first).resolves.toBe(false);
+    act(() => { second = result.current.settle(); deliver({ data: { type: 'gated', epoch: 1 } } as MessageEvent); });
+    expect(socket.controls().map(m => m.type)).toEqual(['start']);
+    act(() => { vi.advanceTimersByTime(14_999); deliver({ data: { type: 'gated', epoch: 2 } } as MessageEvent); vi.advanceTimersByTime(1); });
+    await expect(second).resolves.toBe(false);
+    node.port.onmessage = deliver;
+    act(() => { third = result.current.settle(); socket.receive({ type: 'settled', id: 1, ok: true, throughOrder: -1 }); });
+    let done = false; void third.then(() => { done = true; }); await flush(); expect(done).toBe(false);
+    act(() => socket.receive({ type: 'settled', id: 2, ok: true, throughOrder: -1 }));
+    await expect(third).resolves.toBe(true);
+  });
+
+  it('uses the finite lifecycle when ready omits capability; no unsupported control reaches the socket', async () => {
+    const { result, socket } = await panel(false);
+    expect(result.current.session?.persistent).toBe(false); expect(result.current.elapsedMs).toBeNull(); expect(result.current.remainingMs).toBe(300_000);
+    await expect(result.current.settle()).resolves.toBe(false);
+    expect(socket.controls().map(m => m.type)).toEqual(['start']);
+  });
+});
+
 describe('useVoiceCapture preflight', () => {
   it('insecure HTTP context: disabled with a reason, no microphone or socket even on start', async () => {
     install({ secure: false });

@@ -187,6 +187,7 @@ class VoiceCaptureProcessor extends AudioWorkletProcessor {
     this.port.onmessage = event => {
       const m = event.data || {};
       if (m.type === 'configure') {
+        this.muted = m.muted === true;
         this.resampler = createResampler(sampleRate, m.sampleRate);
         this.framer = createPcmFramer(m.frameSamples, m.minSamples);
       } else if (m.type === 'gate' && this.resampler && m.epoch > this.epoch) {

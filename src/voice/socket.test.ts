@@ -57,6 +57,7 @@ function fixture(record: (fields: unknown) => Promise<string | null> = async () 
     const ctx = makeCtx();
     const user = { id: OWNER, role: "owner", disabledAt: null as number | null };
     const row = { created_by: OWNER as string | null, archived_at: null as number | null };
+    const extraOwners = new Map<string, string>();
     const identity: Session = { user };
     const streams: ReturnType<typeof createContractRecorder>[] = [];
     const logs: unknown[] = [];
@@ -86,7 +87,7 @@ function fixture(record: (fields: unknown) => Promise<string | null> = async () 
                 expect(sql).toContain("u.role = 'owner'");
                 expect(sql).toContain("u.disabled_at IS NULL");
                 counters.access++;
-                const snapshot = params[0] === CHAT && params[1] === row.created_by && row.created_by === user.id &&
+                const snapshot = extraOwners.has(params[0]!) ? (extraOwners.get(params[0]!) === params[1] ? [{ archived_at: null }] : []) : params[0] === CHAT && params[1] === row.created_by && row.created_by === user.id &&
                     user.role === "owner" && user.disabledAt == null ? [{ archived_at: row.archived_at }] : [];
                 await hooks.beforeAccess?.();
                 return snapshot;
@@ -109,7 +110,7 @@ function fixture(record: (fields: unknown) => Promise<string | null> = async () 
         },
     };
 
-    async function localSocket(start = true) {
+    async function localSocket(start: boolean | { agentId?: string; mode: string } = true) {
         const events: Packet[] = [];
         const state = await endpoint.upgrade(ctx, identity, { req: new Request(ORIGIN + PATH, { headers: { origin: ORIGIN } }), params: {} });
         if (state instanceof Response) throw new Error(`Fixture upgrade refused: ${state.status}`);
@@ -127,11 +128,12 @@ function fixture(record: (fields: unknown) => Promise<string | null> = async () 
         };
         cleanup.add(socket.disconnect);
         endpoint.open(ctx, identity, { ws });
-        if (start) socket.send(control("start"));
+        if (typeof start === "object") socket.send(JSON.stringify({ type: "start", generation: 1, agentId: CHAT, ...start }));
+        else if (start) socket.send(control("start"));
         await turns();
         return socket;
     }
-    return { ctx, user, row, streams, logs, counters, hooks, localSocket, throwOnOpen: (error: unknown) => { openError = error; } };
+    return { ctx, user, row, extraOwners, streams, logs, counters, hooks, localSocket, throwOnOpen: (error: unknown) => { openError = error; } };
 }
 
 const cleanup = new Set<() => unknown>();
@@ -183,8 +185,8 @@ test("registered endpoint authenticates and relays PCM and safe final messages o
     };
     await loop(() => ws.readyState === WebSocket.CLOSED);
     expect(events.map(e => e.type)).toEqual(["ready", "phrase", "completed"]);
-    expect(Object.keys(events[0]!).sort()).toEqual(["destination", "route", "sampleRate", "sessionId", "type"]);
-    expect(events[0]).toMatchObject({ route: "fixture/test:pcm", destination: { kind: "host", label: "Local fixture" }, sampleRate: 24000 });
+    expect(Object.keys(events[0]!).sort()).toEqual(["destination", "mode", "route", "sampleRate", "sessionId", "type"]);
+    expect(events[0]).toMatchObject({ mode: "inline", route: "fixture/test:pcm", destination: { kind: "host", label: "Local fixture" }, sampleRate: 24000 });
     expect(events[1]).toMatchObject({ order: 0, revision: 1, text: "synthetic transcript", final: true });
     expect(f.streams[0]!.appended.map(bytes => new DataView(bytes.buffer, bytes.byteOffset).getInt16(0, true))).toEqual([4096, 8192]);
     expect(f.streams[0]!.finishes).toBe(1);
@@ -252,6 +254,166 @@ test("idle timeout is server enforced and cancel releases resources without a tr
     expect(other.events.map(item => item.type)).toEqual(["ready"]);
     expect(f.streams[1]!.cancels).toBe(1);
     expect(f.ctx.state.voice.socketSessions?.size).toBe(0);
+});
+
+test("panel silence survives multiple inline lifetimes but cannot bypass idle or revocation", async () => {
+    jest.useFakeTimers();
+    const f = fixture();
+    const s = await f.localSocket({ mode: "panel" });
+    expect(s.events[0]).toMatchObject({ mode: "panel", settle: true });
+    for (let i = 0; i < 32; i++) {
+        s.send(frame(i, i === 0 ? 4096 : 0));
+        await tick(20_000);
+    }
+    s.send(frame(32));
+    s.send(settle(1));
+    await turns();
+    expect(last(s.events)).toMatchObject({ type: "settled", id: 1, ok: true, throughOrder: 1 });
+    expect(f.streams).toHaveLength(1);
+    expect(f.streams[0]!.commits).toEqual([0, 1]);
+    await tick(30_000);
+    expect(last(s.events)?.code).toBe("timeout");
+    const parked = await f.localSocket({ mode: "panel" });
+    f.row.archived_at = 1;
+    await tick(1_000);
+    expect(last(parked.events)?.code).toBe("readOnly");
+    expect(f.ctx.state.voice.panelSessions?.size).toBe(0);
+});
+
+test("only an authorized panel in a conflicting chat or owner slot takes over", async () => {
+    const f = fixture();
+    f.extraOwners.set("B", OWNER);
+    const a = await f.localSocket({ mode: "panel" });
+    const otherMode = await f.localSocket({ mode: "unknown" });
+    expect(last(otherMode.events)?.code).toBe("protocol");
+    const denied = await f.localSocket({ mode: "panel", agentId: "foreign" });
+    expect(last(denied.events)?.code).toBe("unauthorized");
+    const inline = await f.localSocket({ mode: "inline", agentId: "B" });
+    expect(a.ended()).toBe(false);
+    f.user.id = "other-owner";
+    f.extraOwners.set("C", f.user.id);
+    const independent = await f.localSocket({ mode: "panel", agentId: "C" });
+    f.user.id = OWNER;
+    const b = await f.localSocket({ mode: "panel", agentId: "B" });
+    for (const old of [a, inline]) {
+        expect(last(old.events)?.code).toBe("superseded");
+        old.disconnect();
+    }
+    expect(b.ended()).toBe(false);
+    expect(independent.ended()).toBe(false);
+    expect(f.ctx.state.voice.panelSessions?.size).toBe(2);
+    const nextTab = await f.localSocket({ mode: "panel", agentId: "B" });
+    b.disconnect();
+    expect(last(b.events)?.code).toBe("superseded");
+    expect(last(nextTab.events)?.type).toBe("ready");
+    expect(f.ctx.state.voice.panelSessions?.size).toBe(2);
+});
+
+test("failed authorized panel takeover cannot resurrect an open or delayed predecessor", async () => {
+    const f = fixture();
+    f.extraOwners.set("B", OWNER);
+    f.extraOwners.set("C", OWNER);
+    const a = await f.localSocket({ mode: "panel" });
+    const wait = gate();
+    f.hooks.beforeAccess = () => { delete f.hooks.beforeAccess; return wait.promise; };
+    const b = await f.localSocket({ mode: "panel", agentId: "B" });
+    f.throwOnOpen(new Error(SECRET));
+    const c = await f.localSocket({ mode: "panel", agentId: "C" });
+    wait.resolve();
+    await turns();
+    expect(last(c.events)).toMatchObject({ code: "provider", claimed: true });
+    expect(last(b.events)).not.toHaveProperty("claimed"); // Never passed the initial access check.
+    for (const old of [a, b]) expect(last(old.events)?.code).toBe("superseded");
+    expect(f.ctx.state.voice.panelSessions?.size).toBe(0);
+    expect(f.ctx.state.voice.socketSessions?.size).toBe(0);
+    expect(f.ctx.state.voice.socketCandidates?.size).toBe(0);
+});
+
+const settle = (id: number) => JSON.stringify({ type: "settle", id });
+
+test("many draft cuts follow pre-cut audio, never replay, and keep one authorized stream", async () => {
+    const f = fixture();
+    const s = await f.localSocket({ mode: "panel" });
+    const stream = f.streams[0]!;
+    s.send(settle(1));
+    await turns();
+    expect(last(s.events)).toMatchObject({ type: "settled", ok: true, id: 1, throughOrder: -1 });
+    for (let i = 0; i < 256; i++) {
+        const id = i + 2;
+        s.send(frame(i * 2));
+        s.send(settle(id));
+        s.send(settle(id));
+        s.send(frame(i * 2 + 1, 0));
+        await turns();
+        expect(s.events.slice(-2)).toMatchObject([{ type: "phrase", order: i, final: true }, { type: "settled", id, ok: true, throughOrder: i }]);
+        const count = s.events.length;
+        stream.emit({ type: "final", order: i, text: "late" });
+        s.send(settle(id));
+        await turns();
+        expect(s.events.length).toBe(count);
+    }
+    expect(stream.finishes).toBe(0);
+    expect(stream.commits).toHaveLength(256);
+    expect(f.ctx.state.voice.panelSessions?.size).toBe(1);
+    expect(f.ctx.state.voice.socketCandidates?.size).toBe(0);
+    s.send(control("finish"));
+    await turns();
+    expect(last(s.events)?.type).toBe("completed");
+    expect(f.ctx.state.voice.panelSessions?.size).toBe(0);
+    expect(f.ctx.state.procs.events.subs?.size).toBe(0);
+});
+
+test("terminal finish while a cut is pending drains it without authorizing submission", async () => {
+    const f = fixture();
+    const s = await f.localSocket({ mode: "panel" });
+    const stream = f.streams[0]!;
+    stream.autoFinal = null;
+    s.send(frame(0)); s.send(settle(1));
+    await turns();
+    s.send(control("finish"));
+    await turns();
+    stream.emit({ type: "final", order: 0, text: "last" });
+    await turns();
+    expect(s.events.map(e => e.type)).toEqual(["ready", "phrase", "completed"]);
+    expect(stream.finishes).toBe(1);
+});
+
+test("pending cuts release on access loss or deadline; no late positive acknowledgement", async () => {
+    jest.useFakeTimers();
+    for (const revoke of [true, false]) {
+        const f = fixture();
+        const s = await f.localSocket({ mode: "panel" });
+        const stream = f.streams[0]!;
+        stream.autoFinal = null;
+        s.send(frame(0));
+        s.send(settle(1));
+        await turns();
+        expect(stream.commits).toEqual([0]);
+        if (revoke) f.row.archived_at = 1;
+        await tick(10_000);
+        expect(last(s.events)?.code).toBe(revoke ? "readOnly" : "timeout");
+        stream.emit({ type: "final", order: 0, text: "late" });
+        await turns();
+        expect(s.events.map(e => e.type)).not.toContain("settled");
+        expect(f.ctx.state.voice.panelSessions?.size).toBe(0);
+    }
+});
+
+test("dedicated settlement rejects failed phrases without finishing the healthy stream", async () => {
+    const f = fixture();
+    const s = await f.localSocket({ mode: "panel" });
+    const stream = f.streams[0]!;
+    stream.autoFinal = null;
+    s.send(frame(0)); s.send(settle(1));
+    await turns();
+    stream.emit({ type: "failed", order: 0, message: SECRET });
+    await turns();
+    expect(s.events.slice(-2)).toMatchObject([{ type: "phraseFailed" }, { type: "settled", ok: false, id: 1, throughOrder: 0 }]);
+    expect(s.ended()).toBe(false);
+    expect(JSON.stringify(s.events)).not.toContain(SECRET);
+    const inline = await f.localSocket({ mode: "inline" });
+    inline.send(settle(1));
+    expect(last(inline.events)?.code).toBe("protocol");
 });
 
 test("regular silence keeps the relay alive past idle but cannot extend its original deadline", async () => {

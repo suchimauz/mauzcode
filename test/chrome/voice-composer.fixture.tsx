@@ -1,10 +1,12 @@
 // Only the microphone source is substituted. Chromium runs the real media stream,
 // AudioWorklet, PCM encoder, socket, editor and submission client.
+import { useChatSelection } from '../../frontend/src/hooks/useChatSelection';
 import { createRoot } from 'react-dom/client';
-import { LiveComposer } from '../../frontend/src/components/mauzcode/LiveComposer';
+import { ComposerCoordinator, LiveComposer, useComposerNavigation } from '../../frontend/src/components/mauzcode/LiveComposer';
 
 window.mauzcodeLive = { subscribe: () => () => {} };
 Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => {
+  document.body.dataset.captures = String(Number(document.body.dataset.captures || 0) + 1);
   const context = new AudioContext();
   const oscillator = context.createOscillator();
   oscillator.frequency.value = 440;
@@ -26,7 +28,14 @@ Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () 
   track.stop = () => { stop(); window.removeEventListener('fixture:tone', tone); window.removeEventListener('fixture:marker', marker); oscillator.stop(); void context.close(); };
   return output.stream;
 } });
-const agentId = new URLSearchParams(location.search).get('agent')!;
-createRoot(document.getElementById('root')!).render(<LiveComposer agentId={agentId} running onAccepted={() => {
-  document.body.dataset.accepted = String(Number(document.body.dataset.accepted || 0) + 1);
-}} />);
+const chats = new URLSearchParams(location.search).getAll('agent');
+function Fixture() {
+  const { selected, select } = useChatSelection();
+  const beforeNavigation = useComposerNavigation();
+  const navigate = (id: string) => { if (id !== selected) { beforeNavigation(); select(id); } };
+  return <><nav>{chats.map((id, i) => <button key={id} data-chat={i} onClick={() => navigate(id)}>Chat {i + 1}</button>)}</nav>
+    <LiveComposer key={selected} agentId={selected} running onAccepted={() => {
+      document.body.dataset.accepted = String(Number(document.body.dataset.accepted || 0) + 1);
+    }} /></>;
+}
+createRoot(document.getElementById('root')!).render(<ComposerCoordinator><Fixture /></ComposerCoordinator>);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { changeQueue, enqueueMessage, getQueue, type QueueItem } from '../lib/queue';
 
-export function useMessageQueue(agentId: string, onAccepted: () => void) {
+export function useMessageQueue(agentId: string, onAccepted: () => void, visible = true) {
   const [waitingForInput, setWaitingForInput] = useState(false);
   const [items, setItems] = useState<QueueItem[]>([]);
   const [sending, setSending] = useState<QueueItem | null>(null);
@@ -29,6 +29,7 @@ export function useMessageQueue(agentId: string, onAccepted: () => void) {
     return task.finally(() => { reading.current = null; });
   }, [agentId]);
   useEffect(() => {
+    if (!visible) return;
     mounted.current = true; const controller = new AbortController();
     setWaitingForInput(false); setItems([]); setSending(null); setProcessing(null); setError('');
     void refresh(controller.signal);
@@ -36,7 +37,7 @@ export function useMessageQueue(agentId: string, onAccepted: () => void) {
     const timer = setInterval(poll, 2000);
     document.addEventListener('visibilitychange', poll);
     return () => { mounted.current = false; ++generation.current; controller.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', poll); };
-  }, [refresh]);
+  }, [refresh, visible]);
   const enqueue = async (text: string, requestId: string, files: File[]) => {
     locked.current = true; ++generation.current;
     setSending({ id: requestId, sequence: Infinity, text, version: 0, status: 'pending', createdAt: Date.now(), files: files.map(({ name, size, type }) => ({ name, size, type })) });

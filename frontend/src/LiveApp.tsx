@@ -11,7 +11,7 @@ import { ChatViewport } from './components/layout/ChatViewport';
 import { PageViewport } from './components/layout/PageViewport';
 import { Button } from './components/ui/Button';
 import { CrabMascot } from './components/mauzcode/CrabMascot';
-import { LiveComposer } from './components/mauzcode/LiveComposer';
+import { ComposerCoordinator, LiveComposer, useComposerNavigation } from './components/mauzcode/LiveComposer';
 import { ConnectedPlanningPanel } from './components/mauzcode/ConnectedPlanningPanel';
 import { ConnectedQuestionCard } from './components/mauzcode/ConnectedQuestionCard';
 import { Transcript } from './components/mauzcode/Transcript';
@@ -41,6 +41,16 @@ import { PluginPages } from './components/mauzcode/PluginPages';
 import { ExtensionSurface, ExtensionActionButton } from './extensions/ExtensionHost';
 
 export function LiveApp() {
+  const navigation = useNavigation();
+  // A deep-linked chat need not be listed. Only infer removal after this shell actually saw its membership.
+  const seen = useRef(new Set<string>());
+  const indexed = new Map(navigation.projects.flatMap(p => p.chats.map(c => [c.id, !!(p.archived || c.archived)] as const)));
+  useEffect(() => { for (const id of indexed.keys()) seen.current.add(id); }, [navigation.projects]);
+  const denied = (id: string) => !navigation.loading && !navigation.error && (indexed.get(id) ?? seen.current.has(id));
+  return <ComposerCoordinator denied={denied}><LiveShell navigation={navigation} /></ComposerCoordinator>;
+}
+function LiveShell({ navigation }: { navigation: ReturnType<typeof useNavigation> }) {
+  const leaveComposer = useComposerNavigation();
   const [widthControlTarget, setWidthControlTarget] = useState<HTMLSpanElement | null>(null);
   const pluginUi = usePluginUi();
   const installedExtensions = pluginUi.registry;
@@ -48,7 +58,7 @@ export function LiveApp() {
   const mauzcode = useMauzCode();
   const [historyInputs, setHistoryInputs] = useState<HistoryInput[]>([]);
   const { theme, themeMode, setTheme } = useTheme();
-  const navigation = useNavigation();
+
   const quotas = useQuotas();
   const [draft, setDraft] = useState(readNewSessionDraft);
   const [draftPending, setDraftPending] = useState(false);
@@ -169,7 +179,7 @@ export function LiveApp() {
   const [pageView, setPageViewState] = useState<PageView>(readView);
   const setPageView = (next: PageView) => { setPageViewState(next); const url = new URL(location.href); if (next) url.searchParams.set('view', next); else url.searchParams.delete('view'); history.replaceState(null, '', url); };
   const automation = pageView === 'automation';
-  const openPage = (next: Exclude<PageView, null>) => { setPageView(next); setSheetOpen(false); setMobileView('chat'); };
+  const openPage = (next: Exclude<PageView, null>) => { leaveComposer(); setPageView(next); setSheetOpen(false); setMobileView('chat'); };
   const openAutomation = () => openPage('automation');
   const openPlugins = () => openPage('plugins');
   const extensionContext = { agentId: mauzcode.selected || null, theme, readOnly };
@@ -178,7 +188,7 @@ export function LiveApp() {
   const extensionNavigation = [{ key: 'applications', title: 'Приложения', active: pageView === 'applications', onSelect: () => openPage('applications') }, ...[...installedExtensions.navigation.filter(item => Object.hasOwn(coreGrants, item.key.split('/')[0])), ...installedExtensions.sidebarNavigation].map(item => ({ ...item, active: pageView === `extension:${item.key}`, onSelect: () => openPage(`extension:${item.key}`) }))];
   const pluginPages = installedExtensions.navigation.filter(item => !Object.hasOwn(coreGrants, item.key.split('/')[0])).map(item => ({ ...item, active: pageView === `extension:${item.key}`, onSelect: () => openPage(`extension:${item.key}`) }));
   const sidebarBindingId = new URL(location.href).searchParams.get('sidebarDraft');
-  const selectChat = (id: string) => { if (draftPending) return; setPageView(null); mauzcode.select(id); setSheetOpen(false); setMobileView('chat'); };
+  const selectChat = (id: string) => { if (draftPending) return; if (id !== mauzcode.selected) leaveComposer(); setPageView(null); mauzcode.select(id); setSheetOpen(false); setMobileView('chat'); };
   const startNewSession = (projectId?: string) => {
     if (draftPending) return;
     const last = readSessionSelection();

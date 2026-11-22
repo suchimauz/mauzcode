@@ -302,10 +302,12 @@ describe('voice panel in the live composer', () => {
     await userEvent.click(entry);
     say('a', 0, 0, 'said', true);
     act(() => fake.current.set!({ state: 'error', remainingMs: null, error: { code: 'superseded', message: 'Dictation moved to another tab.' } }));
-    expect(live()).toHaveTextContent('Диктовка перешла в другую вкладку');
+    expect(screen.getByRole('alert')).toHaveTextContent('Диктовка перешла в другую вкладку');
     expect(editor()).toHaveTextContent(/^k said$/);
-    within(panel()).getByRole('button', { name: 'Повторить запись' });
-    key(panel(), ' ');
+    expect(screen.queryByRole('region', { name: 'Голосовой режим' })).toBeNull();
+    const restart = screen.getByRole('button', { name: 'Голосовой режим' });
+    await waitFor(() => expect(restart).not.toHaveAttribute('aria-disabled'));
+    await userEvent.click(restart);
     expect(fake.current.start).toHaveBeenCalledTimes(2);
     expect(live()).toHaveTextContent('Идёт запись');
   });
@@ -394,7 +396,7 @@ describe('voice panel in the live composer', () => {
 
 function controls(state: VoiceCaptureState = 'listening') {
   const f = fake.current;
-  const props: VoicePanelProps = { capture: { ...f.snap, state, support: { ok: true }, session: null, generation: 1, start: f.start, setMuted: f.setMuted, finish: f.finish, cancel: f.cancel },
+  const props: VoicePanelProps = { capture: { ...f.snap, elapsedMs: null, settle: vi.fn(async () => true), state, support: { ok: true }, session: null, generation: 1, start: f.start, setMuted: f.setMuted, finish: f.finish, cancel: f.cancel },
     text: 'три слова', busy: false, canClear: true, canSubmit: true, onToggle: vi.fn(), onClear: vi.fn(), onDeleteWord: vi.fn(), onSend: vi.fn(), onExit: vi.fn() };
   const view = render(<VoicePanel {...props} />);
   return { props, view, button: screen.getByRole('button', { name: 'Удалить последнее слово' }) };

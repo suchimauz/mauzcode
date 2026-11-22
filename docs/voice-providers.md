@@ -38,14 +38,13 @@ Available now:
   selector itself never requests the microphone or opens `/voice/session`;
 - browser capture (`frontend/src/hooks/useVoiceCapture.ts`): secure-context and AudioWorklet
   checks, microphone → AudioWorklet → mono PCM16 frames over one `/voice/session` socket per
-  generation, remaining-time countdown, connected mute/unmute and cleanup on navigation, read-only loss and
-  socket loss;
-- two entry points next to the route selector of an open editable chat, sharing that one capture
-  controller: **inline voice input** at the caret of the ordinary editor and **voice mode**, a panel
-  that temporarily replaces the editor (see [Dictate in a chat](#dictate-in-a-chat));
-- explicit send from either entry point: stop capture, wait for the final words, then submit the
-  draft and attachments using the ordinary send action (the ordinary queue when the chat is busy).
-  Neither entry point sends on silence, mute, or stop.
+  generation, connected mute/unmute, and release on lost access or connection;
+- two entry points next to the route selector: **inline voice input** at the caret, and **voice
+  mode**, a panel bound to the chat that opened it. Leaving the chat stops inline dictation but
+  mutes a connected dedicated panel (see [Dictate in a chat](#dictate-in-a-chat));
+- explicit send from either mode waits for recognition, then uses ordinary send/queue with the
+  draft and attachments. Unlike inline dictation, a dedicated stream stays connected and muted
+  after send. Silence, mute, navigation and stop do not submit a message.
 - per-connection **network routes**: a voice connection can reach its recognizer directly, through a
   saved SOCKS5 proxy or through a pinned SSH tunnel, for model discovery, the connection check and
   live dictation alike (see [Network route](#network-route)).
@@ -71,29 +70,47 @@ browser  ──/voice/session (WebSocket)──▶  MauzCode server  ──wss�
 
 - The browser sends no credentials and receives no vendor events. The API key is read on the server
   and only the server opens the vendor socket.
-- Client to server: one text message `{ "type": "start", agentId, generation }`, then binary frames
-  of mono PCM16 little-endian at the announced rate (24 kHz), 20–100 ms each, prefixed by a 4-byte
-  little-endian sequence number; `{ "type": "finish" }` and `{ "type": "cancel" }` end the session.
-- Server to client: `{ "type": "ready", sessionId, route, destination, sampleRate }` before any
-  transcript, then `phrase` (`id`, `order`, `revision`, complete `text`, `final`), `phraseFailed`,
-  `completed`, and `error` with a code from a closed set: `unauthorized`, `readOnly`,
-  `superseded`, `unconfigured`, `routeUnavailable`, `providerAuth`, `provider`, `timeout`,
-  `backpressure`, `protocol`. Error messages are one fixed sentence each; no vendor payload and no
-  key material can appear in them.
-- The endpoint requires the normal owner session cookie, an exact origin match, the `owner` role and
-  an editable chat owned by that user. One session per owner and chat: a second tab supersedes the
-  first, and a chat that becomes read-only ends the session with `readOnly`.
-- After `ready`, the five-minute session limit runs from the original connection. A separate 30-second
-  idle guard ends the session if no valid audio frames arrive. Other bounds: 16 KiB per frame,
-  1 MiB buffered upstream and 10 seconds to finish. Exceeding a bound ends the session with a visible error.
+- Start once with `{ type: "start", agentId, generation, mode }`. Use `mode: "panel"` for dedicated
+  voice mode or `"inline"` for ordinary dictation. Omission means inline; an unknown mode is a
+  protocol error. `ready` identifies the session, route, destination and sample rate. Use the
+  persistent lifecycle **only** when `ready.mode === "panel"` and `ready.settle === true`.
+  A client on an older relay uses finite dictation and terminal `finish`; it never sends `settle`.
+- Audio frames contain 20–100 ms of mono PCM16 LE at the negotiated rate, prefixed with a
+  four-byte, zero-based little-endian sequence number. The relay forwards `phrase` (`id`, `order`,
+  `revision`, complete `text`, `final`) and recoverable `phraseFailed` events after `ready`.
+- On explicit Send in dedicated mode, the client first waits for the audio thread to acknowledge
+  the mute cut and drain pre-cut audio. It then sends `{ type: "settle", id }` on the same socket
+  (`id` starts at 1 and increases per boundary). The relay serializes the boundary with appends
+  and delivers its final phrase events **before** `{ type: "settled", id, ok, throughOrder }`.
+  `throughOrder` is the last covered phrase order, inclusive, or `-1` for no phrases. A repeated
+  request cannot create another boundary. Only a matching successful response permits ordinary
+  submission; neither it nor a recoverable phrase failure closes a healthy stream. Terminal
+  `finish` drains and reports `completed`; `cancel` discards the run without sending a message.
+- The endpoint requires the owner session cookie, an exact origin match, the `owner` role and an
+  editable chat owned by that user. There is one run per (owner, chat) and at most one dedicated
+  run per owner across chats and tabs. An authorized start supersedes conflicting runs before it
+  accepts audio, using the **new** chat’s route. Visiting a chat, a refused start, another owner,
+  or inline dictation in a different chat cannot take over. Loss of edit access also ends a
+  parked run. If provider setup fails after the relay took the dedicated lease, its terminal
+  error includes `claimed: true`. The client discards older pending starts rather than silently
+  reviving them. A refusal before the claim leaves the previous session alone.
+- **Lifetime is not liveness.** Only inline/legacy sessions have a five-minute limit from `ready`.
+  Both modes time out after 30 seconds without a valid audio frame. The relay also limits control
+  messages to 1 KiB, frames (including header) to 16 KiB and buffered audio and outgoing data to
+  1 MiB; at most 1,024 replies may wait for an access check. The relay rechecks access on
+  invalidation and every second, failing closed if a check takes over 5 s. Opening times out
+  after 30 s, and draft settlement and terminal finish are bounded (10 s on the server).
+  A stalled client, broken network or provider-imposed limit can end a dedicated run.
+  Errors carry sanitized codes: `unauthorized`, `readOnly`, `superseded`, `unconfigured`,
+  `routeUnavailable`, `providerAuth`, `provider`, `timeout`, `backpressure` or `protocol`.
 
 In the dedicated panel, mute disables the microphone track but keeps the audio graph, browser socket,
 provider stream and draft generation. The worklet drains the known pre-mute tail and, on the audio
 render clock, generates **zero-valued PCM frames**, even with no input channel. These are ordinary
 sequenced frames, not a keepalive message: the relay stays active and can finish recognizing speech
-from before mute. Muted microphone sound is neither transmitted nor saved for unmute. Unmuting
-resumes fresh input on the same sequence and countdown. A suspended client that sends no frames can
-still hit the idle guard; continuous silence does not extend the five-minute limit.
+from before mute. Muted microphone sound is neither transmitted nor saved for unmute. Returning
+from another chat does not unmute. Explicit unmute resumes fresh input on the same sequence;
+valid digital silence renews the idle guard, but cannot extend an inline/legacy age limit.
 
 `useVoiceCapture` opens a new socket and generation only on an explicit start after a run has ended.
 No terminal event (including loss of access, timeout or supersession) automatically restarts the mic.
@@ -108,18 +125,22 @@ be processed before you do. Neither control is shown in a new-session or read-on
 **Inline voice input** (microphone icon after the context indicator). Click once to start dictating
 at the caret of the message field; click again to stop. The last phrase is finalized, the text stays
 editable and nothing is sent. Interim words are replaced in place as recognition improves; once you
-edit a recognized word yourself, later corrections of that phrase are ignored.
+edit a recognized word yourself, later corrections of that phrase are ignored. Leaving the chat
+stops inline capture; explicitly sending from inline capture finalizes and closes the run.
 
-**Voice mode** (waveform icon). Replaces the message field with a panel that shows the recording
-state, the remaining time of the five-minute session and the message text, and starts recording at
-the caret. It edits the same draft and keeps your attachments. With focus on the frame or transcript:
+**Voice mode** (waveform icon). The panel shows your draft and elapsed connection time and starts
+recording at the caret. Opening another chat immediately mutes the microphone, even during setup.
+The other chat has its own editor. Return to the original chat to see the same panel, words and
+attachments, still muted; only **Unmute** resumes listening. A late result from before the switch
+can revise only its original draft. Explicitly starting voice mode elsewhere replaces the previous
+session; it does not transfer text or files. With focus on the frame or transcript:
 
 | Key | Button | Effect |
 | --- | --- | --- |
-| Space | Mute / Unmute microphone | Turns the microphone off or on without reconnecting. The waveform stops while muted, but the countdown continues and earlier speech can still be finalized in place. After the run ends, the control offers an explicit new start or retry. |
+| Space | Mute / Unmute microphone | Toggles the microphone on the same connection. While muted, the waveform stops and elapsed time continues; earlier speech can still finalize in place. |
 | Backspace | Delete last word (click or tap) | Removes the last unedited dictated word in draft order, including its trailing punctuation. Late revisions cannot restore it. |
 | Ctrl+Backspace | Hold the same button for 600 ms | Clears all unedited dictation in this draft, from inline input and earlier panel visits too. Typed text, manually corrected phrases and attachments survive both delete actions. |
-| Enter | Send | From listening or mute, ends capture and waits for the final words before sending the text and attachments once through the ordinary send/queue path. After acknowledgement the panel stays open with an empty draft and the mic off; there is no live session. |
+| Enter | Send | From listening or mute, mutes the mic, settles the final words and submits text and attachments once through ordinary send/queue. Acknowledgement clears that draft; the healthy session stays connected and muted, ready for explicit unmute. |
 | Escape | Exit | Stops recording and returns focus to the message field with the visible text, without sending. Clicking the voice mode icon again does the same. |
 
 For example, if you typed `Note:` then dictated `хорошая погода сегодня!`, a tap removes `сегодня!`,
@@ -127,16 +148,20 @@ leaving `Note: хорошая погода`. A hold clears the rest of the dicta
 operation changes whether the mic is muted. Desktop tooltips list the shortcuts; touch help describes
 tap and hold instead. A held button does not delete another word on release.
 
-If recognition fails during send, nothing is submitted. Review the visible text (Exit to edit),
-then explicitly send again. If the message acknowledgement is lost, retrying the unchanged draft
-uses the same request key and endpoint, including its attachments while the page stays open.
+One browser deadline covers both the microphone cut and recognition. If either fails, nothing
+is submitted; the text and attachments stay for review. A late acknowledgement cannot authorize
+a send. If the provider reports a failed phrase, exit voice mode to review the text and send it
+from the ordinary editor; the failed draft cannot authorize submission. If recognition succeeds
+but ordinary submission is uncertain, an explicit retry of the
+unchanged draft reuses its request key and endpoint, including attachments while the page stays
+open. An actual disconnect closes the panel; its reason (and error ID, if available) appears in
+that chat’s input, not whichever chat happens to be on screen. There is no automatic reconnect.
 
 The shortcuts work only while focus is on the panel itself or its message text, never for typing
 elsewhere. A focused button inside the panel keeps its own keys — Space and Enter press it and Escape
 does nothing there; use the Exit button to leave. Text fields keep all their keys. Screen readers hear
-state and time updates rather than each new word; the transcript can be read by navigating to it.
-Opening dictation for the same chat in another tab stops this run with a visible notice; the draft
-stays, but recording again requires a new start.
+state changes, not ticking time or dictated words; the transcript and elapsed time can be read on
+demand. Exit or leaving the page releases the microphone. Neither sends the draft.
 
 ### Look up a dictation error
 
@@ -314,8 +339,9 @@ These rules follow the OpenAI Realtime transcription behaviour observed with `gp
   and replays them once `input_audio_buffer.committed` binds the item to its phrase. You therefore
   see a phrase's text right after its commit, not while you are still speaking.
 - **Binding.** Each acknowledgement binds to the oldest pending commit. `previous_item_id` is
-  ignored; only an acknowledgement with no pending commit, a repeated item ID or an overflowing
-  early buffer ends the session as `sequenceMismatch`.
+  ignored. An acknowledgement with no pending commit, a live or recently completed item ID, or an
+  overflowing early buffer ends the session as `sequenceMismatch`. Completed text is discarded;
+  the adapter keeps only the last 128 completed IDs to suppress duplicate or late events.
 - **100 ms minimum.** The service rejects commits with less than 100 ms of audio. A shorter spoken
   tail is padded with silence up to 100 ms; a commit with no audio sends nothing and settles an
   empty phrase locally. Audio is always sent as whole PCM16 samples.
@@ -487,6 +513,13 @@ Report through `session.emit`:
 - for `turnDetection: "server"`, first a `{ type: "committed", turnId, endByte }` boundary per turn
   and then that turn's revisions/final with the same `turnId`.
 
+A draft boundary is **not** `VoiceStream.finish()`. The adapter must report finals while the
+stream is open; waiting until `finish()` would make the first dedicated Send time out. Core
+flushes a client-detected speech tail, not silence, and waits for outstanding phrase orders. For
+provider-detected turns, a missing boundary notification is not evidence of uncommitted speech:
+a turn may already be closed upstream. Report `endByte` and the final even if they arrive after
+Send. Without confirmed coverage before the deadline, the relay cannot acknowledge success.
+
 Terminal failures go through `session.fail({ code, message })` with a code from the closed set.
 Core sanitizes the message before any client sees it. For the owner's error journal a failure (passed
 to `fail` or thrown from `open`/`append`/`commit`/`finish`) may also carry `diagnosticCause`
@@ -521,15 +554,13 @@ export default {
             : { status: "unavailable", reason: "bad-key", message: "Fixture only", checkedAt: Date.now() };
     },
     async open(_ctx, _conn, session) {
-        const pending: number[] = [];
         return {
             async append() {},
-            async commit(order) { pending.push(order); },
-            async finish() {
-                for (const order of pending) session.emit({ type: "final", order, text: `phrase ${order + 1}` });
-                pending.length = 0;
+            async commit(order) {
+                session.emit({ type: "final", order, text: `phrase ${order + 1}` });
             },
-            async cancel() { pending.length = 0; },
+            async finish() {}, // No outstanding recognition or external resources in this fixture.
+            async cancel() {},
         };
     },
 } satisfies types.voice.ProviderDefinition;
@@ -577,19 +608,19 @@ stream. `src/voice/$voiceProvider_openai-realtime.ts` is the reference implement
 This page was checked against the code, not only against the design notes:
 
 - the minimal provider example above was transpiled and registered through the real
-  `$loader_voiceProvider.ts`, then driven: one commit produced exactly one final, and a declaration
-  with an invalid `destination` was rejected with a shape message containing no value;
+  `$loader_voiceProvider.ts`, then driven: two commits produced two finals on the same open stream,
+  and a declaration with an invalid `destination` was rejected with a shape message containing no value;
 - the setup snippet above was executed against an isolated test database: `voice.create` returned a
   view where the secret field appears only as present, and `voice.resolveRoute` returned the route,
   the `cloud` destination label and sample rate 24 kHz without any key material;
 - `voice.defaultRoute` was confirmed to be a declared `string` setting on the owner-only declared
   settings page, to store a valid route and to reject a credential-bearing URL;
-- `bun test src/voice/providers.test.ts src/voice/openaiRealtime.unit.test.ts` — 25 pass;
-- `bun test src/voice/openaiRealtime.it.test.ts` — 17 pass, including the shared provider contract
-  against the fake Realtime server and the connection test that sends no audio;
-- `bun test src/voice/socket.test.ts` — 13 pass for the endpoint itself (origin and ownership
-  refusals, read-only loss, frame and queue bounds, sequence gaps, idle and five-minute limits,
-  takeover, sanitized provider errors);
+- `bun test ./src/voice/providers.test.ts ./src/voice/openaiRealtime.unit.test.ts` tests the
+  provider declaration and the built-in adapter;
+- `bun test ./src/voice/openaiRealtime.it.test.ts` runs the provider contract against the fake
+  Realtime server and checks a connection without sending audio;
+- `bun test ./src/voice/socket.test.ts` checks access and takeover races, frame and queue limits,
+  age versus idle time with a fake clock, repeated boundaries, ordered acknowledgements and cleanup;
 - `bun test src/voice/registryReload.test.ts` — 2 pass for real boot discovery, isolation of a broken
   declaration in the same pass, and unload when the last declaration disappears;
 - `bun test src/voice/httpApi.test.ts` — 10 pass for the settings API: owner/CSRF/origin refusals,
@@ -602,16 +633,15 @@ This page was checked against the code, not only against the design notes:
   — the Voice tab and chat selector, including the unconfigured state, with spies proving that
   neither `getUserMedia` nor a `WebSocket` is called;
 - `bun run frontend:test -- frontend/src/test/voice-panel.test.tsx frontend/src/test/inline-dictation.test.ts`
-  — voice mode through the real `LiveComposer` with a fake capture controller (no microphone,
-  socket or network): one controller for both modes, focus into the panel and back to the editor,
-  mute/unmute with Space, pre-mute revisions accepted and cancelled generations ignored, word and
-  full dictation deletion keeping typed text, corrections and attachments, keys ignored outside the panel and on its
-  buttons and text fields, one polite live region carrying only state changes and
-  the 1 min / 10 s thresholds, read-only loss and chat switch;
+  — keyboard, focus, mute/unmute, word and full dictation deletion without touching typed text,
+  corrections or attachments, and accessible panel state on fine and coarse pointers;
 - `bun run frontend:test -- frontend/src/test/voice-submission.test.tsx` — both entry points through
   `LiveComposer`, synthetic media, a local voice socket double and mocked HTTP: final words and
   attachments, ordinary send vs queue, duplicate Enter, stale sessions, failed recognition, stable
-  retries and a disconnected panel after acknowledgement.
+  retries, dedicated Send staying connected, and terminal finish for a legacy relay;
+- `bun test ./src/voice/composer.browser.it.test.ts` exercises Chromium, the real AudioWorklet,
+  relay and OpenAI adapter against two editable fixture chats and a loopback provider. It counts
+  ordinary submissions and live streams, and checks the actual PCM for muted microphone samples.
 
 These frontend checks use neither a real microphone nor a live provider.
 
