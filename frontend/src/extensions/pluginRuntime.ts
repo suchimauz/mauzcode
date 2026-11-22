@@ -18,28 +18,61 @@ export type PluginUiState = Readonly<{
 }>;
 type Importer = (url: string) => Promise<{ default?: unknown }>;
 
+export type PluginRetryOptions = {
+  /** First retry delay in ms. @default 1000 */ baseMs?: number;
+  /** Largest retry delay in ms. @default 30000 */ maxMs?: number;
+  /** Jitter source in [0, 1); the delay grows by up to 20%. @default Math.random */ random?: () => number;
+  /** Timer hooks, injectable for tests. */ setTimer?: (run: () => void, ms: number) => unknown; clearTimer?: (timer: unknown) => void;
+};
+
 const browserImport: Importer = url => import(/* @vite-ignore */ url);
 
+/** Auth failures and aborts are not transient: retrying would not help. */
+function retryable(error: unknown): boolean {
+  if ((error as { name?: string })?.name === 'AbortError') return false;
+  const status = (error as { status?: unknown })?.status;
+  return status !== 401 && status !== 403;
+}
+
 /** Runtime registry: built-in surfaces plus approved plugin bundles from /plugins/ui/manifest.
- * Plugins are validated one by one, so a broken plugin is reported and skipped. */
-export function createPluginRuntime(options: { importer?: Importer; fetchManifest?: (signal: AbortSignal) => Promise<PluginUiManifest> } = {}) {
+ * Plugins are validated one by one, so a broken plugin is reported and skipped.
+ * A failed manifest request or bundle download is retried with capped exponential backoff,
+ * keeping the last good registry meanwhile; validation failures are never retried. */
+export function createPluginRuntime(options: { importer?: Importer; fetchManifest?: (signal: AbortSignal) => Promise<PluginUiManifest>; retry?: PluginRetryOptions } = {}) {
   const importer = options.importer ?? browserImport;
   const fetchManifest = options.fetchManifest ?? (signal => requestJson<PluginUiManifest>('/plugins/ui/manifest', { signal }));
+  const baseMs = options.retry?.baseMs ?? 1000, maxMs = options.retry?.maxMs ?? 30000, random = options.retry?.random ?? Math.random;
+  const setTimer = options.retry?.setTimer ?? ((run, ms) => setTimeout(run, ms)), clearTimer = options.retry?.clearTimer ?? (timer => clearTimeout(timer as ReturnType<typeof setTimeout>));
   const modules = new Map<string, { hash: string; extension: UiExtension }>();
   let state: PluginUiState = { registry: createExtensionRegistry(coreExtensions, coreGrants), applications: { ...coreApplications }, errors: {}, loaded: false };
   const listeners = new Set<() => void>();
   let controller: AbortController | undefined;
   let generation = 0;
+  let attempt = 0;
+  let retryTimer: unknown;
+  let retryPending = false;
+  let stopped = false;
 
   const emit = () => { for (const listener of listeners) listener(); };
+  const cancelRetry = () => { if (retryPending) clearTimer(retryTimer); retryPending = false; retryTimer = undefined; };
+  function scheduleRetry() {
+    cancelRetry();
+    if (stopped) return;
+    const delay = Math.min(maxMs, baseMs * 2 ** attempt) * (1 + 0.2 * random());
+    attempt++;
+    retryPending = true;
+    retryTimer = setTimer(() => { retryPending = false; retryTimer = undefined; void refresh(); }, Math.min(maxMs, Math.round(delay)));
+  }
   async function refresh(): Promise<PluginUiState> {
     const current = ++generation;
+    cancelRetry();
     controller?.abort(); controller = new AbortController();
     let manifest: PluginUiManifest;
     try { manifest = await fetchManifest(controller.signal); }
     catch (error) {
       if (current !== generation || (error as { name?: string })?.name === 'AbortError') return state;
       state = { ...state, loaded: true, errors: { ...state.errors, manifest: error instanceof Error ? error.message : String(error) } };
+      if (retryable(error)) scheduleRetry();
       emit(); return state;
     }
     if (manifest?.apiVersion !== 1 || !Array.isArray(manifest.plugins)) manifest = { apiVersion: 1, plugins: [] };
@@ -48,12 +81,17 @@ export function createPluginRuntime(options: { importer?: Importer; fetchManifes
     const applications: Record<string, string> = { ...coreApplications };
     const errors: Record<string, string> = {};
     const icons: Record<string, string | null> = {};
+    let loadFailed = false;
+    // A retried URL gets a query so the browser does not reuse a cached failed module fetch.
+    const retryQuery = attempt > 0 ? `?retry=${attempt}` : '';
     await Promise.all(manifest.plugins.map(async entry => {
       try {
         const cached = modules.get(entry.name);
         let extension = cached?.hash === entry.hash ? cached.extension : undefined;
         if (!extension) {
-          const module = await importer(entry.url);
+          let module: { default?: unknown };
+          try { module = await importer(entry.url + retryQuery); }
+          catch (error) { loadFailed = true; throw error; }
           extension = module?.default as UiExtension;
           if (!extension || typeof extension !== 'object' || extension.id !== entry.name) throw new Error(`UI extension id must equal plugin name ${entry.name}`);
           if (Object.hasOwn(coreGrants, extension.id)) throw new Error(`Plugin ${entry.name} cannot replace a built-in surface`);
@@ -72,9 +110,12 @@ export function createPluginRuntime(options: { importer?: Importer; fetchManifes
       registry = createExtensionRegistry(coreExtensions, coreGrants); errors.registry = error instanceof Error ? error.message : String(error);
     }
     state = { registry, applications, errors, loaded: true };
+    if (loadFailed) scheduleRetry(); else attempt = 0;
     emit(); return state;
   }
   let stopLive: (() => void) | undefined;
+  const refreshIfRetrying = () => { if (retryPending) void refresh(); };
+  const onVisibility = () => { if (typeof document !== 'undefined' && document.visibilityState === 'visible') refreshIfRetrying(); };
   return {
     getState: () => state,
     refresh,
@@ -82,14 +123,23 @@ export function createPluginRuntime(options: { importer?: Importer; fetchManifes
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
-    /** Load once and follow plugins.changed (and reconnect resync) without a page reload. */
+    /** Load once and follow plugins.changed (and reconnect resync) without a page reload.
+     * While a retry is pending, coming back online or to a visible tab refreshes at once. */
     start() {
       if (stopLive) return;
+      stopped = false;
       installHostRuntime();
+      if (typeof window !== 'undefined') window.addEventListener('online', refreshIfRetrying);
+      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
       void refresh();
       stopLive = subscribeLive({ name: 'plugin-ui-runtime', types: ['plugins.changed'], onEvent: () => { void refresh(); }, resync: () => { void refresh(); }, onError: error => console.warn('Plugin UI live updates unavailable', error) });
     },
-    stop() { stopLive?.(); stopLive = undefined; controller?.abort(); },
+    stop() {
+      stopped = true; cancelRetry();
+      if (typeof window !== 'undefined') window.removeEventListener('online', refreshIfRetrying);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
+      stopLive?.(); stopLive = undefined; controller?.abort();
+    },
   };
 }
 
