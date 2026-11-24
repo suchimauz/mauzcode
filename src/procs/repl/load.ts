@@ -3,6 +3,8 @@
 //   ctx.fns.procs.repl.load({ name: "project" })       → reload whole module
 //   ctx.fns.procs.repl.load({ name: "genTypes" })      → reload a root $name.ts fn
 import { bindSelf, collectStateFile, isLoaded, setPath, source } from "../boot/load";
+// mauzcode: recheck at the import boundary, independently of the scan's snapshot.
+import skillData from "../project/skillData";
 
 /**
  * Load the repl subsystem operation.
@@ -17,7 +19,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { n
         const segs = target.split('.');
         const fnName = segs.pop()!;
         const modPath = segs.join('/');
-        await loadFile(ctx, modPath, fnName);
+        await loadFile(ctx, modPath, fnName, entries);
         scheduleDocsIndex(ctx);
         return { reloaded: target };
     }
@@ -32,7 +34,8 @@ export default async function (ctx: Context, _session: Session | null, opts: { n
             // loader just (re)sets a keyed entry; routes have http.loadRoutes, crons and plugins own
             // schedules and mounts and keep their explicit reloads.
             if (!HOT_KINDS.has(entry.kind) || !isLoaded(ctx, entry.kind)) continue;
-            await collectStateFile(ctx, entry, (entry as any).abs);
+            if (skillData(ctx, null, { path: entry.abs }).blocked) continue;
+            await collectStateFile(ctx, entry, entry.abs);
             others.push((entry as any).rel);
             continue;
         }
@@ -53,14 +56,11 @@ function scheduleDocsIndex(ctx: Context): void {
 }
 
 
-async function loadFile(ctx: Context, modPath: string, fnName: string, all?: any[]) {
-    // Look the fn up by its dotted registry path in the scan (which knows the
-    // real abs path) — works for src AND module files (which live outside src/).
-    // A namespace reload passes the entries it already scanned: a fresh scan
-    // PER FILE turns a 64-fn module into a ~20-minute wait.
-    const entries = all ?? await ctx.fns.procs.project.scan({});
-    const e = entries.find((x: any) => x.kind === 'fn' && x.moduleDir === modPath && x.runtimeName === fnName);
-    if (!e) throw new Error(`no file for ${modPath}/${fnName}`);
+async function loadFile(ctx: Context, modPath: string, fnName: string, entries: Awaited<ReturnType<Context['fns']['procs']['project']['scan']>>) {
+    // Reuse the caller's scan for the whole namespace; recheck the selected
+    // path just before import in case its target has changed since that scan.
+    const e = entries.find(x => x.kind === 'fn' && x.moduleDir === modPath && x.runtimeName === fnName);
+    if (!e || skillData(ctx, null, { path: e.abs }).blocked) throw new Error(`no file for ${modPath}/${fnName}`);
     const m = await import((e as any).abs + `?t=${Date.now()}`);
     const fn = m.default;
     if (typeof fn !== 'function') throw new Error(`${(e as any).rel}: no default function export`);

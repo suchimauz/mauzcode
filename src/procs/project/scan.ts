@@ -1,29 +1,14 @@
 import { Glob } from "bun";
 import { resolve } from "node:path";
-import { realpath } from "node:fs/promises";
 import classify from "./classify";
+// mauzcode: bootstrap scans before the function registry exists.
+import skillData from "./skillData";
 import type { ProjectEntry } from "./classify";
 
 // Directory segments that are runtime/test/scratch — never part of the app.
 const IGNORED_SEGMENT = /^(_runtime|_test_.*|_tmp_.*|tmp|tmp_.*|node_modules)$/;
 function isIgnoredPath(rel: string): boolean {
     return rel.split('/').some(seg => IGNORED_SEGMENT.test(seg));
-}
-
-// One realpath syscall per file is the whole cost of a scan on ext4 (~7ms ×
-// thousands of files ≈ 20s), and repl.load rescans per file it reloads — a
-// namespace reload was minutes of nothing but realpath. A path resolves to
-// the same target for the life of a process (result-store symlinks are unique
-// per result) and the glob itself only lists files that exist, so resolve
-// each path once per process.
-const REALPATH_CACHE = new Map<string, string>();
-async function cachedRealpath(p: string): Promise<string> {
-    let c = REALPATH_CACHE.get(p);
-    if (c === undefined) {
-        c = await realpath(p).catch(() => p);
-        REALPATH_CACHE.set(p, c);
-    }
-    return c;
 }
 
 export type ScanEntry = ProjectEntry & { root: string; rootDir: string; namespace: string; module: string; projectRel: string; abs: string; fn?: any };
@@ -36,9 +21,11 @@ export default async function (ctx: Context, session: Session | null, _opts?: {}
     // ctx.fns.procs.modules.discover may not be registered yet on the first bootstrap
     // pass (loadFns calls scan to populate the registry) — fall back to a
     // direct import (raw call, explicit args).
-    const modules = (ctx.fns.procs as any)?.modules?.discover
+    const discovered: Awaited<ReturnType<Context["fns"]["procs"]["modules"]["discover"]>> = ctx.fns.procs?.modules?.discover
         ? await ctx.fns.procs.modules.discover({})
         : await (await import("../modules/discover?t=" + Date.now())).default(ctx, session, {});
+    // mauzcode: even an explicitly mounted source root cannot expose this data tree.
+    const modules = discovered.filter(root => !skillData(ctx, session, { path: resolve(root.dir) }).blocked);
     // The namespaces this process already has from trees that are NOT somebody
     // else's project — the framework, the host's own src, the libraries it
     // ships. They are the host's url space, and a supervised project is allowed
@@ -46,7 +33,10 @@ export default async function (ctx: Context, session: Session | null, _opts?: {}
     const hostNamespaces = new Set<string>();
     for (const root of modules) {
         if (root.prefix) continue;
-        for await (const rel of new Glob("*/").scan({ cwd: root.dir, onlyFiles: false })) hostNamespaces.add(rel.replace(/\/$/, ""));
+        for await (const rel of new Glob("*/").scan({ cwd: root.dir, onlyFiles: false })) {
+            // mauzcode: package folders are not host namespaces for prefixed routes.
+            if (!skillData(ctx, session, { path: resolve(root.dir, rel) }).blocked) hostNamespaces.add(rel.replace(/\/$/, ""));
+        }
     }
 
     const entries: ScanEntry[] = [];
@@ -65,8 +55,9 @@ export default async function (ctx: Context, session: Session | null, _opts?: {}
             if (isIgnoredPath(rel0)) continue;
             const absolute = resolve(root.dir, rel0);
             if ((absolute + '/').includes('/.mauzcode/results/')) continue;
-            const canonical = await cachedRealpath(absolute);
-            if ((canonical + '/').includes('/.mauzcode/results/')) continue;
+            // mauzcode: check the current target; a cached realpath can admit a retargeted alias.
+            const { blocked, canonical } = skillData(ctx, session, { path: absolute });
+            if (blocked || (canonical + '/').includes('/.mauzcode/results/')) continue;
             // A template's own placeholder, in the PATH. Provisioning fills
             // `{{project}}` into a new workspace's name — including in file names
             // — but a template mounted where it stands (the EHR's demo apps are
