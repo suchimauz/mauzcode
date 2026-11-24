@@ -5,6 +5,10 @@ function selectedFromUrl() {
   return searchParams.get('newSession') === '1' ? '' : searchParams.get('agent') || '';
 }
 
+function standalone() {
+  return window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
+
 /** Sidebar selections add history entries; Back/Forward restore the selection without adding another. */
 export function useChatSelection() {
   const [selected, setSelected] = useState(selectedFromUrl);
@@ -15,7 +19,8 @@ export function useChatSelection() {
     const url = new URL(location.href);
     if (id) { url.searchParams.delete('newSession'); url.searchParams.set('agent', id); url.searchParams.delete('new'); }
     else { url.searchParams.delete('agent'); url.searchParams.set('new', '1'); }
-    history.pushState(null, '', url);
+    // A Home Screen app has no Back button, only the edge swipe that collides with Canvas/menu gestures.
+    if (standalone()) history.replaceState(null, '', url); else history.pushState(null, '', url);
     apply(id);
   }, [apply]);
   useEffect(() => {

@@ -14,6 +14,12 @@ import './styles/message-input.css';
 // iOS Safari ignores user-scalable=no, so block pinch zoom explicitly.
 for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
 
+// iOS (Safari and Home Screen apps) claims edge swipes for history Back/Forward. A non-passive
+// touchstart cancelled on our own edge strips keeps the gesture for opening Canvas or the menu.
+document.addEventListener('touchstart', (e) => {
+  if (e.target instanceof Element && e.target.closest('.edge-swipe, .sheet-swipe-area')) e.preventDefault();
+}, { passive: false });
+
 // Mobile keyboard: size the app to the visible viewport and keep the page pinned,
 // so the composer stays right above the keyboard without manual scrolling.
 const viewport = window.visualViewport;
