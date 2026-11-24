@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CrabMascot } from '../components/mauzcode/CrabMascot';
@@ -43,6 +45,11 @@ describe('mascot in the composer status row', () => {
     // The perch directly precedes the boundary whose first anchored row is the status row: CSS lowers the pet into it.
     expect(perch.nextElementSibling!.firstElementChild!.firstElementChild).toBe(row);
     expect(perch.querySelector('.crab-window')).toHaveAttribute('aria-hidden', 'true');
+  });
+  it('lowers the perch when the live composer is portalled into its display:contents outlet', async () => {
+    const css = readFileSync(resolve(__dirname, '../components/mauzcode/composer-footer.css'), 'utf8');
+    // Real shape: ComposerCoordinator portals the boundary into .composer-outlet, so the perch's sibling is the outlet.
+    expect(css).toContain('.question-pet-perch:has(+ .composer-outlet > .composer-readonly-boundary > .composer-input-anchor > .composer-status-row:first-child)');
   });
   it('renders no status row without a mode, so the pet keeps its place', async () => {
     const { ComposerStatusRow } = await import('../components/mauzcode/ComposerStatusRow');

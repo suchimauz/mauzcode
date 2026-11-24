@@ -4,8 +4,10 @@
 @media (pointer: coarse) { :root { --composer-status-row: 44px; } }
 .composer-status-row { display:flex; align-items:center; gap:6px; height:var(--composer-status-row); margin:0 0 6px; padding:0 112px 0 4px; min-width:0; overflow:hidden; }
 /* The pet stays perched above the composer stack; when the status row is the stack's first visible row it steps down
-   into the row's right end, so the row adds no height beyond the pet. Any card or dock in between keeps it on top. */
+   into the row's right end, so the row adds no height beyond the pet. Any card or dock in between keeps it on top.
+   With the composer registry the boundary is portalled into a `display:contents` .composer-outlet; match both shapes. */
 .question-pet-perch:has(+ .composer-readonly-boundary > .composer-input-anchor > .composer-status-row:first-child),
+.question-pet-perch:has(+ .composer-outlet > .composer-readonly-boundary > .composer-input-anchor > .composer-status-row:first-child),
 .composer-input-anchor > .composer-pet-slot:has(+ .composer-status-row) { transform:translateY(calc(var(--composer-status-row) + 6px)); }
 .composer-pet-slot { position:relative; height:0; }
 /* Footer: one metrics row below the input — usage left, context right; two hover targets, one shared panel.
