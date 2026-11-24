@@ -308,6 +308,10 @@ export default function (
             "classification": "creator",
             "patterns": []
         },
+        "skills": {
+            "classification": "internal",
+            "patterns": []
+        },
         "socksProxy": {
             "classification": "creator",
             "patterns": []
