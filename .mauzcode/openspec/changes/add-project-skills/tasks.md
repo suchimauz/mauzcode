@@ -7,7 +7,7 @@ Implementation backlog for separate approval. No checkbox represents creation of
 ## 1. Package format and safe roots
 
 - [x] 1.1 Implement Agent Skills frontmatter validation and source-qualified IDs (`skill.workspace[.<root>]`, `skill.server.project`, `skill.server.global`, `skill.plugin.<plugin>`) with default source labels. Unit-test required/optional fields, valid digit-leading skill names, directory-name mismatches, qualified collisions, and rejection without shadowing another package.
-- [ ] 1.2 Implement bounded package discovery, manifest/resource reading and safe canonical root checks. Test traversal, symlinked parents/resources, special files, size/count limits, and isolation of one malformed package. Document the limits alongside a minimal portable package.
+- [x] 1.2 Implement bounded package discovery, manifest/resource reading and safe canonical root checks. Test traversal, symlinked parents/resources, special files, size/count limits, and isolation of one malformed package. Document the limits alongside a minimal portable package.
 - [ ] 1.3 Separate package data from runtime registration. Verify cold discovery and reload against a workspace package containing TypeScript and declaration-shaped resources; an overlapping custom root is rejected without suppressing legitimate runtime modules.
 
 ## 2. Source adapters and catalogue
