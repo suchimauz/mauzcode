@@ -19,8 +19,8 @@ Implementation backlog for separate approval. No checkbox represents creation of
 
 ## 3. Permissions
 
-- [ ] 3.1 Add core functions `skills.list` and `skills.read`, the shared session/project read policy and the explicit Standard grant for both. Verify Standard, Creator, Minimal, explicit custom readers, unchanged pre-upgrade snapshots, intersected parent rules and identical project paths on different hosts. Document the effective preset matrix.
-- [ ] 3.2 Enforce individual plugin enablement in addition to an effective plugin grant. Test all gate combinations, wildcard rejection, disabled exports invisible to normal discovery, and read/dispatch denial for guessed IDs.
+- [x] 3.1 Add core functions `skills.list` and `skills.read`, the shared session/project read policy and the explicit Standard grant for both. Verify Standard, Creator, Minimal, explicit custom readers, unchanged pre-upgrade snapshots, intersected parent rules and identical project paths on different hosts. Document the effective preset matrix.
+- [x] 3.2 Enforce individual plugin enablement in addition to an effective plugin grant. Test all gate combinations, wildcard rejection, disabled exports invisible to normal discovery, and read/dispatch denial for guessed IDs.
 
 ## 4. Reading and scripts
 

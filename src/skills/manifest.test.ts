@@ -256,10 +256,10 @@ describe('skills qualified identity', () => {
 });
 
 describe('skills public shape', () => {
-    test('the catalogue registers skills as internal without grants', async () => {
+    test('the catalogue grants Standard only the two skill readers', async () => {
         const ctx = await testCtx();
         const catalogue = ctx.fns.agentPreset.coreCatalogue({});
-        expect(catalogue.skills).toEqual({ classification: 'internal', patterns: [] });
+        expect(catalogue.skills).toEqual({ classification: 'standard', patterns: ['skills.list', 'skills.read'] });
         expect(catalogue.skill).toEqual({ classification: 'creator', patterns: [] });
     });
 });
