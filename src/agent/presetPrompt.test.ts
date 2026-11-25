@@ -175,7 +175,8 @@ test("fixed-fixture prompt budgets preserve historical before measurements and n
     // Standard grew past the old 17,500 limit when it gained plugins and native tools (023f4405, 0c103847).
     // Every limit stays below the historical before size: Minimal shrinks >=23%, Creator >=23%, Standard >=0.02%.
     // Standard 20,280 (re-measured 20,236) after add-project-skills gave Standard the native read_skill tool.
-    const limits = { minimal: 2300, standard: 20280, creator: 24800 };
+    // Creator 24,900 (re-measured 24,849) after add-project-skills gave the built-in Creator add_skill and Agent Skills guidance.
+    const limits = { minimal: 2300, standard: 20280, creator: 24900 };
     // Native agent tools added by add-p0-native-agent-tools, add-p1-plan-delegation-tools, add-native-show-artifact, delegate-child-model and add-project-skills; Minimal has no grant for them.
     // finish_task is absent here: the fixture agent is not a delegated child.
     const addedNative = ["delegate_task", "list_models", "read_result", "read_skill", "request_input", "show_artifact", "todo_done", "todo_update", "tool_describe", "tool_search"];
@@ -189,8 +190,10 @@ test("fixed-fixture prompt budgets preserve historical before measurements and n
         const all = ctx.fns.agent.wireTools({ agent });
         const toolName = (tool: any) => tool.function?.name ?? tool.name;
         const added = all.filter(tool => addedNative.includes(toolName(tool)));
+        // add_skill is offered to the built-in Creator only.
         expect(added.map(toolName).sort()).toEqual(id === "minimal" ? [] : addedNative);
-        const native = all.filter(tool => !addedNative.includes(toolName(tool)));
+        expect(all.some(tool => toolName(tool) === "add_skill")).toBe(id === "creator");
+        const native = all.filter(tool => !addedNative.includes(toolName(tool)) && toolName(tool) !== "add_skill");
         expect(native.length).toBe(before[id].nativeToolCount);
         // Wire schemas are a separate payload: shortening prose must not alter them.
         expect(JSON.stringify(native).length).toBe(before[id].nativeSchemaChars);

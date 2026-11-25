@@ -239,6 +239,8 @@ export default async function (
                 }
                 listed++;
                 const name = record.name;
+                // Dot entries are private staging and lock files of publication, never packages.
+                if (name.startsWith('.')) continue;
                 if (!isPackageName(name)) {
                     if (record.isDirectory()) push('package ' + clip(name) + ': rejected as a package directory name');
                     continue;

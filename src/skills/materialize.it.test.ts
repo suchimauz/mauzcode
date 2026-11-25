@@ -43,4 +43,18 @@ describe.skipIf(!enabled)('server skills on an SSH workspace', () => {
         const run = await ctx.fns.tools.call({ name: 'bash', agent, args: { command: `${directory}/scripts/check.sh && stat -c %a ${directory}/scripts/check.sh ${directory}/SKILL.md && git status --porcelain` } });
         expect(run.output.trim().split('\n')).toEqual(['remote-checked', '555', '444']);
     });
+    test('a reviewed workspace skill is published atomically on the SSH host and never overwrites', async () => {
+        const workspace = { host: 'rg', dir: remoteDir };
+        const files = [{ path: 'SKILL.md', data: Buffer.from('---\nname: remote\ndescription: Remote.\n---\nRemote.\n').toString('base64'), executable: false },
+            { path: 'scripts/go.sh', data: Buffer.from('#!/bin/sh\necho go\n').toString('base64'), executable: true }];
+        const draft = { id: crypto.randomUUID(), agentId: 'a', workspace, destination: 'workspace' as const, skillId: 'skill.workspace:remote', name: 'remote',
+            digest: ctx.fns.skills.filesDigest({ files }), source: 'test', files, originals: {}, expiresAt: Date.now() + 60_000 };
+        const [one, two] = await Promise.all([ctx.fns.skills.publish({ draft }), ctx.fns.skills.publish({ draft })]);
+        expect([one.ok, two.ok].sort()).toEqual([false, true]);
+        expect([one, two].find((r: any) => !r.ok)).toMatchObject({ conflict: true });
+        const check = await ctx.fns.remote.exec({ host: 'rg', command: `cd ${remoteDir}/.mauzcode/skills && ls -A && ./remote/scripts/go.sh` });
+        expect(check.stdout.trim().split('\n')).toEqual(['remote', 'go']);
+        const scan = await ctx.fns.skills.workspaceSource({ workspace });
+        expect(scan.ok && scan.action === 'scan' && scan.packages.map((p: any) => p.descriptor.id)).toEqual(['skill.workspace:remote']);
+    });
 });

@@ -40,15 +40,15 @@ Implementation backlog for separate approval. No checkbox represents creation of
 
 ## 6. Creator identity and inventory
 
-- [ ] 6.1 Add `skills.inventory` and `skills.add.*`, gated on the built-in Creator (`presetId === 'creator'` for the agent and every parent) both when offering `add_skill` and in handlers. Test a genuine Creator, a custom `*` preset, narrowed child agents and direct handler calls with client-supplied identity.
+- [x] 6.1 Add `skills.inventory` and `skills.add.*`, gated on the built-in Creator (`presetId === 'creator'` for the agent and every parent) both when offering `add_skill` and in handlers. Test a genuine Creator, a custom `*` preset, narrowed child agents and direct handler calls with client-supplied identity.
 - [x] 6.2 Inventory lists disabled plugin exports and orphaned server project branches (with host/path from `project.json`) without exposing bodies or making them usable.
 
 ## 7. Addition and import
 
-- [ ] 7.1 Guide the user through source, scope and adaptation choices; prepare a draft or copy one selected server/local/SSH package with relative files and license intact. Test each source, all three destinations, unchanged default bytes and a separately previewed `.mauzcode/` adaptation without editing the original.
-- [ ] 7.2 Prepare one package from a public HTTPS Git repository pinned to an immutable revision. Test a multi-package fixture, changed branch head, bounded downloads, rejected private/local/credentialed destinations and no execution, hooks or submodule fetches. Document the public-only limitation.
-- [ ] 7.3 Bind a human review to the staged digest, full ID, destination and owning context. Test the exact preview/diff, cancellation, expiration, changed content or destination requiring a new review, and inability to approve via a tool-supplied boolean.
-- [ ] 7.4 Publish the reviewed package atomically without replacement (writing `project.json` for new project branches), then verify via the catalogue and `read_skill`. Test competing writers, retries, SSH interruption and verification failure after publication; no overwrite, partial visibility or unverified success. Document one end-to-end addition and recovery guidance.
+- [x] 7.1 Guide the user through source, scope and adaptation choices; prepare a draft or copy one selected server/local/SSH package with relative files and license intact. Test each source, all three destinations, unchanged default bytes and a separately previewed `.mauzcode/` adaptation without editing the original.
+- [x] 7.2 Prepare one package from a public HTTPS Git repository pinned to an immutable revision. Test a multi-package fixture, changed branch head, bounded downloads, rejected private/local/credentialed destinations and no execution, hooks or submodule fetches. Document the public-only limitation.
+- [x] 7.3 Bind a human review to the staged digest, full ID, destination and owning context. Test the exact preview/diff, cancellation, expiration, changed content or destination requiring a new review, and inability to approve via a tool-supplied boolean.
+- [x] 7.4 Publish the reviewed package atomically without replacement (writing `project.json` for new project branches), then verify via the catalogue and `read_skill`. Test competing writers, retries, SSH interruption and verification failure after publication; no overwrite, partial visibility or unverified success. Document one end-to-end addition and recovery guidance.
 
 # Acceptance
 

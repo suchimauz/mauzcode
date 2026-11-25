@@ -277,9 +277,46 @@ the host and path from its `project.json`. A branch whose file is missing, or wh
 no longer configured, is marked `orphaned`; it is never deleted. The inventory returns no
 instructions or resources, and listing a disabled export does not make it readable.
 
+## Adding a skill (Creator)
+
+Only the built-in Creator is offered `add_skill` (`skills.add.prepare` and `skills.add.review`).
+The agent asks for anything missing — source, destination, adaptation — then prepares a draft
+and opens a review card. **Only the person's click in that card publishes**: a tool argument,
+generic input submission or another chat cannot approve it.
+
+Example: the person writes "add our review checklist as a skill for this project".
+
+1. Creator asks: draft or import? workspace, this project on the server, or all projects?
+2. `add_skill({ action: "prepare", source: "draft", destination: "serverProject", name: "review",
+   description: "Review a diff against the team checklist.", instructions: "…" })` returns a
+   `draftId`, the future ID `skill.server.project:review` and the file list. Nothing is saved.
+3. `add_skill({ action: "review", draftId })` shows the ID, destination, source, files, the
+   SKILL.md text and any adaptation diff, bound to the content digest. The agent ends its turn.
+4. The person clicks **Add skill**. The server rechecks the Creator, workspace and digest,
+   publishes atomically without replacing anything (a staging directory renamed with
+   `RENAME_NOREPLACE`), then reads the new skill back through the catalogue and `read_skill`.
+   Only then does the card say "Added and verified".
+
+Sources: a new draft; a ready folder on the server or an SSH host (read-only, links and special
+files refused); or one package from a **public** HTTPS Git repository, resolved to an immutable
+commit. Git imports pin the resolved public address, send no credentials, follow no redirects,
+run no hooks, filters or submodules, never check out, and stop past 64 MiB or 60 seconds.
+Private repositories, `http:`, `ssh:`, `file:` and hosts resolving to private or loopback
+addresses are refused. A repository with several packages returns them for the person to choose.
+
+Imports keep the original bytes, paths, executable bits and license files. Rewrites (for
+example `.claude/skills/…` paths to `.mauzcode/skills/…`) are passed as `adaptations` and shown
+as a separate diff. The source folder or repository is never changed.
+
+Recovery: **Cancel**, expiry (24 hours) or a changed draft publishes nothing. If the ID already
+exists the card reports it and nothing is overwritten. If publication succeeded but verification
+failed, the card says "saved but verification failed"; inspect the destination (for example
+`ls <library>/projects/<project-id>/review`) and fix or remove it by hand — nothing is reinstalled
+automatically. Drafts are stored owner-only in `<library>/.drafts/` and removed once handled.
+
 ## Not part of this layer
 
-Publishing packages is Creator authoring and is described separately. Package files,
+Package files,
 including `scripts/example.ts`, stay inert data: nothing here imports or executes them.
 
 ## Tests
@@ -295,6 +332,8 @@ bun script/test.ts fast ./src/skills/packageFiles.test.ts
 bun script/test.ts fast ./src/skills/workspaceSource.test.ts
 bun script/test.ts fast ./src/skills/sources.test.ts ./src/skills/access.test.ts ./src/skills/reading.test.ts ./src/skills/commands.test.ts
 bun run frontend:test -- frontend/src/test/skill-commands.test.tsx
+bun script/test.ts fast ./src/skills/authoring.test.ts
+bun script/test.ts it ./src/skills/gitImport.it.test.ts
 bun script/test.ts it ./src/skills/materialize.it.test.ts
 bun script/test.ts it ./src/skills/workspaceSource.it.test.ts
 ```
