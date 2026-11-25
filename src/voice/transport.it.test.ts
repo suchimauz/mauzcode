@@ -114,3 +114,25 @@ test.skipIf(!openssl)("a broken route fails the OpenAI check and live handshake 
     expect(o.destinationHits).toBe(0);
     expect(JSON.stringify(o)).not.toContain("fake-route-voice-key");
 });
+
+test.skipIf(!openssl)("Deepgram checks and dictates over each route to a custom endpoint", () => {
+    for (const kind of ["direct", ...routed]) {
+        const o = r[`${kind}.deepgram`];
+        expect(o.check).toEqual({ status: "available", reason: "voice-ok" });
+        // The check sends only CloseStream: no audio frame.
+        expect(o.checkWire).toEqual([{ path: "/custom/v1/listen", auth: true, types: ["CloseStream"] }]);
+        expect(o.live.finals).toEqual(["routed hello"]);
+        expect(o.live.types).toEqual(["binary", "binary", "binary", "Finalize", "CloseStream"]);
+        if (kind === "direct") expect(o.dials).toEqual([]);
+        else expect(o.dials.length).toBe(2);
+    }
+    expect(r["ssh-tunnel.deepgram"]).toMatchObject({ leases: 2, releases: 2 });
+});
+
+test.skipIf(!openssl)("a broken route fails the Deepgram check and live start without a direct socket", () => {
+    const o = r["deepgram.brokenRoute"];
+    expect(o.check).toMatchObject({ status: "unavailable", reason: "unreachable" });
+    expect(o.liveError).toEqual({ code: "provider", message: "Deepgram transcription failed." });
+    expect(o.destinationHits).toBe(0);
+    expect(JSON.stringify(o)).not.toContain("fake-route-voice-key");
+});
