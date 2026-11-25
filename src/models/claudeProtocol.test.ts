@@ -21,7 +21,7 @@ async function setup(handler: (call: Call) => Response = end) {
 describe("Claude protocol", () => {
     test("static models and not-logged-in check make no requests", async () => {
         const { ctx, conn, calls } = await setup();
-        expect((await claude.listModels(ctx)).length).toBe(9);
+        expect((await claude.listModels(ctx)).length).toBe(4);
         ctx.state.registry.models.provider.claude.claudeAuth = async () => ({ loggedIn: false, needsLogin: true, expiresAt: null });
         expect(await claude.test(ctx, conn)).toMatchObject({ status: "configured", reason: "login-required" });
         expect(calls).toHaveLength(0);
@@ -71,6 +71,10 @@ describe("Claude protocol", () => {
             ["claude-sonnet-4-6", "off", "disabled", undefined],
             ["claude-sonnet-4-6", "minimal", "disabled", undefined],
             ["claude-haiku-4-5", "high", undefined, undefined],
+            ["claude-haiku-5-5", "off", "adaptive", "low"],
+            ["claude-haiku-5-5", "xhigh", "adaptive", "max"],
+            ["claude-fable-5-2", "auto", undefined, undefined],
+            ["claude-fable-5-2", "xhigh", "adaptive", "max"],
         ] as const) {
             await claude.stream(ctx, conn, { ...req, model, reasoningEffort: preference, temperature: 0.2 });
             const body = JSON.parse(String(calls.at(-1)!.init.body));

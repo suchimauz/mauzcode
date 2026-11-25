@@ -3,10 +3,11 @@ import resolve from "./resolveReasoningEffort";
 const ctx = {} as Context;
 const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 test("Claude effort matrix preserves requested/applied/mode/downgrade/reason contract", async () => {
-    for (const model of ["claude-opus-5", "claude-sonnet-5", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5", "unknown"]) {
-        const adaptive = /(?:opus|sonnet)-(?:5|4-6)/.test(model);
-        const always = /(?:opus|sonnet)-5/.test(model);
-        const supported = adaptive ? [...(always ? [] : ["off"]), "low", "medium", "high", ...(model.includes("opus") ? ["xhigh"] : [])] : ["off"];
+    for (const model of ["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5", "claude-sonnet-5", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5", "unknown"]) {
+        const adaptive = /(?:opus|sonnet|haiku|fable)-5|(?:opus|sonnet)-4-6/.test(model);
+        const always = /(?:opus|sonnet|haiku|fable)-5/.test(model);
+        const xhigh = /opus|fable|-5-5/.test(model);
+        const supported = adaptive ? [...(always ? [] : ["off"]), "low", "medium", "high", ...(xhigh ? ["xhigh"] : [])] : ["off"];
         const defaultEffort = adaptive && !always ? "medium" : "off";
         for (const effort of [undefined, "auto", ...levels, "invalid"] as const) {
             const requested = !effort || effort === "invalid" ? "auto" : effort;

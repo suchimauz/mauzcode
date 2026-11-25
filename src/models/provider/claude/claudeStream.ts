@@ -32,7 +32,7 @@ export default async function (
             const reasoning = await ctx.fns.models.inference.resolveReasoningEffort({ model: req.model, effort: req.reasoningEffort as types.models.ReasoningLevel | "auto" ?? "auto" });
             if (reasoning.mode === "anthropic-adaptive" && reasoning.applied !== "auto") {
                 if (reasoning.applied !== "off") { body.thinking = { type: "adaptive" }; body.output_config = { effort: reasoning.applied === "xhigh" ? "max" : reasoning.applied }; }
-                else if (!/(opus|sonnet)-5/.test(req.model)) body.thinking = { type: "disabled" };
+                else if (!/(opus|sonnet|haiku|fable)-5/.test(req.model)) body.thinking = { type: "disabled" };
             }
             if (req.tools?.length) body.tools = ctx.fns.models.protocol.anthropic.toTools({ tools: req.tools });
             if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens;

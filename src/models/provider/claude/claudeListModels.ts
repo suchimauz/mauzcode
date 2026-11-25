@@ -10,7 +10,7 @@ export default async function (
     session: Session | null,
     opts: {},
 ): Promise<types.models.ModelInfo[]> {
-    const MODELS = ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-sonnet-4-6", "claude-sonnet-5", "claude-opus-4-5", "claude-opus-4-6", "claude-opus-4-8", "claude-opus-5", "claude-opus-5-5"];
+    const MODELS = ["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
     return Promise.all(MODELS.map(async id => {
         const automatic = await ctx.fns.models.inference.resolveReasoningEffort({ model: id, effort: 'auto' });
         if (automatic.mode === 'none') return { id };

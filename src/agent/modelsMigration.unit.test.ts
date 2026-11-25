@@ -38,7 +38,7 @@ test('Claude real catalogue accepts high; unsupported leaves durable and live st
  const ctx:any={state:{agent:{a:live}},fns:{models:{inference:{resolveReasoningEffort:(o:any)=>claudeReasoning(ctx,null,o)},resolveRoute:async()=>({connectionId:'c',model:'claude-opus-5-5'}),listModels:async()=>({models:await claudeList(ctx,null,{})})},procs:{db:{select:async()=>[{model:'claude/account:claude-opus-5-5',reasoning_effort:live.reasoningEffort}],run:async()=>{writes++;}}},session:{appendEvent:async()=>{}},events:{emitAgentsChanged:()=>{}}}};
  expect(await setReasoning(ctx,null,{id:'a',effort:'high'})).toMatchObject({applied:'high',downgraded:false});expect(live.reasoningEffort).toBe('high');
  await expect(setReasoning(ctx,null,{id:'a',effort:'minimal'})).rejects.toThrow('unsupported');expect(writes).toBe(1);expect(live.reasoningEffort).toBe('high');
- const catalogue=await claudeList(ctx,null,{});expect(catalogue.find(m=>m.id==='claude-haiku-4-5')?.reasoning).toBeUndefined();
+ const catalogue=await claudeList(ctx,null,{});expect(catalogue.find(m=>m.id==='claude-haiku-5-5')?.reasoning?.supported).toEqual(['low','medium','high','xhigh']);
 });
 
 test('disabled model selection fails before any state read or write',async()=>{

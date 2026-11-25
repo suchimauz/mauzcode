@@ -2,7 +2,7 @@ type Effort = types.models.ReasoningLevel | "auto";
 /**
  * Resolve Claude native-model effort preferences while preserving subscription wire defaults
  *
- * Use inside the Claude subscription adapter to retain existing reasoning behavior without legacy route resolution. Auto on Claude 5 omits effort while thinking remains adaptive; Claude 4.6 defaults to medium. Unknown models have no effort control. SDK capability normalization remains resolveReasoning.
+ * Use inside the Claude subscription adapter to retain existing reasoning behavior without legacy route resolution. Auto on Claude 5 (Opus, Sonnet, Haiku, Fable) omits effort while thinking remains adaptive; Claude 4.6 defaults to medium. Unknown models have no effort control. SDK capability normalization remains resolveReasoning.
  * @param opts.model Provider-native Claude model id, not a provider or SSH route.
  * @param opts.effort Requested preference; unrecognized runtime values normalize to auto. @default auto
  */
@@ -20,9 +20,10 @@ export default async function (
         const requested = allowed.includes(opts.effort ?? "auto") ? (opts.effort ?? "auto") : "auto";
         // Preserve Claude wire defaults, including Claude 5 auto omitting effort.
         const modelId = opts.model.toLowerCase();
-        const adaptive5 = /(opus|sonnet)-5/.test(modelId);
+        const adaptive5 = /(opus|sonnet|haiku|fable)-5/.test(modelId);
         const adaptive46 = /(opus|sonnet)-4-6/.test(modelId);
-        const max = /opus-(5|4-6)/.test(modelId);
+        // Maximum effort: Opus 4.6+, Fable, and Sonnet/Haiku from 5.5 on.
+        const max = /opus-(5|4-6)|fable-5|(sonnet|haiku)-5-[5-9](?!\d)/.test(modelId);
         const caps: { supported: Effort[]; defaultEffort: Effort; mode: "none" | "anthropic-adaptive" } = adaptive5 || adaptive46
             ? { supported: ["auto", ...(adaptive46 ? ["off" as const] : []), "low", "medium", "high", ...(max ? ["xhigh" as const] : [])], defaultEffort: adaptive5 ? "off" : "medium", mode: "anthropic-adaptive" }
             : { supported: ["auto", "off"], defaultEffort: "off", mode: "none" };

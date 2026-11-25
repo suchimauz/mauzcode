@@ -26,6 +26,6 @@ describe("agent reasoning effort", () => {
         const catalogue = await claudeListModels(ctx, null, {});
         const opus = catalogue.find((m:any)=>m.id === "claude-opus-5-5");
         expect(opus!.reasoning!.supported).toEqual(["low", "medium", "high", "xhigh"]);
-        expect(catalogue.find((m:any)=>m.id === "claude-sonnet-5")!.reasoning!.supported).not.toContain("xhigh");
+        for (const id of ["claude-fable-5-2", "claude-sonnet-5-5", "claude-haiku-5-5"]) expect(catalogue.find((m:any)=>m.id === id)!.reasoning!.supported).toEqual(["low", "medium", "high", "xhigh"]);
     });
 });
