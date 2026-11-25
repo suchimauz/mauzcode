@@ -27,7 +27,7 @@ implementation namespace and is called by its full name, e.g.
 
 | Directory / runtime namespace | Responsibility |
 | --- | --- |
-| `models/provider/{claude,codex,custom,zaiCoding,minimaxCoding,qwen}` | Provider protocol helpers and declaration operations |
+| `models/provider/{claude,codex,custom,zaiCoding,minimaxCoding,qwen,antigravity}` | Provider protocol helpers and declaration operations |
 | `models/protocol` | Closed set of shared wire protocols and their registry (see below) |
 | `models/transport` | Destination validation, HTTP transport and SSE parsing |
 | `models/catalog` | Model discovery/cache, refresh and per-model availability |
@@ -554,6 +554,58 @@ URL, the public client id `qwen-code-cli` and the scope are in `constants`.
   `quota.reset_at` (one hour when absent; process-local). The endpoints and client id are
   unofficial Qwen Code values and may change; check Qwen's terms before use. The
   discontinued free-tier flow, DashScope keys and `~/.qwen` files are not supported.
+
+## Built-in Antigravity provider
+
+> **Account risk.** [Google's Antigravity FAQ](https://antigravity.google/docs/faq/) says that
+> third-party access using a personal Antigravity login violates its terms and may lead to
+> account suspension. The owner of this installation has accepted that risk. A working adapter
+> or passing fixture tests do not mean Google permits or serves this integration. The settings
+> panel shows this warning before sign-in.
+
+`$modelProvider_antigravity.ts` ("Antigravity") uses the Gemini models of one Antigravity
+account. It is a separate route from Custom Gemini connections and does not revive the removed
+`gemini` provider. Helpers live in `models/provider/antigravity` (namespace
+`models.provider.antigravity`). The wire contract follows the reference adapter
+[opencode-antigravity-auth at revision 821f824](https://github.com/NoeFabris/opencode-antigravity-auth/tree/821f824440b2b7c9ffe96bbdfad9d5cdead2f1de)
+(`src/constants.ts`, `src/antigravity/oauth.ts`, `src/plugin/project.ts`, `src/plugin/quota.ts`,
+`src/plugin/request.ts`); no OpenCode code is a runtime dependency.
+
+- **Opt-in.** The provider has no fields. Creating a connection sends nothing; test, model
+  discovery and inference need a completed sign-in and otherwise send no upstream request.
+- **Client identity** (`constants`). The public Antigravity installed-app client ID and client
+  secret, the scopes and the fixed redirect `http://localhost:51121/oauth-callback` come from the
+  reference revision. `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET` in the
+  installation environment replace them; they are never asked from the owner or stored per
+  connection.
+- **Sign-in** (`login`, `submitLogin`). Authorization code with S256 PKCE and single-use state,
+  ten-minute flows. The panel always shows the Google link. A best-effort `127.0.0.1:51121`
+  listener completes sign-in when the browser runs on the MauzCode machine; otherwise the owner
+  pastes the full address the browser lands on (even if that page fails to load). Only an address
+  with the expected scheme, host, port and path, a code and the pending state is accepted; the
+  first accepted address consumes the flow, so a loopback completion and a later paste exchange
+  the code once. All token requests use the connection transport.
+- **Grant** (`auth`, `lock`). One encrypted secret `models/<id>.antigravity-auth` per connection
+  with tokens and the resolved project. Refresh is single-flight per connection; a revoked grant
+  (400/401 on refresh) requires sign-in and forgets the project and cached model list. Logout
+  cancels the flow and deletes the grant, project and model list under the credential lock.
+- **Discovery** (`project`, `listModels`, `mapModels`, `test`). `loadCodeAssist` resolves the
+  account project (never onboarded or invented), then `fetchAvailableModels` lists the inventory.
+  Only IDs in `agentModelSorts` or `tieredModelIds`, not `disabled`, naming Gemini and not Claude
+  are offered, with native IDs. `maxTokens`/`maxOutputTokens` become limits; Gemini 3 Flash offers
+  `minimal|low|medium|high` and Gemini 3 Pro `low|high` as native `thinkingLevel` unless the entry
+  says `supportsThinking: false`. No prices. Test never generates and reports `no-models`,
+  `project-unavailable`, `access-denied` or `login-required` distinctly.
+- **Inference** (`stream`, `failure`). POST `v1internal:streamGenerateContent?alt=sse` on the
+  daily Cloud Code host with `{ project, model, request, requestType: "agent", userAgent:
+  "antigravity", requestId }`; the inner request comes from `protocol/gemini/buildRequest` and each
+  wrapped event is read by `protocol/gemini/readStream` with `unwrap`, so tool calls keep their own
+  thought signatures. 401 marks the token stale and is retryable once (one more request with the
+  refreshed token); 403/`PERMISSION_DENIED` is `ACCESS_DENIED`; 429/`RESOURCE_EXHAUSTED` is
+  `QUOTA_EXHAUSTED` with `resetAt` from `retryDelay`; 5xx before data is retryable. No account,
+  project or service failover.
+- **Disable.** Turn the provider off with `models.disabledProviders` (Models settings), or log out
+  and delete the connection.
 
 ## Field schemas and transports
 

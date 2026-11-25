@@ -347,6 +347,41 @@ it.each([true, false])('supports Claude authorization paste, rejection and retry
   await waitFor(() => expect(within(region).getByRole('status')).toHaveTextContent('Login cancelled'));
 });
 
+it('shows the Antigravity account warning before sign-in and accepts a pasted redirect address', async () => {
+  const provider = { id: 'antigravity', label: 'Antigravity', fields: [], transports: ['direct'], actions: [] };
+  const conn = { ...stored, id: 'ag', provider: 'antigravity', accountName: 'Antigravity', config: {}, secrets: {} };
+  const posts = mockApi([conn], [provider]);
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  const warning = 'Google may suspend the account.';
+  const flow = { flowId: 'af1', kind: 'authorization-code', status: 'pending', authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?state=s', callbackListening: false, expiresAt: Date.now() + 60000 };
+  let current: any = null;
+  let loggedIn = false;
+  vi.mocked(fetch).mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') !== 'GET') {
+      const body = JSON.parse(String(init.body));
+      if (body.action === 'action') {
+        posts.push({ body, headers: init.headers });
+        if (body.name === 'loginStatus') return json({ result: { loggedIn, needsLogin: !loggedIn, expiresAt: null, warning, flow: current } });
+        if (body.name === 'login') { current = flow; return json({ result: current }); }
+        if (body.name === 'submitLogin') { loggedIn = true; current = { ...flow, status: 'succeeded' }; return json({ result: current }); }
+      }
+    }
+    return base(url, init);
+  });
+  render(<ModelsPanel context={context} />);
+  await expand('Antigravity');
+  const region = await screen.findByRole('region', { name: 'Antigravity login for Antigravity' });
+  expect(await within(region).findByRole('note')).toHaveTextContent(warning);
+  fireEvent.click(within(region).getByRole('button', { name: 'Log in' }));
+  const field = await within(region).findByRole('textbox', { name: 'Callback URL or authorization code' });
+  const address = 'http://localhost:51121/oauth-callback?code=c&state=s';
+  fireEvent.change(field, { target: { value: address } });
+  fireEvent.click(within(region).getByRole('button', { name: 'Submit code' }));
+  await waitFor(() => expect(within(region).getByRole('status')).toHaveTextContent('Logged in'));
+  expect(posts.find(p => p.body.name === 'submitLogin')?.body.input).toEqual({ flowId: 'af1', code: address });
+  expect(within(region).queryByRole('note')).not.toBeInTheDocument();
+});
+
 function mockContextApi(opts: { failSave?: boolean } = {}) {
   const posts = mockApi([stored]);
   const fetchMock = vi.mocked(fetch);

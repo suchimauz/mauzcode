@@ -342,7 +342,7 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle }: { 
     toggleLabel={connection.accountName}
     trailing={enableSwitch} expanded={expanded} onToggle={onToggle}>
     <div className="settings-detail-section" aria-live="polite">{usage ? <UsageView usage={usage} /> : usageError ? <p className="settings-note">{usageError}</p> : <p className="settings-loading">Checking…</p>}</div>
-    {['codex', 'claude', 'qwen'].includes(connection.provider) && connection.providerRegistered && <ProviderLogin connection={connection} actions={actions} />}
+    {['codex', 'claude', 'qwen', 'antigravity'].includes(connection.provider) && connection.providerRegistered && <ProviderLogin connection={connection} actions={actions} />}
     {version.canDetect && <div className="settings-detail-section"><Button variant="ghost" size="compact" className="models-redetect" onClick={() => { void version.refresh(); }} disabled={version.loading || actions.busy || actions.context.readOnly}>Re-detect</Button></div>}
     {registered ? <section className="settings-detail-section" aria-label={`Models of ${connection.accountName}`} aria-live="polite"><h4>Models</h4>{!models ? (modelsError ? <p className="settings-note" role="status">{modelsError}</p> : <p className="settings-loading" role="status">Loading models…</p>) : <>
       {models.error && <p className="settings-note" role="status">Discovery failed: {models.error}</p>}
@@ -379,7 +379,7 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle }: { 
 }
 
 type LoginFlow = { flowId: string; kind: 'device-code' | 'authorization-code'; status: 'pending' | 'succeeded' | 'failed' | 'expired'; verificationUri?: string; authorizationUrl?: string; userCode?: string; callbackListening?: boolean; expiresAt: number; message?: string };
-type LoginStatus = { loggedIn: boolean; needsLogin: boolean; expiresAt: number | null; account?: { name?: string; email?: string; plan?: string } | null; flow: LoginFlow | null };
+type LoginStatus = { loggedIn: boolean; needsLogin: boolean; expiresAt: number | null; account?: { name?: string; email?: string; plan?: string } | null; warning?: string; flow: LoginFlow | null };
 
 /** Native provider login; the browser authorization step opens separately from the connection transport. */
 function ProviderLogin({ connection, actions }: { connection: ModelConnectionView; actions: Actions }) {
@@ -443,6 +443,7 @@ function ProviderLogin({ connection, actions }: { connection: ModelConnectionVie
       <p className="models-login-state" role="status" aria-live="polite"><span className={`settings-badge ${tone}`}><i aria-hidden="true" />{live}</span></p>
       {who && <p className="models-login-account">{who}</p>}
     </div>
+    {status?.warning && !status.loggedIn && <p className="settings-note" role="note">{status.warning}</p>}
     {pending && flow && <div className="models-login-code">
       {flow.kind === 'authorization-code' ? <>
         <p><a href={flow.authorizationUrl} target="_blank" rel="noopener noreferrer">Open {providerLabel} authorization</a></p>
