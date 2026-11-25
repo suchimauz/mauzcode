@@ -339,6 +339,22 @@ describe("antigravity failure classification (4.3)", () => {
         expect(calls.slice(n).map(x => x.url)).toEqual([STREAM]);
     });
 
+    test("403 exposes Google's status, reason and bounded message, not verification links or credentials", async () => {
+        const { ctx, view } = await signedIn(() => Response.json({ error: {
+            status: "PERMISSION_DENIED", message: `To continue, verify your account at\nhttps://accounts.google.com/signin?plt=private user@example.com ${ACCESS} ${REFRESH} ${CODE} code_verifier=private-verifier ${"x".repeat(350)}`,
+            details: [null, { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "VALIDATION_REQUIRED", metadata: { validation_url: "private-metadata" } }],
+        } }, { status: 403 }));
+        const err = await call(ctx, view.id);
+        expect(err.message).toStartWith("Google HTTP 403 PERMISSION_DENIED / VALIDATION_REQUIRED: To continue, verify your account at [link removed]");
+        expect(err.message.length).toBeLessThanOrEqual(300);
+        for (const value of ["accounts.google.com", "example.com", "private", ACCESS, REFRESH, CODE]) expect(err.message).not.toContain(value);
+    });
+
+    test("403 without a Google error envelope keeps a useful fallback", async () => {
+        const { ctx, view } = await signedIn(() => new Response("not JSON", { status: 403 }));
+        expect((await call(ctx, view.id)).message).toBe("Google HTTP 403: Google denied this Antigravity account access to the model");
+    });
+
     test("401 refreshes once and retries once on the same account", async () => {
         const ok = await signedIn((_c, n) => n === 1 ? rpc(401, "UNAUTHENTICATED") : sse([wrap({ candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }] })]));
         expect((await ok.ctx.fns.models.call({ connectionId: ok.view.id, model: "gemini-3-flash", user: "hi" })).text).toBe("ok");
