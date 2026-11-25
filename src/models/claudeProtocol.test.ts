@@ -18,7 +18,64 @@ async function setup(handler: (call: Call) => Response = end) {
     return { ctx, conn, calls, marked: () => marked };
 }
 
+const rejection = (message = 'max_tokens: 128000 > 64000, which is the maximum allowed for this model', status = 400) => Response.json({ error: { type: 'invalid_request_error', message } }, { status });
+const payload = (call: Call) => JSON.parse(String(call.init.body));
+
 describe("Claude protocol", () => {
+    test('automatic output budgets cover the catalogue, not similar model names', async () => {
+        const { ctx, conn, calls } = await setup();
+        for (const { id } of await claude.listModels(ctx)) {
+            await claude.stream(ctx, conn, { ...req, model: id });
+            expect(payload(calls.at(-1)!).max_tokens).toBe(128000);
+        }
+        await claude.stream(ctx, conn, { ...req, model: 'claude-fable-5-2-custom' });
+        expect(payload(calls.at(-1)!).max_tokens).toBe(64000);
+    });
+    test('rejected automatic budgets change only max_tokens until one stream is accepted', async () => {
+        const { ctx, conn, calls } = await setup(c => payload(c).max_tokens > 32000 ? rejection() : frames([{ type: 'content_block_delta', delta: { type: 'text_delta', text: 'ok' } }, { type: 'message_stop' }]));
+        const signal = new AbortController().signal;
+        const result = await claude.stream(ctx, conn, { ...req, model: 'claude-fable-5-2', reasoningEffort: 'high', signal });
+        expect(result.text).toBe('ok');
+        expect(calls.map(c => payload(c).max_tokens)).toEqual([128000, 64000, 32000]);
+        const ids = calls.map(c => new Headers(c.init.headers).get('x-client-request-id'));
+        expect(ids.every(Boolean)).toBe(true);
+        expect(new Set(ids).size).toBe(calls.length);
+        const stableInit = (init: RequestInit) => {
+            const headers = new Headers(init.headers);
+            headers.delete('x-client-request-id');
+            return { ...init, body: undefined, headers: Object.fromEntries(headers) };
+        };
+        for (const c of calls) {
+            expect(c.url).toBe(calls[0]!.url);
+            expect(stableInit(c.init)).toEqual(stableInit(calls[0]!.init));
+            expect(c.init.signal).toBe(signal);
+            expect({ ...payload(c), max_tokens: 0 }).toEqual({ ...payload(calls[0]!), max_tokens: 0 });
+        }
+    });
+    test('exhausted budgets keep the final sanitized HTTP failure', async () => {
+        const { ctx, conn, calls } = await setup(() => rejection('max_tokens is too large: test-token'));
+        const error = await claude.stream(ctx, conn, req).catch(e => e);
+        expect(error).toMatchObject({ failure: { upstreamStatus: 400, acceptance: 'rejected' } });
+        expect(JSON.stringify(error)).not.toContain('test-token');
+        expect(String(error)).not.toContain('test-token');
+        expect(calls.map(c => payload(c).max_tokens)).toEqual([64000, 32000, 16384]);
+    });
+    test('explicit limits and unrelated failures are never negotiated', async () => {
+        for (const [maxTokens, status, message] of [[81234, 400, 'max_tokens is too large'], [undefined, 400, 'temperature must be lower; max_tokens is too large'], [undefined, 400, 'max_tokens must be greater than zero'], [undefined, 429, 'max_tokens is too large']] as const) {
+            const { ctx, conn, calls } = await setup(() => rejection(message, status));
+            await expect(claude.stream(ctx, conn, { ...req, maxTokens })).rejects.toMatchObject({ failure: { upstreamStatus: status, acceptance: 'rejected' } });
+            expect(calls.map(c => payload(c).max_tokens)).toEqual([maxTokens ?? 64000]);
+        }
+    });
+    test('cancellation and accepted SSE errors never replay the request', async () => {
+        const abort = new AbortController();
+        const cancelled = await setup(() => { abort.abort(); return rejection(); });
+        await expect(claude.stream(cancelled.ctx, cancelled.conn, { ...req, signal: abort.signal })).rejects.toMatchObject({ name: 'AbortError' });
+        expect(cancelled.calls).toHaveLength(1);
+        const accepted = await setup(() => frames([{ type: 'error', error: { type: 'invalid_request_error', message: 'max_tokens is too large' } }]));
+        await expect(claude.stream(accepted.ctx, accepted.conn, req)).rejects.toMatchObject({ failure: { acceptance: 'accepted', replaySafe: false } });
+        expect(accepted.calls).toHaveLength(1);
+    });
     test("static models and not-logged-in check make no requests", async () => {
         const { ctx, conn, calls } = await setup();
         expect((await claude.listModels(ctx)).length).toBe(4);

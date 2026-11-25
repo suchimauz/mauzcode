@@ -28,19 +28,20 @@ export default async function (
                 if (block && typeof block === "object") block.cache_control = { type: "ephemeral" };
             };
             if (messages.length > 2 && messages[1]?.role === "assistant") mark(messages[1]);
-            const body: Record<string, unknown> = { model: req.model, system: IDENTITY, messages, stream: true, max_tokens: 16384 };
+            const largeOutputModels = ["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+            const maxTokens = req.maxTokens ?? (largeOutputModels.includes(req.model) ? 128000 : 64000);
+            const body: Record<string, unknown> = { model: req.model, system: IDENTITY, messages, stream: true, max_tokens: maxTokens };
             const reasoning = await ctx.fns.models.inference.resolveReasoningEffort({ model: req.model, effort: req.reasoningEffort as types.models.ReasoningLevel | "auto" ?? "auto" });
             if (reasoning.mode === "anthropic-adaptive" && reasoning.applied !== "auto") {
                 if (reasoning.applied !== "off") { body.thinking = { type: "adaptive" }; body.output_config = { effort: reasoning.applied === "xhigh" ? "max" : reasoning.applied }; }
                 else if (!/(opus|sonnet|haiku|fable)-5/.test(req.model)) body.thinking = { type: "disabled" };
             }
             if (req.tools?.length) body.tools = ctx.fns.models.protocol.anthropic.toTools({ tools: req.tools });
-            if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens;
             // Anthropic rejects a custom temperature while extended thinking is enabled.
             if (req.temperature !== undefined && (body.thinking as { type?: string } | undefined)?.type !== "adaptive") body.temperature = req.temperature;
             const h = await ctx.fns.models.provider.claude.claudeWireHeaders({ conn: conn });
             if (messages[0]?.content?.[0]?.type === "compaction") h["anthropic-beta"] += ",compact-2026-09-04";
-            const res = await ctx.fns.models.provider.claude.claudeWireRequest({ conn: conn, path: "/v1/messages", init: { method: "POST", headers: h, body: JSON.stringify(body), signal: req.signal } });
+            const res = await ctx.fns.models.provider.claude.claudeWireRequest({ conn, automaticBudget: req.maxTokens === undefined ? maxTokens : undefined, path: "/v1/messages", init: { method: "POST", headers: h, body: JSON.stringify(body), signal: req.signal } });
             let text = "", thinking = "", stop: string | null = null, terminal = false;
             const usage: types.models.StreamResult["usage"] = {};
             const slots = new Map<number, { id: string; name: string; buf: string }>();

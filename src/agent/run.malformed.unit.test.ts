@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import run from './run';
 import classifyError from '../models/provider/claude/classifyError';
 
-function harness(turns: any[]) {
+function harness(turns: any[], provider = 'mock') {
     const rows: any[] = [{ idx: 0, role: 'user', content: 'go' }];
     const errors: string[] = [];
     const agent: any = { id: 'guard-test', model: 'mock:test', messages: rows.slice(), scratchpad: {}, events: [] };
@@ -27,7 +27,7 @@ function harness(turns: any[]) {
             stop: async () => { stops++; }, stashResult: async ({ output }: any) => ({ content: output }) },
         events: { emitAgentsChanged: noop, refreshAgentMeta: noop },
         markdown: { render: async ({ source }: any) => source },
-        models: { resolveRoute: async () => ({ provider: 'mock' }), classifyError: (opts: any) => classifyError(ctx, null, opts), stream: async () => { if (sampled >= turns.length) throw new Error('unexpected extra model request'); return turns[sampled++]; } },
+        models: { resolveRoute: async () => ({ provider }), classifyError: (opts: any) => classifyError(ctx, null, opts), stream: async () => { if (sampled >= turns.length) throw new Error('unexpected extra model request'); return turns[sampled++]; } },
         tools: { call: async () => { calls++; return { output: 'ok' }; }, runs: () => [] },
     } };
     return { ctx, agent, rows, errors, get sampled() { return sampled; }, get calls() { return calls; }, get stops() { return stops; } };
@@ -70,6 +70,32 @@ describe('malformed argument guard without external services', () => {
     });
 });
 
+describe('Claude no-tool output-limit recovery', () => {
+    const cut = { text: 'partial', usage: null, finishReason: 'length', toolCalls: [] };
+    test('retries with cursor-excluded guidance and delivers only the completed answer', async () => {
+        const h = harness([cut, done], 'claude');
+        expect(await execute(h)).toHaveProperty('text', 'done');
+        expect(h.sampled).toBe(2);
+        expect(h.calls).toBe(0);
+        expect(h.rows.filter(r => r.role === 'assistant').map(r => r.content)).toEqual(['done']);
+        expect(h.rows.some(r => r.role === 'user' && r.excluded_from_cursor && r.content.includes('shorter response'))).toBe(true);
+    });
+    test('a third consecutive cutoff fails without a fourth request', async () => {
+        const h = harness([cut, { ...cut, finishReason: 'max_tokens' }, cut, done], 'claude');
+        await expect(execute(h)).rejects.toThrow('output token limit');
+        expect(h.sampled).toBe(3);
+        expect(h.calls).toBe(0);
+        expect(h.rows.filter(r => r.role === 'assistant')).toHaveLength(0);
+    });
+    test('a completed tool reply resets the cutoff count', async () => {
+        const valid = { ...done, finishReason: 'tool_calls', toolCalls: [{ id: 'ok', name: 'read', args: { path: 'a.ts' } }] };
+        const h = harness([cut, cut, valid, cut, cut, done], 'claude');
+        expect(await execute(h)).toHaveProperty('text', 'done');
+        expect(h.sampled).toBe(6);
+        expect(h.calls).toBe(1);
+    });
+});
+
 describe('empty and truncated model responses are not silent success', () => {
     for (const finishReason of ['length', 'max_tokens']) {
         for (const text of ['', 'Partial answer']) test(`reports ${finishReason} with ${text ? 'partial' : 'empty'} text without retry`, async () => {
@@ -86,8 +112,8 @@ describe('empty and truncated model responses are not silent success', () => {
         expect(h.sampled).toBe(1);
         expect(h.calls).toBe(0);
     });
-    test('valid-looking tool calls in a truncated response are not executed', async () => {
-        const h = harness([{ text: '', finishReason: 'length', usage: null, toolCalls: [{ id: 'cut', name: 'read', args: { path: 'file' } }] }]);
+    for (const provider of ['mock', 'claude']) test(`${provider}: valid-looking tool calls in a truncated response are not executed`, async () => {
+        const h = harness([{ text: '', finishReason: 'length', usage: null, toolCalls: [{ id: 'cut', name: 'read', args: { path: 'file' } }] }], provider);
         await expect(execute(h)).rejects.toThrow('No tools from this response were executed');
         expect(h.calls).toBe(0);
         expect(h.rows.some(r => r.tool_calls?.length)).toBe(false);

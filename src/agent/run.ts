@@ -325,6 +325,7 @@ export default async function (
 
     const MAX_MALFORMED_RESPONSES = 3;
     let consecutiveMalformedResponses = 0;
+    let consecutiveClaudeCutoffs = 0;
     // Shared across all model/tool cycles in this run; successful cycles do not reset it.
     let goalIterations = 0;
     let lastGoalFeedback = "";
@@ -609,6 +610,9 @@ export default async function (
             }
         }
         delete agent.scratchpad.activeGoalFeedback;
+        const atOutputLimit = finishReason === 'length' || finishReason === 'max_tokens';
+        consecutiveClaudeCutoffs = requestProvider === 'claude' && atOutputLimit && !toolCalls.length
+            ? consecutiveClaudeCutoffs + 1 : 0;
 
         // Invalid JSON can arrive with any finish reason (including gateway
         // truncation without "length"). Reject the WHOLE batch before persisting
@@ -656,8 +660,21 @@ export default async function (
         // called — that pairing is what the next request replays.
         // Truncation is not a successful final answer, even when all tool JSON
         // happens to be valid. Never execute a partial batch or silently finish.
-        if (finishReason === 'length' || finishReason === 'max_tokens') {
+        if (atOutputLimit) {
             clearStream();
+            if (consecutiveClaudeCutoffs > 0 && consecutiveClaudeCutoffs <= 2) {
+                // Rebuild from the checkpoint and guidance, not the discarded partial turn.
+                continuationState = undefined;
+                continuationKey = undefined;
+                await ctx.fns.session.appendMessage({ id: agent.id, message: {
+                    role: 'user', content: 'Your response hit the output token limit. Retry from the saved checkpoint with a shorter response.',
+                    excluded_from_cursor: true,
+                } });
+                await assertRunActive();
+                await ctx.fns.session.syncAgentState({ agent });
+                await assertRunActive();
+                continue;
+            }
             throw new Error('Model response reached its output token limit. No tools from this response were executed and no final answer was delivered. Continue from the saved checkpoint with a smaller response.');
         }
         if (!prose.trim() && toolCalls.length === 0) {
