@@ -308,6 +308,13 @@ export default function (
             "classification": "creator",
             "patterns": []
         },
+        "skills": {
+            "classification": "standard",
+            "patterns": [
+                "skills.list",
+                "skills.read"
+            ]
+        },
         "socksProxy": {
             "classification": "creator",
             "patterns": []
@@ -352,6 +359,7 @@ export default function (
                 "tools.delegateTask",
                 "tools.finishTask",
                 "tools.showArtifact",
+                "tools.readSkill",
                 "tools.listModels"
             ]
         },

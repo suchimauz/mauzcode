@@ -21,7 +21,9 @@ export default async function (
         const query = new URL(opts.req.url).searchParams;
         const version = query.get('version') ?? (opts.agentId ? '2' : '1');
         if (version !== '1' && version !== '2') return Response.json({error: 'unsupported_catalogue_version'}, {status: 400});
-        const catalogue = await ctx.fns.commands.catalogue({agentId: opts.agentId ?? query.get('agentId') ?? undefined, version: version === '1' ? 1 : 2});
+        const agentId = opts.agentId ?? query.get('agentId') ?? undefined;
+        const catalogue = await ctx.fns.commands.catalogue({agentId, version: version === '1' ? 1 : 2,
+            ...(agentId ? {} : {projectId: query.get('projectId') ?? undefined, presetId: query.get('presetId') ?? undefined})});
         return Response.json({...catalogue, csrfToken: await ctx.fns.auth.csrfToken({req: opts.req})}, {headers: {'cache-control': 'no-store'}});
     }
     if(!await ctx.fns.auth.verifyCsrf({req:opts.req,token:opts.req.headers.get('x-csrf-token')??''})) return Response.json({error:'invalid_csrf'},{status:403});

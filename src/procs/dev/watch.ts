@@ -40,7 +40,9 @@ export default async function (ctx: Context, _session: Session | null, _opts?: {
         // on the dir — expand directory events into their contained files.
         const files: string[] = [];
         for (const rel of batch) {
-            const abs = srcDir + '/' + rel;
+            const abs = resolve(srcDir, rel);
+            // mauzcode: do not expand directory events into a skill tree, including aliases.
+            if (ctx.fns.procs.project.skillData({ path: abs, allowMissing: true }).blocked) continue;
             const stat = await Bun.file(abs).stat().catch(() => null);
             if (stat?.isDirectory()) {
                 const glob = new Bun.Glob('**/*');
@@ -56,9 +58,12 @@ export default async function (ctx: Context, _session: Session | null, _opts?: {
         const errors: Map<string, string> = ((ctx.state.procs.dev ??= {}).errors ??= new Map());
 
         for (const rel of files) {
+            const abs = resolve(srcDir, rel);
+            // mauzcode: expanded descendants and retargeted links are checked too.
+            if (ctx.fns.procs.project.skillData({ path: abs, allowMissing: true }).blocked) continue;
             const entry = ctx.fns.procs.project.classify({ rel });
             if (entry.kind === 'skip') continue;
-            const exists = await Bun.file(srcDir + '/' + rel).exists();
+            const exists = await Bun.file(abs).exists();
             // The call graph follows the file either way: a deleted file must
             // lose its edges, an edited one must gain the new ones. Best-effort
             // — an index that cannot update is not a reason to stop reloading.
@@ -67,7 +72,7 @@ export default async function (ctx: Context, _session: Session | null, _opts?: {
                 if (!exists) {
                     // mauzcode: remove source-owned command declarations on unlink, without importing a missing file.
                     if (['command','commandKind','commandSection'].includes(entry.kind) && isLoaded(ctx, entry.kind)) {
-                        await collectStateFile(ctx, {...entry, removed:true}, srcDir + '/' + rel);
+                        await collectStateFile(ctx, {...entry, removed:true}, abs);
                         needReload = true;
                     }
                     errors.delete(rel); needTypes = true; continue;
@@ -82,7 +87,8 @@ export default async function (ctx: Context, _session: Session | null, _opts?: {
                 } else if (entry.kind === 'type') {
                     needTypes = true;
                 } else if (isLoaded(ctx, entry.kind)) {
-                    await collectStateFile(ctx, entry, srcDir + "/" + rel);
+                    if (ctx.fns.procs.project.skillData({ path: abs }).blocked) continue;
+                    await collectStateFile(ctx, entry, abs);
                     needTypes = true; // config slots show up in CtxState
                 }
                 errors.delete(rel);

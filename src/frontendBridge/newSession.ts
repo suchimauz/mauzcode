@@ -101,6 +101,12 @@ export default async function (
     const effort=(data.effort??'auto') as types.models.ReasoningLevel|'auto';
     const profile=ctx.fns.frontendBridge.modelEffort({reasoning:reasoningOf(model),requested:effort});
     if(effort!=='auto'&&!profile.supported.includes(effort))return reply({error:'Effort unsupported for model'},400);
+    // A first-message skill is checked against the selected project and preset before anything is created.
+    const skillToken=/^\/(skill\.[^\s]+)/.exec(data.text.trim())?.[1];
+    if(skillToken){
+        const [entry]=await ctx.fns.commands.candidates({name:skillToken,projectId:data.projectId,presetId});
+        if(!entry?.enabled||files.length)return reply({error:files.length?'Commands do not accept attachments':entry?.reason??`Unknown command /${skillToken}`},400);
+    }
     const claim:Claim={fingerprint,status:'sending',projectId:data.projectId};
     const inserted=await ctx.fns.procs.db.select({sql:'INSERT INTO kv (key,value) VALUES (?,?) ON CONFLICT (key) DO NOTHING RETURNING key',params:[key,JSON.stringify(claim)]});
     if(!inserted.length){const existing=await read();return existing?replay(existing):reply({error:'Request state unavailable'},409);}

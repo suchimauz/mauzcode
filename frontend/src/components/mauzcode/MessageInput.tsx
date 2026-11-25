@@ -3,6 +3,7 @@ import { useCommandMenu } from '../../hooks/useCommandMenu';
 import { CommandMenu } from './CommandMenu';
 import type { ComposerCommand } from '../../hooks/useCommandMenu';
 import { CommandEditor, type CommandEditorHandle } from './CommandEditor';
+import { skillChipLabel } from '../../lib/commands';
 import { IconButton } from '../ui/IconButton';
 import { InputCaret } from './InputCaret';
 
@@ -13,6 +14,8 @@ export type MessageInputProps = {
   allowEmptySubmit?: boolean;
   disabled?: boolean; sendDisabled?: boolean; running?: boolean; onStop?: () => void; onSteerAll?: () => void;
   commandMenuOpen?: boolean; onCommandMenuClose?: () => void; onFile?: () => void; agentId?: string;
+  /** New-chat composer only: the selected project and preset whose skills the menu lists. */
+  commandScope?: { projectId?: string; presetId?: string };
   placeholder?: string; hasAttachments?: boolean; pendingVoice?: boolean; attachments?: ReactNode; notice?: ReactNode; onFiles?: (files: File[]) => void; commandsEnabled?: boolean;
   /** Caret access for inline dictation; works the same for `CommandEditor` and the plain `textarea`. */
   caretRef?: Ref<DraftCaretHandle>;
@@ -31,7 +34,7 @@ export type MessageInputProps = {
  */
 export type DraftCaretHandle = { selection(): { start: number; end: number } | null; select(start: number, end: number): void };
 /** One-line controlled input; grows for wrapped lines, then scrolls at 180px. */
-export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, agentId, value, onChange, onSend, allowEmptySubmit = false, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, notice, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef, leading, bar }: MessageInputProps) {
+export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuClose, onFile, agentId, commandScope, value, onChange, onSend, allowEmptySubmit = false, disabled, sendDisabled = false, running, onStop, onSteerAll, hasAttachments = false, pendingVoice = false, attachments, notice, onFiles, commandsEnabled = false, placeholder = 'Напишите сообщение…', caretRef, leading, bar }: MessageInputProps) {
   const input = useRef<HTMLTextAreaElement>(null);
   const menuId = useId();
   const editor = useRef<CommandEditorHandle>(null);
@@ -62,12 +65,17 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
       appliedFocus.current = focusRequest;
     }
   }, [focusRequest, disabled, commandsEnabled]);
-  const [claimed, setClaimed] = useState<{ name: string } | null>(null);
+  const [claimed, setClaimed] = useState<{ name: string; label?: string } | null>(null);
   useLayoutEffect(() => { if (!value) setClaimed(null); }, [value]);
   // Touch: opening the + menu must not raise the on-screen keyboard.
   useLayoutEffect(() => { if (commandMenuOpen && !window.matchMedia?.('(pointer: coarse)').matches) editor.current?.focus(); }, [commandMenuOpen]);
   const activeClaim = claimed && value.startsWith(`/${claimed.name}`) ? claimed : null;
-  const menu = useCommandMenu(value, commandsEnabled && !disabled, { plusOpen: commandMenuOpen, onClose: onCommandMenuClose, claimed: !!activeClaim, agentId });
+  const menu = useCommandMenu(value, commandsEnabled && !disabled, { plusOpen: commandMenuOpen, onClose: onCommandMenuClose, claimed: !!activeClaim, agentId, projectId: commandScope?.projectId, presetId: commandScope?.presetId });
+  // A pasted or restored skill command gets its friendly chip once the catalogue recognizes it.
+  const known = menu.exact?.skill && value.startsWith(`/${menu.exact.name}`) ? menu.exact : undefined;
+  useLayoutEffect(() => {
+    if (known?.skill && !claimed && (value === `/${known.name}` || /^\s/.test(value.slice(known.name.length + 1)))) setClaimed({ name: known.name, label: skillChipLabel(known.skill) });
+  }, [known, claimed, value]);
   const pick = (command: ComposerCommand) => {
     if (!command.enabled) return;
     const fromPlus = commandMenuOpen;
@@ -77,7 +85,7 @@ export function MessageInput({ focusRequest = 0, commandMenuOpen, onCommandMenuC
     } else if (command.clientAction === 'attach-file' && onFile) {
       if (!fromPlus) onChange('');
       onFile();
-    } else { setClaimed({ name: command.name }); onChange(`/${command.name} ${fromPlus ? value.replace(/^\s*\/[^\s]*$/, '') : ''}`); }
+    } else { setClaimed({ name: command.name, ...(command.skill ? { label: skillChipLabel(command.skill) } : {}) }); onChange(`/${command.name} ${fromPlus ? value.replace(/^\s*\/[^\s]*$/, '') : ''}`); }
     // Attaching a file needs no touch keyboard.
     if (command.clientAction === 'attach-file' && window.matchMedia?.('(pointer: coarse)').matches) return;
     editor.current?.focus(); input.current?.focus();

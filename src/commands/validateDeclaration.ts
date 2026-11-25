@@ -19,6 +19,8 @@ export default async function (ctx: Context, _session: Session | null, opts: {
         if (raw.kind !== 'client' && 'clientAction' in raw) return fail('a prompt cannot declare clientAction');
         for (const key of ['fn','available','builtin','completion','suggest']) if (key in raw) return fail(`field ${key} is not allowed`);
     } else if (['user', 'project'].includes(opts.namespace.split('.')[0]!)) return fail('reserved namespace');
+    // skill. names are canonical Agent Skill IDs derived from packages; no declaration may claim one.
+    if (opts.namespace.startsWith('skill.')) return fail('the skill. namespace is reserved for Agent Skills');
     if (raw.builtin && !['commands','planning'].includes(opts.namespace)) return fail('builtin is reserved for commands and planning');
     for (const key of ['kind','label','description']) if (!text(raw[key])) return fail(`${key} is required`);
     if (!word.test(String(raw.kind))) return fail('invalid kind');

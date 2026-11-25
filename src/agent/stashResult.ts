@@ -1,6 +1,8 @@
 const LIMIT = 6_000;
 // Largest read_result output: 16000 text units plus JSON envelope and escaping headroom.
 const READ_RESULT_LIMIT = 40_000;
+// Largest read_skill output: one 64 KiB text page plus the resource listing and envelope.
+const READ_SKILL_LIMIT = 160_000;
 
 /** Keep small tool outputs inline and store larger outputs as immutable result files.
  * Returns bounded transcript content and, only after a successful write, its structured
@@ -25,6 +27,9 @@ export default async function (
     // A read_result range is already bounded (16000 units plus a small envelope);
     // storing it again would only produce another preview that needs another read.
     if (isReadResult(ctx, kind) && output.length <= READ_RESULT_LIMIT) return { content: output };
+    // read_skill is paged by skills.read (one 64 KiB page plus a bounded listing); stashing it would hide the
+    // instructions the model asked for behind another read.
+    if (isNative(ctx, kind, "tools.readSkill") && output.length <= READ_SKILL_LIMIT) return { content: output };
 
     const fromTail = kind === "bash";
     const { preview: cut, ref: result_ref, storageError } = await ctx.fns.resultStore.prepare({ownerAgentId:agent.id,kind,text:output,inlineLimit:LIMIT,tail:fromTail});
@@ -50,5 +55,9 @@ export default async function (
 // The native read tool, matched by its declared implementation so a renamed
 // or disambiguated wire name still counts.
 function isReadResult(ctx: Context, name: string): boolean {
-    return typeof ctx.fns.tools?.list === "function" && ctx.fns.tools.list({}).some(tool => (tool.wireName === name || tool.name === name) && tool.fn === "tools.readResult");
+    return isNative(ctx, name, "tools.readResult");
+}
+
+function isNative(ctx: Context, name: string, fn: string): boolean {
+    return typeof ctx.fns.tools?.list === "function" && ctx.fns.tools.list({}).some(tool => (tool.wireName === name || tool.name === name) && tool.fn === fn);
 }

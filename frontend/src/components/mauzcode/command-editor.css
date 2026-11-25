@@ -38,3 +38,7 @@
   user-select: all;
 }
 .command-editor .command-chip[data-selected="true"] { background: rgb(246, 222, 215); }
+/* Skill chips keep the canonical /skill.* token as their text for caret and copy; the label is presentation only. */
+.command-editor .command-chip[data-label] { font-size: 0; }
+.command-editor .command-chip[data-label]::before { content: attr(data-label); font-size: 14px; }
+@media (forced-colors: active) { .command-editor .command-chip[data-label]::before { forced-color-adjust: auto; } }

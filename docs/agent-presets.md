@@ -8,6 +8,17 @@ A preset is a named composition of core function patterns, plugin grants, exclud
 - **Creator**: `allow: ["*"]`, `plugins: ["*"]`.
 - **Minimal**: `tools.bash`, `tools.read`, `tools.write`, `tools.edit`; no plugins.
 
+### Agent Skills access
+
+| Preset | `skills.list` / `skills.read` | Plugin skills | `skills.inventory` / `skills.add.*` |
+| --- | --- | --- | --- |
+| Standard (new agents) | yes | enabled exports of its seven granted plugins | no |
+| Creator | yes | every enabled export | yes, only when every layer is the built-in `creator` |
+| Minimal | no | no | no |
+| Custom | only if explicitly allowed | enabled exports of granted plugins | never, even with `*` |
+
+Every snapshot layer must grant the reader, and for a plugin skill also the plugin; the workspace must enable that exact ID in `.mauzcode/skills.json`. Snapshots of existing agents are never upgraded: a Standard agent created before the readers were added keeps no skill access. The forward migration `20390301000001_skill_readers` only upgrades an untouched stored factory Standard row. Skill content, including `allowed-tools`, never grants a permission.
+
 `agentPreset.defaults` generates fresh built-in definitions, including Standard's reviewed core catalogue. `get` and `list` combine these with custom database rows; stored reserved-ID rows can never shadow code. Reads and startup never seed, repair or upgrade stored copies. Built-ins have `builtin: true` and deterministic `updated_at: 0` (code-managed, not an epoch update date). Custom rows retain their database timestamps.
 
 The built-in identifiers `standard`, `creator` and `minimal` are reserved even with an empty table: create, update and remove reject them. Customize a distinct custom ID instead. `agentPreset.reset({ id: "standard" })` is a compatibility read returning today's code definition without writes; its existing capability gate is unchanged. Custom presets can be deleted unless selected by `agentPreset.default` (which defaults to `standard`). A missing default is an explicit error, not an implicit fallback. Historical migration of pre-preset agents to Creator remains unchanged.

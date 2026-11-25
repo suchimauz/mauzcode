@@ -3,7 +3,11 @@ import { ApiError, requestJson } from './mauzcode';
 export type ClientAction = 'attach-file' | 'open-goal' | { type: 'open-canvas'; kind: string; args: Record<string, unknown> };
 export type CommandSection = { id: string; label: string; order: number };
 export type CommandOption = { value: string; label?: string; description?: string };
-export type CommandDescriptor = { name: string; description: string; usage: string[]; inputHint?: string; attachments?: boolean; kind: string; label: string; icon: string; section: string; order: number; enabled: boolean; reason?: string; args?: { placeholder?: string; options?: CommandOption[] }; clientAction?: ClientAction };
+/** Public metadata of an Agent Skill entry; the canonical ID is the command name. */
+export type SkillDescriptor = { id: string; name: string; source: string; sourceKind: string; qualifier?: string };
+export type CommandDescriptor = { name: string; description: string; usage: string[]; inputHint?: string; attachments?: boolean; kind: string; label: string; icon: string; section: string; order: number; enabled: boolean; reason?: string; args?: { placeholder?: string; options?: CommandOption[] }; clientAction?: ClientAction; skill?: SkillDescriptor };
+/** Skills of a new chat depend on the selected project and preset; an existing chat uses its own. */
+export type CommandScope = { agentId?: string; projectId?: string; presetId?: string };
 export type CommandCatalogue = { version: 2; sections: CommandSection[]; commands: CommandDescriptor[]; csrfToken?: string };
 export type CommandResult = { ok: boolean; command: string; operationId: string; status: 'running' | 'completed' | 'failed' | 'interrupted'; error?: string; result?: { status: 'compacted' | 'not_needed' | 'stale' } };
 export function supportedCommand(command: CommandDescriptor) {
@@ -12,12 +16,13 @@ export function supportedCommand(command: CommandDescriptor) {
 }
 /** Preserve the caller's key across uncertain retries, including after refreshing the catalogue. */
 export async function executeCommand(agentId: string, text: string, requestId: string, token?: string): Promise<CommandResult> {
-  const csrfToken = token ?? (await getCommands(agentId)).csrfToken;
+  const csrfToken = token ?? (await getCommands({ agentId })).csrfToken;
   if (!csrfToken) throw new Error('Сервер не выдал токен команды. Обновите страницу.');
   return requestJson<CommandResult>(`/agent/${encodeURIComponent(agentId)}/commands`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ text, requestId }) });
 }
-export async function getCommands(agentId?: string, signal?: AbortSignal): Promise<CommandCatalogue> {
-  const query = new URLSearchParams({ version: '2', ...(agentId ? { agentId } : {}) });
+export async function getCommands(scope: CommandScope | string = {}, signal?: AbortSignal): Promise<CommandCatalogue> {
+  const { agentId, projectId, presetId } = typeof scope === 'string' ? { agentId: scope } : scope;
+  const query = new URLSearchParams({ version: '2', ...(agentId ? { agentId } : { ...(projectId ? { projectId } : {}), ...(presetId ? { presetId } : {}) }) });
   const value = await requestJson<CommandCatalogue>(`/commands?${query}`, { signal }).catch(reason => {
     if (reason instanceof ApiError && reason.status === 404) throw new Error('Команды ещё недоступны на сервере. Повторите позже.');
     throw reason;
@@ -26,12 +31,14 @@ export async function getCommands(agentId?: string, signal?: AbortSignal): Promi
   return value;
 }
 /** Keep absolute paths and dotted filenames in ordinary chat; only command-shaped names are resolved. */
-export function commandToken(text: string) { return /^\/([a-zA-Z][\w-]*(?:(?:\.[a-zA-Z][\w-]*)*:[a-zA-Z][\w-]*)?)(?=\s|$)/.exec(text)?.[0]; }
+export function commandToken(text: string) { return /^\/(skill(?:\.[a-z0-9][a-z0-9-]*)+:[a-z0-9][a-z0-9-]*)(?=\s|$)/.exec(text)?.[0] ?? /^\/([a-zA-Z][\w-]*(?:(?:\.[a-zA-Z][\w-]*)*:[a-zA-Z][\w-]*)?)(?=\s|$)/.exec(text)?.[0]; }
+/** Friendly chip text for a skill: short name and source, e.g. `review · Git`. */
+export function skillChipLabel(skill: Pick<SkillDescriptor, 'name' | 'source'>) { return skill.source ? `${skill.name} · ${skill.source}` : skill.name; }
 /** Resolve on submission too: pasted commands need not have opened the menu. */
-export async function validateCommand(text: string, fileCount = 0, agentId?: string) {
+export async function validateCommand(text: string, fileCount = 0, scope: CommandScope | string = {}) {
   const token = commandToken(text);
   if (!token) return;
-  const { commands, csrfToken } = await getCommands(agentId);
+  const { commands, csrfToken } = await getCommands(scope);
   const command = commands.find(item => item.name === token.slice(1) && supportedCommand(item));
   if (!command) throw new Error('Неизвестная команда. Введите /, чтобы выбрать команду из списка.');
   if (!command.enabled) throw new Error(command.reason || 'Команда недоступна');

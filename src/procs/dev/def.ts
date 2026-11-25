@@ -9,9 +9,9 @@ import { collectStateFile, dottedName, isLoaded } from "../boot/load";
 
 /**
  * Perform def for the dev subsystem.
- * @param opts.name The target name.
- * @param opts.rel The rel value used by the operation.
- * @param opts.code The code to process.
+ * @param opts.name Dotted namespace and function name when no file path is supplied.
+ * @param opts.rel Path to the runtime file relative to src, including its extension.
+ * @param opts.code TypeScript source to validate and write to the runtime file.
  */
 export default async function (ctx: Context, _session: Session | null, opts: { name?: string; rel?: string; code: string }) {
     let rel = opts.rel;
@@ -23,15 +23,17 @@ export default async function (ctx: Context, _session: Session | null, opts: { n
     }
     if (!rel) throw new Error('need opts.name ("module.fn") or opts.rel ("module/file.ts")');
 
+    // Write into the APP's src (not proc's core) — same dir genTypes/sync target.
+    const abs = resolve(ctx.fns.procs.project.projectRoot({}), 'src', rel);
+    // mauzcode: do not author runtime declarations in a skill, even via a symlink.
+    if (ctx.fns.procs.project.skillData({ path: abs, allowMissing: true }).blocked) throw new Error(`not a runtime path: ${rel}`);
+
     const entry = ctx.fns.procs.project.classify({ rel });
     if (entry.kind === 'skip') throw new Error(`${rel} would be skipped by scanner: ${entry.reason}`);
 
     // Validate before touching disk: parse error → throw, no file written.
     new Bun.Transpiler({ loader: 'ts' }).transformSync(opts.code);
 
-    // Write into the APP's src (not proc's core) — same dir genTypes/sync target,
-    // so an app booting proc as a dependency writes its own tree, not proc's.
-    const abs = resolve(ctx.fns.procs.project.projectRoot({}), 'src', rel);
     const existed = await Bun.file(abs).exists();
     await Bun.write(abs, opts.code);
 
@@ -48,6 +50,7 @@ export default async function (ctx: Context, _session: Session | null, opts: { n
         } else if (entry.kind === 'route' || entry.kind === 'ws' || entry.kind === 'script') {
             await ctx.fns.procs.http.loadRoutes({});
         } else if (isLoaded(ctx, entry.kind)) {
+            if (ctx.fns.procs.project.skillData({ path: abs }).blocked) throw new Error(`not a runtime path: ${rel}`);
             await collectStateFile(ctx, entry, abs);
         }
         await ctx.fns.procs.dev.genTypes({});

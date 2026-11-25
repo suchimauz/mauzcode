@@ -1,12 +1,17 @@
 /** Resolve visible declarations and their current availability for discovery or dispatch.
  * Static flags are evaluated before preset filtering, without invoking plugin code. Only visible,
  * statically enabled commands may run a dynamic check, concurrently with a 500 ms deadline.
+ * Skill entries are derived from the packages the chat (or the selected new-chat project and preset) may read.
  * @param opts.agentId Existing agent; omit for the new-session composer (static checks only).
  * @param opts.name Exact full name to resolve for dispatch; omit to discover all commands.
+ * @param opts.projectId New-session project chosen in the composer; ignored with agentId. Skills need it or an agent.
+ * @param opts.presetId New-session preset; omitted uses the configured default. Ignored with agentId.
  */
 export default async function (ctx: Context, _session: Session | null, opts: {
     /** Existing agent; omit for the new-session composer. */ agentId?: string;
     /** Resolve only this full name instead of the whole catalogue. */ name?: string;
+    /** New-session project chosen in the composer; ignored with agentId. */ projectId?: string;
+    /** New-session preset; omitted uses the configured default. Ignored with agentId. */ presetId?: string;
 }): Promise<Array<{command: types.commands.Command; enabled: boolean; reason?: string; code?: string}>> {
     let workspace: Pick<types.agent.Agent, 'workspaceDir' | 'workspaceHost'> | undefined;
     let snapshot: types.agentPreset.Snapshot | undefined;
@@ -27,15 +32,32 @@ export default async function (ctx: Context, _session: Session | null, opts: {
         busy = row.run_state === 'running' || row.run_state === 'claimed' || !!live?.isStreaming || (live?.activeRunCount ?? 0) > 0
             || (row.next_run_at != null && !await ctx.fns.input.isWaiting({agentId: opts.agentId}));
     }
+    // A new chat discovers skills only for its authorized selected project and the preset it would be created with.
+    let skillScope: {snapshot?: types.agentPreset.Snapshot; workspace: {host: string; dir: string}} | undefined;
+    if (workspace) skillScope = {snapshot, workspace: {host: workspace.workspaceHost ?? '', dir: workspace.workspaceDir}};
+    else if (opts.projectId) {
+        const project = await ctx.fns.projects.get({projectId: opts.projectId});
+        if (project && project.dir.startsWith('/')) {
+            const preset = await ctx.fns.agentPreset.resolve({id: opts.presetId}).catch(() => undefined);
+            if (preset) skillScope = {snapshot: preset, workspace: {host: project.host, dir: project.dir}};
+        }
+    }
+    const wantsSkills = !opts.name || opts.name.startsWith('skill.');
+    const skills = wantsSkills && skillScope ? await ctx.fns.skills.commands({...skillScope, id: opts.name}) : [];
+    // A chat frozen without the reader learns why, instead of an unknown-command error.
+    if (opts.name?.startsWith('skill.') && !skills.length && skillScope?.snapshot && !ctx.fns.agentPreset.allows({snapshot: skillScope.snapshot, name: 'skills.read'})) {
+        return [{command: {name: opts.name, kind: 'skill', label: opts.name, description: ''}, enabled: false, code: 'skills_unavailable',
+            reason: 'This chat was created without skill access. Open a new chat to use skills.'}];
+    }
     const registry = ctx.state.commands.registry ?? {};
     const external = !opts.name || /^(project|user):/.test(opts.name) ? await ctx.fns.commands.workspaceCommands({agent: workspace}) : [];
-    const declarations = [...Object.values(registry), ...external];
+    const declarations = [...Object.values(registry).filter(command => !command.name?.startsWith('skill.')), ...external, ...skills];
     const allows = ctx.fns.agentPreset.predicate({snapshot});
     const visible = declarations.filter(command => !opts.name || command.name === opts.name).map(command => {
         if (!workspace && command.requiresSession) return {command, enabled: false, code: 'session_required', reason: 'Requires an existing session'};
         if (busy && command.blockWhileRunning) return {command, enabled: false, code: 'agent_running', reason: 'Stop the current or queued run first'};
         return {command, enabled: true};
-    }).filter(({command}) => command.builtin || !allows || ((!command.fn || allows(command.fn)) && (!command.available || allows(command.available))));
+    }).filter(({command}) => command.builtin || command.kind === 'skill' || !allows || ((!command.fn || allows(command.fn)) && (!command.available || allows(command.available))));
     return Promise.all(visible.map(async entry => {
         const {command} = entry;
         if (!opts.agentId || !entry.enabled || !command.available) return entry;

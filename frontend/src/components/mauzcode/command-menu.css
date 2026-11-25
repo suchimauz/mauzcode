@@ -10,3 +10,4 @@
 .command-menu-message button { border: 0; background: none; color: var(--link); padding: 4px; }
 @media (pointer: coarse) { .command-menu-option { min-height: 44px; } }
 @media (max-width: 480px) { .command-menu-description { font-size: 12px; max-width: 70%; } }
+.command-menu-source { flex: none; padding: 0 6px; border-radius: 4px; background: var(--surface-2, rgba(127,127,127,.12)); color: var(--text-muted, #888); font-size: 12px; line-height: 18px; }

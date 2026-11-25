@@ -7,6 +7,7 @@ import showArtifactTool from './$migration_20380105120000_native_show_artifact';
 import todoTools from './$migration_20380106120000_todo_tools';
 import triggerActionTool from './$migration_20390201000001_trigger_action_tool';
 import listModelsTool from './$migration_20390201000002_native_list_models';
+import skillReaders from './$migration_20390301000001_skill_readers';
 
 // Every factory upgrade in order, as boot applies them.
 const migration = { up: async (ctx: Context) => { await expansion.up(ctx); await nativeTools.up(ctx); await planDelegationTools.up(ctx); await showArtifactTool.up(ctx); } };
@@ -78,6 +79,7 @@ describe('conservative Standard factory upgrade', () => {
         await todoTools.up(ctx);
         await triggerActionTool.up(ctx);
         await listModelsTool.up(ctx);
+        await skillReaders.up(ctx);
         const upgraded = await read(ctx);
         const shipped = ctx.fns.agentPreset.defaults({})[0]!;
         expect({ ...upgraded, updated_at: Number(upgraded.updated_at) }).toEqual({ ...shipped, allow: expect.any(Array), updated_at: expect.any(Number) });
@@ -96,6 +98,7 @@ describe('conservative Standard factory upgrade', () => {
         await todoTools.up(ctx);
         await triggerActionTool.up(ctx);
         await listModelsTool.up(ctx);
+        await skillReaders.up(ctx);
         await ctx.fns.agentPreset.ensureBuiltins({});
         expect(await read(ctx)).toEqual(upgraded);
         await store(ctx, { ...upgraded, prompt: 'post-upgrade customization' });
@@ -104,6 +107,7 @@ describe('conservative Standard factory upgrade', () => {
         await todoTools.up(ctx);
         await triggerActionTool.up(ctx);
         await listModelsTool.up(ctx);
+        await skillReaders.up(ctx);
         await ctx.fns.agentPreset.ensureBuiltins({});
         expect(await read(ctx)).toEqual(customized);
     });
@@ -162,6 +166,7 @@ describe('native agent tools Standard upgrade', () => {
         await todoTools.up(ctx);
         await triggerActionTool.up(ctx);
         await listModelsTool.up(ctx);
+        await skillReaders.up(ctx);
         expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {
@@ -192,6 +197,7 @@ describe('native plan and delegation tools Standard upgrade', () => {
         await todoTools.up(ctx);
         await triggerActionTool.up(ctx);
         await listModelsTool.up(ctx);
+        await skillReaders.up(ctx);
         expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {
@@ -220,6 +226,7 @@ describe('native show_artifact Standard upgrade', () => {
         await todoTools.up(ctx);
         await triggerActionTool.up(ctx);
         await listModelsTool.up(ctx);
+        await skillReaders.up(ctx);
         expect([...(await read(ctx)).allow].sort()).toEqual([...ctx.fns.agentPreset.defaults({})[0]!.allow].sort());
     });
     test('preserves customized Standard definitions', async () => {
