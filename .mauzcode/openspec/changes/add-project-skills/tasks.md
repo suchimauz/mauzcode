@@ -54,5 +54,17 @@ Implementation backlog for separate approval. No checkbox represents creation of
 
 ## 8. Cross-surface acceptance
 
-- [ ] 8.1 Exercise a workspace and mounted plugin exposing `review` plus both server scopes in isolated fixtures. Verify discovery, auto-selection, script execution on local and SSH workspaces, first-message and existing-chat invocation, historical copy, revocation and continued access to unrelated skills from end to end.
-- [ ] 8.2 Run the isolated backend and frontend suites for the affected paths, the project checks and strict OpenSpec validation. Record the exercised scenarios and confirm existing commands, `plugins.read` and `mauzcode skills mount` remain compatible without touching live user packages.
+- [x] 8.1 Exercise a workspace and mounted plugin exposing `review` plus both server scopes in isolated fixtures. Verify discovery, auto-selection, script execution on local and SSH workspaces, first-message and existing-chat invocation, historical copy, revocation and continued access to unrelated skills from end to end.
+- [x] 8.2 Run the isolated backend and frontend suites for the affected paths, the project checks and strict OpenSpec validation. Record the exercised scenarios and confirm existing commands, `plugins.read` and `mauzcode skills mount` remain compatible without touching live user packages.
+
+## Acceptance evidence
+
+Recorded on the implementation branch:
+
+- `bun script/test.ts fast` — 4337 pass, 0 fail. Includes `src/skills/acceptance.test.ts` (workspace, mounted plugin `review`, both server scopes: prompt/list/menu discovery, automatic `read_skill`, local script runs from workspace and cache directories, existing-chat and first-message invocation, historical chip metadata, revocation without affecting other skills, compatibility of `/plan`, paths, `plugins.read` and `external.mountSkills`).
+- `bun script/test.ts it` — 193 pass, 0 fail. Includes SSH workspace reads, SSH cache materialization and script run, atomic SSH publication, and HTTPS Git import against a private `git http-backend` fixture.
+- `bun run frontend:test` — 1197 pass; 1 failure in `codex-picker.test.tsx`, which also fails without this change.
+- `tsgo --noEmit` — only the 37 pre-existing errors outside this change; `tsc -b frontend` clean.
+- `openspec validate add-project-skills --strict` — valid.
+
+All fixtures are private temporary directories, Docker SSH/TLS containers and the isolated test database; no live user packages were touched.
