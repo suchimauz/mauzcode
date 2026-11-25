@@ -100,8 +100,8 @@ describe("anthropic protocol request", () => {
 });
 
 describe("provider failure classification", () => {
-    test("a recognized quota error carries the classifier code, reset time and fixed message", async () => {
-        const { conn } = fixtureConn(() => new Response(JSON.stringify({ error: { type: "billing", message: "secret upstream body" } }), { status: 429 }));
+    test("a recognized quota error carries the classifier code and reset time separately from the safe upstream explanation", async () => {
+        const { conn } = fixtureConn(() => new Response(JSON.stringify({ error: { type: "billing", message: "Credits exhausted", metadata: { token: "secret upstream body" } } }), { status: 429 }));
         let seen: { status: number; body: unknown } | null = null;
         const err = await ctx.fns.models.protocol.anthropic.stream({
             fetch: conn.fetch, endpoint: { base: "https://example.test/v1", headers: {} }, request: req(),
@@ -113,7 +113,7 @@ describe("provider failure classification", () => {
         expect(seen).toMatchObject({ status: 429 });
         expect((seen as any)!.body).toMatchObject({ error: { type: "billing" } });
         expect(err.failure).toMatchObject({ code: "QUOTA_EXHAUSTED", classification: "quota", retryable: true, resetAt: 1900000000000, upstreamStatus: 429 });
-        expect(String(err.message)).toBe("Plan usage limit reached");
+        expect(String(err.message)).toBe("anthropic · HTTP 429 · billing · Credits exhausted");
         expect(String(err.message)).not.toContain("secret upstream body");
     });
     test("classifier returning nothing or throwing falls back to status rules", async () => {
@@ -137,8 +137,8 @@ describe("provider failure classification", () => {
                     get: ({ id }: { id: string }) => id === "anthropic" ? {
                         baseUrl: (_c: Context, raw: string) => raw,
                         defaultHeaders: () => ({}),
-                        stream: async (_c: Context, o: { fetch: types.models.ResolvedConnection["fetch"]; request: types.models.StreamRequest; classifyFailure?: types.models.ProtocolStreamClassify }) =>
-                            ctx.fns.models.protocol.anthropic.stream({ fetch: o.fetch, endpoint: { base: "https://example.test/v1", headers: {} }, request: o.request, ...(o.classifyFailure ? { classifyFailure: o.classifyFailure } : {}) }),
+                        stream: async (_c: Context, o: { fetch: types.models.ResolvedConnection["fetch"]; endpoint: types.models.ProtocolEndpoint; request: types.models.StreamRequest; classifyFailure?: types.models.ProtocolStreamClassify }) =>
+                            ctx.fns.models.protocol.anthropic.stream({ fetch: o.fetch, endpoint: o.endpoint, request: o.request, ...(o.classifyFailure ? { classifyFailure: o.classifyFailure } : {}) }),
                     } : undefined,
                 },
             } },
@@ -156,7 +156,7 @@ describe("provider failure classification", () => {
         const err = await route(fakeCtx(), null, { definition, conn, req: req({ model: "model-a" }), info: null }).then(() => null, (e: any) => e);
         expect(calls).toEqual(["c1|model-a|429"]);
         expect(err.failure).toMatchObject({ code: "QUOTA_EXHAUSTED", classification: "quota", resetAt: 1900000000000 });
-        expect(String(err.message)).toBe("Plan limit");
+        expect(String(err.message)).toBe("fixture · HTTP 429 · No safe provider explanation available");
     });
 });
 

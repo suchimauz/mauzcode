@@ -226,6 +226,16 @@ describe("antigravity project and Gemini discovery (3.x)", () => {
         expect(calls.filter(x => x.url.endsWith(":loadCodeAssist"))).toHaveLength(1);
     });
 
+    test("a rejected project lookup preserves provider evidence for generation only", async () => {
+        const { ctx, conn } = await setup(() => Response.json({ error: { status: 'PERMISSION_DENIED', message: 'Subscription is inactive' } }, { status: 403 }));
+        const c = await conn();
+        await store(ctx, c);
+        const project = (inference: boolean) => ctx.fns.models.provider.antigravity.project({ conn: c, inference }).then(() => null, (e: any) => e);
+        expect((await project(false)).failure.diagnostic).toBeUndefined();
+        const err = await project(true);
+        expect(err.failure).toMatchObject({ code: 'ACCESS_DENIED', retryable: false, diagnostic: { provider: 'antigravity', stage: 'http', status: 403, message: 'Subscription is inactive' } });
+    });
+
     test("inaccessible project and empty inventory are distinct; nothing is invented", async () => {
         let mode: "noProject" | "denied" | "empty" = "noProject";
         const { ctx, calls, view, conn } = await setup(call => {
@@ -317,7 +327,7 @@ describe("antigravity wrapped generation and tools (4.x)", () => {
 
 describe("antigravity failure classification (4.3)", () => {
     const call = (ctx: Context, id: string) => ctx.fns.models.call({ connectionId: id, model: "gemini-3-flash", user: "hi", timeoutMs: 30000 }).then(() => null, (e: any) => e);
-    const rpc = (status: number, rpcStatus: string, details: unknown[] = []) => new Response(JSON.stringify({ error: { code: status, status: rpcStatus, message: "SECRET upstream", details } }), { status });
+    const rpc = (status: number, rpcStatus: string, details: unknown[] = []) => new Response(JSON.stringify({ error: { code: status, status: rpcStatus, message: "Service refused credentials", details } }), { status });
 
     test("429 quota: one request, QUOTA_EXHAUSTED with reset time", async () => {
         const { ctx, view, gens } = await signedIn(() => rpc(429, "RESOURCE_EXHAUSTED", [{ "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "90s" }]));
@@ -326,7 +336,25 @@ describe("antigravity failure classification (4.3)", () => {
         expect(err.failure).toMatchObject({ code: "QUOTA_EXHAUSTED", classification: "quota", retryable: false });
         expect(err.failure.resetAt).toBeGreaterThanOrEqual(before + 89000);
         expect(err.failure.retryAfterMs).toBeUndefined();
-        expect(err.message).not.toContain("SECRET");
+        expect(err.failure.diagnostic).toMatchObject({ provider: "antigravity", status: 429 });
+        expect(gens()).toHaveLength(1);
+    });
+
+    test("400 exposes safe Google evidence without changing rejection policy", async () => {
+        const { ctx, view, gens } = await signedIn(() => rpc(400, "INVALID_ARGUMENT"));
+        const err = await call(ctx, view.id);
+        expect(err.failure).toMatchObject({ code: "INVALID_INPUT", acceptance: "rejected", retryable: false, replaySafe: true, upstreamStatus: 400 });
+        expect(err.message).toBe("antigravity · HTTP 400 · INVALID_ARGUMENT · Service refused credentials");
+        expect(gens()).toHaveLength(1);
+    });
+
+    test("a Gemini user role does not suppress Google's location rejection", async () => {
+        const message = 'User location is not supported for the API use.';
+        const { ctx, view, gens } = await signedIn(() => Response.json({ error: { code: 400, status: 'FAILED_PRECONDITION', message } }, { status: 400 }));
+        const err = await call(ctx, view.id);
+        expect(json(gens()[0]!.body).request.contents).toContainEqual({ role: 'user', parts: [{ text: 'hi' }] });
+        expect(err.failure.diagnostic).toMatchObject({ provider: 'antigravity', status: 400, code: 'FAILED_PRECONDITION', message });
+        expect(err.message).toBe(`antigravity · HTTP 400 · FAILED_PRECONDITION · ${message}`);
         expect(gens()).toHaveLength(1);
     });
 
@@ -335,6 +363,7 @@ describe("antigravity failure classification (4.3)", () => {
         const n = calls.length;
         const err = await call(ctx, view.id);
         expect(err.failure).toMatchObject({ code: "ACCESS_DENIED", retryable: false });
+        expect(err.message).toBe("antigravity · HTTP 403 · PERMISSION_DENIED · Service refused credentials");
         expect(gens()).toHaveLength(1);
         expect(calls.slice(n).map(x => x.url)).toEqual([STREAM]);
     });
@@ -345,15 +374,29 @@ describe("antigravity failure classification (4.3)", () => {
             details: [null, { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "VALIDATION_REQUIRED", metadata: { validation_url: "private-metadata" } }],
         } }, { status: 403 }));
         const err = await call(ctx, view.id);
-        expect(err.message).toStartWith("Google HTTP 403 PERMISSION_DENIED / VALIDATION_REQUIRED: To continue, verify your account at [link removed]");
+        expect(err.failure.diagnostic).toMatchObject({ provider: "antigravity", stage: "http", status: 403, code: "PERMISSION_DENIED", reason: "VALIDATION_REQUIRED" });
+        expect(err.message).toBe(err.failure.diagnostic.summary);
         expect(err.message.length).toBeLessThanOrEqual(300);
         for (const value of ["accounts.google.com", "example.com", "private", ACCESS, REFRESH, CODE]) expect(err.message).not.toContain(value);
     });
 
     test("403 without a Google error envelope keeps a useful fallback", async () => {
         const { ctx, view } = await signedIn(() => new Response("not JSON", { status: 403 }));
-        expect((await call(ctx, view.id)).message).toBe("Google HTTP 403: Google denied this Antigravity account access to the model");
+        const err = await call(ctx, view.id);
+        expect(err.failure.diagnostic.message).toBeUndefined();
+        expect(err.message).toBe("antigravity · HTTP 403 · No safe provider explanation available");
     });
+
+    for (const wrapped of [true, false]) {
+        test(`stream provider error (${wrapped ? "inner" : "outer"} envelope) is not replayed`, async () => {
+            const error = { error: { status: "UNAVAILABLE", message: "Capacity depleted" } };
+            const { ctx, view, gens } = await signedIn(() => sse([wrap({ candidates: [{ content: { parts: [{ text: "partial" }] } }] }), wrapped ? wrap(error) : error]));
+            const err = await call(ctx, view.id);
+            expect(err.message).toBe("antigravity · stream · UNAVAILABLE · Capacity depleted");
+            expect(err.failure).toMatchObject({ code: "PROVIDER_ERROR", acceptance: "uncertain", retryable: false });
+            expect(gens()).toHaveLength(1);
+        });
+    }
 
     test("401 refreshes once and retries once on the same account", async () => {
         const ok = await signedIn((_c, n) => n === 1 ? rpc(401, "UNAUTHENTICATED") : sse([wrap({ candidates: [{ content: { parts: [{ text: "ok" }] }, finishReason: "STOP" }] })]));

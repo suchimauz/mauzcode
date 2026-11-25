@@ -24,5 +24,5 @@ export default async function (
         const value = await ctx.fns.models.provider.custom.sessionAffinity({ connectionId: conn.id, key: req.promptCacheKey || req.sessionId });
         if (value) endpoint = { ...base, headers: { ...base.headers, "x-session-affinity": value } };
     }
-    return protocol.stream(ctx, { fetch: conn.fetch, endpoint, request: req, ...(req.signal ? { signal: req.signal } : {}) });
+    return protocol.stream(ctx, { fetch: conn.fetch, endpoint: { ...endpoint, provider: "custom" }, request: req, ...(req.signal ? { signal: req.signal } : {}) });
 }

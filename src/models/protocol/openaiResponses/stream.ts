@@ -60,7 +60,9 @@ export default async function (
         ...(effort ? { reasoning: { effort } } : {}),
         ...(format ? { text: { format: format.type === "json_schema" ? { type: "json_schema", name: format.name, schema: format.schema, strict: format.strict ?? true } : { type: "json_object" } } } : {}),
     };
-    const res = await ctx.fns.models.protocol.common.streamFetch({ classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/responses", headers: opts.endpoint.headers, body, label, signal });
+    const provider = opts.endpoint.provider ?? "openai-responses";
+    const sensitive = { request: body, secrets: Object.values(opts.endpoint.headers) };
+    const res = await ctx.fns.models.protocol.common.streamFetch({ provider, classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/responses", headers: opts.endpoint.headers, body, label, signal });
     let text = "", thinking = "", finish: string | null = null, completed = false;
     const usage: types.models.StreamResult["usage"] = {};
     const tools = ctx.fns.models.protocol.common.collectToolCalls({ onEvent: req.onEvent });
@@ -68,9 +70,9 @@ export default async function (
         for await (const frame of ctx.fns.models.transport.parseSSE({ body: res.body })) {
             if (!frame.data || frame.data === "[DONE]") continue;
             let ev: Record<string, any>;
-            try { ev = JSON.parse(frame.data); } catch { throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "malformed" }); }
+            try { ev = JSON.parse(frame.data); } catch { throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, reason: "malformed" }); }
             const type = ev.type ?? frame.event;
-            if (type === "error" || type === "response.failed") throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "error" });
+            if (type === "error" || type === "response.failed") throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, body: ev, reason: "error" });
             if (type === "response.output_text.delta" && typeof ev.delta === "string") { text += ev.delta; req.onEvent?.({ type: "text_delta", delta: ev.delta }); }
             else if ((type === "response.reasoning_summary_text.delta" || type === "response.reasoning_text.delta") && typeof ev.delta === "string") { thinking += ev.delta; req.onEvent?.({ type: "thinking_delta", delta: ev.delta, visibility: "public_summary" }); }
             else if (type === "response.output_item.added" && ev.item?.type === "function_call") tools.start(String(ev.item.id ?? ev.output_index), ev.item.call_id ?? "", ev.item.name ?? "");
@@ -89,9 +91,9 @@ export default async function (
         }
     } catch (error) {
         if (signal?.aborted || (error && typeof error === "object" && "failure" in error)) throw error;
-        throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "ended" });
+        throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, reason: "ended" });
     }
-    if (!completed) throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "ended" });
+    if (!completed) throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, reason: "ended" });
     const toolCalls = tools.finish();
     return { text, thinking, finishReason: finish === "stop" && toolCalls.length ? "tool_calls" : finish, usage, toolCalls };
 }

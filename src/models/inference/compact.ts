@@ -39,6 +39,7 @@ export default async function (
         ctx.fns.models.inference.checkInput({ provider: view.provider, connectionId: view.id, model: opts.model, sessionId: opts.sessionId, capabilities: def.capabilities, messages: opts.messages, signal: opts.signal });
         if (view.provider === 'codex') await ctx.fns.models.provider.codex.codexCheckOpaque({ connectionId: view.id, messages: opts.messages });
         const { definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id, signal: opts.signal, timeoutMs: 1800000, headerTimeoutMs: 300000, idleTimeoutMs: 300000 });
+        ctx.fns.models.inference.watchTransport({ conn, signal: opts.signal });
         const { connectionId: _c, ...req } = opts;
         const result = await definition.compact!(ctx, conn, req);
         if (view.provider === 'codex' || !def.capabilities?.checkpoints) return result;

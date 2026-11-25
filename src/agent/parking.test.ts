@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkModelsTestCtx as mkTestCtx } from './modelsTestCtx.entry';
 import wakeWorker from "./wakeWorker";
+import chatEvents from '../api/$route_v1_agents_$id_events_GET';
 
 async function drainUntilIdle(ctx: any, deadlineMs = 5000) {
     const loop = ctx.fns.agent.workerLoop({});
@@ -28,6 +29,41 @@ function limitInfo(over: Partial<types.models.FailureInfo> = {}): types.models.F
         ...over,
     } as types.models.FailureInfo;
 }
+
+test('chat reload keeps the failed attempt’s safe provider diagnostic after a successful turn', async () => {
+    const ctx = await mkTestCtx();
+    const { id } = await ctx.fns.agent.start({ model: 'mock/default:test' });
+    const summary = 'mock HTTP 403: access denied';
+    const privateMarkers = ['raw-response-body', 'private-prompt-fragment', 'test-credential'];
+    let runs = 0;
+    const logs: unknown[] = [];
+    ctx.fns.procs.log.emit = async (_ctx: any, _session: any, entry: unknown) => { logs.push(entry); };
+    await ctx.fns.procs.log.info({ event: 'test.capture-ready' });
+    expect(logs).toContainEqual(expect.objectContaining({ event: 'test.capture-ready' }));
+    ctx.fns.agent.run = async () => {
+        if (++runs === 1) throw Object.assign(new Error(`Provider transaction aborted: ${privateMarkers[0]}`), {
+            failure: { code: 'AUTH', diagnostic: { summary } }, cause: privateMarkers.slice(1),
+        });
+    };
+    const turn = async (text: string) => {
+        await ctx.fns.session.appendUserMessage({ id, text });
+        await ctx.fns.procs.db.run({ sql: 'UPDATE agents SET next_run_at = ? WHERE id = ?', params: [Date.now(), id] });
+        await drainUntilIdle(ctx);
+        const response = await chatEvents(ctx, null, { req: new Request('http://fixture/events'), params: { id } });
+        expect(response.status).toBe(200);
+        return await response.json() as any;
+    };
+    const failed = await turn('first');
+    expect(failed.lastError).toBe(summary);
+    const errors = (page: any) => page.events.filter((e: any) => e.type === 'error').map(({ idx, text }: any) => ({ idx, text }));
+    expect(errors(failed)).toEqual([{ idx: expect.any(Number), text: summary }]);
+    const later = await turn('second');
+    expect(runs).toBe(2);
+    expect(later.lastError).toBeNull();
+    expect(errors(later)).toEqual(errors(failed));
+    const stored = await ctx.fns.session.getEvents({ id });
+    for (const marker of privateMarkers) expect(JSON.stringify([stored, failed, later, logs])).not.toContain(marker);
+});
 
 describe("usage-limit parking", () => {
     test("parks every agent sharing the credential, not the one that failed", async () => {
@@ -172,7 +208,7 @@ describe("usage-limit parking", () => {
         ctx.fns.agent.run = async () => {
             calls++;
             const error: any = new Error("Лимит подписки mock исчерпан.");
-            error.failure = limitInfo();
+            error.failure = { ...limitInfo(), diagnostic: { summary: 'mock HTTP 429: quota exhausted' } };
             throw error;
         };
 

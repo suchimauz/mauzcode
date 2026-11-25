@@ -2,6 +2,8 @@
  * Read a Gemini generateContent SSE stream into deltas and a StreamResult
  *
  * Shared by the public gemini protocol and the Code Assist provider. Parses each SSE frame as JSON (with `unwrap`, reads the GenerateContentResponse from the event's `response` field, as Code Assist wraps it), reports text, thought (public_summary) and function-call argument deltas, collects usage (prompt, candidates + thoughts, cached) and returns text, thinking, finishReason (STOP → stop, MAX_TOKENS → length, any function call → tool_calls) and tool calls. A function call part's `thoughtSignature` is returned on that call only; unsigned calls have no signature field. Malformed data, an in-stream error or a stream without a finish reason fail with acceptance uncertain; abort and SDK failures pass through.
+ * @param opts.provider Resolved provider id.
+ * @param opts.sensitive Sent body and credentials for suppressing echoes.
  * @param opts.body Readable response body.
  * @param opts.request Streaming request whose onEvent receives deltas.
  * @param opts.label Protocol label used in failure messages.
@@ -12,6 +14,10 @@ export default async function (
     ctx: Context,
     session: Session | null,
     opts: {
+        /** Resolved provider id for attribution. */
+        provider: string;
+        /** Wire request and credentials for suppressing echoes. */
+        sensitive?: { request?: unknown; secrets?: string[] };
         /** Readable response body. */
         body: ReadableStream<Uint8Array>;
         /** Streaming request whose onEvent receives deltas. */
@@ -33,10 +39,10 @@ export default async function (
         for await (const frame of ctx.fns.models.transport.parseSSE({ body: opts.body })) {
             if (!frame.data) continue;
             let raw: Record<string, any>;
-            try { raw = JSON.parse(frame.data); } catch { throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "malformed" }); }
-            if (raw?.error) throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "error" });
+            try { raw = JSON.parse(frame.data); } catch { throw ctx.fns.models.protocol.common.streamInterrupted({ provider: opts.provider, ...opts.sensitive, label, reason: "malformed" }); }
+            if (raw?.error) throw ctx.fns.models.protocol.common.streamInterrupted({ provider: opts.provider, ...opts.sensitive, label, body: raw, reason: "error" });
             const ev: Record<string, any> = opts.unwrap ? raw?.response ?? {} : raw;
-            if (ev?.error) throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "error" });
+            if (ev?.error) throw ctx.fns.models.protocol.common.streamInterrupted({ provider: opts.provider, ...opts.sensitive, label, body: ev, reason: "error" });
             const u = ev.usageMetadata;
             if (u) {
                 if (typeof u.promptTokenCount === "number") usage.prompt_tokens = u.promptTokenCount;
@@ -59,9 +65,9 @@ export default async function (
         }
     } catch (error) {
         if (signal?.aborted || (error && typeof error === "object" && "failure" in error)) throw error;
-        throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "ended" });
+        throw ctx.fns.models.protocol.common.streamInterrupted({ provider: opts.provider, ...opts.sensitive, label, reason: "ended" });
     }
-    if (finish === null) throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "ended" });
+    if (finish === null) throw ctx.fns.models.protocol.common.streamInterrupted({ provider: opts.provider, ...opts.sensitive, label, reason: "ended" });
     const toolCalls = tools.finish().map((call, i) => {
         const sig = signatures.get(String(i));
         return sig ? { ...call, thoughtSignature: sig } : call;

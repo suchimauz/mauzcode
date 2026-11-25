@@ -35,7 +35,7 @@ export default async function (
             for await (const ev of ctx.fns.models.provider.codex.codexWireEvents({ body: res.body, signal: req.signal })) {
                 if (ev.type === "response.output_item.done" && ev.item?.type === "compaction") { if (item) throw bad("Codex compaction returned multiple checkpoint items"); item = ev.item; }
                 else if (ev.type === "response.completed") { completed = true; responseId = typeof ev.response?.id === "string" ? ev.response.id : typeof ev.response_id === "string" ? ev.response_id : ""; usage.prompt_tokens = Number(ev.response?.usage?.input_tokens ?? 0); usage.completion_tokens = Number(ev.response?.usage?.output_tokens ?? 0); break; }
-                else if (ev.type === "response.failed" || ev.type === "error") throw ctx.fns.models.provider.codex.codexWireStreamFailed({ ev: ev });
+                else if (ev.type === "response.failed" || ev.type === "error") throw ctx.fns.models.provider.codex.codexWireStreamFailed({ ev, request: body, secrets: [a.token, a.accountId, req.sessionId, turnMetadata].filter((s): s is string => !!s) });
             }
             if (!completed) throw ctx.fns.models.provider.codex.codexWireInterrupted({ error: new Error("no terminal event"), signal: req.signal });
             if (!item || typeof item.encrypted_content !== "string" || !item.encrypted_content) throw bad("Codex compaction returned no valid checkpoint item");

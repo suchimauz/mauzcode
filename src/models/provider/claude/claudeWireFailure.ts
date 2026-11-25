@@ -7,6 +7,10 @@ export default async function (
     ctx: Context,
     session: Session | null,
     opts: {
+        /** Original outgoing request used only to suppress echoed input. */
+        request?: unknown;
+        /** Request credential and routing values to suppress. */
+        secrets?: string[];
         /** conn input used by the claude failure protocol helper. */
         conn: types.models.ResolvedConnection;
         /** body input used by the claude failure protocol helper. */
@@ -34,5 +38,9 @@ export default async function (
             ...(classified.retryAfterMs !== undefined ? { retryAfterMs: classified.retryAfterMs } : {}),
             ...(classified.resetsAt != null ? { resetAt: classified.resetsAt } : {}),
         };
+        if (opts.request !== undefined) {
+            const diagnostic = ctx.fns.models.inference.providerDiagnostic({ provider: 'claude', stage: status === undefined ? 'stream' : 'http', status, body, request: opts.request, secrets: opts.secrets });
+            throw ctx.fns.models.inference.failure({ info: { ...info, diagnostic }, message: diagnostic.summary });
+        }
         throw ctx.fns.models.inference.failure({ info, message: `Claude request failed (${code})` });
 }

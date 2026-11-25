@@ -60,6 +60,7 @@ export default async function (
         }
         req.signal?.throwIfAborted();
         const endpoint: types.models.ProtocolEndpoint = {
+            provider: definition.id,
             base,
             headers: Object.fromEntries(headers),
             ...(body !== undefined ? { body } : {}),

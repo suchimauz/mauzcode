@@ -76,7 +76,7 @@ export default async function (
             res = await conn.fetch(`${BASE}/codex/responses`, init);
             if (!handedOff) throw stale();
         } catch (error) {
-            throw ctx.fns.models.provider.codex.codexWireInterrupted({ error: error, signal: signal });
+            throw ctx.fns.models.provider.codex.codexWireInterrupted({ error, signal, noResponse: true });
         }
-        return ctx.fns.models.provider.codex.codexWireChecked({ conn, res, auth: a });
+        return ctx.fns.models.provider.codex.codexWireChecked({ conn, res, auth: a, request: body, secrets: [a.token, ...Object.values(headers)] });
 }

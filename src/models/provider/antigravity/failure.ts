@@ -5,8 +5,7 @@
  * op rejected) and returns AUTH, retryable only for the first 401 of that token so the shared call sends at most one
  * further request with the refreshed token of the same account. 403 or PERMISSION_DENIED: ACCESS_DENIED, not
  * retryable. 429 or RESOURCE_EXHAUSTED: QUOTA_EXHAUSTED, not retryable, with a RetryInfo `retryDelay` converted to
- * `resetAt` only. Other statuses return null (shared status rules: 5xx retryable and replay-safe). Access denials include a bounded, redacted Google message and RPC identifiers;
- * never forward the raw response, verification URLs or detail metadata.
+ * `resetAt` only. Other statuses return null (shared status rules: 5xx retryable and replay-safe). Safe provider wording is extracted independently by the shared HTTP boundary.
  * @param opts.conn Resolved antigravity connection.
  * @param opts.status HTTP status of the failed response.
  * @param opts.body Bounded JSON-parsed error body, or null when unparseable.
@@ -35,15 +34,7 @@ export default async function (
         return { code: "AUTH", classification: "auth", retryable: r.retry === true, message: "Google rejected the Antigravity access token" };
     }
     if (opts.status === 403 || rpc === "PERMISSION_DENIED") {
-        const reason = details.find(d => d?.["@type"] === "type.googleapis.com/google.rpc.ErrorInfo")?.reason;
-        const labels = [rpc, reason].filter((s): s is string => typeof s === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(s));
-        const quote = typeof err?.message === "string" ? err.message
-            .replace(/https?:\/\/[^\s<>"']+/gi, "[link removed]")
-            .replace(/\b[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+/g, "[email removed]")
-            .replace(/\b(?:ya29\.|1\/\/|4\/)[\w./~%+=-]+/g, "[redacted]")
-            .replace(/\b((?:access_token|refresh_token|code_verifier|client_secret|password|authorization_code|api_key)["']?\s*[:=]\s*)["']?[^\s,"';}]+/gi, "$1[redacted]") : "";
-        const message = ctx.fns.models.connections.safeMessage({ message: `Google HTTP ${opts.status}${labels.length ? " " + labels.join(" / ") : ""}: ${quote.trim() || "Google denied this Antigravity account access to the model"}`, secrets: [opts.accessToken] });
-        return { code: "ACCESS_DENIED", classification: "auth", retryable: false, message };
+        return { code: "ACCESS_DENIED", classification: "auth", retryable: false, message: "Google denied this Antigravity account access to the model" };
     }
     if (opts.status === 429 || rpc === "RESOURCE_EXHAUSTED") {
         const delay = details.find(d => typeof d?.["@type"] === "string" && (d["@type"] as string).endsWith("google.rpc.RetryInfo"))?.retryDelay;

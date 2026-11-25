@@ -195,6 +195,8 @@ describe('agent.workerLoop', () => {
         expect(row.run_state).toBe('idle');
         expect(row.next_run_at).toBeNull();                       // not rescheduled
         expect(row.last_processed_msg_idx).toBe(beforeCursor);    // cursor preserved
+        const events = await ctx.fns.session.getEvents({ id: 'aborter' });
+        expect(events.filter((event: any) => event.type === 'error')).toEqual([]);
     }, 5_000);
     test('claims a second agent when it becomes due during another run', async () => {
         const ctx: any = await mkTestCtx();

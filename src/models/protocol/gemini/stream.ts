@@ -27,6 +27,8 @@ export default async function (
     const label = "Gemini";
     const body = await ctx.fns.models.protocol.gemini.buildRequest({ request: req });
     const model = encodeURIComponent(req.model.replace(/^models\//, ""));
-    const res = await ctx.fns.models.protocol.common.streamFetch({ classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/models/" + model + ":streamGenerateContent?alt=sse", headers: opts.endpoint.headers, body, label, signal });
-    return ctx.fns.models.protocol.gemini.readStream({ body: res.body, request: req, label, signal });
+    const provider = opts.endpoint.provider ?? "gemini";
+    const sensitive = { request: body, secrets: Object.values(opts.endpoint.headers) };
+    const res = await ctx.fns.models.protocol.common.streamFetch({ provider, classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/models/" + model + ":streamGenerateContent?alt=sse", headers: opts.endpoint.headers, body, label, signal });
+    return ctx.fns.models.protocol.gemini.readStream({ provider, sensitive, body: res.body, request: req, label, signal });
 }

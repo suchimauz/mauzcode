@@ -29,7 +29,7 @@ function fixture(content: unknown = JSON.stringify(checkpoint), type = 'codex_co
         procs: { log: { warn: () => {} }, events: { emit: () => {} }, db: { select: async () => [{codex_generation:'generation'}] } },
         auth: { attributeMessages: async ({messages}: any) => ({messages,applied:false}) },
         attachments: { resolveContent: async ({messages}: any) => messages }, planning: { prompt: async () => '' },
-        models: { provider:{codex:{codexControls:()=>({}),codexBindOpaque:(o:any)=>bind(ctx,null,o),codexCheckOpaque:(o:any)=>check(ctx,null,o)}}, resolveRoute: async () => route, inference: { failure: (o: any) => failure(ctx,null,o), checkInput: (o: any) => checkInput(ctx,null,o), assertModelEnabled: async () => ({id:'c',provider:'codex'}) }, connections: { safeMessage: ({message}:any)=>message, resolve: async () => ({definition,conn:{}}) }, compact: async (o: any) => { wire=input(ctx,null,{messages:o.messages}); return { item, checkpoint, responseId:'r' }; } },
+        models: { provider:{codex:{codexControls:()=>({}),codexBindOpaque:(o:any)=>bind(ctx,null,o),codexCheckOpaque:(o:any)=>check(ctx,null,o)}}, resolveRoute: async () => route, inference: { watchTransport: () => {}, failure: (o: any) => failure(ctx,null,o), checkInput: (o: any) => checkInput(ctx,null,o), assertModelEnabled: async () => ({id:'c',provider:'codex'}) }, connections: { safeMessage: ({message}:any)=>message, resolve: async () => ({definition,conn:{}}) }, compact: async (o: any) => { wire=input(ctx,null,{messages:o.messages}); return { item, checkpoint, responseId:'r' }; } },
     } };
     return {ctx,agent,route,wire:()=>wire};
 }

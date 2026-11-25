@@ -65,7 +65,7 @@ export default async function (
                     if (ev.response?.incomplete_details?.reason === "max_output_tokens") finishReason = "length";
                     terminal = true;
                     break;
-                } else if (t === "response.failed" || t === "error") throw ctx.fns.models.provider.codex.codexWireStreamFailed({ ev: ev });
+                } else if (t === "response.failed" || t === "error") throw ctx.fns.models.provider.codex.codexWireStreamFailed({ ev, request: body, secrets: [a.token, a.accountId, req.sessionId, turnState, received].filter((s): s is string => !!s) });
             }
             if (!terminal) throw ctx.fns.models.provider.codex.codexWireInterrupted({ error: new Error("no terminal event"), signal: req.signal });
             const quota = ctx.fns.models.provider.codex.codexQuota({ headers: res.headers, rateLimits });

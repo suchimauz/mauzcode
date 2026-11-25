@@ -44,7 +44,9 @@ export default async function (
         // the protocol's own model/messages/stream/tools/sampling/reasoning fields.
         ...(opts.endpoint.body ?? {}),
     };
-    const res = await ctx.fns.models.protocol.common.streamFetch({ classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/chat/completions", headers: opts.endpoint.headers, body, label, signal });
+    const provider = opts.endpoint.provider ?? "openai-chat";
+    const sensitive = { request: body, secrets: Object.values(opts.endpoint.headers) };
+    const res = await ctx.fns.models.protocol.common.streamFetch({ provider, classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/chat/completions", headers: opts.endpoint.headers, body, label, signal });
     let text = "", thinking = "", finish: string | null = null, done = false;
     const usage: types.models.StreamResult["usage"] = {};
     const tools = ctx.fns.models.protocol.common.collectToolCalls({ onEvent: req.onEvent });
@@ -52,8 +54,8 @@ export default async function (
         for await (const frame of ctx.fns.models.transport.parseSSE({ body: res.body })) {
             if (frame.data === "[DONE]") { done = true; break; }
             let ev: Record<string, any>;
-            try { ev = JSON.parse(frame.data); } catch { throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "malformed" }); }
-            if (ev.error) throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "error" });
+            try { ev = JSON.parse(frame.data); } catch { throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, reason: "malformed" }); }
+            if (ev.error) throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, body: ev, reason: "error" });
             if (ev.usage) {
                 if (typeof ev.usage.prompt_tokens === "number") usage.prompt_tokens = ev.usage.prompt_tokens;
                 if (typeof ev.usage.completion_tokens === "number") usage.completion_tokens = ev.usage.completion_tokens;
@@ -75,9 +77,9 @@ export default async function (
         }
     } catch (error) {
         if (signal?.aborted || (error && typeof error === "object" && "failure" in error)) throw error;
-        throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "ended" });
+        throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, reason: "ended" });
     }
-    if (!done && finish === null) throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "ended" });
+    if (!done && finish === null) throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, reason: "ended" });
     const toolCalls = tools.finish();
     return { text, thinking, finishReason: finish === "stop" && toolCalls.length ? "tool_calls" : finish, usage, toolCalls };
 }

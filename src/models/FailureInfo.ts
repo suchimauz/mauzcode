@@ -3,6 +3,8 @@ export type FailureInfo = {
     /** Stable error code, e.g. LOGIN_REQUIRED, QUOTA_EXHAUSTED, RATE_LIMITED, INVALID_INPUT, UNSUPPORTED, CAPABILITY_UNAVAILABLE, PROVIDER_ERROR, CANCELLED, TRANSPORT. */
     code: string;
     classification: "auth" | "quota" | "throttled" | "invalid_input" | "unsupported" | "capability_unavailable" | "provider" | "cancelled" | "transport";
+    /** Optional display-only evidence; never an input to retry classification. */
+    diagnostic?: types.models.ProviderDiagnostic;
     /** Upstream HTTP status, when one was received. */
     upstreamStatus?: number;
     /** Suggested wait before a caller-level retry, in milliseconds. */

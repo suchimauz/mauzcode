@@ -316,7 +316,7 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
         if (agent.currentJobId !== runToken || agent.abortController?.signal.aborted) aborted = true;
     } catch (e: any) {
         if (agent.currentJobId !== runToken || agent.abortController?.signal.aborted) aborted = true;
-        else if (e?.name === 'AbortError' || (!e?.transportFailure && isAbortError(e))) {
+        else if (e?.name === 'AbortError' || (!e?.transportFailure && !e?.failure?.diagnostic && !e?.diagnostic && isAbortError(e))) {
             aborted = true;
         } else {
             // Stream implementations classify their own HTTP failures and carry
@@ -330,7 +330,9 @@ async function runOne(ctx: Context, agentId: string, runToken: string): Promise<
             // Transport dispatch knowledge is authoritative, even if an upstream
             // wrapper also attached an HTTP classification or a transient message.
             failure = transportFailure ? null : (e?.failure as types.models.FailureInfo | undefined) ?? null;
-            errorText = e?.message ?? String(e);
+            // The SDK has already normalized the final attempt. Never serialize its
+            // response, cause or wrapper when writing history/current status.
+            errorText = failure?.diagnostic?.summary ?? e?.diagnostic?.summary ?? e?.message ?? String(e);
             // A parked run resumes by itself, so it records no error: the retry counter
             // and the transcript stay clean until the wake fires.
             if (parkUntil == null && failure?.code !== 'QUOTA_EXHAUSTED') {

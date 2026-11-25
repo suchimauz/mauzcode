@@ -7,7 +7,7 @@ import retryCodes from './retryCodes';
 import retryWait from './retryWait';
 
 // Offline owned-run harness: no network, DB, live agents or real retry delays.
-const interrupted = () => Object.assign(new Error('Retryable rejected transport request'), {failure:{code:'TRANSPORT',classification:'transport',retryable:true,replaySafe:true,acceptance:'rejected'}});
+const interrupted = () => Object.assign(new Error('Retryable rejected transport request'), {failure:{code:'TRANSPORT',classification:'transport',diagnostic:{summary:'custom: transport failure before response'},retryable:true,replaySafe:true,acceptance:'rejected'}});
 const done = { text: 'done', usage: null, finishReason: 'stop', toolCalls: [] };
 const tool = { text: '', usage: null, finishReason: 'tool_calls', toolCalls: [{ id: 'saved-tool', name: 'write', args: { path: 'test' } }] };
 function harness(turns: any[]) {

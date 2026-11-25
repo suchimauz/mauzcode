@@ -218,6 +218,24 @@ lazy; absent values return `null`. Use `conn.fetch` rather than global `fetch`
 so the connection's transport is respected. `config` values are strings, numbers,
 booleans, null or string arrays (including manually configured model ids).
 
+### Inference failure diagnostics
+
+Use the registered **provider ID**, not an account, endpoint or protocol name. A route-only provider inherits the SDK's handling: failed HTTP responses are read once (16 KiB maximum), and error frames are captured by the selected decoder. A classifier still owns retry, quota, acceptance and replay policy; its machine code is not an upstream error code.
+
+| Agent-facing provider | Inference path | Route / capture fixtures |
+| --- | --- | --- |
+| Custom | Configured OpenAI Chat, Responses, Anthropic or Gemini decoder | `custom.test.ts`, `protocolStream.test.ts` |
+| Qwen | Route → OpenAI Chat | `qwen.test.ts` |
+| MiniMax Coding | Route → Anthropic | `minimaxCoding.test.ts` |
+| Z.AI Coding | Route → Anthropic or OpenAI Chat | `zaiCoding.test.ts` |
+| OpenCode Go plugin | Model route → any of the four shared decoders | plugin `provider.test.ts` and `diagnostic.test.ts` |
+| Antigravity | Project lookup, then shared HTTP and Gemini stream reader | `antigravity.test.ts` |
+| Codex, Claude | Native response check, provider error frame, interrupted stream | `nativeDiagnostic.test.ts`, `codex.test.ts`, `claudeProtocol.test.ts` |
+
+For a standalone adapter, pass a parsed error envelope, the actual outgoing request body and sensitive request values to `models.inference.providerDiagnostic`. Pass only its `summary` as the SDK failure message and its returned object as `info.diagnostic`. Never log or attach the raw exception, body, request, headers or account identifiers. A malformed or interrupted stream is not a rejected HTTP request; use stage `stream` without a fabricated status. A failed dispatch without a response uses `transport` and only a validated error code; user cancellation remains cancellation. Do not retry or change existing transport flags to obtain diagnostics.
+
+Only selected safe message and identifier fields are eligible. Unknown, oversized, malformed or unsafe details may yield only provider, stage and known status. Login flows, catalogue, usage, probes and local validation are not upstream inference failures.
+
 ### Optional native web search
 
 Omitting `nativeWebSearch` leaves inference and the stored ordinary search engine unchanged. An opt-in declaration has `binding` and `search(ctx, conn, { model, query, limit, signal, deadline })`. Return `{results: [{title, url, description?, publishedAt?}]}`, not answer text. The facade normalizes the links, labels their source `native:<id>` and never retries elsewhere. An explicit ordinary `engine` bypasses native routing. A result label cannot be saved as an engine.

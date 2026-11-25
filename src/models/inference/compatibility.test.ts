@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 async function fixture() {
     const ctx: any = { state: { models: { providers: {} } }, fns: { models: { inference: {}, connections: {} } } };
-    for (const name of ["assertModelEnabled", "assertProviderEnabled", "checkInput", "compact", "failure", "resolveReasoning", "stream"]) {
+    for (const name of ["assertModelEnabled", "assertProviderEnabled", "checkInput", "compact", "failure", "resolveReasoning", "watchTransport", "stream"]) {
         const leaf = (await import(`./${name}.ts`)).default;
         ctx.fns.models.inference[name] = (opts: unknown) => leaf(ctx, null, opts);
     }

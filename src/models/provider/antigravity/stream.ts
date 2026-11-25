@@ -29,7 +29,7 @@ export default async function (
     const label = "Antigravity";
     ctx.fns.models.inference.rejectProviderOptions({ provider: "antigravity", providerOptions: req.providerOptions });
     req.signal?.throwIfAborted();
-    const project = await ctx.fns.models.provider.antigravity.project({ conn, signal: req.signal });
+    const project = await ctx.fns.models.provider.antigravity.project({ conn, signal: req.signal, inference: true });
     const accessToken = (await ctx.fns.models.provider.antigravity.auth({ conn, op: "token" })).accessToken!;
     const built = await ctx.fns.models.protocol.gemini.buildRequest({ request: req, omitReasoning: true });
     const applied = req.reasoning?.applied;
@@ -39,10 +39,11 @@ export default async function (
     const body = { project, model: req.model, request, requestType: "agent", userAgent: "antigravity", requestId: "agent-" + crypto.randomUUID() };
     const url = k.apiBase + ":streamGenerateContent?alt=sse";
     const res = await ctx.fns.models.protocol.common.streamFetch({
+        provider: "antigravity",
         fetch: (u, init) => ctx.fns.models.provider.antigravity.request({ conn, url: u, init: init ?? {} }),
         url, headers: { authorization: "Bearer " + accessToken, "user-agent": k.userAgent }, body, label, signal: req.signal,
         classifyFailure: input => ctx.fns.models.provider.antigravity.failure({ conn, status: input.status, body: input.body, accessToken }),
     });
     await ctx.fns.models.provider.antigravity.auth({ conn, op: "accepted", accessToken }).catch(() => undefined);
-    return ctx.fns.models.protocol.gemini.readStream({ body: res.body, request: req, label, signal: req.signal, unwrap: true });
+    return ctx.fns.models.protocol.gemini.readStream({ provider: "antigravity", sensitive: { request: body, secrets: [accessToken] }, body: res.body, request: req, label, signal: req.signal, unwrap: true });
 }

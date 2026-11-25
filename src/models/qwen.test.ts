@@ -243,7 +243,7 @@ describe("qwen models, routing and failures", () => {
     test("a streaming 401 is auth, not replayed, and the next request refreshes", async () => {
         let refreshes = 0;
         const { ctx, calls, view, conn } = await setup(call => {
-            if (call.url === `${API}/chat/completions`) return new Response(JSON.stringify({ error: { code: "invalid_token", message: "secret upstream" } }), { status: 401 });
+            if (call.url === `${API}/chat/completions`) return new Response(JSON.stringify({ error: { code: "invalid_token", message: `Token rejected: ${ACCESS}` } }), { status: 401 });
             if (call.url === `${AUTH}/token`) { refreshes++; return Response.json({ access_token: "qa-2", expires_in: 3600 }); }
             return new Response("", { status: 500 });
         });
@@ -251,7 +251,9 @@ describe("qwen models, routing and failures", () => {
         await store(ctx, c, 3600);
         const err = await ctx.fns.models.stream({ connectionId: view.id, model: "qwen3.8-max", instructions: "", sessionId: "s", messages: [{ role: "user", content: "hi" }] }).then(() => null, (e: any) => e);
         expect(err?.failure ?? err).toMatchObject({ classification: "auth" });
-        expect(String(err?.message)).not.toContain("secret upstream");
+        expect(err.failure.diagnostic).toMatchObject({provider: "qwen", stage: "http", status: 401});
+        expect(err.failure.diagnostic.message).toBeUndefined();
+        expect(String(err.message)).not.toContain(ACCESS);
         expect(calls.filter(x => x.url === `${API}/chat/completions`)).toHaveLength(1);
         expect(calls[0]!.headers.authorization).toBe("Bearer " + ACCESS);
         expect((await qwen.route!(ctx, c, { model: "qwen3.8-max", info: null, sessionId: "s" })).headers.authorization).toBe("Bearer qa-2");
@@ -262,12 +264,13 @@ describe("qwen models, routing and failures", () => {
         const { ctx, conn } = await setup(() => new Response(JSON.stringify({ error: { code: "insufficient_quota", message: "upstream text" } }), { status: 429, headers: { "retry-after": "60" } }));
         const c = await conn();
         const err = await ctx.fns.models.protocol.openaiChat.stream({
-            fetch: c.fetch, endpoint: { base: API, headers: {} },
+            fetch: c.fetch, endpoint: { base: API, headers: {}, provider: "qwen" },
             request: { model: "qwen3.8-max", sessionId: "s", instructions: "", messages: [{ role: "user", content: "hi" }] },
             classifyFailure: (input: { status: number; body: unknown | null }) => qwen.classifyFailure!(ctx, c, { ...input, model: "qwen3.8-max" }),
         }).then(() => null, (e: any) => e);
         expect(err.failure).toMatchObject({ code: "QUOTA_EXHAUSTED", classification: "quota", retryAfterMs: 60000, upstreamStatus: 429 });
-        expect(String(err.message)).not.toContain("upstream text");
+        expect(err.failure.diagnostic).toMatchObject({provider: "qwen", message: "upstream text"});
+        expect(err.message).toBe(err.failure.diagnostic.summary);
         const classify = (status: number, body: unknown) => ctx.fns.models.provider.qwen.failure({ conn: c, status, body });
         expect(await classify(429, { error: { code: "rate_limited_requests" } })).toMatchObject({ code: "RATE_LIMITED", classification: "throttled" });
         expect(await classify(402, null)).toMatchObject({ code: "QUOTA_EXHAUSTED" });

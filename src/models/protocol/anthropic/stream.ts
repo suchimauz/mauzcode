@@ -55,7 +55,9 @@ export default async function (
         // Provider body extras arrive validated by streamRoute (no protocol-owned keys) and are additive.
         ...(opts.endpoint.body ?? {}),
     };
-    const res = await ctx.fns.models.protocol.common.streamFetch({ classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/messages", headers: opts.endpoint.headers, body, label, signal });
+    const provider = opts.endpoint.provider ?? "anthropic";
+    const sensitive = { request: body, secrets: Object.values(opts.endpoint.headers) };
+    const res = await ctx.fns.models.protocol.common.streamFetch({ provider, classifyFailure: opts.classifyFailure, fetch: opts.fetch, url: opts.endpoint.base + "/messages", headers: opts.endpoint.headers, body, label, signal });
     let text = "", thinking = "", stop: string | null = null, terminal = false;
     // Native reasoning blocks captured by index: thinking text from thinking_delta, the model signature from
     // signature_delta, and redacted data from the start event. Returned whole as StreamResult.reasoningBlocks.
@@ -89,9 +91,9 @@ export default async function (
         for await (const frame of ctx.fns.models.transport.parseSSE({ body: res.body })) {
             if (!frame.data || frame.data === "[DONE]") continue;
             let ev: Record<string, any>;
-            try { ev = JSON.parse(frame.data); } catch { throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "malformed" }); }
+            try { ev = JSON.parse(frame.data); } catch { throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, reason: "malformed" }); }
             const type = ev.type ?? frame.event;
-            if (type === "error") throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "error" });
+            if (type === "error") throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, body: ev, reason: "error" });
             if (type === "message_stop") { terminal = true; break; }
             if (type === "message_start") setUsage(ev.message?.usage);
             else if (type === "message_delta") { if (ev.delta?.stop_reason) stop = ev.delta.stop_reason; setUsage(ev.usage); }
@@ -107,9 +109,9 @@ export default async function (
         }
     } catch (error) {
         if (signal?.aborted || (error && typeof error === "object" && "failure" in error)) throw error;
-        throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "ended" });
+        throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, reason: "ended" });
     }
-    if (!terminal) throw ctx.fns.models.protocol.common.streamInterrupted({ label, reason: "ended" });
+    if (!terminal) throw ctx.fns.models.protocol.common.streamInterrupted({ provider, ...sensitive, label, reason: "ended" });
     const finishReason = stop === "end_turn" || stop === "stop_sequence" ? "stop" : stop === "max_tokens" ? "length" : stop === "tool_use" ? "tool_calls" : stop;
     const keptBlocks = reasoningBlocks.filter(b => (b.thinking ?? "").length > 0 || (b.signature ?? "").length > 0 || (b.data ?? "").length > 0);
     return { text, thinking, finishReason, usage, toolCalls: tools.finish(), ...(keptBlocks.length ? { reasoningBlocks: keptBlocks } : {}) };

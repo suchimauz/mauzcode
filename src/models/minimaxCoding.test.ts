@@ -351,14 +351,14 @@ describe("minimax-coding failure classification", () => {
         }
     });
     test("rate limit is never quota, and unknown bodies fall back to status rules", async () => {
-        const { conn: c, calls } = conn({}, () => new Response(JSON.stringify({ base_resp: { status_code: 1002 } }), { status: 429 }));
+        const { conn: c, calls } = conn({}, () => new Response(JSON.stringify({ base_resp: { status_code: 1002, status_msg: 'Please try later' } }), { status: 429 }));
         const error = await ctx.fns.models.protocol.anthropic.stream({
-            fetch: c.fetch, endpoint: { base: "https://api.minimax.io/anthropic/v1", headers: { "x-api-key": KEY } },
+            fetch: c.fetch, endpoint: { provider: 'minimax-coding', base: "https://api.minimax.io/anthropic/v1", headers: { "x-api-key": KEY } },
             request: streamReq(), classifyFailure: (input: { status: number; body: unknown | null }) =>
                 provider.classifyFailure!(ctx, c, { ...input, model: "MiniMax-M3" }),
         }).then(() => null, (e: any) => e);
         expect(error.failure).toMatchObject({ code: "RATE_LIMITED", classification: "throttled", upstreamStatus: 429 });
-        expect(String(error.message)).toBe("MiniMax is rate limiting requests");
+        expect(String(error.message)).toBe("minimax-coding · HTTP 429 · 1002 · Please try later");
         expect(String(error.message)).not.toContain(KEY);
         expect(calls).toHaveLength(1);
         expect(await classify(429, { error: { type: "overloaded_error" } })).toBeNull();

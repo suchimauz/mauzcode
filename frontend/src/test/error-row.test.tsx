@@ -15,6 +15,12 @@ describe('chat error row', () => {
     expect(screen.getByText('Connection Asoft LLM Gate is disabled')).toBeInTheDocument();
   });
 
+  it.each(['Provider HTTP 403', 'Provider HTTP 400: <img src=x onerror=alert(1)>'])('renders historical provider text literally: %s', text => {
+    const { container } = render(<TranscriptMessage event={{ ...base, text }} agentId="ps" />);
+    expect(screen.getByText(text)).toBeVisible();
+    expect(container.querySelector('img')).toBeNull();
+  });
+
   it('has no disclosure for a single short line', () => {
     render(<ErrorRow event={base} />);
     expect(screen.getByRole('button', { name: /Ошибка/ })).toBeDisabled();

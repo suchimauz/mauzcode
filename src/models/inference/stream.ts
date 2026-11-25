@@ -97,6 +97,7 @@ export default async function (
         }
         opts.signal?.throwIfAborted();
         const { view: resolvedView, definition, conn } = await ctx.fns.models.connections.resolve({ id: view.id, signal: opts.signal, timeoutMs: 1800000, headerTimeoutMs: 300000, idleTimeoutMs: 300000 });
+        ctx.fns.models.inference.watchTransport({ conn, signal: opts.signal });
         let capture: ((calls: types.models.StreamResult['toolCalls']) => void) | undefined;
         if (ctx.state.models?.nativeSearchOrigins?.has(opts)) {
             (ctx.state.models.nativeSearchInference ??= new WeakMap()).set(conn, { request: opts, view: resolvedView });

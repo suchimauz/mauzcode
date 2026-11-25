@@ -20,7 +20,8 @@ export default function (
                 if (!data || data === "[DONE]") continue;
                 let ev: unknown;
                 try { ev = JSON.parse(data); } catch {
-                    throw ctx.fns.models.inference.failure({ message: "Codex sent a malformed stream event", status: 502, info: { code: "PROVIDER_ERROR", classification: "provider", acceptance: "uncertain", retryable: false, replaySafe: false } });
+                    const diagnostic = ctx.fns.models.inference.providerDiagnostic({ provider: 'codex', stage: 'stream' });
+                    throw ctx.fns.models.inference.failure({ message: diagnostic.summary, status: 502, info: { diagnostic, code: "PROVIDER_ERROR", classification: "provider", acceptance: "uncertain", retryable: false, replaySafe: false } });
                 }
                 if (ev && typeof ev === "object") yield ev as Record<string, any>;
             }

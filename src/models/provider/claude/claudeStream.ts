@@ -58,7 +58,7 @@ export default async function (
                     if (!frame.data || frame.data === "[DONE]") continue;
                     const ev = JSON.parse(frame.data);
                     const type = ev.type ?? frame.event;
-                    if (type === "error") await ctx.fns.models.provider.claude.claudeWireFailure({ conn: conn, body: JSON.stringify(ev), h: res.headers });
+                    if (type === "error") await ctx.fns.models.provider.claude.claudeWireFailure({ conn: conn, body: JSON.stringify(ev), h: res.headers, request: body, secrets: [...Object.values(h), (h.authorization ?? "").replace(/^Bearer /i, "")] });
                     else if (type === "message_stop") terminal = true;
                     else if (type === "message_start") setUsage(ev.message?.usage);
                     else if (type === "message_delta") { if (ev.delta?.stop_reason) stop = ev.delta.stop_reason; setUsage(ev.usage); }
@@ -81,7 +81,8 @@ export default async function (
                 // middle of a chunk — the same loss as a closed socket, and equally worth a
                 // retry. SOCKS negotiation errors that share this code stay non-retryable at
                 // their own source (socksProxy.connect).
-                throw Object.assign(new Error(`${code}: invalid or interrupted Claude stream`, { cause: error }), { code, retryable: true, noFallback: true });
+                const diagnostic = ctx.fns.models.inference.providerDiagnostic({ provider: 'claude', stage: 'stream' });
+                throw Object.assign(new Error(diagnostic.summary), { diagnostic, code, retryable: true, noFallback: true });
             }
             const toolCalls = [...slots.entries()].sort((a, b) => a[0] - b[0]).map(([, s]) => {
                 let args: unknown = {};

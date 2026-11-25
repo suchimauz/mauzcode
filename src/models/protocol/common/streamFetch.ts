@@ -4,7 +4,8 @@ type ClassifiedFailure = { code: string; classification: types.models.FailureInf
 /**
  * Send one streaming generation request for a shared protocol and classify HTTP failures
  *
- * Shared by every Protocol.stream: rejects an already aborted signal before sending, sends the request through the transport-bound fetch, and on a non-success status cancels the body and throws an SDK failure (models.inference.failure). When a provider failure classifier is supplied it reads at most 16 KiB of the failed response body, JSON-parses it (else null), consults the classifier and uses its stable code, classification, retryability, reset time and fixed message; a classifier that returns nothing or throws falls back to the status-only rules — 401/403 auth, 429 throttled with retry-after, 400/404/413/422 invalid_input, 408/5xx provider; all retryable classes are replay-safe with acceptance rejected. Never includes the upstream body in the message. Returns the response with a readable body.
+ * Reads each failed HTTP body once (16 KiB maximum). Extracts safe evidence before consulting the optional classifier; classifier fields affect policy, not the displayed wording. A successful response without a body has uncertain acceptance.
+ * @param opts.provider Resolved provider id for attribution.
  * @param opts.fetch Transport-bound fetch of the connection; never a direct fallback.
  * @param opts.url Absolute request URL.
  * @param opts.headers Request headers, including authentication.
@@ -25,11 +26,13 @@ export default async function (
         headers: Record<string, string>;
         /** JSON request body. */
         body: Record<string, unknown>;
+        /** Resolved provider id for attribution. */
+        provider?: string;
         /** Protocol label used in failure messages. */
         label: string;
         /** Optional cancellation signal. */
         signal?: AbortSignal;
-        /** Optional provider classifier: receives the status and the bounded JSON-parsed error body (null when unparseable); its fixed message replaces the generic one, null or a throw falls back to the status rules. */
+        /** Optional provider classifier: receives the status and the bounded JSON-parsed error body (null when unparseable); null or a throw falls back to the status rules. */
         classifyFailure?: (input: { status: number; body: unknown | null }) => Promise<ClassifiedFailure> | ClassifiedFailure;
     },
 ): Promise<Response & { body: ReadableStream<Uint8Array> }> {
@@ -48,49 +51,29 @@ export default async function (
     const seconds = raw !== null && /^\d+(\.\d+)?$/.test(raw.trim()) ? Number(raw.trim()) * 1000 : undefined;
     const date = raw && raw.trim() && seconds === undefined ? Date.parse(raw) - Date.now() : undefined;
     const retryAfterMs = seconds ?? (date !== undefined && Number.isFinite(date) ? Math.max(0, date) : undefined);
-    if (opts.classifyFailure && response.body) {
-        // Bounded read: at most 16 KiB of the failed body, JSON-parsed or null. The body text itself
-        // never reaches a message — only the classifier's own fixed strings do.
-        let parsed: unknown = null;
-        try {
-            const reader = response.body.getReader();
-            const chunks: Uint8Array[] = [];
-            let received = 0;
-            while (received < 16384) {
-                const { done, value } = await reader.read();
-                if (done || !value) break;
-                chunks.push(value);
-                received += value.length;
-            }
-            await reader.cancel().catch(() => undefined);
-            const merged = new Uint8Array(Math.min(received, 16384));
-            let at = 0;
-            for (const chunk of chunks) {
-                if (at >= merged.length) break;
-                merged.set(chunk.subarray(0, Math.min(chunk.length, merged.length - at)), at);
-                at += chunk.length;
-            }
-            parsed = JSON.parse(new TextDecoder().decode(merged));
-        } catch { parsed = null; }
+    const parsed = !response.ok ? await ctx.fns.models.inference.readErrorBody({ response }) : null;
+    opts.signal?.throwIfAborted();
+    const diagnostic = ctx.fns.models.inference.providerDiagnostic({ provider: opts.provider ?? opts.label, stage: response.ok ? "stream" : "http", ...(response.ok ? {} : { status }), body: parsed, request: opts.body, secrets: Object.values(opts.headers) });
+    if (!response.ok && opts.classifyFailure) {
         let classified: ClassifiedFailure = null;
         try { classified = await opts.classifyFailure({ status, body: parsed }) ?? null; } catch { classified = null; }
+        opts.signal?.throwIfAborted();
         if (classified && typeof classified.message === "string" && classified.message) {
             const info: types.models.FailureInfo = {
-                upstreamStatus: status, acceptance: "rejected", replaySafe: true,
+                diagnostic, upstreamStatus: status, acceptance: "rejected", replaySafe: true,
                 code: classified.code, classification: classified.classification, retryable: classified.retryable,
                 ...(classified.retryAfterMs !== undefined ? { retryAfterMs: classified.retryAfterMs } : retryAfterMs !== undefined ? { retryAfterMs } : {}),
                 ...(classified.resetAt !== undefined ? { resetAt: classified.resetAt } : {}),
             };
-            throw ctx.fns.models.inference.failure({ message: classified.message, status: info.classification === "invalid_input" ? 400 : 502, info });
+            throw ctx.fns.models.inference.failure({ message: diagnostic.summary, status: info.classification === "invalid_input" ? 400 : 502, info });
         }
     }
-    await response.body?.cancel().catch(() => undefined);
-    const base = { upstreamStatus: status, acceptance: "rejected" as const, replaySafe: true };
+    const base = { diagnostic, upstreamStatus: status, acceptance: "rejected" as const, replaySafe: true };
     const info: types.models.FailureInfo = !response.ok && (status === 401 || status === 403) ? { ...base, code: "AUTH", classification: "auth", retryable: false }
         : status === 429 ? { ...base, code: "THROTTLED", classification: "throttled", retryable: true, ...(retryAfterMs !== undefined ? { retryAfterMs } : {}) }
         : [400, 404, 413, 422].includes(status) ? { ...base, code: "INVALID_INPUT", classification: "invalid_input", retryable: false }
         : status === 408 || status >= 500 ? { ...base, code: "PROVIDER_UNAVAILABLE", classification: "provider", retryable: true, ...(retryAfterMs !== undefined ? { retryAfterMs } : {}) }
         : response.ok ? { ...base, code: "PROTOCOL", classification: "provider", acceptance: "uncertain", retryable: false }
         : { ...base, code: "PROVIDER_ERROR", classification: "provider", retryable: false };
-    throw ctx.fns.models.inference.failure({ message: response.ok ? `${opts.label} response has no stream body` : `${opts.label} request failed (HTTP ${status})`, status: info.classification === "invalid_input" ? 400 : 502, info });
+    throw ctx.fns.models.inference.failure({ message: diagnostic.summary, status: info.classification === "invalid_input" ? 400 : 502, info });
 }
