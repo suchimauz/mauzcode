@@ -22,4 +22,4 @@
 
 - [x] 4.1 Update `docs/voice-providers.md`: implementation status, a "Set up Deepgram" section (API key, Base URL/EU endpoint, languages and multi, keyterms and usage-log visibility, smart formatting, MIP opt-out cost, test behaviour, routes) and the "What stays local" notes. Verify that the documented settings match the declared fields.
 - [x] 4.2 Run `bun test src/voice` and the project typecheck once for the settled batch, and verify that both are clean apart from separately recorded pre-existing failures.
-- [ ] 4.3 Manually dictate one Russian and one mixed ru/en phrase through a real Deepgram key in a chat and verify that the phrases appear in order in the draft and that Settings → Voice shows the test as available.
+- [x] 4.3 Manually dictate one Russian and one mixed ru/en phrase through a real Deepgram key in a chat and verify that the phrases appear in order in the draft and that Settings → Voice shows the test as available.
