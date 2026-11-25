@@ -54,7 +54,10 @@ it.each(['draft','other','cold'])('hides paid choices in %s; only local bridge r
   render(<ModelPicker agentId={kind==='draft'?'':'chat'} draft={kind==='draft'?{model,effort:'max',onChange:vi.fn()}:undefined}/>);await open();
   expect(await screen.findByRole('menuitem',{name:'Effort Max'})).toBeVisible();
   expect(screen.queryByRole('menuitem',{name:/Speed|verbosity/})).toBeNull();
-  if(kind==='cold') expect(await screen.findByRole('link',{name:/update the catalogue/})).toHaveAttribute('href','/?settings=models');
+  if(kind==='cold') {
+    await userEvent.click(screen.getByRole('menuitem',{name:'Model Test'}));
+    expect(await screen.findByRole('link',{name:/update the catalogue/})).toHaveAttribute('href','/?settings=models');
+  }
   expect(reads.every(url=>kind==='draft'?url.startsWith('/ui-lab-api/new-session'):['/ui-lab-api/models?agentId=chat','/agent/chat/codex-controls'].includes(url))).toBe(true);
 });
 it('interrupted notice stays pending; reconnect acknowledges only after rendering and not again after remount', async()=>{
