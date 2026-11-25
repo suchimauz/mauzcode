@@ -56,7 +56,27 @@ export default async function (
     // history rather than leaking its instructions through a compact summary.
     const model = ctx.fns.agent.requireModel({ model: agent.model, agentId: agent.id });
     const projection = await ctx.fns.compaction.project({ model, messages: fullHistory, sleepContext: omitted.size || authority ? null : agent.sleepContext });
-    const raw = projection.messages;
+    let raw = projection.messages;
+    if (raw.some(row => row.message_type === 'skill_catalogue')) {
+        // Never send receipt metadata. A checkpoint may retain advertisements in its
+        // tail: replace those from before activation with this window's fresh baseline.
+        const generation = projection.mode === 'compact' && ctx.fns.agent.getSleepGeneration({ sleepContext: agent.sleepContext, revision: projection.revision });
+        const obsoleteBefore = generation ? raw.length - (fullHistory.length - Number(generation.sourceOffset ?? generation.sourceFrontier)) : 0;
+        const eligible = !!await ctx.fns.skills.promptSection({ agent });
+        raw = raw.flatMap((row, index) => {
+            if (row.message_type !== 'skill_catalogue') return [row];
+            if (!eligible || index < obsoleteBefore || typeof row.content !== 'string') return [];
+            // Forks inherit the historical receipt/spend, not the parent's disclosure
+            // grants. Filter inherited plugin IDs through the child's frozen layers.
+            const lines = row.content.split('\n').slice(1, -1).filter(line => {
+                const plugin = /^- skill\.plugin\.([^: ]+):/.exec(line)?.[1];
+                return !plugin || agent.preset!.layers.every(layer => layer.plugins.includes('*') || layer.plugins.includes(plugin));
+            });
+            if (!lines.length) return [];
+            const { skill_scope: _receipt, ...publicRow } = row;
+            return [{ ...publicRow, content: ['<available-skills>', ...lines, '</available-skills>'].join('\n') }];
+        });
+    }
 
     // A call with no result is a transcript every provider refuses, and a run
     // that dies between the two writes leaves one behind. Repairing here — on

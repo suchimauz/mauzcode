@@ -13,8 +13,8 @@ ts?: number }): Promise<{ count: number }> {
         const m: any = messages[i];
         await ctx.fns.procs.db.run({
             sql: `
-            INSERT INTO messages (agent_id, idx, role, content, tool_calls, tool_call_id, message_type, ts, excluded_from_llm, excluded_from_cursor, author, result_ref)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
+            INSERT INTO messages (agent_id, idx, role, content, tool_calls, tool_call_id, message_type, ts, excluded_from_llm, excluded_from_cursor, author, result_ref, skill_scope)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
         `,
             params: [
                 id,
@@ -29,6 +29,7 @@ ts?: number }): Promise<{ count: number }> {
                 m.excluded_from_cursor ? 1 : 0,
                 m.author ?? null,
                 m.result_ref == null ? null : JSON.stringify(m.result_ref),
+                m.skill_scope ?? null,
             ],
         });
     }

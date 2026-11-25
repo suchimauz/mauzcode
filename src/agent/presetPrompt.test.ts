@@ -184,7 +184,11 @@ test("fixed-fixture prompt budgets preserve historical before measurements and n
         expect(limits[id]).toBeLessThan(before[id].promptChars);
         const agent = await fixture(id);
         const prompt = await ctx.fns.agent.fullSystemPrompt({ agent });
-        expect(prompt.length).toBeLessThanOrEqual(limits[id]);
+        // The pre-Skills fixture had no catalogue and no reader guidance. Keep its
+        // original ceiling; account separately for the now mandatory static section.
+        const skills = await ctx.fns.skills.promptSection({ agent });
+        expect(skills.length).toBeLessThanOrEqual(300);
+        expect(prompt.length).toBeLessThanOrEqual(limits[id] + (skills ? skills.length + 2 : 0));
         expect(prompt).not.toContain("## Preset instructions");
         expect(prompt).not.toContain("## Per-agent instructions");
         const all = ctx.fns.agent.wireTools({ agent });

@@ -39,8 +39,8 @@ export default async function (
     for (let attempt = 0; ; attempt++) {
         try {
             const res = await ctx.fns.procs.db.run({
-        sql: `INSERT INTO messages (agent_id, idx, role, content, tool_calls, tool_call_id, message_type, ts, excluded_from_llm, excluded_from_cursor, author, client_request_id, result_ref)
-              SELECT ?, COALESCE(MAX(idx), -1) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb FROM messages WHERE agent_id = ?
+        sql: `INSERT INTO messages (agent_id, idx, role, content, tool_calls, tool_call_id, message_type, ts, excluded_from_llm, excluded_from_cursor, author, client_request_id, result_ref, skill_scope)
+              SELECT ?, COALESCE(MAX(idx), -1) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ? FROM messages WHERE agent_id = ?
               ON CONFLICT (agent_id, client_request_id) WHERE client_request_id IS NOT NULL DO NOTHING
               RETURNING idx`,
         params: [
@@ -59,6 +59,7 @@ export default async function (
             message.author ?? null,
             opts.clientRequestId?.trim() || null,
             resultRef,
+            message.skill_scope ?? null,
             id,
         ],
             });
