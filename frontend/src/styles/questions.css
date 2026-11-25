@@ -107,3 +107,17 @@
 .secret-field-frame { display:block; width:calc(100% - 16px); height:50px; margin:0 8px 6px; border:0; background:transparent; color-scheme:normal; }
 .secret-hint { margin:0 8px; color:var(--text-tertiary); font-size:11px; line-height:16px; overflow-wrap:anywhere; }
 .secret-hint code { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); }
+
+/* Skill review: protected native card listing exactly what will be saved. */
+.skill-review { margin:0 8px; font-size:13px; line-height:20px; color:var(--text); }
+.skill-review-facts { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; margin:0 0 8px; }
+.skill-review-facts dt { color:var(--text-tertiary); }
+.skill-review-facts dd { margin:0; overflow-wrap:anywhere; }
+.skill-review code { font-family:var(--font-mono); font-size:12px; }
+.skill-review-files { margin:0 0 8px; padding:8px 12px; list-style:none; max-height:160px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+.skill-review-files span { color:var(--text-tertiary); font-size:11px; }
+.skill-review details { margin:0 0 8px; }
+.skill-review summary { cursor:pointer; color:var(--text-secondary); }
+.skill-review summary:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; border-radius:4px; }
+.skill-review details p { margin:6px 0 2px; color:var(--text-tertiary); font-size:11px; }
+.skill-review pre { margin:0; padding:8px 12px; max-height:240px; overflow:auto; border:1px solid var(--line); border-radius:8px; font-family:var(--font-mono); font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }

@@ -39,3 +39,18 @@ test('unapproved arbitrary plugin has visible safe fallback; core native kinds a
  expect(screen.queryByText(/Ожидают ответа или обработки/)).toBeNull();
  for(const kind of ['choice','confirm','grid','planning-review']) expect(screen.queryByRole('button',{name:new RegExp(kind)})).toBeNull();
 });
+
+test('skill review renders a native card and posts the shown digest with CSRF', async () => {
+ vi.mocked(requestJson).mockImplementation((async (path: string, init?: { method?: string }) => {
+  if (path.startsWith('/input/compat')) return { inputs: [{ id: 'k', kind: 'skill-review', title: 'Add skill skill.workspace:review' }] };
+  if (init?.method === 'POST') return { ok: true, status: 'published', reason: 'published' };
+  return { id: 'k', state: 'open', title: 'Add skill', message: 'Review exactly what will be saved.', available: true, skillId: 'skill.workspace:review', destination: 'workspace', where: '/p/.mauzcode/skills/review', source: 'draft', digest: 'a'.repeat(64), files: [{ path: 'SKILL.md', bytes: 40, executable: false, adapted: false }], manifest: '# Review', changes: [], result: null, csrfToken: 'csrf' };
+ }) as never);
+ const { container } = render(<SecureInputHost agentId="a" />);
+ const card = await screen.findByRole('region', { name: 'Add skill skill.workspace:review' });
+ expect(card.className).toContain('question-card');
+ expect(await screen.findByText('skill.workspace:review')).toBeTruthy();
+ expect(container.querySelectorAll('iframe')).toHaveLength(0);
+ fireEvent.click(screen.getByRole('button', { name: 'Добавить скилл' }));
+ await vi.waitFor(() => expect(vi.mocked(requestJson)).toHaveBeenCalledWith('/skills/review/k', expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf' }), body: JSON.stringify({ decision: 'approve', digest: 'a'.repeat(64) }) })));
+});

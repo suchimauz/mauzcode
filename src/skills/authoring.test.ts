@@ -103,6 +103,40 @@ test('cancel and another chat cannot publish; changing workspace requires a new 
     await expect(as(other).fns.skills.add.review({ draftId: mine.draftId })).rejects.toThrow('another chat');
 });
 
+test('the native card reads the exact package as owner only and decides through the JSON route', async () => {
+    ctx.state.registry.auth.csrfToken = async () => 'token';
+    const agent = await start();
+    const staged = await as(agent).fns.skills.add.prepare({ ...draftArgs, name: 'native' });
+    const review = await as(agent).fns.skills.add.review({ draftId: staged.draftId });
+    const view = async (user: any, headers: Record<string, string> = {}) => {
+        const req = new Request('http://local/skills/review/' + review.inputId, { headers });
+        const scoped = Object.create(ctx);
+        scoped.session = { req, user };
+        return scoped.fns.skills.add.view({ req, inputId: review.inputId }).catch((error: Error & { status?: number }) => ({ error: error.message, status: error.status }));
+    };
+    const owner = { id: 'owner', role: 'owner' };
+    expect(await view({ id: 'member', role: 'member' })).toMatchObject({ status: 403 });
+    expect(await view(owner, { 'sec-fetch-site': 'cross-site' })).toMatchObject({ status: 403 });
+    const shown = await view(owner);
+    expect(shown).toMatchObject({ available: true, state: 'open', skillId: 'skill.workspace:native', digest: staged.digest, csrfToken: 'token' });
+    expect(shown.files.map((f: any) => f.path)).toEqual(['SKILL.md', 'references/checklist.md']);
+    expect(shown.manifest).toContain('Read references/checklist.md.');
+    expect(JSON.stringify(shown)).not.toContain('"data"');
+    // The JSON decision path goes through the same protected decide.
+    const route = (await import('./$route_review_$inputId_POST')).default;
+    const post = async (user: any, decision: string, digest: string) => {
+        const req = new Request('http://local/skills/review/' + review.inputId, { method: 'POST', headers: { 'content-type': 'application/json', 'x-csrf-token': 'token' }, body: JSON.stringify({ decision, digest }) });
+        const scoped = Object.create(ctx);
+        scoped.session = { req, user };
+        return route(scoped, scoped.session, { req, params: { inputId: review.inputId } });
+    };
+    expect((await post({ id: 'member', role: 'member' }, 'approve', staged.digest)).status).toBe(403);
+    const res = await post(owner, 'approve', staged.digest);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect(await res.json()).toEqual({ ok: true, status: 'published', reason: 'published' });
+    expect(await view(owner)).toMatchObject({ available: false, state: 'submitted', result: { status: 'published' } });
+});
+
 test('a folder import keeps bytes, license and executable bits; a proposed adaptation is separate and the source is untouched', async () => {
     const agent = await start();
     const before = readFileSync(join(source, 'SKILL.md'), 'utf8');
