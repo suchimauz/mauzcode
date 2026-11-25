@@ -6,7 +6,8 @@ import type { ExtensionModelProviderProps, UiExtension } from '../extensions/typ
 const pluginUi = vi.hoisted(() => ({ current: null as unknown }));
 vi.mock('../extensions/pluginRuntime', () => ({ usePluginUi: () => pluginUi.current }));
 
-import { ModelsPanel, UsageView } from '../components/settings/ModelsPanel';
+import { ModelsPanel, UsageView, usageFamilies } from '../components/settings/ModelsPanel';
+import { quotaFamilyDetails, quotaFamilySummaries, type QuotaAccount } from '../lib/quotas';
 import { SETTINGS_TABS, SettingsDialog } from '../components/settings/SettingsDialog';
 
 const custom = { id: 'custom', label: 'Custom', description: 'Compatible API', fields: [
@@ -782,4 +783,198 @@ it('shows the status and the most used quota window in the collapsed row', async
   expect(within(row).queryByRole('list', { name: 'Quota windows' })).toBeNull();
   fireEvent.click(toggle);
   expect(within(row).getByRole('list', { name: 'Quota windows' })).toBeVisible();
+});
+
+const FAMILY_RESET = Date.UTC(2026, 0, 15, 9, 0), FAMILY_RESET_LATER = Date.UTC(2026, 0, 16, 18, 30);
+/** `undefined` used percent and `null` reset mean the provider did not report them. */
+const familyWindow = (family: 'gemini' | 'claude', label: string, usedPercent: number | undefined, resetAt: number | null = FAMILY_RESET) =>
+  ({ label, id: `antigravity:${label}`, model: label.toLowerCase().replace(/\s+/g, '-'), family, observedAt: 5_000, ...(usedPercent === undefined ? {} : { usedPercent }), ...(resetAt === null ? {} : { resetAt }) });
+
+it('renders family windows as remaining per family and leaves other windows as used percentages', () => {
+  render(<UsageView usage={{ status: 'available', checkedAt: 5_000, partialFamilies: ['claude'], windows: [
+    { label: '5h', usedPercent: 42, resetAt: 2 },
+    familyWindow('gemini', 'Gemini Pro Low', 25), familyWindow('gemini', 'Gemini Pro High', 25), familyWindow('gemini', 'Gemini Flash', 60, FAMILY_RESET_LATER),
+    familyWindow('claude', 'Claude Opus', 100), familyWindow('claude', '<b>Claude Sonnet</b>', undefined, null),
+  ] }} />);
+  // Non-family windows keep the flat used-percent list, without the family readings in it.
+  const flat = screen.getByRole('list', { name: 'Quota windows' });
+  expect(within(flat).getAllByRole('listitem')).toHaveLength(1);
+  expect(within(flat).getByRole('meter', { name: '5h used' })).toHaveAttribute('aria-valuenow', '42');
+  expect(within(flat).getByText(/42% used · resets/)).toBeVisible();
+  const local = (at: number) => new Date(at).toLocaleString(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const gemini = screen.getByRole('region', { name: 'Gemini quota' });
+  expect(within(gemini).getByRole('heading', { level: 4 })).toHaveTextContent('Gemini40–75% remaining');
+  expect(within(gemini).getAllByRole('listitem').map(li => li.textContent)).toEqual([
+    `Gemini Pro Low, Gemini Pro High75% remaining · resets ${local(FAMILY_RESET)}`,
+    `Gemini Flash40% remaining · resets ${local(FAMILY_RESET_LATER)}`,
+  ]);
+  // The meter measures what is left, and says so.
+  const meter = within(gemini).getByRole('meter', { name: 'Gemini Pro Low, Gemini Pro High remaining' });
+  expect(meter).toHaveAttribute('aria-valuenow', '75'); expect(meter).toHaveAttribute('aria-valuetext', '75% remaining');
+  expect(gemini).toHaveAttribute('data-state', 'known');
+  const claudeFamily = screen.getByRole('region', { name: 'Claude quota' });
+  expect(claudeFamily).toHaveAttribute('data-state', 'partial');
+  expect(within(claudeFamily).getByRole('heading', { level: 4 })).toHaveTextContent('Claude0% remaining, partial');
+  expect(within(claudeFamily).getAllByRole('listitem').map(li => li.textContent)).toEqual([
+    `Claude Opus0% remaining · resets ${local(FAMILY_RESET)}`, '<b>Claude Sonnet</b>no data · reset unknown']);
+  expect(within(claudeFamily).getAllByRole('meter')).toHaveLength(1);
+  expect(within(claudeFamily).getByText('No reading for: <b>Claude Sonnet</b>. Some readings were not received')).toBeVisible();
+  expect(claudeFamily.querySelector('b')).toBeNull();
+  // Gemini is listed before Claude regardless of window order.
+  expect(screen.getAllByRole('region').map(r => r.getAttribute('aria-label'))).toEqual(['Gemini quota', 'Claude quota']);
+});
+
+it('shows no data for an unmeasured family and nothing family-specific without family windows', () => {
+  const { rerender } = render(<UsageView usage={{ status: 'available', checkedAt: 5_000, windows: [familyWindow('claude', 'Claude Opus', undefined)] }} />);
+  const claudeFamily = screen.getByRole('region', { name: 'Claude quota' });
+  expect(claudeFamily).toHaveAttribute('data-state', 'none');
+  expect(within(claudeFamily).getByRole('heading', { level: 4 })).toHaveTextContent('Claudeno data');
+  expect(within(claudeFamily).queryByRole('meter')).toBeNull();
+  // A known reset stays visible without a percentage; nothing reads as 0% or 100%.
+  expect(within(claudeFamily).getByRole('listitem').textContent).toMatch(/^Claude Opusno data · resets \S+/);
+  expect(claudeFamily.textContent).not.toMatch(/\d+%/);
+  expect(screen.queryByRole('list', { name: 'Quota windows' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Gemini quota' })).toBeNull();
+  // A window is a family reading only by its structured field, never by its label.
+  rerender(<UsageView usage={{ status: 'available', checkedAt: 5_000, windows: [{ label: 'Gemini weekly', usedPercent: 30 }] }} />);
+  expect(screen.queryByRole('region')).toBeNull();
+  expect(screen.getByRole('meter', { name: 'Gemini weekly used' })).toHaveAttribute('aria-valuenow', '30');
+});
+
+it('settings and the sidebar describe the same observation with the same grouping and units', () => {
+  const observed = [['gemini', 'Gemini Pro', 25, FAMILY_RESET], ['gemini', 'Gemini Flash', 60, FAMILY_RESET_LATER], ['claude', 'Claude Opus', 0, FAMILY_RESET]] as const;
+  const settings = usageFamilies({ status: 'available', checkedAt: 5_000, windows: observed.map(([family, label, used, reset]) => familyWindow(family, label, used, reset)) });
+  const account: QuotaAccount = { id: 'c1', provider: 'antigravity', account: 'work', label: 'Antigravity · work', model: 'antigravity/work', connection: 'mauzcode', kind: 'quota', windows: {}, quotaStatus: 'fresh', quotaUpdatedAt: 5_000, tone: 'neutral', parkedAgents: 0,
+    families: [{ family: 'gemini', partial: false }, { family: 'claude', partial: false }],
+    additionalWindows: observed.map(([family, label, used, reset]) => ({ id: `antigravity:${label}`, label, scope: 'model' as const, period: null, model: label, family, usedPercent: used, remaining: null, resetsAt: reset, observedAt: 5_000, tone: 'neutral' as const })) };
+  const sidebar = quotaFamilySummaries(account);
+  // 25% used is 75% remaining on both surfaces.
+  expect(settings.map(s => [s.family, s.figure])).toEqual([['gemini', '40–75%'], ['claude', '100%']]);
+  expect(sidebar.map(s => [s.family, s.figure])).toEqual(settings.map(s => [s.family, s.figure]));
+  expect(sidebar.map(s => quotaFamilyDetails(s, 'en'))).toEqual(settings.map(s => quotaFamilyDetails(s, 'en')));
+});
+
+it('summarizes family quota on the collapsed connection row as remaining', async () => {
+  mockApi([stored], [custom], { status: 'available', checkedAt: 5_000, windows: [familyWindow('gemini', 'Gemini Pro', 25), familyWindow('gemini', 'Gemini Flash', 95), familyWindow('claude', 'Claude Opus', undefined)] });
+  render(<ModelsPanel context={context} />);
+  const row = await screen.findByRole('article', { name: 'Work' });
+  const summary = await within(row).findByText('Gemini 5–75% left · Claude no data');
+  expect(summary).toHaveClass('llm-quota', 'is-critical');
+});
+
+/** The Save button reads "Saving…" while requests run and disappears once the draft matches the saved set. */
+const modelsSaved = () => waitFor(() => expect(screen.queryByRole('button', { name: /^Sav/ })).toBeNull());
+
+it('lists the members of a grouped model with their own switches and saves a member by its native id', async () => {
+  const posts = mockApi([stored]);
+  const fetchMock = vi.mocked(fetch);
+  const base = fetchMock.getMockImplementation()!;
+  const group = (off: string[]) => ({ id: 'gemini-3-pro', label: 'Gemini 3 Pro', family: 'gemini', disabled: ['low', 'high'].every(l => off.includes(`gemini-3-pro-${l}`)),
+    reasoning: { supported: ['low', 'high'].filter(l => !off.includes(`gemini-3-pro-${l}`)), variants: { default: 'gemini-3-pro-high', members: ['low', 'high'].map(level => ({ level, id: `gemini-3-pro-${level}`, ...(off.includes(`gemini-3-pro-${level}`) ? { disabled: true } : {}) })) } } });
+  let disabled: string[] = [];
+  fetchMock.mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') !== 'GET') {
+      const body = JSON.parse(String(init.body));
+      if (body.action === 'models') { posts.push({ body, headers: init.headers }); return json({ models: [group(disabled), { id: 'claude-sonnet', family: 'claude', disabled: false }], source: 'provider', cachedAt: 1_000_000 }); }
+      if (body.action === 'setModelEnabled') { posts.push({ body, headers: init.headers }); disabled = body.enabled ? disabled.filter(id => id !== body.model) : [...disabled, body.model]; return json({ connection: { ...stored, disabledModels: disabled } }); }
+    }
+    return base(url, init);
+  });
+  render(<ModelsPanel context={context} />);
+  await expand('Work');
+  const groupSwitch = await screen.findByRole('switch', { name: 'Enabled gemini-3-pro' });
+  const members = screen.getByRole('list', { name: 'Levels of gemini-3-pro' });
+  // Each member shows its reasoning level and native id.
+  expect(within(members).getAllByRole('listitem').map(li => li.textContent)).toEqual(['lowgemini-3-pro-low', 'highgemini-3-pro-highdefault']);
+  const low = within(members).getByRole('switch', { name: 'Enabled gemini-3-pro-low' });
+  const high = within(members).getByRole('switch', { name: 'Enabled gemini-3-pro-high' });
+  await waitFor(() => { expect(groupSwitch).toBeChecked(); expect(low).toBeChecked(); expect(high).toBeChecked(); });
+  // A standalone model has no member list.
+  expect(screen.getByRole('switch', { name: 'Enabled claude-sonnet' }).closest('li')!.querySelector('.models-members')).toBeNull();
+  fireEvent.click(low);
+  expect(low).not.toBeChecked();
+  expect(low.closest('li')).toHaveAttribute('data-model-disabled', 'true');
+  // The group itself stays available while another member is enabled; nothing is sent before Save.
+  expect(groupSwitch).toBeChecked(); expect(groupSwitch.closest('li')).not.toHaveAttribute('data-model-disabled');
+  expect(posts.some(p => p.body.action === 'setModelEnabled')).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Save (1)' }));
+  await modelsSaved();
+  expect(posts.filter(p => p.body.action === 'setModelEnabled').map(p => p.body)).toEqual([{ action: 'setModelEnabled', id: 'c1', model: 'gemini-3-pro-low', enabled: false }]);
+  expect(posts.find(p => p.body.action === 'setModelEnabled')!.headers).toMatchObject({ 'X-CSRF-Token': 'csrf' });
+  expect(screen.getByRole('switch', { name: 'Enabled gemini-3-pro-low' })).not.toBeChecked();
+  expect(screen.getByRole('switch', { name: 'Enabled gemini-3-pro-high' })).toBeChecked();
+  // Disabling the last member leaves the group without levels: it reads as unavailable, yet only the member id is sent.
+  fireEvent.click(screen.getByRole('switch', { name: 'Enabled gemini-3-pro-high' }));
+  const groupRow = screen.getByRole('switch', { name: 'Enabled gemini-3-pro' }).closest('li')!;
+  expect(groupRow).toHaveAttribute('data-model-disabled', 'true');
+  expect(within(groupRow).getByText('No enabled levels')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Save (1)' }));
+  await modelsSaved();
+  expect(posts.filter(p => p.body.action === 'setModelEnabled').map(p => [p.body.model, p.body.enabled])).toEqual([['gemini-3-pro-low', false], ['gemini-3-pro-high', false]]);
+  // The group id was never disabled, so re-enabling one member is the only change needed.
+  expect(screen.getByRole('switch', { name: 'Enabled gemini-3-pro' })).toBeChecked();
+  expect(within(screen.getByRole('switch', { name: 'Enabled gemini-3-pro' }).closest('li')!).getByText('No enabled levels')).toBeVisible();
+  fireEvent.click(screen.getByRole('switch', { name: 'Enabled gemini-3-pro-low' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save (1)' }));
+  await modelsSaved();
+  expect(posts.filter(p => p.body.action === 'setModelEnabled').at(-1)!.body).toEqual({ action: 'setModelEnabled', id: 'c1', model: 'gemini-3-pro-low', enabled: true });
+  expect(screen.getByRole('switch', { name: 'Enabled gemini-3-pro' }).closest('li')).not.toHaveAttribute('data-model-disabled');
+});
+
+it('opens a group whose members are all disabled as unavailable without marking its own id disabled', async () => {
+  const posts = mockApi([stored]);
+  const fetchMock = vi.mocked(fetch);
+  const base = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') !== 'GET') {
+      const body = JSON.parse(String(init.body));
+      if (body.action === 'models') return json({ source: 'provider', cachedAt: 1, models: [{ id: 'claude-opus', family: 'claude', disabled: true, reasoning: { supported: [], variants: { members: [{ level: 'low', id: 'claude-opus-low', disabled: true }, { level: 'high', id: 'claude-opus-high', disabled: true }] } } }] });
+      if (body.action === 'setModelEnabled') { posts.push({ body, headers: init.headers }); return json({ connection: { ...stored, disabledModels: ['claude-opus-low'] } }); }
+    }
+    return base(url, init);
+  });
+  render(<ModelsPanel context={context} />);
+  await expand('Work');
+  const groupSwitch = await screen.findByRole('switch', { name: 'Enabled claude-opus' });
+  await waitFor(() => expect(screen.getByRole('switch', { name: 'Enabled claude-opus-low' })).not.toBeChecked());
+  expect(groupSwitch).toBeChecked();
+  expect(groupSwitch.closest('li')).toHaveAttribute('data-model-disabled', 'true');
+  expect(screen.queryByRole('button', { name: /^Save/ })).toBeNull();
+  fireEvent.click(screen.getByRole('switch', { name: 'Enabled claude-opus-high' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save (1)' }));
+  await modelsSaved();
+  expect(posts.filter(p => p.body.action === 'setModelEnabled').map(p => p.body)).toEqual([{ action: 'setModelEnabled', id: 'c1', model: 'claude-opus-high', enabled: true }]);
+  expect(screen.getByRole('switch', { name: 'Enabled claude-opus' }).closest('li')).not.toHaveAttribute('data-model-disabled');
+});
+
+it('opens the requested connection with its family in view, once per request', async () => {
+  const other = { ...stored, id: 'c9', accountName: 'Home' };
+  mockApi([other, stored], [custom], { status: 'available', checkedAt: 5_000, windows: [familyWindow('gemini', 'Gemini Pro', 25), familyWindow('claude', 'Claude Opus', 0)] });
+  const fetchMock = vi.mocked(fetch);
+  const base = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (url: any, init: RequestInit = {}) => {
+    if ((init.method || 'GET') !== 'GET' && JSON.parse(String(init.body)).action === 'models') return json({ models: [], source: 'provider', cachedAt: 1 });
+    return base(url, init);
+  });
+  const { rerender } = render(<ModelsPanel context={context} target={{ account: 'c1', family: 'claude', at: 1 }} />);
+  const work = await screen.findByRole('article', { name: 'Work' });
+  // Only the targeted connection expands, on the selected family.
+  const claudeFamily = await within(work).findByRole('region', { name: 'Claude quota' });
+  expect(screen.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-expanded', 'false');
+  expect(claudeFamily).toHaveAttribute('data-selected', 'true');
+  await waitFor(() => expect(claudeFamily).toHaveFocus());
+  expect(within(work).getByRole('region', { name: 'Gemini quota' })).not.toHaveAttribute('data-selected');
+  // The owner can collapse it; an unrelated re-render does not reopen it.
+  fireEvent.click(screen.getByRole('button', { name: 'Work' }));
+  rerender(<ModelsPanel context={context} target={{ account: 'c1', family: 'claude', at: 1 }} />);
+  expect(screen.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-expanded', 'false');
+  // Activating the other family card is a new request for the same account.
+  rerender(<ModelsPanel context={context} target={{ account: 'c1', family: 'gemini', at: 2 }} />);
+  await waitFor(() => expect(within(work).getByRole('region', { name: 'Gemini quota' })).toHaveFocus());
+  expect(within(work).getByRole('region', { name: 'Claude quota' })).not.toHaveAttribute('data-selected');
+  // An unknown account changes nothing.
+  rerender(<ModelsPanel context={context} target={{ account: 'gone', family: 'gemini', at: 3 }} />);
+  expect(screen.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-expanded', 'false');
 });

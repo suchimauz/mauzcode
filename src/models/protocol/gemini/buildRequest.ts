@@ -4,6 +4,7 @@
  * Shared by the public gemini protocol and the Code Assist provider. Converts the transcript (system rows dropped) with toGeminiContents and returns `{ contents, systemInstruction?, tools?, generationConfig? }`: temperature, maxOutputTokens from maxTokens, responseMimeType application/json and responseSchema for a json_schema response format. Unless `omitReasoning` is set, SDK-resolved low/medium/high reasoning becomes generationConfig.thinkingConfig.thinkingLevel (the wire value when given); other levels send nothing. Pure apart from the conversion; sends nothing.
  * @param opts.request Streaming request without checkpoint entries.
  * @param opts.omitReasoning Skip the shared thinkingLevel mapping so the caller can build thinkingConfig itself. @default false
+ * @param opts.callIds Carry tool call ids on functionCall and functionResponse parts (toGeminiContents callIds). @default false
  */
 export default async function (
     ctx: Context,
@@ -13,11 +14,13 @@ export default async function (
         request: types.models.StreamRequest;
         /** Skip the shared thinkingLevel mapping so the caller can build thinkingConfig itself. @default false */
         omitReasoning?: boolean;
+        /** Carry tool call ids on functionCall and functionResponse parts. @default false */
+        callIds?: boolean;
     },
 ): Promise<{ contents: Array<{ role: string; parts: Array<Record<string, any>> }>; systemInstruction?: { parts: { text: string }[] }; tools?: Record<string, unknown>[]; generationConfig?: Record<string, unknown> }> {
     const req = opts.request;
     const transcript = (req.messages as Record<string, any>[]).filter(m => m.role !== "system");
-    const contents = await ctx.fns.models.protocol.gemini.toGeminiContents({ messages: transcript });
+    const contents = await ctx.fns.models.protocol.gemini.toGeminiContents({ messages: transcript, ...(opts.callIds ? { callIds: true } : {}) });
     const format = req.responseFormat;
     const generationConfig: Record<string, unknown> = {
         ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),

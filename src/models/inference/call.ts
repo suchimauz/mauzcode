@@ -83,6 +83,7 @@ export default async function (
     });
 
     const pin: { generation?: string | null } | undefined = view.provider === "codex" ? {} : undefined;
+    const variantPin: { member?: string } = {};
     for (let attempt = 1; ; attempt++) {
         try {
             const attemptRequest: Parameters<typeof ctx.fns.models.inference.stream>[0] = {
@@ -96,6 +97,8 @@ export default async function (
                 ...(opts.providerOptions !== undefined ? { providerOptions: opts.providerOptions } : {}),
             };
             if (pin) ((ctx.state.models ??= {}).codexDispatch ??= new WeakMap()).set(attemptRequest, { pin });
+            // Retries of this call keep the variant member the first attempt resolved, while it stays eligible.
+            (((ctx.state.models ??= {}) as typeof ctx.state.models & { variantPins?: WeakMap<object, { member?: string }> }).variantPins ??= new WeakMap()).set(attemptRequest, variantPin);
             const result = await ctx.fns.models.inference.stream(attemptRequest);
             const text = format ? ctx.fns.models.inference.structured({ action: "normalize", format, text: result.text }) : result.text;
             return { text, finishReason: result.finishReason, usage: result.usage, ...(result.reasoning ? { reasoning: result.reasoning } : {}), attempts: attempt, ignored };

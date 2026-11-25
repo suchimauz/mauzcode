@@ -65,6 +65,10 @@ test("original public model signatures, async declarations, types and HTTP route
         let actual = normalize(await readFile(join(import.meta.dir, name), "utf8"));
         // Protocol routing, optional reasoning defaults and the adaptive/effort thinking flags are intentional SDK extensions.
         if (name === "ModelInfo.ts") actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "").replace('protocol?:types.models.ProtocolRoute["protocol"];', "");
+        // group-antigravity-models-and-quotas: optional variant-backed levels, model family and catalogue-bound routing.
+        if (name === "ModelInfo.ts") actual = actual.replace("variants?:{members:{level:types.models.ReasoningLevel;id:string;disabled?:boolean}[];default?:string};", "").replace('family?:"gemini"|"claude";', "");
+        if (name === "ProviderDefinition.ts") actual = actual.replace("variantCatalogue?:boolean;", "");
+        if (name === "UsageReport.ts") actual = actual.replace('family?:"gemini"|"claude";', "").replace('partialFamilies?:("gemini"|"claude")[];', "");
         if (name === "ModelInfo.ts") actual = actual.replace("default:types.models.ReasoningLevel;}", "default:types.models.ReasoningLevel}");
         if (name === "ReasoningCapabilities.ts") actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
         if (name === "ReasoningResolution.ts") actual = actual.replace('applied:types.models.ReasoningLevel|"auto";', 'applied:types.models.ReasoningLevel;').replace("wire?:string;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");

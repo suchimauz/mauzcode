@@ -28,6 +28,9 @@ export default async function (
         await ctx.fns.models.inference.assertModelEnabled({ id: conn.id, model: parsed.modelId });
         const catalogue = await ctx.fns.models.catalog.listModels({ id: conn.id, cacheOnly: true });
         const model = catalogue.models.find(m => m.id === parsed.modelId);
+        // Catalogue-bound providers never resolve a route that is not a current cached choice; no discovery, no substitute.
+        if (definition.capabilities?.variantCatalogue && (catalogue.source !== "provider" || !model)) return fail("MODEL_UNAVAILABLE", `Model ${opts.route} is not in the connection's current catalogue; choose a model.`);
+        if (model?.reasoning?.variants && !model.reasoning.variants.members.some(m => !m.disabled)) return fail("MODEL_UNAVAILABLE", `Model ${opts.route} has no enabled variant; choose a model.`);
         const overrides = await ctx.fns.models.catalog.contextOverrides({ id: conn.id });
         // Public catalogues fill gaps only: cached models.dev snapshot, then bundled pi-ai data; never awaited from the network.
         const catalog = model?.contextWindow !== undefined && model?.maxOutputTokens !== undefined ? undefined

@@ -23,8 +23,8 @@ export default async function (
     try {
         const models = await ctx.fns.models.provider.antigravity.listModels({ conn });
         return models.length
-            ? { status: "available", reason: "models-ok", message: `Signed in; ${models.length} Gemini model${models.length === 1 ? "" : "s"} available`, checkedAt }
-            : { status: "unavailable", reason: "no-models", message: "Signed in, but the account offers no eligible Gemini models", checkedAt };
+            ? { status: "available", reason: "models-ok", message: `Signed in; ${models.length} model${models.length === 1 ? "" : "s"} available`, checkedAt }
+            : { status: "unavailable", reason: "no-models", message: "Signed in, but the account offers no eligible Gemini or Claude models", checkedAt };
     } catch (error) {
         const code = (error as { code?: unknown } | null)?.code;
         if (code === "LOGIN_REQUIRED" || code === "AUTH") return { status: "unavailable", reason: "login-required", message: "Antigravity sign-in expired or was rejected; log in again", checkedAt };

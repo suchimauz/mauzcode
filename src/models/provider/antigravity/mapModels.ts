@@ -1,11 +1,15 @@
 /**
- * Map an Antigravity fetchAvailableModels response to the account's eligible Gemini models
+ * Map an Antigravity fetchAvailableModels response to the account's Gemini and Claude catalogue choices
  *
- * Pure. Keeps only IDs listed in `agentModelSorts[].groups[].modelIds` or `tieredModelIds`, present in `models`,
- * not `disabled`, containing `gemini` and not `claude` (case-insensitive), in listing order with native IDs
- * unchanged. `maxTokens` and `maxOutputTokens` become context and output limits when positive; absent limits stay
- * unspecified. Unless `supportsThinking` is false, Gemini 3 Flash models offer minimal/low/medium/high and Gemini 3
- * Pro models low/high, each sent as the same native thinkingLevel; other models offer no levels. No prices.
+ * Pure. Starts from models.provider.antigravity.inventory (visible, enabled, Google or Anthropic entries in provider
+ * order). Each `groupedModels[key]` becomes one choice with the group key as id: every `supportedThinkingLevels[]
+ * .thinkingSuffix` that is an SDK reasoning level and whose `<key>-<suffix>` is an existing eligible native ID with
+ * thinking not disabled becomes a `reasoning.variants` member, in provider listing order; the concatenation is a
+ * lookup, never an invented ID. `defaultAgentModelId` is the default member only when it is one of them. A group
+ * limit is the lowest member limit and only when every member reports it. A group with no member is not offered.
+ * A group whose key is itself a visible native ID, whose members span families, or that shares a member with
+ * another group is ambiguous: it gets no choices and its native models stay standalone. Eligible IDs outside a
+ * verified group are standalone choices with their own limits and no reasoning levels. No prices.
  * @param opts.response Parsed fetchAvailableModels response.
  */
 export default function (
@@ -16,37 +20,50 @@ export default function (
         response: Record<string, unknown>;
     },
 ): types.models.ModelInfo[] {
-    const r = opts.response as { models?: unknown; agentModelSorts?: unknown; tieredModelIds?: unknown };
-    const entries = r.models && typeof r.models === "object" && !Array.isArray(r.models) ? r.models as Record<string, Record<string, unknown> | null> : {};
-    const listed: string[] = [];
-    for (const sort of Array.isArray(r.agentModelSorts) ? r.agentModelSorts : []) {
-        for (const group of Array.isArray(sort?.groups) ? sort.groups : []) {
-            for (const id of Array.isArray(group?.modelIds) ? group.modelIds : []) if (typeof id === "string") listed.push(id);
+    const natives = ctx.fns.models.provider.antigravity.inventory({ response: opts.response });
+    const byId = new Map(natives.map((m, i) => [m.id, { ...m, order: i }] as const));
+    const r = opts.response as { groupedModels?: unknown; defaultAgentModelId?: unknown };
+    const grouped = r.groupedModels && typeof r.groupedModels === "object" && !Array.isArray(r.groupedModels) ? r.groupedModels as Record<string, Record<string, unknown> | null> : {};
+    const levels: types.models.ReasoningLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+    type Group = { key: string; label?: string; members: { level: types.models.ReasoningLevel; id: string; order: number }[]; ambiguous: boolean };
+    const groups: Group[] = [];
+    const claims = new Map<string, Group[]>();
+    for (const [key, raw] of Object.entries(grouped)) {
+        if (!key || key.length > 200 || /\s/.test(key) || !raw || typeof raw !== "object") continue;
+        const group: Group = { key, ...(typeof raw.displayName === "string" && raw.displayName.trim() ? { label: raw.displayName.trim().slice(0, 200) } : {}), members: [], ambiguous: byId.has(key) };
+        for (const entry of Array.isArray(raw.supportedThinkingLevels) ? raw.supportedThinkingLevels : []) {
+            const suffix = entry && typeof entry === "object" ? (entry as { thinkingSuffix?: unknown }).thinkingSuffix : undefined;
+            if (typeof suffix !== "string" || !levels.includes(suffix as types.models.ReasoningLevel)) continue;
+            const native = byId.get(`${key}-${suffix}`);
+            if (!native || !native.thinking) continue;
+            // The same level twice is not an unambiguous choice.
+            if (group.members.some(m => m.level === suffix)) { group.ambiguous = true; continue; }
+            group.members.push({ level: suffix as types.models.ReasoningLevel, id: native.id, order: native.order });
+            claims.set(native.id, [...(claims.get(native.id) ?? []), group]);
         }
+        if (new Set(group.members.map(m => byId.get(m.id)!.family)).size > 1) group.ambiguous = true;
+        groups.push(group);
     }
-    if (r.tieredModelIds && typeof r.tieredModelIds === "object" && !Array.isArray(r.tieredModelIds)) {
-        for (const ids of Object.values(r.tieredModelIds as Record<string, unknown>)) for (const id of Array.isArray(ids) ? ids : []) if (typeof id === "string") listed.push(id);
+    for (const claimed of claims.values()) if (claimed.length > 1) for (const g of claimed) g.ambiguous = true;
+    const verified = groups.filter(g => !g.ambiguous && g.members.length);
+    const member = new Set(verified.flatMap(g => g.members.map(m => m.id)));
+    const out: { order: number; info: types.models.ModelInfo }[] = [];
+    for (const g of verified) {
+        const members = [...g.members].sort((a, b) => a.order - b.order);
+        const of = members.map(m => byId.get(m.id)!);
+        const limit = (key: "contextWindow" | "maxOutputTokens") => of.every(m => m[key] !== undefined) ? Math.min(...of.map(m => m[key]!)) : undefined;
+        const contextWindow = limit("contextWindow"), maxOutputTokens = limit("maxOutputTokens");
+        const def = typeof r.defaultAgentModelId === "string" && members.some(m => m.id === r.defaultAgentModelId) ? r.defaultAgentModelId : undefined;
+        out.push({ order: members[0]!.order, info: {
+            id: g.key, ...(g.label ? { label: g.label } : {}), ...(contextWindow ? { contextWindow } : {}), ...(maxOutputTokens ? { maxOutputTokens } : {}),
+            reasoning: { supported: members.map(m => m.level), variants: { members: members.map(m => ({ level: m.level, id: m.id })), ...(def ? { default: def } : {}) } },
+            family: of[0]!.family,
+        } });
     }
-    const n = (v: unknown) => typeof v === "number" && Number.isInteger(v) && v > 0 ? v : undefined;
-    const out: types.models.ModelInfo[] = [];
-    const seen = new Set<string>();
-    for (const id of listed) {
-        if (seen.has(id) || !Object.hasOwn(entries, id)) continue;
-        seen.add(id);
-        const e = entries[id];
-        if (!e || typeof e !== "object" || e.disabled === true || !/gemini/i.test(id) || /claude/i.test(id)) continue;
-        const contextWindow = n(e.maxTokens), maxOutputTokens = n(e.maxOutputTokens);
-        const thinking = e.supportsThinking !== false;
-        const supported: types.models.ReasoningLevel[] | null = !thinking ? null
-            : /^gemini-3(?:\.\d+)?-flash/i.test(id) ? ["minimal", "low", "medium", "high"]
-            : /^gemini-3(?:\.\d+)?-pro/i.test(id) ? ["low", "high"] : null;
-        out.push({
-            id,
-            ...(typeof e.displayName === "string" && e.displayName.trim() ? { label: e.displayName.trim().slice(0, 200) } : {}),
-            ...(contextWindow ? { contextWindow } : {}),
-            ...(maxOutputTokens ? { maxOutputTokens } : {}),
-            ...(supported ? { reasoning: { supported } } : {}),
-        });
+    for (const m of natives) {
+        if (member.has(m.id)) continue;
+        out.push({ order: byId.get(m.id)!.order, info: { id: m.id, ...(m.label ? { label: m.label } : {}), ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}), ...(m.maxOutputTokens ? { maxOutputTokens: m.maxOutputTokens } : {}), family: m.family } });
     }
-    return out;
+    // One listing: a group takes the position of its first visible member.
+    return out.sort((a, b) => a.order - b.order).map(o => o.info);
 }

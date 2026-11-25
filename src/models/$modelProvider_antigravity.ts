@@ -2,13 +2,15 @@
 export default {
     id: "antigravity",
     label: "Antigravity",
-    description: "Gemini models of one Antigravity account, signed in with Google. No key: create the connection, press Log in and open the Google link; if the browser runs on another machine, paste the address it lands on. Warning: Google's Antigravity terms disallow third-party access with a personal Antigravity login and Google may suspend the account. Nothing is contacted before sign-in.",
+    description: "Gemini and Claude models of one Antigravity account, signed in with Google, one choice per model group with the thinking levels the account lists. No key: create the connection, press Log in and open the Google link; if the browser runs on another machine, paste the address it lands on. Warning: Google's Antigravity terms disallow third-party access with a personal Antigravity login and Google may suspend the account. Nothing is contacted before sign-in.",
     icon: "brand:gemini",
     fields: [],
     transports: ["direct", "socks", "ssh-tunnel"],
     async test(ctx, conn) { return ctx.fns.models.provider.antigravity.test({ conn }); },
     async listModels(ctx, conn) { return ctx.fns.models.provider.antigravity.listModels({ conn }); },
-    capabilities: { reasoning: true, sampling: true, structuredOutput: true },
+    async usage(ctx, conn) { return ctx.fns.models.provider.antigravity.usage({ conn }); },
+    usageRefreshMs: 180000,
+    capabilities: { reasoning: true, variantCatalogue: true, sampling: true, structuredOutput: true },
     reasoningProfile: (ctx, model) => ctx.fns.models.provider.antigravity.reasoningProfile({ model }),
     async stream(ctx, conn, req) { return ctx.fns.models.provider.antigravity.stream({ conn, req }); },
     actions: {

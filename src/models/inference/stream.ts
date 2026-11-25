@@ -2,6 +2,7 @@
  * Stream one inference turn through a model connection's provider
  *
  * Inference entry point of the models stack. Re-checks on every call that the connection and model are enabled (models.assertModelEnabled; fails MODEL_DISABLED_BY_USER or CONNECTION_DISABLED without any network request), then calls the provider's stream operation with the connection bound to its saved transport. Fails UNSUPPORTED when the provider declares neither stream nor route; route providers stream through the shared protocol they select (models.inference.streamRoute). Before the provider runs (and before any network request) it validates SDK input with models.checkInput (cancellation, checkpoint identity, continuation-state binding to provider/connection/session/run) and, for providers declaring capabilities.reasoning, normalizes reasoningEffort with models.resolveReasoning from cached model metadata or the provider's documented profile (protocol-route providers skip it for models cached without reasoning metadata and without a profile). Returns text, reasoning summary, tool calls, token usage, finish reason and, when supported, run-scoped continuation state, quota observations and requested/applied reasoning. Agents still use llm.stream; use this for models connections.
+ * For a model whose cached metadata declares `reasoning.variants`, the preference is normalized against the levels of members the owner has not disabled (auto uses the declared default member when eligible, else the first eligible member in provider order) and the provider receives that member's native id as `model` with no reasoning or effort field; the result still reports requested and applied. Such a route with no eligible member, and any model absent from the cached catalogue of a provider declaring `capabilities.variantCatalogue` (including a cold cache), fails MODEL_UNAVAILABLE (invalid_input, acceptance none, not retryable, replay-safe) before any provider request and without discovery.
  * @param opts.connectionId Model connection UUID.
  * @param opts.model Provider-native model id on the connection.
  * @param opts.instructions Effective system instructions.
@@ -89,10 +90,34 @@ export default async function (
             if (info?.reasoningUnavailable) throw ctx.fns.models.inference.failure({ message: "Catalogue provides no usable reasoning level", status: 400, info: { code: "CAPABILITY_UNAVAILABLE", classification: "capability_unavailable", acceptance: "none", retryable: false, replaySafe: true } });
             await ctx.fns.models.provider.codex.codexCheckOpaque({ connectionId: view.id, messages: opts.messages, state: opts.state });
         }
+        // Variant-backed levels select a native member id here, in the SDK, so every provider sees one exact model and no effort.
+        let model = opts.model;
+        let variant = false;
+        if (def.capabilities?.variantCatalogue || info?.reasoning?.variants) {
+            const unavailable = (why: string) => ctx.fns.models.inference.failure({ message: `Model ${view.provider}/${view.accountName}:${opts.model} is unavailable: ${why}; choose a model`, status: 409, info: { code: "MODEL_UNAVAILABLE", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true } });
+            // Validated cache projection with owner disables applied; never a provider request.
+            const catalogue = await ctx.fns.models.catalog.listModels({ id: view.id, cacheOnly: true });
+            info = catalogue.source === "provider" ? catalogue.models.find(m => m.id === opts.model) : undefined;
+            if (!info && def.capabilities?.variantCatalogue) throw unavailable(catalogue.source === "provider" ? "it is not in the connection's current catalogue" : "the connection has no current catalogue (sign in or refresh its models)");
+            const variants = info?.reasoning?.variants;
+            if (variants) {
+                const live = variants.members.filter(m => !m.disabled);
+                if (!live.length) throw unavailable("every variant is disabled or removed");
+                const preferred = live.find(m => m.id === variants.default) ?? live[0]!;
+                reasoning = ctx.fns.models.inference.resolveReasoning({ model: opts.model, preference: opts.reasoningEffort, metadata: { supported: live.map(m => m.level), default: preferred.level } });
+                // One logical call keeps its member across retries; a member that stopped being eligible is never reused.
+                const pin = (ctx.state.models as typeof ctx.state.models & { variantPins?: WeakMap<object, { member?: string }> } | undefined)?.variantPins?.get(opts);
+                const pinned = pin?.member ? live.find(m => m.id === pin.member) : undefined;
+                if (pinned && pinned.level !== reasoning.applied) reasoning = { ...reasoning, applied: pinned.level };
+                model = pinned?.id ?? live.find(m => m.level === reasoning!.applied)!.id;
+                if (pin) pin.member = model;
+                variant = true;
+            }
+        }
         // Protocol-route providers are discovery-driven: a model reported without reasoning controls (and no profile)
         // streams without a reasoning setting instead of failing CAPABILITY_UNAVAILABLE.
         const profile = def.capabilities?.reasoning ? def.reasoningProfile?.(ctx, opts.model) ?? null : null;
-        if (def.capabilities?.reasoning && !(def.route && !info?.reasoning && !profile)) {
+        if (!variant && def.capabilities?.reasoning && !(def.route && !info?.reasoning && !profile)) {
             reasoning = ctx.fns.models.inference.resolveReasoning({ model: opts.model, preference: opts.reasoningEffort, metadata: info?.reasoning ?? null, profile });
         }
         opts.signal?.throwIfAborted();
@@ -103,14 +128,17 @@ export default async function (
             (ctx.state.models.nativeSearchInference ??= new WeakMap()).set(conn, { request: opts, view: resolvedView });
             capture = ctx.fns.models.nativeSearch.capture({ conn, model: opts.model });
         }
-        const { connectionId: _c, temperature, maxTokens, responseFormat, ...rest } = opts;
+        const { connectionId: _c, temperature, maxTokens, responseFormat, ...caller } = opts;
+        // A variant request names the member and carries neither the preference nor a resolved level.
+        const { reasoningEffort: _e, ...bare } = caller;
+        const rest = variant ? { ...bare, model } : caller;
         // Capability gating: a provider never sees options it did not opt into.
         const gated = {
             ...(def.capabilities?.sampling && temperature !== undefined ? { temperature } : {}),
             ...(def.capabilities?.sampling && maxTokens !== undefined ? { maxTokens } : {}),
             ...(def.capabilities?.structuredOutput && responseFormat !== undefined ? { responseFormat } : {}),
         };
-        const req: types.models.StreamRequest = reasoning ? { ...rest, ...gated, reasoning } : { ...rest, ...gated };
+        const req: types.models.StreamRequest = reasoning && !variant ? { ...rest, ...gated, reasoning } : { ...rest, ...gated };
         if (codex) {
             req.providerOptions = codexOptions;
             ((ctx.state.models ??= {}).codexDispatch ??= new WeakMap()).set(req, { ...dispatch, generation: explicitGeneration });
@@ -120,5 +148,6 @@ export default async function (
             : await ctx.fns.models.inference.streamRoute({ definition, conn, req, info: info ?? null });
         capture?.(result.toolCalls);
         if (result.state && (!def.capabilities?.continuationState || result.state.provider !== view.provider || result.state.connectionId !== view.id || result.state.sessionId !== opts.sessionId || result.state.runId !== opts.runId)) delete result.state;
-        return req.reasoning ? { ...result, reasoning: req.reasoning } : result;
+        const applied = variant ? reasoning : req.reasoning;
+        return applied ? { ...result, reasoning: applied } : result;
 }

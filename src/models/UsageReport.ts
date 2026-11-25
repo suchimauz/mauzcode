@@ -26,6 +26,8 @@ export type UsageReport = {
         model?: string;
         /** Unix epoch milliseconds when this window was observed; may predate `checkedAt` after partial updates. */
         observedAt?: number;
+        /** Structured model family of a model-scoped measurement; consumers never derive it from `label`. */
+        family?: "gemini" | "claude";
         /** Percentage from 0 to 100. */
         usedPercent?: number;
         remaining?: number;
@@ -33,4 +35,6 @@ export type UsageReport = {
         resetAt?: number;
     }[];
     balance?: { amount: number; currency: string };
+    /** Families whose measurements are incomplete because safety caps dropped some of their windows. */
+    partialFamilies?: ("gemini" | "claude")[];
 };

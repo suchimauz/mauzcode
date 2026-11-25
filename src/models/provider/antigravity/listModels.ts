@@ -1,5 +1,5 @@
 /**
- * List the signed-in Antigravity account's eligible Gemini models
+ * List the signed-in Antigravity account's Gemini and Claude catalogue choices
  *
  * listModels adapter of the antigravity provider. Without a usable sign-in fails LOGIN_REQUIRED before any
  * request. Otherwise resolves the account project (models.provider.antigravity.project) and posts

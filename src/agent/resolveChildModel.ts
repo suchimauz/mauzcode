@@ -1,7 +1,7 @@
 /**
  * Validate the model and reasoning effort of a child before it exists
  *
- * Shared by every delegation entry point (`agent.delegate`, the Goal publication path, `session.fork` callers and `sharedAgent.delegate`). Resolves the exact provider/accountName:modelId route through models.resolveRoute, re-asserts provider, connection and model availability, and checks the requested effort against the cached catalogue `reasoning.supported` (models.listModels with cacheOnly; never a provider request). An omitted model inherits the parent route unchanged and is re-validated when explicitly requesting max; an omitted effort means auto, which the connection normalizes for the target model and which is never inherited. Every failure names the rejected value and points at models.selectable (the `list_models` tool) so the caller can choose again; nothing is created, so a rejected delegation leaves no orphan child.
+ * Shared by every delegation entry point (`agent.delegate`, the Goal publication path, `session.fork` callers and `sharedAgent.delegate`). Resolves the exact provider/accountName:modelId route through models.resolveRoute, re-asserts provider, connection and model availability, and checks the requested effort against the cached catalogue `reasoning.supported` (models.listModels with cacheOnly; never a provider request), which for a variant-backed group lists only the levels of members the owner has not disabled. An omitted model inherits the parent route unchanged and is re-validated when explicitly requesting max or when the inherited route is a variant-backed group and a concrete level is requested; an omitted effort means auto, which the connection normalizes for the target model and which is never inherited. Every failure names the rejected value and points at models.selectable (the `list_models` tool) so the caller can choose again; nothing is created, so a rejected delegation leaves no orphan child.
  * @param opts.model Exact provider/accountName:modelId route for the child; omitted inherits the parent's route.
  * @param opts.reasoningEffort Requested child preference; omitted means auto.
  * @param opts.parentModel Model route of the delegating agent used when no model is given.
@@ -25,7 +25,16 @@ export default async function (
     }
     const explicit = String(opts.model ?? "").trim();
     const requested = explicit || ctx.fns.agent.requireModel({ model: opts.parentModel });
-    if (!explicit && effort !== "max") return { model: requested, reasoningEffort: effort };
+    if (!explicit && effort !== "max") {
+        if (effort === "auto") return { model: requested, reasoningEffort: effort };
+        // An inherited route keeps its lenient normalization, except on a variant-backed group: there a level is a
+        // concrete member model, so an explicit level no eligible member backs is rejected like an explicit route.
+        const variants = await (async () => {
+            const inherited = await ctx.fns.models.resolveRoute({ route: requested });
+            return (await ctx.fns.models.listModels({ id: inherited.connectionId, cacheOnly: true })).models.find(m => m.id === inherited.model)?.reasoning?.variants;
+        })().catch(() => undefined);
+        if (!variants) return { model: requested, reasoningEffort: effort };
+    }
     // resolveRoute already rejects a globally disabled provider, a disabled or missing connection
     // and an owner-disabled model; route is the exact value the child stores.
     let resolved: Awaited<ReturnType<typeof ctx.fns.models.resolveRoute>>;

@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { mkTestCtx } from "../_testCtx.entry";
 import antigravity from "./$modelProvider_antigravity";
+// Synthetic fetchAvailableModels inventory: public or invented ids only, never an account dump.
+import INVENTORY from "./fixtures/antigravity-inventory.json";
 
 const TOKEN = "https://oauth2.googleapis.com/token";
 const API = "https://daily-cloudcode-pa.googleapis.com/v1internal";
@@ -37,19 +39,16 @@ const tokens = (access = ACCESS) => Response.json({ access_token: access, refres
 const store = (ctx: Context, conn: types.models.ResolvedConnection, expiresIn = 3600, access = ACCESS) =>
     ctx.fns.models.provider.antigravity.auth({ conn, op: "store", tokens: { access_token: access, refresh_token: REFRESH, expires_in: expiresIn } });
 const sse = (events: unknown[]) => new Response(events.map(e => "data: " + JSON.stringify(e) + "\n\n").join(""), { headers: { "content-type": "text/event-stream" } });
-const INVENTORY = {
-    models: {
-        "gemini-3-flash": { displayName: "Gemini 3 Flash", maxTokens: 1048576, maxOutputTokens: 65536, supportsThinking: true },
-        "gemini-3-pro-high": { maxTokens: 1048576, maxOutputTokens: 65535, supportsThinking: true },
-        "gemini-2.5-flash-lite": { supportsThinking: false },
-        "gemini-3-flash-disabled": { disabled: true, supportsThinking: true },
-        "claude-sonnet-4-6": { maxTokens: 200000 },
-        "gemini-claude-hybrid": { maxTokens: 1 },
-        "gemini-hidden-internal": { maxTokens: 1000 },
-    },
-    agentModelSorts: [{ groups: [{ modelIds: ["gemini-3-flash", "claude-sonnet-4-6", "gemini-3-flash-disabled", "gemini-claude-hybrid"] }] }],
-    tieredModelIds: { pro: ["gemini-3-pro-high", "gemini-2.5-flash-lite"] },
-};
+const G = "MODEL_PROVIDER_GOOGLE";
+const NEON = { id: "gemini-4-neon", label: "Gemini 4 Neon", contextWindow: 1048576, maxOutputTokens: 32768, family: "gemini", reasoning: { supported: ["high", "xhigh", "medium", "low"], variants: { default: "gemini-4-neon-high", members: [
+    { level: "high", id: "gemini-4-neon-high" }, { level: "xhigh", id: "gemini-4-neon-xhigh" }, { level: "medium", id: "gemini-4-neon-medium" }, { level: "low", id: "gemini-4-neon-low" }] } } };
+const FLASH = { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash", contextWindow: 1048576, maxOutputTokens: 65536, family: "gemini", reasoning: { supported: ["high", "medium", "low"], variants: { members: [
+    { level: "high", id: "gemini-3.8-flash-high" }, { level: "medium", id: "gemini-3.8-flash-medium" }, { level: "low", id: "gemini-3.8-flash-low" }] } } };
+const OPUS = { id: "claude-opus-5-5", label: "Claude Opus 5.5", contextWindow: 200000, family: "claude", reasoning: { supported: ["low", "medium", "high"], variants: { members: [
+    { level: "low", id: "claude-opus-5-5-low" }, { level: "medium", id: "claude-opus-5-5-medium" }, { level: "high", id: "claude-opus-5-5-high" }] } } };
+const CATALOGUE = [NEON, FLASH,
+    { id: "gemini-3-flash", label: "Gemini 3 Flash", contextWindow: 1048576, maxOutputTokens: 65536, family: "gemini" }, OPUS,
+    { id: "gemini-3-pro-high", contextWindow: 1048576, maxOutputTokens: 65535, family: "gemini" }, { id: "gemini-2.5-flash-lite", family: "gemini" }];
 const api: Handler = call => {
     if (call.url === API + ":loadCodeAssist") return Response.json({ cloudaicompanionProject: { id: "proj-1" } });
     if (call.url === API + ":fetchAvailableModels") return Response.json(INVENTORY);
@@ -72,7 +71,9 @@ describe("antigravity registration and client identity (1.1)", () => {
         expect(await ctx.fns.models.test({ id: view.id })).toMatchObject({ status: "configured", reason: "login-required" });
         expect((await ctx.fns.models.listModels({ id: view.id, refresh: true })).models).toEqual([]);
         const err = await ctx.fns.models.stream({ connectionId: view.id, model: "gemini-3-flash", instructions: "", sessionId: "s", messages: [{ role: "user", content: "hi" }] }).then(() => null, (e: any) => e);
-        expect(err?.code).toBe("LOGIN_REQUIRED");
+        // A cold catalogue is not a current choice: the route fails locally, before sign-in is even consulted.
+        expect(err?.failure).toMatchObject({ code: "MODEL_UNAVAILABLE", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true });
+        expect(err.message).toMatch(/sign in or refresh/);
         expect(calls).toHaveLength(0);
     });
 
@@ -207,16 +208,12 @@ describe("antigravity grant storage (2.2)", () => {
 });
 
 describe("antigravity project and Gemini discovery (3.x)", () => {
-    test("mixed inventory yields only visible Gemini entries with native ids, limits and levels", async () => {
+    test("mixed inventory yields one choice per group and each standalone model; GPT-OSS and service ids are dropped", async () => {
         const { ctx, calls, conn } = await setup(api);
         const c = await conn();
         await store(ctx, c);
         const models = await antigravity.listModels!(ctx, c);
-        expect(models).toEqual([
-            { id: "gemini-3-flash", label: "Gemini 3 Flash", contextWindow: 1048576, maxOutputTokens: 65536, reasoning: { supported: ["minimal", "low", "medium", "high"] } },
-            { id: "gemini-3-pro-high", contextWindow: 1048576, maxOutputTokens: 65535, reasoning: { supported: ["low", "high"] } },
-            { id: "gemini-2.5-flash-lite" },
-        ]);
+        expect<unknown>(models).toEqual(CATALOGUE);
         expect(models.some(m => "price" in m || "pricing" in m)).toBe(false);
         expect(calls.map(x => [x.url, json(x.body), x.headers.authorization])).toEqual([
             [API + ":loadCodeAssist", { metadata: { ideType: "ANTIGRAVITY" } }, "Bearer " + ACCESS],
@@ -256,14 +253,14 @@ describe("antigravity project and Gemini discovery (3.x)", () => {
     });
 
     test("missing metadata and no thinking: no limits, no levels; auto sends no thinking level", async () => {
-        expect((await mkTestCtx()).fns.models.provider.antigravity.mapModels({ response: { models: { "gemini-3-flash": { supportsThinking: false }, "gemini-x": {} }, agentModelSorts: [{ groups: [{ modelIds: ["gemini-3-flash", "gemini-x"] }] }] } })).toEqual([{ id: "gemini-3-flash" }, { id: "gemini-x" }]);
+        expect((await mkTestCtx()).fns.models.provider.antigravity.mapModels({ response: { models: { "gemini-3-flash": { supportsThinking: false, modelProvider: G }, "gemini-x": { modelProvider: G } }, agentModelSorts: [{ groups: [{ modelIds: ["gemini-3-flash", "gemini-x"] }] }] } })).toEqual([{ id: "gemini-3-flash", family: "gemini" }, { id: "gemini-x", family: "gemini" }]);
     });
 
     test("a new account sign-in exposes no stale models", async () => {
         const { ctx, view, conn } = await setup(api);
         const c = await conn();
         await store(ctx, c);
-        expect((await ctx.fns.models.listModels({ id: view.id, refresh: true })).models.length).toBe(3);
+        expect((await ctx.fns.models.listModels({ id: view.id, refresh: true })).models.length).toBe(6);
         await store(ctx, c, 3600, "ya29.other-account");
         expect(await ctx.fns.models.listModels({ id: view.id, cacheOnly: true })).toMatchObject({ models: [], source: "manual" });
         expect((await ctx.fns.models.provider.antigravity.auth({ conn: c, op: "status" })).projectId).toBeNull();
@@ -295,7 +292,9 @@ describe("antigravity wrapped generation and tools (4.x)", () => {
         expect(g.headers["user-agent"]).toStartWith("antigravity/hub/");
         const body = json(g.body);
         expect(body).toMatchObject({ project: "proj-1", model: "gemini-3-flash", requestType: "agent", userAgent: "antigravity" });
-        expect(body.request).toMatchObject({ sessionId: "sess-1", systemInstruction: { parts: [{ text: "Be brief" }] }, contents: [{ role: "user", parts: [{ text: "hi" }] }], tools: [{ functionDeclarations: [{ name: "read" }] }], generationConfig: { thinkingConfig: { thinkingLevel: "medium" } } });
+        expect(body.request).toMatchObject({ sessionId: "sess-1", systemInstruction: { parts: [{ text: "Be brief" }] }, contents: [{ role: "user", parts: [{ text: "hi" }] }], tools: [{ functionDeclarations: [{ name: "read" }] }] });
+        // A standalone model has no advertised levels: the preference selects nothing and no thinking option is sent.
+        expect(body.request.generationConfig).toBeUndefined();
     });
 
     test("parallel calls keep their own signatures; unsigned calls get none; next request correlates results", async () => {
@@ -443,7 +442,7 @@ describe("antigravity through the Models facade (5.1)", () => {
         expect(await ctx.fns.models.action({ id: view.id, action: "submitLogin", input: { flowId: again.flowId, code: `${REDIRECT}?code=${CODE}&state=${stateOf(again.authorizationUrl)}` } })).toMatchObject({ status: "succeeded" });
         expect(await ctx.fns.models.test({ id: view.id })).toMatchObject({ status: "available", reason: "models-ok" });
         const ids = (await ctx.fns.models.listModels({ id: view.id, refresh: true })).models.map((m: types.models.ModelInfo) => m.id);
-        expect(ids).toEqual(["gemini-3-flash", "gemini-3-pro-high", "gemini-2.5-flash-lite"]);
+        expect(ids).toEqual(CATALOGUE.map(m => m.id));
         const base = { connectionId: view.id, model: "gemini-3-flash", instructions: "", sessionId: "s" };
         const first = await ctx.fns.models.stream({ ...base, messages: [{ role: "user", content: "q" }] });
         const second = await ctx.fns.models.stream({ ...base, messages: [{ role: "user", content: "q" }, { role: "assistant", content: "", tool_calls: first.toolCalls }, { role: "tool", tool_call_id: first.toolCalls[0]!.id, content: "r" }] });
@@ -452,7 +451,8 @@ describe("antigravity through the Models facade (5.1)", () => {
         expect(await ctx.fns.models.action({ id: view.id, action: "loginStatus" })).toMatchObject({ loggedIn: false });
         const n = calls.length;
         const err = await ctx.fns.models.stream({ ...base, messages: [{ role: "user", content: "q" }] }).then(() => null, (e: any) => e);
-        expect(err.code).toBe("LOGIN_REQUIRED");
+        // Logout forgot the catalogue with the grant, so the old route is no longer a choice.
+        expect(err.code).toBe("MODEL_UNAVAILABLE");
         expect(calls.length).toBe(n);
         expect(calls.every(x => x.transport.kind === "direct")).toBe(true);
     });

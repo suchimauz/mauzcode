@@ -1,7 +1,7 @@
 /**
  * Aggregate usage of every enabled model connection with threshold levels
  *
- * Use for quota and usage displays. Lists enabled connections of enabled providers in creation order (connections of globally disabled providers are omitted like disabled ones, without any usage request), queries models.usage for each in parallel and classifies every window as normal, warning, critical or alert using models.usageWarnPercent, models.usageCriticalPercent and models.usageAlertPercent (defaults 30, 60, 75; a value at or above a threshold reaches its level). Status-only and balance-only connections are reported without windows. A connection whose usage request fails is reported unavailable without hiding the others.
+ * Use for quota and usage displays. Lists enabled connections of enabled providers in creation order (connections of globally disabled providers are omitted like disabled ones, without any usage request), queries models.usage for each in parallel and classifies every window as normal, warning, critical or alert using models.usageWarnPercent, models.usageCriticalPercent and models.usageAlertPercent (defaults 30, 60, 75; a value at or above a threshold reaches its level). Status-only and balance-only connections are reported without windows. A connection whose usage request fails is reported unavailable without hiding the others. `families` lists, Gemini first, the model families that have at least one model not disabled by the owner in the connection's cached catalogue (models.listModels with cacheOnly; never a provider request).
  * @param opts.refresh Bypass the per-connection usage cache (provider `usageRefreshMs`, 60 s by default). @default false
  */
 export default async function (
@@ -20,14 +20,16 @@ export default async function (
     const disabledProviders = await ctx.fns.models.disabledProviders({});
     const connections = (await ctx.fns.models.list({})).filter(c => c.enabled && !disabledProviders.has(c.provider));
     const reports = await Promise.allSettled(connections.map(c => ctx.fns.models.usage({ id: c.id, refresh: opts.refresh === true })));
+    const catalogues = await Promise.all(connections.map(c => ctx.fns.models.listModels({ id: c.id, cacheOnly: true }).then(r => r.models, () => [] as types.models.ModelInfo[])));
     const now = Date.now();
     return { updatedAt: now, thresholds: { warn, critical, alert }, connections: connections.map((c, i) => {
         const r = reports[i]!;
         const report: types.models.UsageReport = r.status === "fulfilled" ? r.value : { status: "unavailable", reason: "usage-failed", checkedAt: now };
         const windows = (report.windows ?? []).map(w => ({ ...w, level: level(w.usedPercent) }));
+        const families = (["gemini", "claude"] as const).filter(f => catalogues[i]!.some(m => m.family === f && !m.disabled)).map(family => ({ family, partial: report.partialFamilies?.includes(family) === true }));
         const worst = windows.reduce<types.frontendBridge.UsageLevel>((a, w) => rank[w.level] > rank[a] ? w.level : a, "normal");
         return { id: c.id, provider: c.provider, accountName: c.accountName, providerLabel: providers.find(p => p.id === c.provider)?.label ?? c.provider,
             status: report.status, ...(report.reason !== undefined ? { reason: report.reason } : {}), ...(report.plan !== undefined ? { plan: report.plan } : {}),
-            checkedAt: report.checkedAt, windows, ...(report.balance ? { balance: report.balance } : {}), level: worst };
+            checkedAt: report.checkedAt, windows, ...(report.balance ? { balance: report.balance } : {}), ...(families.length ? { families } : {}), level: worst };
     }) };
 }

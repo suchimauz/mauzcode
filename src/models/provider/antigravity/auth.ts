@@ -50,7 +50,7 @@ export default async function (
         return (await ctx.fns.procs.db.select({ sql: "UPDATE local_secrets SET value_enc=?, version=version+1, source='antigravity-refresh', updated_at=? WHERE namespace=? AND name=? AND version=? RETURNING version", params: [envelope, Date.now(), ns, name, version] })).length > 0;
     };
     const touch = async (forgetModels: boolean) => {
-        await ctx.fns.procs.db.run({ sql: `UPDATE llm_connections SET updated_at = GREATEST(updated_at + 1, ?)${forgetModels ? ", models_cache = NULL, models_cached_at = NULL" : ""} WHERE id=?`, params: [Date.now(), conn.id] });
+        await ctx.fns.procs.db.run({ sql: `UPDATE llm_connections SET updated_at = GREATEST(updated_at + 1, ?)${forgetModels ? ", models_cache = NULL, models_cached_at = NULL, models_refresh_ticket = models_refresh_ticket + 1" : ""} WHERE id=?`, params: [Date.now(), conn.id] });
         try { await ctx.fns.procs.events.refresh({ topic: "llm-models", reason: "models-antigravity-auth" }); } catch { /* Notification failure cannot invalidate saved credentials. */ }
     };
     const summary = (r: AntigravityAuthRecord | null | undefined) => ({ loggedIn: !!r && !r.needsLogin, needsLogin: !r || r.needsLogin, expiresAt: r?.expiresAt ?? null, projectId: r && !r.needsLogin ? r.projectId ?? null : null });
