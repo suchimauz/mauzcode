@@ -15,7 +15,7 @@ export function CommandMenu({ id, sections, commands, index, status, error, onPi
           if (command.section !== section.id) return null;
           const Icon = presentationIcon(command.icon);
           return <button type="button" key={command.option?.value ?? command.name} id={`${id}-${itemIndex}`} role="option" aria-disabled={!command.enabled || undefined} aria-selected={index === itemIndex} className="command-menu-option" title={command.enabled ? undefined : command.reason} onPointerMove={() => onHover(itemIndex)} onClick={() => { if (command.enabled) onPick(command); }}>
-            <Icon size={14} strokeWidth={1.3} aria-hidden="true" /><span className="command-menu-name">{command.option?.label ?? command.option?.value ?? command.label}</span><span className="command-menu-description">{!command.enabled ? command.reason : command.option ? command.option.description : command.description}</span>
+            <Icon size={14} strokeWidth={1.3} aria-hidden="true" /><span className="command-menu-name">{command.option?.label ?? command.option?.value ?? command.label}</span>{command.skill && !command.option && <span className="command-menu-source">{command.skill.source}</span>}<span className="command-menu-description">{!command.enabled ? command.reason : command.option ? command.option.description : command.description}</span>
           </button>;
         })}
       </div>)}

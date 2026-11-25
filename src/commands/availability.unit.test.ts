@@ -6,6 +6,7 @@ function fixture() {
         agentPreset: {predicate: ({snapshot}: any) => snapshot ? (fn: string) => !snapshot.denied.includes(fn) : undefined},
         procs: {db: {select: async () => [{workspace_dir: '/fixture', run_state: 'idle', preset_snapshot: {denied: ['plugin.secret']}}]}},
         commands: {workspaceCommands: async () => []}, plugin: {secret: mock(() => { throw Error('not allowed'); })},
+        skills: {commands: async () => []},
     }};
     const add = (name: string, fields = {}) => ctx.state.commands.registry[name] = {name, kind: 'action', ...fields};
     return {ctx, add};

@@ -15,6 +15,7 @@ import { AgentMessage } from './AgentMessage';
 import { CompactionRow } from './CompactionRow';
 import { isCompaction } from './compactionEvents';
 import './transcript-message.css';
+import { SkillChip } from './SkillChip';
 import { CommandRow } from './CommandRow';
 import { GoalRow } from './GoalRow';
 import { RetryRow } from './RetryRow';
@@ -68,7 +69,7 @@ export function TranscriptMessage({ event, agentId, latestIdx }: { event: ChatEv
       <div className="user-message-stack">
         {event.author && !event.author.id.startsWith('agent:') && event.navigationEligible !== false && <HumanAuthor author={event.author} />}
         {attachments}
-        {!!displayText && <div className="user-message-bubble">{command ? <>{command.prefix}<span className="user-command-token">{command.token}</span>{command.suffix}</> : displayText}</div>}
+        {!!displayText && <div className="user-message-bubble">{command ? <>{command.prefix}{command.skill ? <SkillChip token={command.token} label={command.skill} /> : <span className="user-command-token">{command.token}</span>}{command.suffix}</> : displayText}</div>}
         {command && event.command?.kind === 'prompt' && event.text && <div className="user-message-bubble">{event.text}</div>}
       </div>
       <div className="user-message-actions">

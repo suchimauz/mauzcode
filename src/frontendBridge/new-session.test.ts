@@ -113,3 +113,15 @@ describe('agent presets',()=>{
   expect((await f.post({promptPreset:'standard'})).status).toBe(400);
  });
 });
+describe('first-message skill validation',()=>{
+ test('an unavailable skill in the first message is rejected before creation; an available one is created and sent',async()=>{
+  const f=fixture();const asked:any[]=[];let enabled=false;
+  f.ctx.fns.commands={candidates:async(opts:any)=>{asked.push(opts);return enabled?[{command:{name:opts.name,kind:'skill'},enabled:true}]:[];}};
+  const blocked=await f.post({text:'/skill.workspace:review check',presetId:'standard'});
+  expect(blocked.status).toBe(400);expect(f.counts()).toEqual({creates:0,sends:0});
+  expect(asked[0]).toEqual({name:'skill.workspace:review',projectId:'p',presetId:'standard'});
+  enabled=true;f.ctx.fns.agent.acceptMessage=async({req}:any)=>{expect(await req.text()).toBe('/skill.workspace:review check');return new Response('ok');};
+  expect((await f.post({text:'/skill.workspace:review check',presetId:'standard',requestKey:'request-key-00002'})).status).toBe(201);
+  expect(f.counts().creates).toBe(1);
+ });
+});

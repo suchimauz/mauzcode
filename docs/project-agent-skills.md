@@ -247,6 +247,26 @@ new revision directory; old ones may be pruned by age. The agent runs scripts wi
 `bash`; reading a skill adds no tool and no permission. A revoked skill is hidden from
 `read_skill`, but presets are not a sandbox: an earlier cached copy stays on disk until pruned.
 
+## Invoking a skill from chat
+
+Visible skills appear in the slash menu under **Skills**, built by the same server catalogue as
+ordinary commands: a short name, a source label and the description. For a new chat the menu
+uses the selected project and preset; changing either refreshes it. Search matches the short
+name, the full ID and the source.
+
+1. Type `/review`. The menu shows `review · Git` and `review · Workspace` as separate rows.
+2. Pick `review · Git` with the pointer or arrows and Enter. The draft becomes
+   `/skill.plugin.git:review ` and is shown as a `review · Git` chip; nothing is sent yet.
+3. Type the task, e.g. `check my changes`, and send.
+
+The message is kept exactly as typed. Before the turn is scheduled the server reads the skill as
+that agent and records a completed `read_skill({ id })` call, so the first model turn already
+has the instructions. A disabled or missing ID is rejected with no fallback to another skill
+and no turn. A chat whose preset predates skill reading is told to open a new chat. Pasting
+`/skill.plugin.git:review check my changes` works without the menu. In history the chip comes
+from the stored event, so it stays readable and copyable (`/skill.plugin.git:review`) after the
+plugin is removed. `/git:review` stays an ordinary command; declarations cannot claim `skill.`.
+
 ## Not part of this layer
 
 Publishing packages is Creator authoring and is described separately. Package files,
@@ -263,7 +283,8 @@ boundaries are sparse files, so the suite stays fast. Run it with the project ru
 ```bash
 bun script/test.ts fast ./src/skills/packageFiles.test.ts
 bun script/test.ts fast ./src/skills/workspaceSource.test.ts
-bun script/test.ts fast ./src/skills/sources.test.ts ./src/skills/access.test.ts ./src/skills/reading.test.ts
+bun script/test.ts fast ./src/skills/sources.test.ts ./src/skills/access.test.ts ./src/skills/reading.test.ts ./src/skills/commands.test.ts
+bun run frontend:test -- frontend/src/test/skill-commands.test.tsx
 bun script/test.ts it ./src/skills/materialize.it.test.ts
 bun script/test.ts it ./src/skills/workspaceSource.it.test.ts
 ```

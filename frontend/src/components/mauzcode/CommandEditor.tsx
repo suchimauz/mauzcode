@@ -7,7 +7,8 @@ export type CommandEditorHandle = { focus(): void; selectionStart(): number; sel
 export type CommandEditorProps = Pick<AriaAttributes, 'aria-label' | 'aria-controls' | 'aria-expanded' | 'aria-activedescendant' | 'aria-autocomplete' | 'aria-haspopup'> & {
   value: string;
   onChange(value: string): void;
-  claimedCommand: { name: string } | null;
+  /** Claimed leading command; `label` shows a friendly chip (skills) while the draft keeps `/name`. */
+  claimedCommand: { name: string; label?: string } | null;
   onRelease(): void;
   onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
   onBlur?: FocusEventHandler<HTMLDivElement>;
@@ -100,6 +101,8 @@ export const CommandEditor = forwardRef<CommandEditorHandle, CommandEditorProps>
       const chip = document.createElement('span');
       chip.className = 'command-chip'; chip.contentEditable = 'false';
       chip.setAttribute('data-composer-command', claimedCommand!.name); chip.textContent = token;
+      // The canonical token stays the text (offsets, copy, drafts); a skill shows its friendly label over it.
+      if (claimedCommand!.label) { chip.setAttribute('data-label', claimedCommand!.label); chip.setAttribute('aria-label', `${claimedCommand!.label}, ${token}`); chip.title = token; }
       el.append(chip, document.createTextNode(text.slice(token.length)));
     } else el.append(document.createTextNode(text));
     // A final newline alone has no line box in contenteditable. This non-value
@@ -132,7 +135,7 @@ export const CommandEditor = forwardRef<CommandEditorHandle, CommandEditorProps>
     const hasChip = !!el.querySelector('[data-composer-command]');
     const claim = validClaim && !released.current;
     const currentPosition = document.activeElement === el ? offsets(el)[0] : undefined;
-    if (plain(el) !== value || hasChip !== claim || (claim && el.querySelector('[data-composer-command]')?.textContent !== token)) {
+    if (plain(el) !== value || hasChip !== claim || (claim && (el.querySelector('[data-composer-command]')?.textContent !== token || (el.querySelector('[data-composer-command]')?.getAttribute('data-label') ?? undefined) !== claimedCommand?.label))) {
       paint(value, claim, pendingCaret.current ?? (claim && !hasChip ? value.length : currentPosition));
     }
     pendingCaret.current = null;

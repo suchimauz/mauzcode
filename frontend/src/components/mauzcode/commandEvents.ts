@@ -25,11 +25,14 @@ export function coalesceCommands(events: ChatEvent[]): ChatEvent[] {
 }
 
 /** Metadata is the authority; plain slash-looking prose is never highlighted. */
-export function commandMessage(event: ChatEvent): { prefix: string; token: string; suffix: string } | null {
+export function commandMessage(event: ChatEvent): { prefix: string; token: string; suffix: string; skill?: string } | null {
   if (!event.command || typeof event.command !== 'object' || typeof event.command.name !== 'string' || typeof event.command.text !== 'string') return null;
   const text = event.command.text;
   const token = `/${event.command.name}`;
   const start = text.length - text.trimStart().length;
   if (!text.startsWith(token, start) || (text.length > start + token.length && !/\s/.test(text[start + token.length]))) return null;
-  return { prefix: text.slice(0, start), token, suffix: text.slice(start + token.length) };
+  // The label comes from the stored event, never from a fresh catalogue lookup, so removed skills stay legible.
+  const skill = event.command.kind === 'skill' && event.command.skill && typeof event.command.skill.name === 'string'
+    ? (typeof event.command.skill.source === 'string' && event.command.skill.source ? `${event.command.skill.name} · ${event.command.skill.source}` : event.command.skill.name) : undefined;
+  return { prefix: text.slice(0, start), token, suffix: text.slice(start + token.length), ...(skill ? { skill } : {}) };
 }
