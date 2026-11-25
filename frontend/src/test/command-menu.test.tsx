@@ -51,6 +51,12 @@ it('claims Plan as an atomic chip with keyboard, without submitting or invoking 
   expect(screen.queryByRole('listbox')).toBeNull();
   await userEvent.keyboard('test{Enter}'); expect(send).toHaveBeenCalledOnce();
 });
+it('keeps the keyboard-selected option scrolled into view', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json(catalogue))); const scroll = vi.fn(); Element.prototype.scrollIntoView = scroll; render(<Editor />);
+  await userEvent.type(screen.getByRole('textbox'), '/'); await screen.findByRole('option', { name: 'File' }); scroll.mockClear();
+  await userEvent.keyboard('{ArrowDown}');
+  expect(scroll.mock.contexts.at(-1)).toBe(screen.getByRole('option', { name: 'Plan' })); expect(scroll).toHaveBeenLastCalledWith({ block: 'nearest' });
+});
 it('plus Plan preserves existing text and pointer selection focuses the editor', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => json(catalogue))); render(<Editor initial="my task" />);
   await userEvent.click(screen.getByRole('button', { name: 'Добавить' })); await userEvent.click(await screen.findByRole('option', { name: /Plan/ }));

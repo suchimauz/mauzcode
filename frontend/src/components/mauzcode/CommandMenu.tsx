@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { presentationIcon } from './presentationIcons';
 import type { CommandSection } from '../../lib/commands';
 import type { ComposerCommand } from '../../hooks/useCommandMenu';
@@ -7,6 +8,10 @@ export function CommandMenu({ id, sections, commands, index, status, error, onPi
   id: string; sections: CommandSection[]; commands: ComposerCommand[]; index: number; status: 'idle' | 'loading' | 'ready' | 'error'; error: string;
   onPick: (command: ComposerCommand) => void; onHover: (index: number) => void; onRetry: () => void;
 }) {
+  useEffect(() => {
+    if (status !== 'ready') return;
+    document.getElementById(`${id}-${index}`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [id, index, status, commands]);
   return <div className="command-menu" onMouseDown={event => event.preventDefault()}>
     <div id={id} role="listbox" aria-label="Добавить файл или выполнить команду" aria-busy={status === 'loading'}>
       {status === 'ready' && sections.map(section => commands.some(c => c.section === section.id) && <div role="group" aria-label={section.label} key={section.id}>
