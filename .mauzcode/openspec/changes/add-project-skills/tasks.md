@@ -41,7 +41,7 @@ Implementation backlog for separate approval. No checkbox represents creation of
 ## 6. Creator identity and inventory
 
 - [ ] 6.1 Add `skills.inventory` and `skills.add.*`, gated on the built-in Creator (`presetId === 'creator'` for the agent and every parent) both when offering `add_skill` and in handlers. Test a genuine Creator, a custom `*` preset, narrowed child agents and direct handler calls with client-supplied identity.
-- [ ] 6.2 Inventory lists disabled plugin exports and orphaned server project branches (with host/path from `project.json`) without exposing bodies or making them usable.
+- [x] 6.2 Inventory lists disabled plugin exports and orphaned server project branches (with host/path from `project.json`) without exposing bodies or making them usable.
 
 ## 7. Addition and import
 

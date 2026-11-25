@@ -267,6 +267,16 @@ and no turn. A chat whose preset predates skill reading is told to open a new ch
 from the stored event, so it stays readable and copyable (`/skill.plugin.git:review`) after the
 plugin is removed. `/git:review` stays an ordinary command; declarations cannot claim `skill.`.
 
+## Creator inventory
+
+`skills.inventory({})` is for the built-in Creator only: the agent's snapshot and every stored
+ancestor must be the `creator` preset; custom presets, even with `*` grants, are refused. It
+lists every catalogue entry with an `enabled` flag, so a Creator can find the exact ID of a
+disabled plugin export to put into `enabledPluginSkills`, and every server project branch with
+the host and path from its `project.json`. A branch whose file is missing, or whose SSH alias is
+no longer configured, is marked `orphaned`; it is never deleted. The inventory returns no
+instructions or resources, and listing a disabled export does not make it readable.
+
 ## Not part of this layer
 
 Publishing packages is Creator authoring and is described separately. Package files,
