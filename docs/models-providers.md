@@ -229,7 +229,7 @@ Use the registered **provider ID**, not an account, endpoint or protocol name. A
 | MiniMax Coding | Route → Anthropic | `minimaxCoding.test.ts` |
 | Z.AI Coding | Route → Anthropic or OpenAI Chat | `zaiCoding.test.ts` |
 | OpenCode Go plugin | Model route → any of the four shared decoders | plugin `provider.test.ts` and `diagnostic.test.ts` |
-| Antigravity | Project lookup, then shared HTTP and Gemini stream reader | `antigravity.test.ts` |
+| Antigravity | Project lookup, then shared HTTP and Gemini stream reader | `antigravity.test.ts`, `antigravityDispatch.test.ts` |
 | Codex, Claude | Native response check, provider error frame, interrupted stream | `nativeDiagnostic.test.ts`, `codex.test.ts`, `claudeProtocol.test.ts` |
 
 For a standalone adapter, pass a parsed error envelope, the actual outgoing request body and sensitive request values to `models.inference.providerDiagnostic`. Pass only its `summary` as the SDK failure message and its returned object as `info.diagnostic`. Never log or attach the raw exception, body, request, headers or account identifiers. A malformed or interrupted stream is not a rejected HTTP request; use stage `stream` without a fabricated status. A failed dispatch without a response uses `transport` and only a validated error code; user cancellation remains cancellation. Do not retry or change existing transport flags to obtain diagnostics.
@@ -261,7 +261,27 @@ account windows fills none. **Every other window — including label-only window
 from adapters that supply no metadata — is shown only as an additional limit.**
 Labels are display text and are never parsed for a period. `models.connections.usage`
 validates each metadata field and drops invalid values without dropping the
-window. Optional `balance` is `{ amount, currency }`. The planned
+window. Optional `balance` is `{ amount, currency }`.
+
+A model-scoped window may also carry a structured `family` (`gemini` or `claude`).
+`usedPercent` is always the **used** share: a provider that reports a remaining
+fraction converts it (`usedPercent = 100 × (1 − remainingFraction)`, so `0.75`
+remaining is `25`), and the unitless `remaining` amount is never filled with a
+percentage. A missing measurement stays absent; it is not 0 or 100. Family windows
+have `scope: "model"`, the native model id in `model`, no `period`, and never fill
+the five-hour/weekly/monthly columns. When the 40-window cap drops windows of a
+family, `partialFamilies` names it so no view presents the rest as complete.
+
+`GET /api/v1/quotas` keeps **one account per connection**. Each entry of
+`additionalWindows` has `family` (`gemini`, `claude` or `null`) next to `model`,
+`usedPercent`, `resetsAt` and `observedAt`. An account whose cached catalogue names
+model families also has `families: [{ family, partial }]`: the families with at
+least one model the owner has not disabled, Gemini first. The sidebar draws one
+card per listed family and shows **remaining** (`100 − usedPercent`); ordinary
+cards keep their period cells in **used** percent. Consumers never classify a
+window by its label. Settings and the sidebar read the same usage snapshot, cached
+per connection revision for the provider's `usageRefreshMs`; opening details never
+starts a provider request. The planned
 status-only fallback contains no invented quota data. `State.health` reserves
 cache entries with `expiresAt`, `result` and an in-flight `pending` promise;
 cache execution is not implemented by the registry.
@@ -337,7 +357,7 @@ through its configured protocol. One-shot callers use `models.call`.
 ### Additive SDK contracts
 
 Every field below is optional and opt-in. A provider declares support with
-`capabilities: { continuationState?, checkpoints?, reasoning?, sampling?, structuredOutput? }` and, for
+`capabilities: { continuationState?, checkpoints?, reasoning?, variantCatalogue?, sampling?, structuredOutput? }` and, for
 reasoning, an optional `reasoningProfile(ctx, model)`. The loader rejects
 unknown flags and `checkpoints` without `compact`. `sampling` admits
 `temperature`/`maxTokens` and `structuredOutput` admits `responseFormat`;
@@ -370,9 +390,32 @@ unsupported level goes to the nearest supported level at or below it, else the
 lowest one above it, with a `fallbackReason`. An unknown preference or invalid
 metadata → `INVALID_INPUT`; no metadata and no profile → `CAPABILITY_UNAVAILABLE`.
 
+Variant-backed levels: a cached model may declare
+`reasoning.variants = { members: [{ level, id }], default? }`, where every level
+is a separate provider-native model id in provider order. They are model ids, not
+`reasoning.wire` parameter values. For such a model `models.stream` drops members
+the owner disabled, normalizes the preference against the remaining levels with
+the same nearest-level rule (`auto` → the `default` member when eligible, else the
+first eligible member; `off` without an `off` member → the lowest level) and calls
+the provider with `req.model = <member id>` and **no** `reasoningEffort` or
+`reasoning`. The result still reports `reasoning: { requested, applied,
+fallbackReason }`. Retries of one `models.call` keep the member the first attempt
+chose. Delegation checks an explicit level against the same levels
+(`models.listModels` lists only levels of enabled members) and rejects an
+unsupported one before a child exists.
+
+`MODEL_UNAVAILABLE` (`invalid_input`, acceptance `none`, not retryable,
+replay-safe) is raised before any provider request when a variant-backed model has
+no enabled member, or when a provider declaring `capabilities.variantCatalogue`
+gets a model that is not in its cached catalogue (including a cold cache; no
+discovery is triggered). `models.resolveRoute` fails the same way. The route's
+model key is never sent upstream and nothing is substituted. Such a provider also
+keeps cached reasoning levels only when variants back them, so a catalogue cached
+before groups existed offers no effort choices until its next refresh.
+
 `FailureInfo` = `{ code, classification, upstreamStatus?, retryAfterMs?, acceptance: none|rejected|accepted|uncertain, retryable, replaySafe }`.
 Codes: `LOGIN_REQUIRED`, `QUOTA_EXHAUSTED`, `RATE_LIMITED`, `PROVIDER_ERROR`,
-`INVALID_INPUT`, `TRANSPORT`, `CANCELLED`, `UNSUPPORTED`, `CAPABILITY_UNAVAILABLE`.
+`INVALID_INPUT`, `MODEL_UNAVAILABLE`, `TRANSPORT`, `CANCELLED`, `UNSUPPORTED`, `CAPABILITY_UNAVAILABLE`.
 The SDK never retries. Replay a request only when `replaySafe` is true.
 Messages never contain upstream bodies, tokens, state or checkpoint payloads.
 Token `usage` and `quota` are kept separate. A missing counter stays absent and is never reported as 0.
@@ -581,8 +624,8 @@ URL, the public client id `qwen-code-cli` and the scope are in `constants`.
 > or passing fixture tests do not mean Google permits or serves this integration. The settings
 > panel shows this warning before sign-in.
 
-`$modelProvider_antigravity.ts` ("Antigravity") uses the Gemini models of one Antigravity
-account. It is a separate route from Custom Gemini connections and does not revive the removed
+`$modelProvider_antigravity.ts` ("Antigravity") uses the Gemini and Claude models that one
+Antigravity account lists, on that account only. It is a separate route from Custom Gemini connections and does not revive the removed
 `gemini` provider. Helpers live in `models/provider/antigravity` (namespace
 `models.provider.antigravity`). The wire contract follows the reference adapter
 [opencode-antigravity-auth at revision 821f824](https://github.com/NoeFabris/opencode-antigravity-auth/tree/821f824440b2b7c9ffe96bbdfad9d5cdead2f1de)
@@ -607,21 +650,67 @@ account. It is a separate route from Custom Gemini connections and does not revi
   with tokens and the resolved project. Refresh is single-flight per connection; a revoked grant
   (400/401 on refresh) requires sign-in and forgets the project and cached model list. Logout
   cancels the flow and deletes the grant, project and model list under the credential lock.
-- **Discovery** (`project`, `listModels`, `mapModels`, `test`). `loadCodeAssist` resolves the
-  account project (never onboarded or invented), then `fetchAvailableModels` lists the inventory.
-  Only IDs in `agentModelSorts` or `tieredModelIds`, not `disabled`, naming Gemini and not Claude
-  are offered, with native IDs. `maxTokens`/`maxOutputTokens` become limits; Gemini 3 Flash offers
-  `minimal|low|medium|high` and Gemini 3 Pro `low|high` as native `thinkingLevel` unless the entry
-  says `supportsThinking: false`. No prices. Test never generates and reports `no-models`,
-  `project-unavailable`, `access-denied` or `login-required` distinctly.
+- **Discovery** (`project`, `listModels`, `inventory`, `mapModels`, `test`). `loadCodeAssist`
+  resolves the account project (never onboarded or invented), then `fetchAvailableModels` lists
+  the inventory. `inventory` joins its three views: visible IDs are `agentModelSorts` first, then
+  `tieredModelIds`, deduplicated in provider order; an ID is eligible only with an entry in
+  `models`, not `disabled`, and `modelProvider` `MODEL_PROVIDER_GOOGLE` (family `gemini`) or
+  `MODEL_PROVIDER_ANTHROPIC` (family `claude`). Names never decide the family; GPT-OSS,
+  service-only and unlisted IDs are dropped. No prices. Test never generates and reports
+  `no-models`, `project-unavailable`, `access-denied` or `login-required` distinctly.
+- **Groups** (`mapModels`). Each `groupedModels[key]` is one catalogue choice whose id is the
+  group key. A level exists only when `supportedThinkingLevels[].thinkingSuffix` is an SDK level
+  and `<key>-<suffix>` is an existing eligible native ID with thinking not disabled; the
+  concatenation is a lookup, never a guessed ID. Those members become `reasoning.variants` in
+  listing order, with `defaultAgentModelId` as default only when it is one of them. A group limit
+  is the lowest member limit and only when every member reports it. Labels, numeric
+  `thinkingLevel`, name patterns or `supportsThinking` alone create no levels. A group with no
+  member is not offered; a group whose key is itself a visible native ID, that mixes families or
+  shares a member with another group gets no choices, and its native models stay standalone.
+  Eligible IDs outside a verified group are standalone choices without an effort selector.
+- **Routes.** `antigravity/<account>:<group key>` is a grouped route: the SDK picks the member
+  for the chat's level. `antigravity/<account>:<native id>` is an exact route and exists only
+  for a standalone model; a member ID of a group is not a selectable route. The provider
+  declares `capabilities.variantCatalogue`, so a route that is not in the connection's current
+  cached catalogue fails `MODEL_UNAVAILABLE` before any request. Saved chats and defaults are
+  not migrated or rewritten: after a refresh an old native route simply fails and the owner
+  picks a model. A failed refresh keeps the last valid catalogue. Sign-out, a revoked grant or a
+  new sign-in forget the catalogue and bump its refresh ticket, so a discovery of the old
+  account that finishes later publishes nothing. Disabling a member removes its level at once;
+  disabling the group or its last member makes the route unavailable.
 - **Inference** (`stream`, `failure`). POST `v1internal:streamGenerateContent?alt=sse` on the
   daily Cloud Code host with `{ project, model, request, requestType: "agent", userAgent:
-  "antigravity", requestId }`; the inner request comes from `protocol/gemini/buildRequest` and each
-  wrapped event is read by `protocol/gemini/readStream` with `unwrap`, so tool calls keep their own
-  thought signatures. 401 marks the token stale and is retryable once (one more request with the
-  refreshed token); 403/`PERMISSION_DENIED` is `ACCESS_DENIED`; 429/`RESOURCE_EXHAUSTED` is
+  "antigravity", requestId }` for both families. `model` is the exact native ID the SDK chose and
+  no thinking option is sent with it. With `gemini-4-neon` and level `xhigh` the request carries
+  `"model": "gemini-4-neon-xhigh"`; with `claude-opus-5-5` and `medium` it carries
+  `"model": "claude-opus-5-5-medium"`; a standalone `gemini-3-pro-high` carries its own ID.
+  None of them has `generationConfig.thinkingConfig`. The inner request comes from
+  `protocol/gemini/buildRequest` and each wrapped event is read by `protocol/gemini/readStream`
+  with `unwrap`, so Gemini tool calls keep their own thought signatures. For a Claude model
+  (family from the cached catalogue) each tool call's own id is sent on its `functionCall` and
+  `functionResponse`. 401 marks the token stale and is retryable once (one more request with
+  the refreshed token); 403/`PERMISSION_DENIED` is `ACCESS_DENIED`; 429/`RESOURCE_EXHAUSTED` is
   `QUOTA_EXHAUSTED` with `resetAt` from `retryDelay`; 5xx before data is retryable. No account,
-  project or service failover.
+  project, family or service failover. A listed model is not proof that generation works: the
+  Claude tool round trip is covered only by protocol fixtures (`antigravityDispatch.test.ts`),
+  not by a live account.
+- **Usage** (`usage`, `mapUsage`; refreshed at most every three minutes). Reads the same
+  authenticated `fetchAvailableModels`, never a generation, and reports one window per eligible
+  native ID **before** grouping: `scope: "model"`, id `antigravity:<native id>`, `family`,
+  `usedPercent = 100 × (1 − remainingFraction)` and `resetAt` from `resetTime`, each accepted
+  independently (fraction in `[0,1]`; anything else is unknown). Hiding a model locally does not
+  remove its measurement. No pool, period or Pro/Flash allowance is inferred from names, equal
+  values or reset times. The raw inventory is never stored. The quota API keeps one account and
+  lists the families to show; see `UsageReport` above.
+- **Sidebar and settings.** One connection shows adjacent **Gemini** and **Claude** cards, one
+  per family with an enabled model, labelled Antigravity and **remaining**: one percentage when
+  the known readings agree, a min–max range when they differ, `no data` when nothing is
+  measured. A family with some unmeasured or truncated readings is partial: the card marks its
+  figure with `*` (explained in the legend) and details name the missing models. Other
+  providers' cards show **used** percent per period, under their own legend. Details open by
+  pointer, keyboard focus or tap; activating a card opens Models settings on that connection
+  and family. Details and Models settings list the same observations per model with local
+  reset times; settings also lists a group's native members with a switch each.
 - **Disable.** Turn the provider off with `models.disabledProviders` (Models settings), or log out
   and delete the connection.
 

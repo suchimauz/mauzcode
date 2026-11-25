@@ -1,7 +1,7 @@
 /**
  * Report a connection's usage in the standard shape, falling back to cached status
  *
- * Use for quota/balance displays. Disabled connections and connections of globally disabled providers return status `disabled` without network. When the provider implements `usage`, returns its windows and balance normalized to the standard shape (percent clamped to 0–100; window metadata `id`, `period`, `scope`, `durationSeconds`, `model`, `observedAt` validated and passed through, an invalid or duplicate field dropped without dropping the window; at most 40 windows, account-wide standard windows kept before additional ones); otherwise returns only status, reason and check time from the cached connection test. Results (available or unavailable) are cached per connection revision for the provider's `usageRefreshMs` (60 s when omitted); pass `refresh` to bypass. Provider failures become `unavailable` without secret values.
+ * Use for quota/balance displays. Disabled connections and connections of globally disabled providers return status `disabled` without network. When the provider implements `usage`, returns its windows and balance normalized to the standard shape (percent clamped to 0–100; window metadata `id`, `period`, `scope`, `durationSeconds`, `model`, `observedAt` and the structured `family` (`gemini` or `claude`) validated and passed through, an invalid or duplicate field dropped without dropping the window; at most 40 windows, account-wide standard windows kept before additional ones; a family that lost windows to that cap is listed in `partialFamilies`, never presented as complete); otherwise returns only status, reason and check time from the cached connection test. Results (available or unavailable) are cached per connection revision for the provider's `usageRefreshMs` (60 s when omitted); pass `refresh` to bypass. Provider failures become `unavailable` without secret values.
  * @param opts.id Connection UUID.
  * @param opts.refresh Ignore a cached result and query again. @default false
  */
@@ -39,7 +39,8 @@ export default async function (
                 const period = w.period === "fiveHour" || w.period === "weekly" || w.period === "monthly" ? w.period : undefined;
                 const scope = w.scope === "account" || w.scope === "model" || w.scope === "unknown" ? w.scope : undefined;
                 const model = str(w.model, 100);
-                return { label: w.label.slice(0, 100), ...(id ? { id } : {}), ...(period ? { period } : {}), ...(scope ? { scope } : {}),
+                const family = w.family === "gemini" || w.family === "claude" ? w.family : undefined;
+                return { label: w.label.slice(0, 100), ...(id ? { id } : {}), ...(period ? { period } : {}), ...(scope ? { scope } : {}), ...(family ? { family } : {}),
                     ...(durationSeconds !== undefined && durationSeconds > 0 ? { durationSeconds } : {}), ...(model ? { model } : {}), observedAt: observedAt !== undefined && observedAt > 0 ? observedAt : checkedAt,
                     ...(usedPercent !== undefined ? { usedPercent: Math.min(100, Math.max(0, usedPercent)) } : {}), ...(remaining !== undefined ? { remaining } : {}), ...(resetAt !== undefined ? { resetAt } : {}) };
             }) : undefined;
@@ -47,8 +48,11 @@ export default async function (
             const general = (w: Window) => w.scope === "account" && w.period !== undefined;
             const keep = all ? new Set([...all.filter(general), ...all.filter(w => !general(w))].slice(0, 40)) : undefined;
             const windows = all?.filter(w => keep!.has(w));
+            // Windows beyond either cap leave their family's coverage incomplete.
+            const cut = [...(Array.isArray(r.windows) ? r.windows.slice(200) : []), ...(all?.filter(w => !keep!.has(w)) ?? [])];
+            const partialFamilies = (["gemini", "claude"] as const).filter(f => cut.some(w => w?.family === f));
             const balance = r.balance && num(r.balance.amount) !== undefined && typeof r.balance.currency === "string" ? { amount: r.balance.amount, currency: r.balance.currency.slice(0, 16) } : undefined;
-            return { status: r.status, ...(typeof r.reason === "string" ? { reason: r.reason.slice(0, 64) } : {}), checkedAt, ...(typeof r.plan === "string" ? { plan: r.plan.slice(0, 100) } : {}), ...(windows ? { windows } : {}), ...(balance ? { balance } : {}) };
+            return { status: r.status, ...(typeof r.reason === "string" ? { reason: r.reason.slice(0, 64) } : {}), checkedAt, ...(typeof r.plan === "string" ? { plan: r.plan.slice(0, 100) } : {}), ...(windows ? { windows } : {}), ...(balance ? { balance } : {}), ...(partialFamilies.length ? { partialFamilies } : {}) };
         } catch (error) {
             const code = (error as { code?: unknown } | null)?.code;
             return { status: "unavailable", reason: code === "TRANSPORT" ? "transport-failed" : code === "UNKNOWN_PROVIDER" ? "unknown-provider" : "usage-failed", checkedAt: Date.now() };

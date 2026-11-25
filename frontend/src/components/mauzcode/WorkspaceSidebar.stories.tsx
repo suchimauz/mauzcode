@@ -19,5 +19,20 @@ const quotas = [
   { id: 'oneapi:default', provider: 'oneapi', account: 'default', label: 'Asoft LLM Gate', model: 'oneapi/default:', connection: 'local', kind: 'status', status: 'available', tone: 'neutral', parkedAgents: 0 },
   { id: 'claude-code:x@srv', provider: 'claude-code', account: 'brailyn', label: 'claude-code · ssh', model: 'claude-code/brailyn:', connection: 'ssh', host: 'aeza', kind: 'quota', windows: {}, quotaStatus: 'unavailable', tone: 'neutral', parkedAgents: 0 },
 ] satisfies import('../../lib/quotas').QuotaAccount[];
-export const WithQuotas: Story = { args: { quotas } };
-export const CompactWithQuotas: Story = { args: { quotas, compact: true } };
+/** One Antigravity connection: a remaining card per model family. `usedPercent` is the used share, so 25 reads as 75% remaining. */
+const familyWindow = (family: 'gemini' | 'claude', label: string, usedPercent: number | null, resetsAt: number | null, tone: 'neutral' | 'warning' | 'critical' | 'error' = 'neutral') =>
+  ({ id: `antigravity:${label}`, label, scope: 'model' as const, period: null, model: label.toLowerCase().replace(/\s+/g, '-'), family, usedPercent, remaining: null, resetsAt, observedAt: Date.now(), tone });
+const antigravity = {
+  id: 'antigravity:work', provider: 'antigravity', account: 'work', label: 'Antigravity · work', model: 'antigravity/work', connection: 'mauzcode', kind: 'quota', windows: {},
+  additionalWindows: [familyWindow('gemini', 'Gemini 3 Pro', 60, Date.now() + 3 * 3600e3, 'warning'), familyWindow('gemini', 'Gemini 3 Flash', 15, Date.now() + 5 * 3600e3), familyWindow('claude', 'Claude Sonnet 4.5', 0, Date.now() + 86400e3), familyWindow('claude', 'Claude Opus 4.5', 0, Date.now() + 86400e3)],
+  families: [{ family: 'gemini', partial: false }, { family: 'claude', partial: false }], quotaStatus: 'fresh', quotaUpdatedAt: Date.now(), tone: 'warning', parkedAgents: 0,
+} satisfies import('../../lib/quotas').QuotaAccount;
+/** Partly measured Gemini and unmeasured Claude: text states, not only a colour. */
+const antigravityUnknown = {
+  ...antigravity, id: 'antigravity:home', account: 'home', label: 'Antigravity · home', model: 'antigravity/home', tone: 'neutral',
+  additionalWindows: [familyWindow('gemini', 'Gemini 3 Pro', 100, Date.now() + 2 * 3600e3, 'error'), familyWindow('gemini', 'Gemini 3 Flash', null, null), familyWindow('claude', 'Claude Sonnet 4.5', null, Date.now() + 86400e3)],
+} satisfies import('../../lib/quotas').QuotaAccount;
+export const WithQuotas: Story = { args: { quotas: [...quotas, antigravity] } };
+/** Three ordinary cards leave one slot, so the first pair moves to the next row; the second account keeps its own pair. */
+export const WithFamilyQuotaPairs: Story = { args: { quotas: [...quotas.slice(0, 3), antigravity, antigravityUnknown] } };
+export const CompactWithQuotas: Story = { args: { quotas: [...quotas, antigravity], compact: true } };

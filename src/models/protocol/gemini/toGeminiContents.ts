@@ -3,6 +3,7 @@
  *
  * Use inside models for provider wire compatibility without the legacy runtime. Preserves existing transcript, authentication or client identity behavior.
  * @param opts.messages Canonical user, assistant and tool rows, with optional tool_calls[].geminiParts containing preserved signed native parts.
+ * @param opts.callIds Carry each canonical tool call's own id on its functionCall and the matching functionResponse, for backends that correlate results by call id. @default false
  */
 export default async function (
     ctx: Context,
@@ -10,6 +11,8 @@ export default async function (
     opts: {
         /** Canonical user, assistant and tool rows, with optional tool_calls[].geminiParts containing preserved signed native parts. */
         messages: Array<Record<string, any>>;
+        /** Carry each canonical tool call's own id on its functionCall and the matching functionResponse. @default false */
+        callIds?: boolean;
     },
 ): Promise<Array<{role: string; parts: Array<Record<string, any>>}>> {
     const contents: Array<{role:string;parts:Array<Record<string,any>>}> = [];
@@ -55,13 +58,13 @@ export default async function (
          const ps=parts(m.content);
          for(const c of cs) {
           if(m.role !== 'assistant' || typeof c.id !== 'string' || typeof c.name !== 'string') throw new Error('Gemini invalid canonical tool call');
-          const p:any={functionCall:{name:c.name,args:c.args ?? {}}};
+          const p:any={functionCall:{...(opts.callIds ? {id:c.id}:{}),name:c.name,args:c.args ?? {}}};
           if(c.thoughtSignature !== undefined) {
            if(typeof c.thoughtSignature !== 'string') throw new Error('Gemini invalid thought signature');
            p.thoughtSignature=c.thoughtSignature;
           }
           if(c.thought_signature !== undefined) throw new Error('Gemini cannot replay foreign reasoning signature protocol');
-          calls.set(c.id,{name:c.name}); ps.push(p);
+          calls.set(c.id,{name:c.name,...(opts.callIds ? {nativeId:c.id}:{})}); ps.push(p);
          }
          push(m.role === 'assistant' ? 'model':'user',ps);
         }

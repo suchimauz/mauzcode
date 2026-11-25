@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Plug, Plus, RefreshCw } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { PhosphorIcon } from '../mauzcode/PhosphorIcon';
@@ -9,8 +9,12 @@ import { usePluginUi } from '../../extensions/pluginRuntime';
 import type { ExtensionContext } from '../../extensions/types';
 import {
   connectionAction, connectionClientVersion, connectionModels, connectionUsage, createConnection, setContextLimits, setModelEnabled, getModelsState, removeConnection, setConnectionEnabled, setProviderEnabled, testConnection, transportLabel, updateConnection,
-  type ConnectionInput, type ConnectionModels, type ModelClientVersion, type ModelContextLimit, type ModelConnectionView, type ModelFieldSpec, type ModelInfo, type ModelProviderView, type ModelsState, type ModelTransportSpec, type ModelUsageReport,
+  type ConnectionInput, type ConnectionModels, type ModelClientVersion, type ModelContextLimit, type ModelConnectionView, type ModelFieldSpec, type ModelInfo, type ModelProviderView, type ModelVariantMember, type ModelsState, type ModelTransportSpec, type ModelUsageReport,
 } from '../../lib/modelConnections';
+import { QUOTA_FAMILIES, quotaFamilyHeadline, quotaFamilyNote, quotaFamilyRowMeta, quotaFamilyValue, summarizeQuotaFamily, type QuotaFamily, type QuotaFamilySummary } from '../../lib/quotas';
+
+/** A connection (by id) and model family to bring into view, e.g. from a sidebar family quota card; `at` distinguishes repeated requests. */
+export type ModelsTarget = { account: string; family: QuotaFamily; at: number };
 import { SettingsField as Field } from './SettingsField';
 import { SettingsGroup, SettingsRow, SettingsSwitch } from './SettingsGroup';
 
@@ -38,12 +42,50 @@ export function ProviderLogo({ logo, providerId, icon }: { logo?: NavigationIcon
 
 function formatTime(ms: number) { return new Date(ms).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }); }
 
-/** Shared renderer of a UsageReport: status and reason, then quota windows and balance when present. */
-export function UsageView({ usage }: { usage: ModelUsageReport }) {
+type UsageWindow = NonNullable<ModelUsageReport['windows']>[number];
+/**
+ * Family summaries of a usage report, Gemini first: the same helper, grouping and units as the sidebar family cards.
+ * A family appears when it has a window or the backend reports it as truncated; only the structured `family` decides.
+ */
+export function usageFamilies(usage: ModelUsageReport | null): QuotaFamilySummary[] {
+  const windows = usage?.windows ?? [];
+  return QUOTA_FAMILIES.flatMap(f => {
+    const own = windows.filter(w => w.family === f.key);
+    const partial = usage?.partialFamilies?.includes(f.key) === true;
+    if (!own.length && !partial) return [];
+    return [summarizeQuotaFamily(f.key, own.map(w => ({ model: w.model ?? w.id ?? null, label: w.label, usedPercent: w.usedPercent ?? null, resetsAt: w.resetAt ?? null, observedAt: w.observedAt ?? null })), { partial, freshAt: usage?.checkedAt })];
+  });
+}
+
+/** One model family: heading with the remaining figure, range or `no data`, then a row per model group with its reset. Text only. */
+function FamilyUsage({ summary, selected }: { summary: QuotaFamilySummary; selected?: number }) {
+  const note = quotaFamilyNote(summary, 'en');
+  const ref = useRef<HTMLElement>(null);
+  // Selected from a sidebar family card: bring this family into view and move focus to it, without animation.
+  useEffect(() => { if (selected === undefined) return; ref.current?.scrollIntoView?.({ block: 'nearest' }); ref.current?.focus({ preventScroll: true }); }, [selected]);
+  return <section ref={ref} tabIndex={selected === undefined ? undefined : -1} className="models-family" data-family={summary.family} data-state={summary.state} data-selected={selected === undefined ? undefined : 'true'} aria-label={`${summary.title} quota`}>
+    <h4 className="models-family-title"><span>{summary.title}</span><span className="models-family-figure">{quotaFamilyHeadline(summary, 'en')}</span></h4>
+    {summary.rows.length > 0 && <ul className="models-windows" aria-label={`${summary.title} models`}>{summary.rows.map(r => {
+      const models = r.models.join(', ');
+      return <li key={r.key} className="models-window">
+        <span className="models-window-label">{models}</span>
+        {r.remaining !== null ? <span className="models-meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(r.remaining)} aria-valuetext={quotaFamilyValue(r.figure, 'en')} aria-label={`${models} remaining`}><span style={{ width: `${r.remaining}%` }} /></span> : <span aria-hidden="true" />}
+        <span className="models-window-meta">{quotaFamilyValue(r.figure, 'en')} · {quotaFamilyRowMeta(r, 'en')}</span>
+      </li>;
+    })}</ul>}
+    {note && <p className="settings-note">{note}</p>}
+  </section>;
+}
+
+/** Shared renderer of a UsageReport: status and reason, then model-family remaining quota, other quota windows and balance when present. */
+export function UsageView({ usage, selected }: { usage: ModelUsageReport; /** Family to bring into view and when it was requested. */ selected?: { family: QuotaFamily; at: number } | null }) {
   const tone = usage.status === 'available' ? 'is-success' : usage.status === 'unavailable' ? 'is-error' : 'is-pending';
+  const families = usageFamilies(usage);
+  const windows = (usage.windows ?? []).filter(w => !w.family);
   return <div className="models-usage">
     <p className="models-usage-status"><span className={`settings-badge ${tone}`}><i aria-hidden="true" />{STATUS_LABEL[usage.status] ?? usage.status}</span>{usage.reason && <span className="models-usage-reason" title={usage.reason}>{reasonLabel(usage.reason)}</span>}<span className="models-usage-time">checked {formatTime(usage.checkedAt)}</span></p>
-    {usage.windows && usage.windows.length > 0 && <ul className="models-windows" aria-label="Quota windows">{usage.windows.map((w, i) => {
+    {families.map(s => <FamilyUsage key={s.family} summary={s} selected={selected?.family === s.family ? selected.at : undefined} />)}
+    {windows.length > 0 && <ul className="models-windows" aria-label="Quota windows">{windows.map((w: UsageWindow, i) => {
       const used = typeof w.usedPercent === 'number' ? Math.max(0, Math.min(100, w.usedPercent)) : null;
       return <li key={`${w.label}-${i}`} className="models-window">
         <span className="models-window-label">{w.label}</span>
@@ -230,13 +272,46 @@ function useClientVersion(connection: ModelConnectionView, provider: ModelProvid
   return { text, canDetect, loading, refresh };
 }
 
-/** Most used quota window as a short row summary, e.g. `5h 42%`. */
+/** Most used quota window as a short row summary, e.g. `5h 42%`; model families read as remaining, e.g. `Gemini 40–85% left`. */
 function quotaSummary(usage: ModelUsageReport | null): { text: string; tone: string } | null {
-  const windows = (usage?.windows ?? []).filter(w => typeof w.usedPercent === 'number');
-  if (!windows.length) return null;
-  const top = windows.reduce((a, b) => (b.usedPercent! > a.usedPercent! ? b : a));
-  const used = Math.round(Math.max(0, Math.min(100, top.usedPercent!)));
-  return { text: `${top.label} ${used}%`, tone: used >= 90 ? 'is-critical' : used >= 70 ? 'is-warning' : 'is-ok' };
+  const families = usageFamilies(usage);
+  const windows = (usage?.windows ?? []).filter(w => !w.family && typeof w.usedPercent === 'number');
+  if (!windows.length && !families.length) return null;
+  const top = windows.length ? windows.reduce((a, b) => (b.usedPercent! > a.usedPercent! ? b : a)) : null;
+  const clamp = (v: number) => Math.max(0, Math.min(100, v));
+  // Severity follows the most used reading: the top window, or the family model with the least remaining.
+  const usedValues = [...(top ? [clamp(top.usedPercent!)] : []), ...families.flatMap(s => s.min === null ? [] : [100 - s.min])];
+  const text = [...(top ? [`${top.label} ${Math.round(clamp(top.usedPercent!))}%`] : []),
+    ...families.map(s => s.figure === null ? `${s.title} ${quotaFamilyValue(null, 'en')}` : `${s.title} ${s.figure} left${s.partial ? ' (partial)' : ''}`)].join(' · ');
+  if (!usedValues.length) return { text, tone: 'is-unknown' };
+  const used = Math.round(Math.max(...usedValues));
+  return { text, tone: used >= 90 ? 'is-critical' : used >= 70 ? 'is-warning' : 'is-ok' };
+}
+
+/**
+ * Ids the server holds as disabled, read from a catalogue reply: standalone models, group ids and group members.
+ * A group also arrives disabled when no member is left, so its own id counts only while a member is still enabled,
+ * or when the connection's disabled set is known to contain it.
+ */
+function disabledIds(models: ModelInfo[], known?: readonly string[]): Set<string> {
+  const off = new Set<string>();
+  for (const m of models) {
+    const members = m.reasoning?.variants?.members;
+    if (!members) { if (m.disabled) off.add(m.id); continue; }
+    for (const x of members) if (x.disabled) off.add(x.id);
+    if (m.disabled && (members.some(x => !x.disabled) || known?.includes(m.id))) off.add(m.id);
+  }
+  return off;
+}
+/** Applies a saved disabled set to cached catalogue rows the way the server marks them. */
+function markDisabled(models: ModelInfo[], off: Set<string>): ModelInfo[] {
+  return models.map(m => {
+    const v = m.reasoning?.variants;
+    if (!v) return { ...m, disabled: off.has(m.id) };
+    const members: ModelVariantMember[] = v.members.map(x => off.has(x.id) ? { level: x.level, id: x.id, disabled: true } : { level: x.level, id: x.id });
+    const live = members.filter(x => !x.disabled);
+    return { ...m, reasoning: { ...m.reasoning, supported: live.map(x => x.level), variants: { ...v, members } }, disabled: off.has(m.id) || !live.length };
+  });
 }
 
 type DetailSection = 'edit' | 'remove' | null;
@@ -245,7 +320,7 @@ type DetailSection = 'edit' | 'remove' | null;
  * One connection row: account, status, transport, client version, quota summary and the enable switch. Expanding it
  * shows usage, login, Re-detect, the model list (requested on expand, registered providers only) and Test/Edit/Remove.
  */
-function ConnectionRow({ connection, provider, actions, expanded, onToggle }: { connection: ModelConnectionView; provider?: ModelProviderView; actions: Actions; expanded: boolean; onToggle: () => void }) {
+function ConnectionRow({ connection, provider, actions, expanded, onToggle, target }: { connection: ModelConnectionView; provider?: ModelProviderView; actions: Actions; expanded: boolean; onToggle: () => void; target?: ModelsTarget | null }) {
   // Global provider switch gates network controls; the connection-level switch stays operable.
   const providerOff = provider?.enabled === false;
   const registered = connection.providerRegistered && !!provider;
@@ -284,8 +359,15 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle }: { 
   // Toggles only edit a local draft; Save sends the changed models, so a click never hits the server.
   const [draftOff, setDraftOff] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
-  useEffect(() => { setDraftOff(new Set((models?.models ?? []).filter(m => m.disabled).map(m => m.id))); }, [models]);
-  const changed = (models?.models ?? []).filter(m => !!m.disabled !== draftOff.has(m.id));
+  // The connection's disabled set disambiguates a group that is off both by its own id and by all of its members.
+  const [knownOff, setKnownOff] = useState<readonly string[] | undefined>(connection.disabledModels);
+  // Compared by content: an unrelated reload of the panel state must not discard an unsaved draft.
+  useEffect(() => { setKnownOff(prev => (prev ?? []).join('\n') === (connection.disabledModels ?? []).join('\n') ? prev : connection.disabledModels); }, [connection.disabledModels]);
+  const baseOff = useMemo(() => disabledIds(models?.models ?? [], knownOff), [models, knownOff]);
+  useEffect(() => { setDraftOff(new Set(disabledIds(models?.models ?? [], knownOff))); }, [models, knownOff]);
+  // Every switchable id in list order: a model or group id, then the native members of a group.
+  const switchable = (models?.models ?? []).flatMap(m => [m.id, ...(m.reasoning?.variants?.members.map(x => x.id) ?? [])]);
+  const changed = [...new Set(switchable)].filter(id => baseOff.has(id) !== draftOff.has(id));
   const toggleDraft = (id: string) => setDraftOff(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const saveModels = async () => {
     if (!changed.length) return;
@@ -293,10 +375,10 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle }: { 
     try {
       const saved = await actions.run('Save models', async () => {
         let last: ModelConnectionView | null = null;
-        for (const m of changed) last = await setModelEnabled(actions.csrf, connection.id, m.id, !draftOff.has(m.id));
+        for (const id of changed) last = await setModelEnabled(actions.csrf, connection.id, id, !draftOff.has(id));
         return last!;
       }, () => `Saved ${changed.length} model ${changed.length === 1 ? 'change' : 'changes'}`);
-      if (saved) { const off = new Set(saved.disabledModels ?? []); setModels(prev => prev && { ...prev, models: prev.models.map(x => ({ ...x, disabled: off.has(x.id) })) }); }
+      if (saved) { const off = new Set(saved.disabledModels ?? []); setKnownOff(saved.disabledModels ?? []); setModels(prev => prev && { ...prev, models: markDisabled(prev.models, off) }); }
     } finally { setSaving(false); }
   };
   // Context-limit drafts are keyed by model id and independent of the catalogue rows,
@@ -341,23 +423,33 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle }: { 
       {usageError && <span role="status">{usageError}</span>}</>}
     toggleLabel={connection.accountName}
     trailing={enableSwitch} expanded={expanded} onToggle={onToggle}>
-    <div className="settings-detail-section" aria-live="polite">{usage ? <UsageView usage={usage} /> : usageError ? <p className="settings-note">{usageError}</p> : <p className="settings-loading">Checking…</p>}</div>
+    <div className="settings-detail-section" aria-live="polite">{usage ? <UsageView usage={usage} selected={expanded && target?.account === connection.id ? target : null} /> : usageError ? <p className="settings-note">{usageError}</p> : <p className="settings-loading">Checking…</p>}</div>
     {['codex', 'claude', 'qwen', 'antigravity'].includes(connection.provider) && connection.providerRegistered && <ProviderLogin connection={connection} actions={actions} />}
     {version.canDetect && <div className="settings-detail-section"><Button variant="ghost" size="compact" className="models-redetect" onClick={() => { void version.refresh(); }} disabled={version.loading || actions.busy || actions.context.readOnly}>Re-detect</Button></div>}
     {registered ? <section className="settings-detail-section" aria-label={`Models of ${connection.accountName}`} aria-live="polite"><h4>Models</h4>{!models ? (modelsError ? <p className="settings-note" role="status">{modelsError}</p> : <p className="settings-loading" role="status">Loading models…</p>) : <>
       {models.error && <p className="settings-note" role="status">Discovery failed: {models.error}</p>}
-      {models.models.length ? <ul className="models-list" aria-label={`Models of ${connection.accountName}`}>{models.models.map(m => { const off = draftOff.has(m.id); return <li key={m.id} className={off ? 'is-disabled' : undefined} data-model-disabled={off ? 'true' : undefined}>
-        <label className="models-model-row"><input type="checkbox" role="switch" className="settings-switch" aria-label={`Enabled ${m.id}`} checked={!off} disabled={saving} onChange={() => toggleDraft(m.id)} />
-          <code>{m.id}</code>{m.label && m.label !== m.id && <span className="models-model-label">{m.label}</span>}{off && <span className="settings-badge is-pending">Disabled</span>}</label>
-        {contextControl(m.id, models.contextLimits?.[m.id])}
-      </li>; })}</ul> : <p className="settings-note">No models.</p>}
+      {models.models.length ? <ul className="models-list" aria-label={`Models of ${connection.accountName}`}>{models.models.map(m => {
+        const members = m.reasoning?.variants?.members;
+        // A group is unavailable when its own id is off or no member is left enabled.
+        const empty = !!members && members.every(x => draftOff.has(x.id));
+        const off = draftOff.has(m.id) || empty;
+        return <li key={m.id} className={off ? 'is-disabled' : undefined} data-model-disabled={off ? 'true' : undefined} data-model-group={members ? 'true' : undefined}>
+          <label className="models-model-row"><input type="checkbox" role="switch" className="settings-switch" aria-label={`Enabled ${m.id}`} checked={!draftOff.has(m.id)} disabled={saving} onChange={() => toggleDraft(m.id)} />
+            <code>{m.id}</code>{m.label && m.label !== m.id && <span className="models-model-label">{m.label}</span>}{draftOff.has(m.id) ? <span className="settings-badge is-pending">Disabled</span> : empty && <span className="settings-badge is-pending">No enabled levels</span>}</label>
+          {members && <ul className="models-members" aria-label={`Levels of ${m.id}`}>{members.map(x => { const memberOff = draftOff.has(x.id); return <li key={x.id} className={memberOff ? 'is-disabled' : undefined} data-model-disabled={memberOff ? 'true' : undefined} data-model-member={x.id}>
+            <label className="models-model-row models-member-row"><input type="checkbox" role="switch" className="settings-switch" aria-label={`Enabled ${x.id}`} checked={!memberOff} disabled={saving} onChange={() => toggleDraft(x.id)} />
+              <span className="models-member-level">{x.level}</span><code>{x.id}</code>{x.id === m.reasoning?.variants?.default && <span className="models-model-label">default</span>}{memberOff && <span className="settings-badge is-pending">Disabled</span>}</label>
+          </li>; })}</ul>}
+          {contextControl(m.id, models.contextLimits?.[m.id])}
+        </li>;
+      })}</ul> : <p className="settings-note">No models.</p>}
       {pendingAbsent.length > 0 && <div className="models-context-pending" role="group" aria-label="Pending context edits for models not in the current list">
         <p className="settings-field-hint">Unsaved context edits for models missing from the current list:</p>
         <ul className="models-list">{pendingAbsent.map(id => <li key={id}><code>{id}</code>{contextControl(id)}</li>)}</ul>
       </div>}
       <p className="settings-field-hint models-context-help">Context limit is a local budget for compaction and context usage. It cannot increase what the provider accepts; empty means the provider value or 200,000.</p>
       {changed.length > 0 && <div className="ssh-form-actions models-save">
-        <Button variant="ghost" disabled={saving} onClick={() => setDraftOff(new Set(models.models.filter(m => m.disabled).map(m => m.id)))}>Reset</Button>
+        <Button variant="ghost" disabled={saving} onClick={() => setDraftOff(new Set(baseOff))}>Reset</Button>
         <Button disabled={saving || actions.busy} onClick={() => { void saveModels(); }}>{saving ? 'Saving…' : `Save (${changed.length})`}</Button>
       </div>}
       <div className="models-cache-row">
@@ -492,7 +584,7 @@ function AddConnection({ actions, first }: { actions: Actions; first: boolean })
   </SettingsGroup>;
 }
 
-type Expansion = { expanded: string | null; onToggle: (id: string) => void };
+type Expansion = { expanded: string | null; onToggle: (id: string) => void; target?: ModelsTarget | null };
 
 /** Provider group: header row with mark, label, disabled badge and global switch, then one row per connection. */
 function ProviderSection({ provider, connections, actions, expansion }: { provider: ModelProviderView; connections: ModelConnectionView[]; actions: Actions; expansion: Expansion }) {
@@ -514,12 +606,12 @@ function ProviderSection({ provider, connections, actions, expansion }: { provid
       leading={<ProviderLogo logo={actions.state.providerLogos?.[provider.id]} providerId={provider.id} icon={provider.icon} />}
       label={<><h3 className="models-provider-name">{provider.label}</h3>{!enabled && <span className="settings-badge is-pending">Disabled</span>}{connections.length > 0 && <span className="llm-group-count">{connections.length}</span>}</>}
       trailing={<SettingsSwitch label={`Enable ${provider.label} provider`} aria-describedby={hintId} checked={enabled} disabled={actions.busy || locked} onChange={e => toggle(e.target.checked)} />} />
-    {connections.map(c => <ConnectionRow key={c.id} connection={c} provider={provider} actions={actions} expanded={expansion.expanded === c.id} onToggle={() => expansion.onToggle(c.id)} />)}
+    {connections.map(c => <ConnectionRow key={c.id} connection={c} provider={provider} actions={actions} expanded={expansion.expanded === c.id} onToggle={() => expansion.onToggle(c.id)} target={expansion.target} />)}
   </SettingsGroup>;
 }
 
 /** Settings → Models: owner management of provider connections through /models/api. */
-export function ModelsPanel({ context }: { context: ExtensionContext }) {
+export function ModelsPanel({ context, target }: { context: ExtensionContext; /** Connection and family to open, e.g. from a sidebar family quota card. */ target?: ModelsTarget | null }) {
   const [state, setState] = useState<ModelsState | null>(null);
   const [loadError, setLoadError] = useState<{ text: string; forbidden: boolean } | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -538,7 +630,10 @@ export function ModelsPanel({ context }: { context: ExtensionContext }) {
   const actions: Actions | null = state && { csrf: state.csrfToken, busy, context, state, run, reload: () => load() };
   // At most one connection row is expanded at a time across all provider groups.
   const [expanded, setExpanded] = useState<string | null>(null);
-  const expansion: Expansion = { expanded, onToggle: id => setExpanded(current => current === id ? null : id) };
+  // A requested connection opens once per request; the owner can still collapse it afterwards.
+  const known = !!target && !!state?.connections.some(c => c.id === target.account);
+  useEffect(() => { if (target && known) setExpanded(target.account); }, [target?.account, target?.at, known]);
+  const expansion: Expansion = { expanded, onToggle: id => setExpanded(current => current === id ? null : id), target };
   return <div className="settings-panel" data-page="models">
     <header className="settings-panel-header">
       <h2>Models</h2>

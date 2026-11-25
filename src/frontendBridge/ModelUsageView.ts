@@ -22,6 +22,8 @@ export type ModelUsageView = {
         /** Quota windows (with their classification metadata) and level; additional windows are included and count toward `level`. Empty for status-only and balance-only connections. */
         windows: (NonNullable<types.models.UsageReport["windows"]>[number] & { level: types.frontendBridge.UsageLevel })[];
         balance?: { amount: number; currency: string };
+        /** Model families to show for this connection, in display order: those with at least one model of the cached catalogue not disabled by the owner. `partial` marks a family whose measurements were truncated. Absent when the catalogue names no family. */
+        families?: { family: "gemini" | "claude"; partial: boolean }[];
         /** Worst window level; `normal` when no window reports a percentage. */
         level: types.frontendBridge.UsageLevel;
     }[];

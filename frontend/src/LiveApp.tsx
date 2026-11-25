@@ -36,6 +36,7 @@ import { PeoplePage } from './components/PeoplePage';
 import { SidebarDraftPage } from './components/SidebarDraftPage';
 import { ApplicationPages } from './components/mauzcode/ApplicationPages';
 import { useQuotas } from './hooks/useQuotas';
+import type { QuotaOpenTarget } from './lib/quotas';
 import { pluginRuntime, usePluginUi } from './extensions/pluginRuntime';
 import { coreGrants } from './extensions/installed';
 import { PluginPages } from './components/mauzcode/PluginPages';
@@ -168,7 +169,9 @@ function LiveShell({ navigation }: { navigation: ReturnType<typeof useNavigation
     if (!open) { const url = new URL(location.href); url.searchParams.delete('settings'); history.replaceState(null, '', url); }
   };
   const openSettings = useCallback(() => { setSheetOpen(false); setSettingsOpen(true); }, []);
-  const openQuotas = useCallback(() => { setSheetOpen(false); setSettingsTab('models'); setSettingsOpen(true); }, []);
+  // A family quota card opens Models on its own connection with that family in view; `at` makes a repeated activation count again.
+  const [quotaTarget, setQuotaTarget] = useState<(QuotaOpenTarget & { at: number }) | null>(null);
+  const openQuotas = useCallback((target?: QuotaOpenTarget) => { setSheetOpen(false); setQuotaTarget(target ? { ...target, at: Date.now() } : null); setSettingsTab('models'); setSettingsOpen(true); }, []);
   // Composer controls (the voice route selector) ask for a specific built-in settings tab.
   useEffect(() => {
     const open = (event: Event) => { const tab = (event as CustomEvent<{ tab?: unknown }>).detail?.tab; if (tab !== 'voice') return; setSheetOpen(false); setSettingsTab('voice'); setSettingsOpen(true); };
@@ -225,6 +228,6 @@ function LiveShell({ navigation }: { navigation: ReturnType<typeof useNavigation
     {!embedded && <DesktopTitleBar title={isNewSession ? '' : current?.title || ''} />}
     <AppShell sidebarVisible={!embedded} sidebar={embedded ? null : sidebar()} sidebarCompact={sidebarCompact} workspaceNav>
       <div style={paneDrag == null ? undefined : { '--pane-drag': `${paneDrag}px` } as React.CSSProperties} className={`workspace-layout live-workspace view-${mobileView} ${paneDrag == null ? '' : 'pane-dragging'} ${canvasOpen ? 'has-canvas' : 'no-canvas'} ${canvasExpanded ? 'canvas-expanded' : ''}`}><SplitPane primary={<PageViewport active={!!(sidebarBindingId || pageView || automation)}>{sidebarBindingId ? <SidebarDraftPage bindingId={sidebarBindingId} onCreated={id => { const url = new URL(location.href); url.searchParams.delete('sidebarDraft'); url.searchParams.set('agent', id); url.searchParams.set('presentation', 'sidebar'); history.replaceState(null, '', url); created(id); }} /> : pageView === 'people' ? <PeoplePage /> : pageView === 'pages' ? <PluginPages pages={pluginPages} loaded={pluginUi.loaded} onOpen={key => openPage(`extension:${key}`)} /> : pageView === 'applications' ? <ApplicationPages theme={theme} /> : extensionPage ? <ExtensionSurface view={extensionPage} context={{ agentId: null, theme, readOnly: navigation.canManage !== true }} onClose={() => setPageView(null)} /> : pageView?.startsWith('extension:') ? <p role="status" className="extension-page-pending">{pluginUi.loaded ? 'Страница недоступна: расширение не загружено или не одобрено.' : 'Загрузка расширения…'}</p> : automation ? <AutomationTasks /> : pageView === 'plugins' ? <PluginsPage onOpenAgent={selectChat} /> : chat}</PageViewport>} secondary={pageView ? null : activeExtensionPanel ? <ExtensionSurface view={activeExtensionPanel} context={extensionContext} onClose={() => setExtensionPanel(null)} /> : sideAgent ? <SubagentPanel id={sideAgent.id} title={sideAgent.title} onClose={closeSecondary} /> : canvas} label="Ширина Canvas" secondaryWidth={canvasWidth} onWidthChange={resizeCanvas} maxWidth={1600} /></div>
-    </AppShell>{!embedded && <SecureInputDialog />}<SettingsDialog theme={theme} open={settingsOpen} tab={settingsTab} onTab={setSettingsTab} onOpenChange={changeSettingsOpen} />{!embedded && <><EdgeSwipe side="right" label="Свайп влево — открыть Canvas" onDrag={setPaneDrag} disabled={mobileView !== 'chat' || canvasUnavailable} onSwipe={showCanvas} /><EdgeSwipe side="left" label="Свайп вправо — закрыть Canvas" onDrag={setPaneDrag} disabled={mobileView !== 'canvas'} onSwipe={closeSecondary} /></>}<Sheet hideHeader swipeToOpen={!embedded && mobileView === 'chat'} title="Рабочее пространство" open={sheetOpen} onOpenChange={setSheetOpen} initialFocus={mobileSearchRef}>{sidebar(true)}</Sheet>
+    </AppShell>{!embedded && <SecureInputDialog />}<SettingsDialog theme={theme} open={settingsOpen} tab={settingsTab} onTab={setSettingsTab} onOpenChange={changeSettingsOpen} modelsTarget={quotaTarget} />{!embedded && <><EdgeSwipe side="right" label="Свайп влево — открыть Canvas" onDrag={setPaneDrag} disabled={mobileView !== 'chat' || canvasUnavailable} onSwipe={showCanvas} /><EdgeSwipe side="left" label="Свайп вправо — закрыть Canvas" onDrag={setPaneDrag} disabled={mobileView !== 'canvas'} onSwipe={closeSecondary} /></>}<Sheet hideHeader swipeToOpen={!embedded && mobileView === 'chat'} title="Рабочее пространство" open={sheetOpen} onOpenChange={setSheetOpen} initialFocus={mobileSearchRef}>{sidebar(true)}</Sheet>
   </>;
 }

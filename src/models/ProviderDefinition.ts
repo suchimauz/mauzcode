@@ -52,6 +52,8 @@ export type ProviderDefinition = {
         checkpoints?: boolean;
         /** Receives SDK-normalized reasoning in StreamRequest.reasoning; requires model metadata or reasoningProfile. */
         reasoning?: boolean;
+        /** Routes resolve only against the cached catalogue and reasoning levels exist only as ModelInfo.reasoning.variants: models.stream and route resolution fail MODEL_UNAVAILABLE for a model absent from the cache (including a cold cache, without discovery), and cached reasoning metadata without variants offers no levels. */
+        variantCatalogue?: boolean;
         /** Accepts StreamRequest.temperature and maxTokens; without it models.stream drops them. */
         sampling?: boolean;
         /** Accepts StreamRequest.responseFormat and maps it to native structured output; without it models.call uses an instruction fallback. */

@@ -11,12 +11,22 @@ export type ModelUsageReport = {
   /** Subscription plan reported by the provider, when available. */
   plan?: string;
   checkedAt: number;
-  windows?: { label: string; usedPercent?: number; remaining?: number; resetAt?: number }[];
+  /** `family` marks a per-model measurement of a model family: `usedPercent` is the used share (remaining = 100 − used). Never classified by label. */
+  windows?: { label: string; id?: string; model?: string; family?: 'gemini' | 'claude'; usedPercent?: number; remaining?: number; resetAt?: number; observedAt?: number }[];
+  /** Families whose measurements are incomplete because the backend dropped some of their windows. */
+  partialFamilies?: ('gemini' | 'claude')[];
   balance?: { amount: number; currency: string };
 };
 export type ModelClientVersion = { version: string; source: 'override' | 'detected' | 'fallback' | 'default'; detail?: string };
 export type ModelTestResult = { status: ModelUsageReport['status']; reason: string; message: string; checkedAt: number };
-export type ModelInfo = { id: string; label?: string; description?: string; contextWindow?: number; maxOutputTokens?: number; disabled?: boolean };
+/** One native model behind a reasoning level of a grouped choice; `disabled` when the owner switched that member off. */
+export type ModelVariantMember = { level: string; id: string; disabled?: boolean };
+/** A grouped choice lists its native members in `reasoning.variants`; it arrives `disabled` when the group id or every member is disabled. */
+export type ModelInfo = {
+  id: string; label?: string; description?: string; contextWindow?: number; maxOutputTokens?: number; disabled?: boolean;
+  family?: 'gemini' | 'claude';
+  reasoning?: { supported?: string[]; default?: string; variants?: { members: ModelVariantMember[]; default?: string } };
+};
 /** Effective local context budget of a model: owner override, else provider metadata, else a public catalogue value, else 200,000 tokens. */
 export type ModelContextLimit = { provider: number | null; override: number | null; catalog?: number; effective: number; source: 'override' | 'provider' | 'catalog' | 'fallback' };
 /** Reply of the `models` action: catalogue plus stored owner overrides (including absent models) and effective limits per listed model. */

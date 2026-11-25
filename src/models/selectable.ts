@@ -26,7 +26,8 @@ export default async function (
         const { models: catalogue } = await ctx.fns.models.catalog.listModels({ id: view.id, cacheOnly: true });
         const off = new Set(view.disabledModels);
         for (const model of catalogue) {
-            if (off.has(model.id)) continue;
+            // Includes a group whose every variant member is disabled.
+            if (off.has(model.id) || model.disabled) continue;
             total++;
             if (models.length >= limit) continue;
             models.push({

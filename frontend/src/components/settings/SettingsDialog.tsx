@@ -1,7 +1,7 @@
 // Geometry follows the dsh settings modal (DeepSeek Harness, MIT); see THIRD_PARTY_NOTICES.md.
 import { Dialog } from '@base-ui/react/dialog';
 import { AudioLines, Bell, Boxes, Network, RefreshCw, Server, ShieldCheck, X } from 'lucide-react';
-import { ModelsPanel } from './ModelsPanel';
+import { ModelsPanel, type ModelsTarget } from './ModelsPanel';
 import { VoicePanel } from './VoicePanel';
 import { SshInstancesPanel } from './SshInstancesPanel';
 import { AgentPresetsPanel } from './AgentPresetsPanel';
@@ -25,7 +25,7 @@ export const pluginSettingsTab = (key: string): SettingsTab => `plugin:${key}`;
  * Granted plugin settings tabs follow the built-in ones, each with the plugin's own title and icon; a tab whose plugin
  * is unloaded or no longer approved disappears and its content unmounts.
  */
-export function SettingsDialog({ open, tab, onTab, onOpenChange, theme = 'light' }: { open: boolean; tab: SettingsTab; onTab: (tab: SettingsTab) => void; onOpenChange: (open: boolean) => void; theme?: 'light' | 'dark' }) {
+export function SettingsDialog({ open, tab, onTab, onOpenChange, theme = 'light', modelsTarget }: { open: boolean; tab: SettingsTab; onTab: (tab: SettingsTab) => void; onOpenChange: (open: boolean) => void; theme?: 'light' | 'dark'; /** Connection and model family the Models tab should bring into view. */ modelsTarget?: ModelsTarget | null }) {
   const { registry, loaded } = usePluginUi();
   const pluginTabs = registry.settingsTabs;
   const activePlugin = tab.startsWith('plugin:') ? pluginTabs.find(entry => pluginSettingsTab(entry.key) === tab) : undefined;
@@ -50,7 +50,7 @@ export function SettingsDialog({ open, tab, onTab, onOpenChange, theme = 'light'
         </nav>
         <div className="settings-content">
           <div className="settings-header" aria-hidden="true" />
-          <div className="settings-options">{tab === 'push-notifications' && <PushSettingsPanel />}{tab === 'models' && <ModelsPanel context={{ agentId: null, theme, readOnly: false }} />}{tab === 'voice' && <VoicePanel />}{tab === 'agent-presets' && <AgentPresetsPanel />}{tab === 'ssh-instances' && <SshInstancesPanel onOpenConnections={() => onTab('models')} />}{tab === 'updates' && <UpdatesPanel />}{tab === 'socks-proxies' && <SocksProxies context={{ agentId: null, theme, readOnly: false }} />}{activePlugin && <PluginSettingsTab key={activePlugin.key} tab={activePlugin} context={context} />}{tab.startsWith('plugin:') && !activePlugin && <p className="settings-note" role="status">{loaded ? 'Этот раздел недоступен: плагин не загружен или его интерфейс не одобрен.' : 'Загрузка настроек плагина…'}</p>}</div>
+          <div className="settings-options">{tab === 'push-notifications' && <PushSettingsPanel />}{tab === 'models' && <ModelsPanel context={{ agentId: null, theme, readOnly: false }} target={modelsTarget} />}{tab === 'voice' && <VoicePanel />}{tab === 'agent-presets' && <AgentPresetsPanel />}{tab === 'ssh-instances' && <SshInstancesPanel onOpenConnections={() => onTab('models')} />}{tab === 'updates' && <UpdatesPanel />}{tab === 'socks-proxies' && <SocksProxies context={{ agentId: null, theme, readOnly: false }} />}{activePlugin && <PluginSettingsTab key={activePlugin.key} tab={activePlugin} context={context} />}{tab.startsWith('plugin:') && !activePlugin && <p className="settings-note" role="status">{loaded ? 'Этот раздел недоступен: плагин не загружен или его интерфейс не одобрен.' : 'Загрузка настроек плагина…'}</p>}</div>
         </div>
       </Dialog.Popup>
     </Dialog.Portal>
