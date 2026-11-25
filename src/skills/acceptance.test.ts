@@ -52,10 +52,12 @@ test('one project, four sources: discovery, selection, scripts, invocation, hist
     await ctx.fns.session.save({ agent });
     const all = ['skill.plugin.git:review', 'skill.server.global:style', 'skill.server.project:deploy', 'skill.workspace:review'];
 
-    // Discovery: prompt metadata, list and menu agree; no package body is preloaded.
+    // Metadata travels at the request boundary, not in the reusable bootstrap.
     const prompt = await ctx.fns.agent.fullSystemPrompt({ agent });
-    for (const id of all) expect(prompt).toContain('- ' + id + ' (');
-    expect(prompt).not.toContain('Instructions for');
+    expect(await ctx.fns.agent.syncSkillCatalogue({ agent })).toBe(true);
+    const advertised = agent.messages.at(-1).content;
+    for (const id of all) { expect(prompt).not.toContain(id); expect(advertised).toContain('- ' + id + ' ('); }
+    expect(advertised).not.toContain('Instructions for');
     expect((await as(agent).fns.skills.list({})).skills.map((s: any) => s.id)).toEqual(all);
     const menu = (await ctx.fns.commands.catalogue({ version: 2, agentId: agent.id })).commands.filter((c: any) => c.kind === 'skill');
     expect(menu.map((c: any) => [c.name, c.skill.source])).toEqual([['skill.plugin.git:review', 'Git'], ['skill.server.global:style', 'Server · global'], ['skill.server.project:deploy', 'Server · project'], ['skill.workspace:review', 'Workspace']]);
@@ -63,11 +65,13 @@ test('one project, four sources: discovery, selection, scripts, invocation, hist
 
     // Automatic selection: the model calls read_skill itself and runs the packaged scripts with its own shell.
     const local = await ctx.fns.tools.call({ name: 'read_skill', agent, args: { id: 'skill.workspace:review' } });
-    const localDir = /directory: (\S+)/.exec(local.output)![1];
+    const localDir = /directory: (\S+)/.exec(local.output)?.[1];
+    if (!localDir) throw Error('read_skill did not return a workspace directory');
     expect(localDir).toBe(join(dir, '.mauzcode/skills/review'));
     expect(Bun.spawnSync([join(localDir, 'scripts/check.sh')]).stdout.toString()).toBe('workspace-checked\n');
     const global = await ctx.fns.tools.call({ name: 'read_skill', agent, args: { id: 'skill.server.global:style' } });
-    const globalDir = /directory: (\S+)/.exec(global.output)![1];
+    const globalDir = /directory: (\S+)/.exec(global.output)?.[1];
+    if (!globalDir) throw Error('read_skill did not return a server cache directory');
     expect(globalDir.startsWith(join(base, 'home/.cache/mauzcode/skills/skill.server.global:style/'))).toBe(true);
     expect(Bun.spawnSync([join(globalDir, 'scripts/lint.sh')]).stdout.toString()).toBe('global-linted\n');
 

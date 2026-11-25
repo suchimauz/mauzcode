@@ -221,10 +221,21 @@ with its manifest. A failing source adds a bounded diagnostic and the rest stay 
 
 ## Reading a skill
 
-An agent with the reader grant sees a bounded **Agent Skills** prompt section: up to 40 exact
-IDs with source and description, never instructions. Later entries stay reachable through
-`ctx.fns.skills.list({ query, offset })`. When a description fits, the agent reads the package
-with the native `read_skill` tool (`skills.read`) in two steps:
+With both reader grants and the Skills section enabled, the bootstrap explains how to list and
+read skills, even if none exist. At a safe replying request, a separate conversation row lists
+new or changed exact IDs, sources and descriptions, never instructions. In one context window
+the rows share **40 distinct scoped IDs and 6,000 UTF-16 characters**. Every descriptor line
+costs its rendered length plus one newline; the enclosing tags are free. A shorter edit still
+costs its full new line. A deletion does not withdraw the old advertisement or refund its cost.
+A different workspace or SSH host is a different scope; the qualified ID identifies the source.
+Entries that do not fit remain available via `ctx.fns.skills.list({ query, offset })`.
+
+Delivery rows are their own receipts. Restart and fork reuse retained receipts, not tool results
+or summaries. Compaction starts a fresh allowance. Previews, token estimates, and publication
+itself do not append rows or wake agents. An upgraded legacy chat starts with a bounded baseline
+without rewriting history. Rolling back restores the old bootstrap for later requests; retained
+rows are historical data, not permission to read a package. Commands and each read still check
+live access. When a description fits, use `read_skill` (`skills.read`) in two steps:
 
 ```text
 read_skill({ id: "skill.workspace:review" })

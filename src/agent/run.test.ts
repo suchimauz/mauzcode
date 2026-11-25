@@ -1,11 +1,12 @@
 import { describe, test, expect } from 'bun:test';
 import { mkModelsTestCtx as mkTestCtx, runClaimed } from './modelsTestCtx.entry';
 
-// The planning-mode context row is covered by its own tests; keep transcript
-// indices here about the tool-call protocol only.
+// Mutable context rows have their own request tests; keep transcript indices
+// here about the tool-call protocol, independent of the checkout's installed skills.
 async function mkCtx() {
     const ctx: any = await mkTestCtx();
     ctx.fns.agent.syncPlanningContext = async () => {};
+    ctx.fns.agent.syncSkillCatalogue = async () => false;
     return ctx;
 }
 

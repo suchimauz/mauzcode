@@ -6,6 +6,8 @@ export type Message = {
     tool_calls?: Array<{ id: string; name: string; args: any; /** Opaque Gemini signature returned by the provider. */ thoughtSignature?: string; /** Original Gemini parts, including signatures, replayed unchanged for a tool turn. */ geminiParts?: Array<Record<string, any>>; /** Provider reasoning of the turn, stored on the first call only and replayed by opted-in protocols. */ reasoning_content?: string; /** Native signed reasoning blocks of the turn (anthropic), stored on the first call only. */ reasoning_blocks?: types.models.StreamResult["reasoningBlocks"]; /** Connection and model that produced reasoning_blocks; replay requires an exact match. */ reasoning_origin?: { connectionId: string; model: string } }>;
     tool_call_id?: string;
     message_type?: string;
+    /** Private workspace identity digest for a durable skill_catalogue delivery; never provider content. */
+    skill_scope?: string;
     excluded_from_llm?: boolean;
     excluded_from_cursor?: boolean;
     author?: string | null;

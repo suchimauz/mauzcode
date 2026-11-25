@@ -469,6 +469,10 @@ export default async function (
                 return null;
             });
             await assertRunActive();
+            // Reconcile only for a replying request, after tool execution and compaction. A
+            // delegated frontier cannot admit new context rows beyond its authorization.
+            if (!goalAuthority && agent.preset) await ctx.fns.agent.syncSkillCatalogue({ agent });
+            await assertRunActive();
             // Messages persisted after this point are not measured by this request's usage.
             const coveredRows = await ctx.fns.procs.db.select({ sql: 'SELECT MAX(idx) AS idx FROM messages WHERE agent_id = ?', params: [agent.id] }) as Array<{ idx: number | string | null }>;
             requestCoverage = { model: requestModel, coveredIdx: coveredRows[0]?.idx == null ? -1 : Number(coveredRows[0].idx) };
