@@ -2,24 +2,25 @@
 
 ## 1. Provider registration and operator contract
 
-- [ ] 1.1 Add the `antigravity` core declaration and installation-level client configuration. Prove the provider has a distinct route, no usable default credentials, and makes zero outbound calls when unconfigured.
-- [ ] 1.2 Document the referenced adapter revision, Google's personal-account restriction, configuration ownership, and how to disable the provider. Verify the setup contains no credential values and does not direct users to extract credentials.
+- [ ] 1.1 Add the `antigravity` core declaration and a constants function with the public client ID, client secret and redirect from the reference revision, overridable by `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET`. Prove the provider has a distinct route, overrides take effect, and a connection makes zero outbound calls before sign-in.
+- [ ] 1.2 Document the referenced adapter revision, Google's personal-account restriction and the owner's acceptance of that risk, the environment overrides, and how to disable the provider. Verify the documentation contains no account tokens.
 
 ## 2. Connection authorization
 
-- [ ] 2.1 Implement connection-bound authorization-code actions and reuse the Models PKCE login panel. Test the pre-login warning, valid remote-browser return, cancel, expiration, mismatched state and callback replay with a fake issuer.
-- [ ] 2.2 Store grants in connection secrets, serialize refresh, and invalidate authorization and account caches on logout or revoked grant. Test two isolated connections, concurrent refresh, and logout during refresh; assert credentials are absent from public views, errors and logs.
+- [ ] 2.1 Implement connection-bound authorization-code actions and reuse the Models PKCE login panel with the optional loopback listener and the pasted-redirect path. Test with a fake issuer: the pre-login warning, a remote-browser paste, a different host or path, a missing code, a mismatched state, cancel, expiration, and a loopback completion followed by the same paste, each exchanging a code at most once.
+- [ ] 2.2 Store grants in connection secrets, serialize refresh, and invalidate authorization and account caches on logout or revoked grant. Test two isolated connections, concurrent refresh, and logout during refresh; assert account tokens, codes and verifiers are absent from public views, errors and logs.
 
 ## 3. Project and Gemini model discovery
 
-- [ ] 3.1 Resolve the grant's project and fetch its inventory over the saved transport. Mixed-family, inaccessible-project and empty-inventory fixtures must yield respectively Gemini generation entries only, an access failure, and no models. Assert native IDs are preserved.
-- [ ] 3.2 Wire discovery to connection test and catalogue refresh. With a recording fake transport verify that Test sends no generation, reports an empty eligible catalogue distinctly, and exposes no stale models after an account change.
+- [ ] 3.1 Resolve the grant's project and fetch its inventory over the saved transport. Fixtures with visible, hidden, disabled, Claude and Gemini entries, an inaccessible project, and an empty inventory must yield respectively only the visible Gemini entries, an access failure, and no models. Assert native IDs are preserved.
+- [ ] 3.2 Derive model metadata from the inventory: context and output limits, no limits when absent, Gemini 3 Flash `minimal|low|medium|high` and Gemini 3 Pro `low|high` sent as native `thinkingLevel`, no levels when thinking is unsupported, and no price. Test each case with fixtures.
+- [ ] 3.3 Wire discovery to connection test and catalogue refresh. With a recording fake transport verify that Test sends no generation, reports an empty eligible catalogue distinctly, and exposes no stale models after an account change.
 
 ## 4. Wrapped generation and tools
 
 - [ ] 4.1 Adapt the Gemini request and wrapped SSE response over the connection transport. Test the outer model/project and inner system instructions, messages and tool declarations; assert incremental text, finish reason and normalized usage from synthetic frames.
 - [ ] 4.2 Exercise a two-turn conversation with parallel tool calls and distinct opaque signatures. Verify the following request correlates the right calls, signatures and results; unsigned calls acquire no fabricated signature.
-- [ ] 4.3 Map authentication, entitlement, quota, malformed stream and abort outcomes to distinct SDK results. With a request-counting transport, prove no alternate account, service or quota is tried and no partially accepted turn is replayed.
+- [ ] 4.3 Classify failures per the spec table: revoked grant, 401 with one refreshed retry, 403 access failure, 429 `QUOTA_EXHAUSTED` with reset time, 5xx before data, malformed frame and abort after data. Through the shared model call with a request-counting transport, prove quota and access failures send exactly one generation request, 401 at most two on the same account, and no alternate account, project or service is tried.
 
 ## 5. Integration verification
 
