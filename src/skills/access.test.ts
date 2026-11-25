@@ -112,3 +112,19 @@ test('list pages and filters only permitted metadata', async () => {
     ]);
     expect(JSON.stringify(await scoped.fns.skills.list({}))).not.toContain('Instructions');
 });
+
+test('a continuation stops working once the plugin export is disabled', async () => {
+    const creator = await start('creator');
+    const folder = join(plugins, 'git');
+    writeFileSync(join(folder, 'skills/review/SKILL.md'), manifest('review', 'Long.') + 'y'.repeat(70_000));
+    const first = await as(creator).fns.skills.read({ id: 'skill.plugin.git:review' });
+    expect(first.continuation).toBeString();
+    expect((await as(creator).fns.skills.read({ id: 'skill.plugin.git:review', path: 'SKILL.md', continuation: first.continuation })).kind).toBe('text');
+    writeFileSync(join(dir, '.mauzcode/skills.json'), JSON.stringify({ enabledPluginSkills: ['skill.plugin.redmine:review'] }));
+    try {
+        await expect(as(creator).fns.skills.read({ id: 'skill.plugin.git:review', path: 'SKILL.md', continuation: first.continuation })).rejects.toThrow('not available');
+    } finally {
+        writeFileSync(join(dir, '.mauzcode/skills.json'), JSON.stringify({ enabledPluginSkills: ['skill.plugin.git:review', 'skill.plugin.redmine:review'] }));
+        writeFileSync(join(folder, 'skills/review/SKILL.md'), manifest('review', 'review skill.'));
+    }
+});

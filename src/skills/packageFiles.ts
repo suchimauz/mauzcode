@@ -69,13 +69,13 @@ export default async function (
     /** The one component grammar the reader accepts: offering a packlist entry under any other rule would advertise a file that cannot be read back. */
     const isComponent = (value: string): boolean => value.length > 0 && value.length <= MAX_COMPONENT && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value);
     /** Type an untrusted child name on its own O_PATH descriptor, so nothing is read and a link is never followed. */
-    const classify = (at: number, name: string): { kind: 'file'; dev: number; ino: number; size: number } | { kind: 'dir'; dev: number; ino: number } | { kind: 'link' } | { kind: 'other' } | { kind: 'error'; code: string } => {
+    const classify = (at: number, name: string): { kind: 'file'; dev: number; ino: number; size: number; executable: boolean } | { kind: 'dir'; dev: number; ino: number } | { kind: 'link' } | { kind: 'other' } | { kind: 'error'; code: string } => {
         let fd: number = -1;
         try {
             fd = openSync(procOf(at) + '/' + name, O_PATH | constants.O_NOFOLLOW);
             const st = fstatSync(fd);
             const type = st.mode & S_IFMT;
-            if (type === S_IFREG) return { kind: 'file', dev: st.dev, ino: st.ino, size: st.size };
+            if (type === S_IFREG) return { kind: 'file', dev: st.dev, ino: st.ino, size: st.size, executable: (st.mode & 0o111) !== 0 };
             if (type === S_IFDIR) return { kind: 'dir', dev: st.dev, ino: st.ino };
             if (type === S_IFLNK) return { kind: 'link' };
             return { kind: 'other' };
@@ -197,7 +197,7 @@ export default async function (
                             truncated = true;
                             continue;
                         }
-                        resources.push({ path: rel, bytes: at.size });
+                        resources.push(at.executable ? { path: rel, bytes: at.size, executable: true } : { path: rel, bytes: at.size });
                         continue;
                     }
                     // depth counts directories below the package, so a directory at the very limit may still be

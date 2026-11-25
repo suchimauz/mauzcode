@@ -24,9 +24,9 @@ Implementation backlog for separate approval. No checkbox represents creation of
 
 ## 4. Reading and scripts
 
-- [ ] 4.1 Introduce native `read_skill` over `skills.read`: instructions, package directory, resource listing, text continuations and image attachments. Test direct/native parity, bounds, wrong agent/path, changed revision and a continuation after disabling an export. Include a two-call reference-reading example in tool docs.
-- [ ] 4.2 Materialize server and plugin packages into `~/.cache/mauzcode/skills/<id>/<revision>/` on the workspace host (local and SSH), preserving paths and executable bits, read-only, atomically. Test running a packaged script via `bash` on an SSH workspace, a new revision after editing, concurrent first reads, nothing written into the repository, and no new execution path for an agent without shell.
-- [ ] 4.3 Add capability-gated, bounded metadata discovery for automatic selection. Verify descriptions, not package bodies, appear before activation; later entries in large catalogues remain discoverable, hidden skills stay absent, and instructions or `allowed-tools` never extend permissions.
+- [x] 4.1 Introduce native `read_skill` over `skills.read`: instructions, package directory, resource listing, text continuations and image attachments. Test direct/native parity, bounds, wrong agent/path, changed revision and a continuation after disabling an export. Include a two-call reference-reading example in tool docs.
+- [x] 4.2 Materialize server and plugin packages into `~/.cache/mauzcode/skills/<id>/<revision>/` on the workspace host (local and SSH), preserving paths and executable bits, read-only, atomically. Test running a packaged script via `bash` on an SSH workspace, a new revision after editing, concurrent first reads, nothing written into the repository, and no new execution path for an agent without shell.
+- [x] 4.3 Add capability-gated, bounded metadata discovery for automatic selection. Verify descriptions, not package bodies, appear before activation; later entries in large catalogues remain discoverable, hidden skills stay absent, and instructions or `allowed-tools` never extend permissions.
 
 ## 5. Catalogue, commands and chat presentation
 

@@ -173,11 +173,12 @@ test("fixed-fixture prompt budgets preserve historical before measurements and n
     const before = await Bun.file(new URL("presetPrompt.before.fixture.json", import.meta.url)).json();
     // Limits re-measured at 52706346 (minimal 2,214 / standard 19,254 / creator 23,700 chars) plus <=5% headroom.
     // Standard grew past the old 17,500 limit when it gained plugins and native tools (023f4405, 0c103847).
-    // Every limit stays below the historical before size: Minimal shrinks >=23%, Creator >=23%, Standard >=0.4%.
-    const limits = { minimal: 2300, standard: 20200, creator: 24800 };
-    // Native agent tools added by add-p0-native-agent-tools, add-p1-plan-delegation-tools, add-native-show-artifact and delegate-child-model; Minimal has no grant for them.
+    // Every limit stays below the historical before size: Minimal shrinks >=23%, Creator >=23%, Standard >=0.02%.
+    // Standard 20,280 (re-measured 20,236) after add-project-skills gave Standard the native read_skill tool.
+    const limits = { minimal: 2300, standard: 20280, creator: 24800 };
+    // Native agent tools added by add-p0-native-agent-tools, add-p1-plan-delegation-tools, add-native-show-artifact, delegate-child-model and add-project-skills; Minimal has no grant for them.
     // finish_task is absent here: the fixture agent is not a delegated child.
-    const addedNative = ["delegate_task", "list_models", "read_result", "request_input", "show_artifact", "todo_done", "todo_update", "tool_describe", "tool_search"];
+    const addedNative = ["delegate_task", "list_models", "read_result", "read_skill", "request_input", "show_artifact", "todo_done", "todo_update", "tool_describe", "tool_search"];
     for (const id of ["minimal", "standard", "creator"] as const) {
         expect(limits[id]).toBeLessThan(before[id].promptChars);
         const agent = await fixture(id);

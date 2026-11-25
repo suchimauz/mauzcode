@@ -26,6 +26,7 @@ export default async function (ctx: Context, _session: Session | null, opts: {
                 case "input.promptSection": body = ctx.fns.input.promptSection({ allows, native: nativeFns.has("tools.requestInput") }); break;
                 case "canvas.promptSection": body = await ctx.fns.canvas.promptSection({ allows, native: nativeFns.has("tools.showArtifact") }); break;
                 case "plugins.promptSection": body = ctx.fns.plugins.promptSection({ allows }); break;
+                case "skills.promptSection": body = await ctx.fns.skills.promptSection({ agent, allows }); break;
                 default: {
                     const generator = section.generator.split(".").reduce((node, key) => node?.[key], ctx.fns as any);
                     if (typeof generator !== "function") throw new Error(`Prompt ${section.id}: missing generator ${section.generator}`);

@@ -359,6 +359,7 @@ export default function (
                 "tools.delegateTask",
                 "tools.finishTask",
                 "tools.showArtifact",
+                "tools.readSkill",
                 "tools.listModels"
             ]
         },

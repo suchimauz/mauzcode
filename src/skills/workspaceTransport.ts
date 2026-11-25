@@ -267,7 +267,7 @@ export default async function (
                             if total > l['packageBytes']: raise Refused('package exceeds its byte limit')
                             if relative == 'SKILL.md': continue
                             if not usable or st.st_size > l['resourceBytes']: skipped += 1
-                            elif len(resources) < l['resources']: resources.append(dict(path=relative, bytes=st.st_size))
+                            elif len(resources) < l['resources']: resources.append(dict(path=relative, bytes=st.st_size, executable=True) if st.st_mode & 0o111 else dict(path=relative, bytes=st.st_size))
                             else: truncated = True
                         elif stat.S_ISDIR(st.st_mode):
                             if not usable or depth >= l['depth']:
@@ -399,8 +399,9 @@ export default async function (
                 typeof truncated !== 'boolean' || (packageBytes !== undefined && !boundedInteger(packageBytes, limits.packageBytes))) return invalid();
             const entries: types.skills.ResourceEntry[] = [];
             for (const item of resources) {
-                if (typeof item?.path !== 'string' || !resourcePath(item.path) || item.path === 'SKILL.md' || !boundedInteger(item.bytes, limits.resourceBytes)) return invalid();
-                entries.push({ path: item.path, bytes: item.bytes });
+                if (typeof item?.path !== 'string' || !resourcePath(item.path) || item.path === 'SKILL.md' || !boundedInteger(item.bytes, limits.resourceBytes) ||
+                    (item.executable !== undefined && item.executable !== true)) return invalid();
+                entries.push(item.executable ? { path: item.path, bytes: item.bytes, executable: true } : { path: item.path, bytes: item.bytes });
             }
             return { ok: true, action, resources: entries, manifestBytes, manifestOversized, skipped, truncated, ...(packageBytes === undefined ? {} : { packageBytes }) };
         }

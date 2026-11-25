@@ -219,10 +219,38 @@ claimed by two packages (for example two exported directories named `review` in 
 withheld with a diagnostic until disambiguated. Each entry carries a header digest that changes
 with its manifest. A failing source adds a bounded diagnostic and the rest stay available.
 
+## Reading a skill
+
+An agent with the reader grant sees a bounded **Agent Skills** prompt section: up to 40 exact
+IDs with source and description, never instructions. Later entries stay reachable through
+`ctx.fns.skills.list({ query, offset })`. When a description fits, the agent reads the package
+with the native `read_skill` tool (`skills.read`) in two steps:
+
+```text
+read_skill({ id: "skill.workspace:review" })
+  → frontmatter, instructions, directory, resources: references/checklist.md, scripts/check.sh
+read_skill({ id: "skill.workspace:review", path: "references/checklist.md" })
+  → that file's text
+```
+
+Long text returns a `continuation`; pass it back with the same `path` for the next page. A
+continuation is signed for the agent, ID, revision and path, and each page is authorized again,
+so an edit, revocation or another agent's token fails instead of serving stale bytes. Images come
+back as attachments like `read`; other binaries only as a path. Content already delivered stays
+in history.
+
+**Scripts.** MauzCode never runs package content. Workspace packages are used in place. Server
+and plugin packages are copied on read to `~/.cache/mauzcode/skills/<id>/<revision>/` on the
+workspace host (local or SSH), keeping relative paths and executable bits, read-only, via a
+staging directory and rename so concurrent readers never see a partial copy. Each edit makes a
+new revision directory; old ones may be pruned by age. The agent runs scripts with its own
+`bash`; reading a skill adds no tool and no permission. A revoked skill is hidden from
+`read_skill`, but presets are not a sandbox: an earlier cached copy stays on disk until pruned.
+
 ## Not part of this layer
 
-These readers do not decide which agent may use a skill or publish a package. Package files,
-including `scripts/example.ts`, stay inert data at this layer.
+Publishing packages is Creator authoring and is described separately. Package files,
+including `scripts/example.ts`, stay inert data: nothing here imports or executes them.
 
 ## Tests
 
@@ -235,6 +263,7 @@ boundaries are sparse files, so the suite stays fast. Run it with the project ru
 ```bash
 bun script/test.ts fast ./src/skills/packageFiles.test.ts
 bun script/test.ts fast ./src/skills/workspaceSource.test.ts
-bun script/test.ts fast ./src/skills/sources.test.ts
+bun script/test.ts fast ./src/skills/sources.test.ts ./src/skills/access.test.ts ./src/skills/reading.test.ts
+bun script/test.ts it ./src/skills/materialize.it.test.ts
 bun script/test.ts it ./src/skills/workspaceSource.it.test.ts
 ```

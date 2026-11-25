@@ -4,4 +4,6 @@ export type ResourceEntry = {
     path: string;
     /** Verified size in bytes of the regular file behind this path. */
     bytes: number;
+    /** Present and true when the file has an executable permission bit, so a materialized copy can keep it. */
+    executable?: boolean;
 };

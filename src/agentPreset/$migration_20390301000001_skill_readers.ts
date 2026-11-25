@@ -1,7 +1,7 @@
 /**
  * Add the two Agent Skills readers to an untouched factory Standard; never touch agent snapshots.
  *
- * New Standard agents may discover and read project skills (skills.list, skills.read). Only the exact previous
+ * New Standard agents may discover and read project skills (skills.list, skills.read and the native read_skill adapter). Only the exact previous
  * factory definition is upgraded, so customized rows and every existing agent snapshot keep their rules.
  */
 export default {
@@ -29,7 +29,7 @@ export default {
             'tools.todoUpdate', 'tools.todoDone', 'tools.delegateTask', 'tools.finishTask',
             'tools.showArtifact', 'models.selectable', 'tools.listModels',
         ];
-        const added = ['skills.list', 'skills.read'];
+        const added = ['skills.list', 'skills.read', 'tools.readSkill'];
         await ctx.fns.procs.db.run({
             sql: `UPDATE agent_presets
                 SET allow = ?::jsonb, updated_at = ?

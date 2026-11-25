@@ -7,7 +7,7 @@ type SkillReadResult =
         name: string;
         /** Default source label, e.g. Workspace or Server · global. */
         source: string;
-        /** Content revision of the package; a different value means the package changed. */
+        /** Revision of SKILL.md and the resource listing (paths, sizes, executable bits); a different value means the package changed. */
         revision: string;
         /** Parsed portable frontmatter fields. */
         frontmatter: types.skills.Manifest;
@@ -102,8 +102,19 @@ export default async function (
         return result;
     };
     const first = await page('SKILL.md', 0);
-    const revision = new Bun.CryptoHasher('sha256').update(JSON.stringify([id, listing.manifestBytes, listing.resources, first.bytes.toString('base64')])).digest('hex').slice(0, 32);
-    const directory = await ctx.fns.skills.packageDirectory({ workspace, id, revision });
+    // The revision covers the whole SKILL.md (at most instructionsBytes) and the exact resource listing, so any
+    // instruction edit or added, removed, resized or re-moded file invalidates earlier continuations.
+    const revisionHash = new Bun.CryptoHasher('sha256').update(JSON.stringify([id, listing.manifestBytes, listing.resources])).update(first.bytes);
+    for (let at = first.nextOffset; at < first.total;) {
+        const next = await page('SKILL.md', at);
+        revisionHash.update(next.bytes);
+        at = next.nextOffset;
+    }
+    const revision = revisionHash.digest('hex').slice(0, 32);
+    const located = async (): Promise<string | undefined> => {
+        const where = await ctx.fns.skills.packageDirectory({ workspace, id });
+        return where.ok ? where.directory : undefined;
+    };
     const keyed = (): Buffer => ((ctx.state as any).skills ??= {}).continuationKey ??= randomBytes(32);
     const sign = (path: string, offset: number): string => {
         const mac = createHmac('sha256', keyed()).update(JSON.stringify([agent.id, id, revision, path, offset])).digest('base64url');
@@ -139,6 +150,7 @@ export default async function (
         const parsed = await ctx.fns.skills.parseManifest({ text: decoded.text, directoryName: entry.descriptor.name });
         if (!parsed.ok) throw new Error('skills.read: ' + parsed.reason);
         const nextOffset = decoded.used;
+        const directory = await located();
         return {
             kind: 'skill', id, name: entry.descriptor.name, source: entry.descriptor.sourceLabel, revision,
             frontmatter: parsed.manifest, instructions: parsed.body,
@@ -166,11 +178,15 @@ export default async function (
         const bytes = Buffer.concat(chunks);
         const mimeType = sniff(bytes);
         if (mimeType) return { kind: 'image', id, path, revision, mimeType, data: bytes.toString('base64'), bytes: bytes.length };
+        const directory = await located();
         return { kind: 'binary', id, path, revision, bytes: bytes.length, ...(directory ? { file: directory + '/' + path } : {}) };
     }
     const current = path === 'SKILL.md' && offset === 0 ? first : await page(path, offset);
     const decoded = text(current.bytes, current.hasMore);
-    if (!decoded || (decoded.used === 0 && current.hasMore)) return { kind: 'binary', id, path, revision, bytes: current.total, ...(directory ? { file: directory + '/' + path } : {}) };
+    if (!decoded || (decoded.used === 0 && current.hasMore)) {
+        const directory = await located();
+        return { kind: 'binary', id, path, revision, bytes: current.total, ...(directory ? { file: directory + '/' + path } : {}) };
+    }
     const nextOffset = offset + decoded.used;
     return {
         kind: 'text', id, path, revision, text: decoded.text, offset, nextOffset, total: current.total,
