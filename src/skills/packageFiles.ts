@@ -11,6 +11,7 @@
  * @param opts.resourceLimit Smaller number of files listed for the list action; it can only narrow the documented resource count. @default 500 @minimum 1 @maximum 500
  * @param opts.entryLimit Smaller number of directory entries examined while listing; it can only narrow the documented entry budget. @default 2000 @minimum 1 @maximum 2000
  * @param opts.depthLimit Smaller directory nesting depth followed while listing, counting the package itself as depth 0; it can only narrow the documented depth. @default 8 @minimum 1 @maximum 8
+ * @param opts.topLevel Trusted allowlist of top-level package entries besides SKILL.md; others are neither listed, counted nor readable. Narrows a plugin root export to its skill resources.
  */
 export default async function (
     ctx: Context,
@@ -34,6 +35,8 @@ export default async function (
         entryLimit?: number;
         /** Smaller directory nesting depth followed while listing, counting the package itself as depth 0; it can only narrow the documented depth. @default 8 @minimum 1 @maximum 8 */
         depthLimit?: number;
+        /** Trusted allowlist of top-level package entries besides SKILL.md; others are neither listed, counted nor readable. Narrows a plugin root export to its skill resources. */
+        topLevel?: string[];
     },
 ): Promise<types.skills.FilesResult> {
     const limits = await ctx.fns.skills.packageLimits({});
@@ -107,6 +110,7 @@ export default async function (
         }
         // The same rule the inventory walk uses: components.length - 1 directories below the package.
         if (components.length - 1 > limits.depth) return fail('path nests deeper than the ' + limits.depth + '-directory limit for packaged resources');
+        if (opts.topLevel !== undefined && components[0] !== 'SKILL.md' && !opts.topLevel.includes(components[0]!)) return fail(opts.path + ' is not part of the exported skill package');
     }
     const locator: types.skills.PackageLocator = { anchorDir: opts.anchorDir, packageName: opts.packageName, components };
     const resourceLimit = lowered(opts.resourceLimit, limits.resources);
@@ -166,6 +170,8 @@ export default async function (
                         return;
                     }
                     if (record === null) break;
+                    // A narrowed export hides every other top-level entry entirely: not listed, not counted, not readable.
+                    if (!base && opts.topLevel !== undefined && record.name !== 'SKILL.md' && !opts.topLevel.includes(record.name)) continue;
                     if (listed >= entryLimit) {
                         truncated = true;
                         complete = false;

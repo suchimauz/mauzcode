@@ -2,8 +2,8 @@
 
 A **skill** is a portable Agent Skills package: a directory whose `SKILL.md` opens with a
 YAML frontmatter block and continues with Markdown instructions. This page documents the
-bounded local reader that discovers and reads such packages — its limits, what happens at a
-boundary, and where it refuses to work. It is data handling only: no package content is
+bounded local and SSH workspace readers that discover and read such packages — their limits
+and where they refuse to work. It is data handling only: no package content is
 imported, executed, registered as runtime code or published.
 
 Discovery and reading are two separate steps, and both are in `src/skills/`:
@@ -21,6 +21,36 @@ An **anchor** is a trusted, absolute, normalized directory — a configured skil
 declared plugin directory. The package name and the resource path are untrusted input; they
 are validated and then re-verified on the opened object, so a link, a special file or a `..`
 component is refused instead of followed.
+
+## Workspace roots
+
+The built-in root is `<workspace>/.mauzcode/skills/`. To add a named root, place this
+configuration in `<workspace>/.mauzcode/skills.json`:
+
+```json
+{"roots":{"team":"docs/skills"}}
+```
+
+A `review/` package in the built-in root has ID `skill.workspace:review`; a `review/`
+package in `docs/skills/` has ID `skill.workspace.team:review`. Discovery examines only
+immediate package directories in the built-in and declared roots. It does not recursively
+search the repository or look in another tool's skill directories. The configuration is
+optional and never created by reads. An invalid root does not hide a healthy root. An absent,
+unreadable or malformed config grants no plugin skills; an invalid `enabledPluginSkills`
+list grants none either. This reader does not authorize or publish plugin packages.
+
+Use normalized workspace-relative root paths, with no `.` or `..` components or symbolic
+links. Named roots cannot overlap runtime source directories. The built-in directory is
+reserved for skill data; the workspace's `src`, `.mauzcode`, `plugins`, and `node_modules`
+are reserved from named roots. Local reads also check active runtime mounts. The config is
+limited to 32 KiB, 16 named roots, and 128 enabled plugin IDs. The package budgets below
+apply per root or package as indicated.
+
+The workspace host and absolute directory are used together. SSH reads require Linux with
+Python 3 and `/proc/self/fd` on the workspace host. The reader uses a fixed program over SSH,
+never executes a package, and limits each request to eight seconds. If the host or safe read
+capabilities are unavailable, it reports a bounded diagnostic without consulting local files.
+A named read always rechecks the current configuration and never substitutes the default root.
 
 ## Minimal portable package
 
@@ -138,15 +168,61 @@ Containment is proved by binding every open to a directory descriptor through
 `/proc/self/fd/<fd>`, which only Linux provides. On any other platform the reader **fails
 closed**: `packageScan` and `packageFiles` return `ok: false` with a reason instead of falling
 back to a path-based open that could follow a link out of the package. There is no silent
-unsafe fallback. A remote source is a separate transport concern and is not part of this
-layer.
+unsafe fallback. For SSH, the workspace adapter performs equivalent descriptor-bound checks
+on the remote host.
+
+## Server library
+
+Server skills live on the MauzCode **server**, never in the workspace and never in PostgreSQL.
+The library is one installation-owned directory:
+
+- `MAUZCODE_SKILLS_DIR` — an absolute operator override; or by default
+- `~/.mauzcode/skill-libraries/<installation-key>/`, where the key is derived from the
+  normalized installation workdir (not the chat workspace and not a process ID).
+
+```text
+<library>/
+├── global/review/SKILL.md                 → skill.server.global:review   (every project)
+└── projects/<project-id>/review/SKILL.md  → skill.server.project:review  (one project)
+```
+
+`<project-id>` is `projects.identity` of the workspace host and normalized absolute path. The
+same path on two SSH hosts is two projects; renaming an SSH alias makes a new project, and the
+old branch is kept, never deleted. A library inside a runtime source tree is refused. Reads
+create nothing: a missing branch is empty. Back the library up like any directory (for example
+`tar -C ~/.mauzcode -czf skills.tgz skill-libraries`); packages are ordinary files.
+
+## Plugin exports
+
+A plugin's `SKILL.md` documents the plugin for `plugins.read` and for
+`mauzcode skills mount`; it is **not** a project skill. A plugin exports skills only by listing
+package directories in `package.json`:
+
+```json
+{"procs": {"src": "src", "skills": ["skills/review"]}}
+```
+
+That directory becomes `skill.plugin.<plugin>:review` with the plugin's display label. `.`
+exports the plugin root explicitly, narrowed to `SKILL.md`, `references/`, `scripts/`, `assets/`
+and license files — never `src/`, `node_modules` or other files. Exports must be normalized
+relative directories without links and must not overlap the plugin's runtime source; at most
+32 per plugin. The mounted registry is read on each call, so a reload or unmount applies at
+once. A workspace still has to enable each export by exact ID in `enabledPluginSkills`; the
+catalogue marks the others disabled.
+
+## Catalogue
+
+`skills.catalogue({ workspace })` merges the workspace roots, both server branches and plugin
+exports by canonical ID. It re-reads files, configuration and the plugin registry every time,
+so edits apply without a restart. Matching short names in different origins coexist; one ID
+claimed by two packages (for example two exported directories named `review` in one plugin) is
+withheld with a diagnostic until disambiguated. Each entry carries a header digest that changes
+with its manifest. A failing source adds a bounded diagnostic and the rest stay available.
 
 ## Not part of this layer
 
-No SSH or network transport, no grant or enablement policy, no cache, no publication and no
-inventory UI. Separating package data from runtime registration is its own step of the change;
-this layer only guarantees the part it can test here: nothing it reads is ever imported or
-executed, and a package's `scripts/example.ts` stays inert data.
+These readers do not decide which agent may use a skill or publish a package. Package files,
+including `scripts/example.ts`, stay inert data at this layer.
 
 ## Tests
 
@@ -158,4 +234,7 @@ boundaries are sparse files, so the suite stays fast. Run it with the project ru
 
 ```bash
 bun script/test.ts fast ./src/skills/packageFiles.test.ts
+bun script/test.ts fast ./src/skills/workspaceSource.test.ts
+bun script/test.ts fast ./src/skills/sources.test.ts
+bun script/test.ts it ./src/skills/workspaceSource.it.test.ts
 ```

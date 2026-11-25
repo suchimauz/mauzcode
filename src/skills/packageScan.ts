@@ -10,6 +10,7 @@
  * @param opts.packageLimit Smaller number of healthy packages returned, counted while scanning; only malformed neighbours are skipped, never charged to this budget. @default 100 @minimum 1 @maximum 100
  * @param opts.entryLimit Smaller number of container entries examined, counted while listing; further entries are reported as truncated. @default 400 @minimum 1 @maximum 400
  * @param opts.headerMaxBytes Smaller SKILL.md header budget in bytes, stopping after the closing --- line and never entering the body. @default 16384 @minimum 512 @maximum 16384
+ * @param opts.only Trusted package directory name to examine alone, ignoring its siblings; used for one explicitly exported plugin package.
  */
 export default async function (
     ctx: Context,
@@ -31,6 +32,8 @@ export default async function (
         entryLimit?: number;
         /** Smaller SKILL.md header budget in bytes, stopping after the closing --- line and never entering the body. @default 16384 @minimum 512 @maximum 16384 */
         headerMaxBytes?: number;
+        /** Trusted package directory name to examine alone, ignoring its siblings; used for one explicitly exported plugin package. */
+        only?: string;
     },
 ): Promise<types.skills.ScanResult> {
     const limits = await ctx.fns.skills.packageLimits({});
@@ -228,6 +231,8 @@ export default async function (
         try {
             let record: ReturnType<typeof handle.readSync>;
             while ((record = handle.readSync()) !== null) {
+                // A single trusted export ignores its siblings without charging them to the scan budget.
+                if (opts.only !== undefined && record.name !== opts.only) continue;
                 if (listed >= entryLimit) {
                     truncated = true;
                     break;

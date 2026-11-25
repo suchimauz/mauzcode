@@ -7,6 +7,6 @@ services:
     ports: ["127.0.0.1::22"]
     volumes: ["${MAUZCODE_SSH_KEYS:?set MAUZCODE_SSH_KEYS}:/keys:ro"]
   rg:
-    build: { context: ., args: { RG: "1" } }
+    build: { context: ., args: { RG: "1", PYTHON: "1" } }
     ports: ["127.0.0.1::22"]
     volumes: ["${MAUZCODE_SSH_KEYS:?set MAUZCODE_SSH_KEYS}:/keys:ro"]

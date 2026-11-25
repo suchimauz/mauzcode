@@ -12,10 +12,10 @@ Implementation backlog for separate approval. No checkbox represents creation of
 
 ## 2. Source adapters and catalogue
 
-- [ ] 2.1 Read only the workspace default and named roots from `.mauzcode/skills.json` through local/SSH-aware access. Test same-path workspaces on different hosts, undeclared directories, invalid configuration, and failure of one remote root without local fallback. Document the config example and nonrecursive discovery.
-- [ ] 2.2 Add the installation-owned library with `global/` and `projects/<project-id>/` branches (read side). Verify persistence across restarts, visibility across two chats in one project versus another project, and a renamed SSH alias producing a new project. Document the default location, override and filesystem backup.
-- [ ] 2.3 Read explicitly declared `procs.skills` directories from mounted plugins and invalidate exports on reload/unmount. Test opt-out by default, `.` as an explicit root export, duplicate exports and manifest resource boundaries; document an explicit export and the difference from `plugins.read` and external mounts.
-- [ ] 2.4 Merge source descriptors by canonical ID, track source revisions (content digests) and expose bounded diagnostics. Test same short names in all sources and two plugins, config/file edits without restart, stale metadata invalidation and one unreachable source alongside healthy sources.
+- [x] 2.1 Read only the workspace default and named roots from `.mauzcode/skills.json` through local/SSH-aware access. Test same-path workspaces on different hosts, undeclared directories, invalid configuration, and failure of one remote root without local fallback. Document the config example and nonrecursive discovery.
+- [x] 2.2 Add the installation-owned library with `global/` and `projects/<project-id>/` branches (read side). Verify persistence across restarts, visibility across two chats in one project versus another project, and a renamed SSH alias producing a new project. Document the default location, override and filesystem backup.
+- [x] 2.3 Read explicitly declared `procs.skills` directories from mounted plugins and invalidate exports on reload/unmount. Test opt-out by default, `.` as an explicit root export, duplicate exports and manifest resource boundaries; document an explicit export and the difference from `plugins.read` and external mounts.
+- [x] 2.4 Merge source descriptors by canonical ID, track source revisions (content digests) and expose bounded diagnostics. Test same short names in all sources and two plugins, config/file edits without restart, stale metadata invalidation and one unreachable source alongside healthy sources.
 
 ## 3. Permissions
 
