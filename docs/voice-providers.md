@@ -10,9 +10,10 @@ protocol. It is **not** the Models SDK and it is **not** the Whisper plugin:
 - The `whisper` plugin (`whisper.transcribe`, `/whisper`) transcribes an audio file or uploaded
   bytes locally with whisper.cpp. The Voice SDK does not import, call or adapt it.
 
-One built-in provider ships today: **`openai-realtime`**, which streams audio from the MauzCode
-server to the OpenAI Realtime transcription service. The rest of this page covers both using it and
-declaring a different one.
+Two built-in providers ship today: **`openai-realtime`**, which streams audio from the MauzCode
+server to the OpenAI Realtime transcription service, and **`deepgram`**, which streams it to
+Deepgram Nova-3 live transcription. The rest of this page covers using them and declaring a
+different one.
 
 ## Implementation status
 
@@ -28,6 +29,8 @@ Available now:
   audio and normalized transcript events;
 - the `openai-realtime` adapter, with unit tests and integration tests against a fake Realtime
   server;
+- the `deepgram` adapter (Nova-3, `/v1/listen`), with unit tests and integration tests against a
+  fake Deepgram server (see [Set up Deepgram](#set-up-deepgram));
 - an owner-only **Settings → Voice** tab (`/voice/api`, `src/voice/http/api.ts`) to add, edit, test
   and remove voice connections (the key is entered in a write-only password field and never sent
   back), and to choose or clear the default route;
@@ -351,6 +354,81 @@ These rules follow the OpenAI Realtime transcription behaviour observed with `gp
   during setup and errors that name no pending commit still end the session; the error journal
   records their service code as detail.
 
+## Set up Deepgram
+
+The `deepgram` provider streams dictation audio from the MauzCode server to Deepgram's live
+transcription endpoint `wss://<Base URL>/v1/listen` with the `nova-3` model. Its route is
+`deepgram/<account>:nova-3`. It appears in **Settings → Voice** and in the chat route picker next to
+OpenAI Realtime; nothing in the composer changes.
+
+### 1. API key and Base URL
+
+Create an API key in the Deepgram console; a key with the default *Member* role is enough for live
+transcription. Store the connection in **Settings → Voice** (or `voice.create` with
+`provider: "deepgram"`, as in the OpenAI example above). The key is sent only as the header
+`Authorization: Token <key>`, never in the URL, and is never returned.
+
+`baseUrl` defaults to `https://api.deepgram.com`. For the EU endpoint use
+`https://api.eu.deepgram.com`; the destination is then shown as `Configured endpoint
+(api.eu.deepgram.com)`. The same rules as for OpenAI apply: HTTPS only (plain HTTP only on numeric
+loopback for tests), no credentials, query or fragment.
+
+### 2. Options
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `apiKey` | secret, required | Deepgram API key. Never returned. |
+| `baseUrl` | url, default `https://api.deepgram.com` | Credential-free HTTPS base URL; the adapter appends `/v1/listen`. |
+| `languages` | text | Comma-separated language tags such as `ru`, `en`, `en-US`, `zh-Hans`. One tag sends `language=<tag>`. No tag or several tags send `language=multi` (multilingual code switching), with one `language_hint` per tag. The service rejects unsupported tags when the stream opens (`socketError`, `http_400`). |
+| `keyterms` | text | Comma-separated terms on one line, at most 100 terms of up to 100 characters. Each term becomes one `keyterm` parameter; a comma always separates terms. |
+| `smartFormat` | boolean, default on | Sends `smart_format=true` with `no_delay=true` (punctuation, numerals; no holding back of results). Off sends neither. |
+| `mipOptOut` | boolean, default off | Sends `mip_opt_out=true`, which opts the audio out of Deepgram's Model Improvement Program. **Deepgram bills opted-out audio at a higher rate.** |
+
+Per-chat `languages` and `keywords` replace the connection's lists. The adapter always requests
+`encoding=linear16`, `sample_rate=16000`, `channels=1`, `interim_results=true` and
+`endpointing=false`; the browser resamples to 16 kHz.
+
+Keyterms travel in the request URL, so they can appear in Deepgram's usage logs and request
+history. Do not put secrets into keyterms.
+
+### 3. Test the connection
+
+The check opens the live socket with the saved settings, sends `CloseStream` and waits up to 5 s
+for the service to close. **No audio is sent.** It verifies the key, the language tags and the
+route in one step and needs no management scopes. A refused key reports `bad-key`, a missing close
+`timeout`, anything else `unreachable`.
+
+### 4. Network route
+
+All upstream sockets go through the connection's route, so **Direct**, **SOCKS5 proxy** and **SSH
+tunnel** work as described in [Network route](#network-route). A broken route fails the check or
+the session without a direct connection.
+
+### 5. How the adapter handles the stream
+
+- **Phrases.** Core's voice-activity detection decides phrase boundaries. Each commit sends one
+  `Finalize`; a commit without new audio settles an empty phrase locally without `Finalize`.
+- **Attribution.** Deepgram results carry no phrase ID. The adapter counts the audio bytes it sent
+  and assigns each result to the oldest pending commit whose audio end lies after the result's
+  start (50 ms tolerance). Results for audio after the last commit wait for the next commit.
+- **Settlement.** A commit settles on a final result marked `from_finalize`, when final results
+  cover all of its audio, or after 2 s without any result for it (the text so far, possibly
+  empty). Phrases always settle in commit order. Revisions show the final segments plus the
+  current interim hypothesis; the final joins the final segments with single spaces.
+- **Framing.** Audio is re-framed into 50 ms binary frames (1600 bytes); the remainder is flushed
+  before `Finalize` and `CloseStream`. An empty binary frame is never sent.
+- **Idle and finish.** `KeepAlive` is sent after 4 s without any frame. Finish settles all phrases,
+  sends `CloseStream`, waits up to 5 s for the close and reports the closing `Metadata.duration`
+  as usage. Cancel closes the socket at once.
+- **Failures.** A refused upgrade reports `socketError` with `http_<status>` (401/403 as
+  `providerAuth`, 429 as rate limit); a socket closed by the service reports `socketClosed` with its
+  close code; a service `Error` message reports `serviceError`; an unreadable frame reports
+  `malformedMessage`. No close reason, service text or frame content is kept. A dropped stream is
+  not reconnected: start dictation again.
+
+Not supported in this provider: Flux (`/v2/listen`) and other models, Deepgram endpointing,
+temporary tokens, diarization, redaction and dictation mode.
+
 ## What stays local and what is the provider's
 
 Guaranteed by the code documented here and covered by the tests under [Verification](#verification):
@@ -368,7 +446,9 @@ Guaranteed by the code documented here and covered by the tests under [Verificat
 Not promised, because it is on the provider's side:
 
 - recognition quality and language coverage for your audio, including the absence of timestamps,
-  confidence or speaker labels in this model's output;
+  confidence or speaker labels in the normalized output;
+- for Deepgram, how keyterms in the request URL are shown in its usage logs, and the higher price of
+  the Model Improvement Program opt-out;
 - availability, rate limits, latency and any outage of the vendor endpoint;
 - how the vendor stores, retains or reviews submitted audio — governed by your agreement with the
   vendor, not by MauzCode;
@@ -586,6 +666,10 @@ Providers must be testable without a paid call. `src/voice/contract/` contains t
 - `openaiRealtimeFake.entry.ts` + `openaiRealtimeDriver.entry.ts` — a controllable fake Realtime
   WebSocket server on numeric loopback and the wire driver that maps the same scenarios onto native
   events, used by `src/voice/openaiRealtime.it.test.ts` with the adapter's real client.
+- `deepgramFake.entry.ts` + `deepgramDriver.entry.ts` — the same for Deepgram `/v1/listen`: the fake
+  records binary frames and control messages, the driver answers with time-ranged `Results`. Used
+  by `src/voice/deepgram.it.test.ts`. A provider whose protocol has no per-phrase failure passes
+  `phraseFailures: false`, which skips that one contract scenario.
 
 A binding test supplies `setup()` returning `{ ctx, route, upstream }`, where `upstream` implements
 `acceptCommit`, `reportTurn`, `revise`, `finalize`, `failPhrase`, `disconnect` and `expectClosed` by
@@ -619,6 +703,9 @@ This page was checked against the code, not only against the design notes:
   provider declaration and the built-in adapter;
 - `bun test ./src/voice/openaiRealtime.it.test.ts` runs the provider contract against the fake
   Realtime server and checks a connection without sending audio;
+- `bun test ./src/voice/deepgram.unit.test.ts ./src/voice/deepgram.it.test.ts` covers the Deepgram
+  declaration, validation and query building, then the contract, framing, settlement, keep-alive,
+  usage, failures and the no-audio check against the fake Deepgram server;
 - `bun test ./src/voice/socket.test.ts` checks access and takeover races, frame and queue limits,
   age versus idle time with a fake clock, repeated boundaries, ordered acknowledgements and cleanup;
 - `bun test src/voice/registryReload.test.ts` — 2 pass for real boot discovery, isolation of a broken

@@ -49,7 +49,7 @@ test("real boot discovers voiceProvider, isolates a broken file and namespace re
         expect(before?.module).toBe("reloadFixture");
         // The broken file was rejected by validation and did not take the good one with it.
         expect(providers()["broken-fixture"]).toBeUndefined();
-        expect(Object.keys(providers()).sort()).toEqual(["openai-realtime", "reload-fixture"]);
+        expect(Object.keys(providers()).sort()).toEqual(["deepgram", "openai-realtime", "reload-fixture"]);
 
         await Bun.write(file, declaration("After reload", true));
         const reloaded = await ctx.fns.procs.repl.load({ name: "reloadFixture" });
@@ -61,7 +61,7 @@ test("real boot discovers voiceProvider, isolates a broken file and namespace re
         expect(after?.rel).toBe(before!.rel);
         expect(after?.definition).not.toBe(before!.definition);
         expect(providers()["openai-realtime"]).toBe(builtin);
-        expect(Object.keys(providers()).sort()).toEqual(["openai-realtime", "reload-fixture"]);
+        expect(Object.keys(providers()).sort()).toEqual(["deepgram", "openai-realtime", "reload-fixture"]);
         expect(JSON.stringify({ ...after, definition: after!.definition.label })).not.toContain("Fixture handlers");
     } finally {
         await rm(root, { recursive: true, force: true });

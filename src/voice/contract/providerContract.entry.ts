@@ -40,6 +40,11 @@ export type ContractSuiteOptions = {
     name: string;
     /** Build a fresh fixture for each test. */
     setup: () => Promise<ContractFixture>;
+    /**
+     * Whether the upstream protocol can fail one phrase while the session continues. A provider without a
+     * per-phrase failure event (for example Deepgram) sets `false`, and the scenario is skipped. @default true
+     */
+    phraseFailures?: boolean;
 };
 
 /** Produce one committed phrase and a native identifier without assuming ids equal normalized order. */
@@ -126,7 +131,7 @@ export function runVoiceProviderContract(opts: ContractSuiteOptions): void {
             }
         });
 
-        test("a failed phrase does not prevent a later final", async () => {
+        test.skipIf(opts.phraseFailures === false)("a failed phrase does not prevent a later final", async () => {
             const { session, events, upstream } = await open();
             try {
                 const first = await speak(session, upstream, 0);

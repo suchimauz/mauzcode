@@ -3,9 +3,9 @@
  *
  * Runs with NODE_EXTRA_CA_CERTS pointing at a throwaway CA, so the production verifier stays untouched in the
  * parent. It starts a TLS destination (`Bun.serve`, certificate for `voice.test` and `localhost`) serving HTTP,
- * a redirect, a refused upgrade and a minimal fake OpenAI Realtime WebSocket; a SOCKS5 proxy that records every
+ * a redirect, a refused upgrade and minimal fake OpenAI Realtime and Deepgram WebSockets; a SOCKS5 proxy that records every
  * requested destination and forwards it to that server; and a fake pooled SSH tunnel whose leases are counted. It
- * drives the real `voice.transport.*` functions and the real OpenAI Realtime adapter, then prints one JSON line of
+ * drives the real `voice.transport.*` functions and the real OpenAI Realtime and Deepgram adapters, then prints one JSON line of
  * observations. Nothing here touches an external service or a real credential.
  */
 import net from "node:net";
@@ -16,6 +16,7 @@ import connect from "../../socksProxy/connect";
 import request from "../../socksProxy/request";
 import transportError from "../../socksProxy/transportError";
 import provider from "../$voiceProvider_openai-realtime";
+import deepgram from "../$voiceProvider_deepgram";
 
 const [keyPath, certPath] = process.argv.slice(2) as [string, string];
 const KEY = "fake-route-voice-key";
@@ -33,7 +34,7 @@ const server = Bun.serve<Wire>({
         const url = new URL(req.url);
         if (url.pathname === "/models") return Response.json({ host: req.headers.get("host"), models: ["live"] });
         if (url.pathname === "/redirect" || url.pathname === "/ws-redirect") return new Response(null, { status: 302, headers: { location: "https://elsewhere.invalid/" } });
-        if (url.pathname.endsWith("/realtime") || url.pathname === "/echo") {
+        if (url.pathname.endsWith("/realtime") || url.pathname.endsWith("/listen") || url.pathname === "/echo") {
             const wire: Wire = { path: url.pathname + url.search, auth: req.headers.get("authorization"), received: [] };
             if (srv.upgrade(req, { data: wire })) { sessions.push(wire); return; }
         }
@@ -41,8 +42,15 @@ const server = Bun.serve<Wire>({
     },
     websocket: {
         message(ws, data) {
+            if (typeof data !== "string") { ws.data.received.push({ type: "binary", bytes: data.byteLength }); return; }
             const message = JSON.parse(String(data)) as Record<string, any>;
             ws.data.received.push(message);
+            if (ws.data.path.includes("/listen?")) {
+                // Minimal fake Deepgram: answer Finalize with one final, CloseStream with Metadata and a close.
+                if (message.type === "Finalize") ws.send(JSON.stringify({ type: "Results", start: 0, duration: 0.15, is_final: true, from_finalize: true, channel: { alternatives: [{ transcript: "routed hello" }] } }));
+                if (message.type === "CloseStream") { ws.send(JSON.stringify({ type: "Metadata", duration: 0.15 })); ws.close(1000, "done"); }
+                return;
+            }
             if (ws.data.path === "/echo") { ws.send(JSON.stringify({ echo: message })); return; }
             if (message.type === "session.update") ws.send(JSON.stringify({ type: "session.updated", session: { type: "transcription" } }));
             if (message.type === "input_audio_buffer.commit") {
@@ -203,6 +211,48 @@ for (const kind of Object.keys(routes)) {
         live: { finals: events.filter(e => e.type === "final").map(e => (e as { text: string }).text), types: sessions[1]?.received.map(m => m.type) },
         ...snapshot(),
     };
+}
+// Deepgram over each route, with a custom Base URL: no-audio check, then a live session.
+for (const kind of Object.keys(routes)) {
+    reset();
+    const transport = routes[kind]!;
+    const controller = new AbortController();
+    const conn: types.voice.ResolvedConnection = {
+        id: "fixture", provider: deepgram.id, accountName: "route", config: { baseUrl: `https://${hostFor(kind)}/custom` }, transport,
+        secret: async () => KEY,
+        fetch: (url, init) => routedFetch(ctx, null, { transport, url, init, signal: controller.signal }),
+        openWebSocket: (url, options) => openWebSocket(ctx, null, { transport, url, headers: options?.headers, protocols: options?.protocols, signal: controller.signal }),
+    };
+    const check = await deepgram.test(ctx, conn);
+    await Bun.sleep(50);
+    const checkWire = sessions.map(s => ({ path: s.path.split("?")[0], auth: s.auth === `Token ${KEY}`, types: s.received.map(m => m.type) }));
+    const events: types.voice.PhraseEvent[] = [];
+    const stream = await deepgram.open(ctx, conn, { sampleRate: 16000, options: {}, signal: new AbortController().signal, emit: e => { events.push(e); }, fail: () => {} });
+    await stream.append(new Uint8Array(4800));
+    await stream.commit(1);
+    await stream.finish();
+    await Bun.sleep(50);
+    results[`${kind}.deepgram`] = {
+        check: { status: check.status, reason: check.reason }, checkWire,
+        live: { finals: events.filter(e => e.type === "final").map(e => (e as { text: string }).text), types: sessions[1]?.received.map(m => m.type) },
+        ...snapshot(),
+    };
+}
+// A broken route fails the Deepgram check and live start without contacting the endpoint.
+reset(); proxyMode = "refuse";
+{
+    const transport = routes.socks!;
+    const conn: types.voice.ResolvedConnection = {
+        id: "fixture", provider: deepgram.id, accountName: "route", config: { baseUrl: `https://voice.test:${server.port}` }, transport,
+        secret: async () => KEY,
+        fetch: (url, init) => routedFetch(ctx, null, { transport, url, init }),
+        openWebSocket: (url, options) => openWebSocket(ctx, null, { transport, url, headers: options?.headers }),
+    };
+    const check = await deepgram.test(ctx, conn);
+    let liveError: { code?: string; message: string } | null = null;
+    try { await deepgram.open(ctx, conn, { sampleRate: 16000, options: {}, signal: new AbortController().signal, emit: () => {}, fail: () => {} }); }
+    catch (e: any) { liveError = { code: e?.code, message: String(e?.message) }; }
+    results["deepgram.brokenRoute"] = { check, liveError, ...snapshot() };
 }
 // A broken route fails the OpenAI check without contacting the endpoint.
 reset(); proxyMode = "refuse";
