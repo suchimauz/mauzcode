@@ -22,11 +22,16 @@ const isTheme = value => typeof value === 'string' && THEMES.has(value);
 function resolveTheme(stored, systemDark) { return isTheme(stored) ? stored : systemDark ? 'dark' : 'light'; }
 
 /**
- * Title-bar overlay colours for Windows and Linux.
+ * Title-bar overlay colours and height for Windows and Linux.
+ * @param {string} platform process.platform.
  * @param {'light'|'dark'} theme Resolved theme.
  * @returns {{ color: string, symbolColor: string, height: number }} Value for BrowserWindow titleBarOverlay / setTitleBarOverlay.
  */
-function overlayFor(theme) { const p = PALETTE[resolveTheme(theme, false)]; return { color: p.strip, symbolColor: p.symbol, height: TITLE_BAR_HEIGHT }; }
+function overlayFor(theme, platform) {
+  const p = PALETTE[resolveTheme(theme, false)];
+  // Leave the CSS strip's 1px bottom border visible beneath the opaque Windows caption buttons.
+  return { color: p.strip, symbolColor: p.symbol, height: platform === 'win32' ? TITLE_BAR_HEIGHT - 1 : TITLE_BAR_HEIGHT };
+}
 
 /**
  * BrowserWindow options that replace the OS title bar on every platform.
@@ -37,7 +42,7 @@ function chromeOptions({ platform, theme }) {
   const resolved = resolveTheme(theme, false), background = PALETTE[resolved].background;
   if (platform === 'darwin') return { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 13 }, backgroundColor: background };
   // Windows and Linux: native caption buttons over our strip; the menu bar stays hidden (Alt must not reveal it).
-  return { titleBarStyle: 'hidden', titleBarOverlay: overlayFor(resolved), autoHideMenuBar: false, backgroundColor: background };
+  return { titleBarStyle: 'hidden', titleBarOverlay: overlayFor(resolved, platform), autoHideMenuBar: false, backgroundColor: background };
 }
 
 /**
@@ -58,7 +63,7 @@ function applyChrome(win, { platform, theme }) {
   win.setBackgroundColor?.(PALETTE[resolved].background);
   if (platform === 'darwin') return;
   win.setMenuBarVisibility?.(false);
-  try { win.setTitleBarOverlay?.(overlayFor(resolved)); } catch { /* A WM without overlay support keeps its own frame. */ }
+  try { win.setTitleBarOverlay?.(overlayFor(resolved, platform)); } catch { /* A WM without overlay support keeps its own frame. */ }
 }
 
 /**

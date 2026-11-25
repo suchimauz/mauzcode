@@ -11,7 +11,10 @@ describe('integrated window frame', () => {
       expect(chromeOptions({ platform: 'darwin', theme })).toEqual({ titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 13 }, backgroundColor: PALETTE[theme].background });
       for (const platform of ['win32', 'linux']) {
         expect(chromeOptions({ platform, theme })).toEqual({ titleBarStyle: 'hidden', autoHideMenuBar: false, backgroundColor: PALETTE[theme].background,
-          titleBarOverlay: { color: PALETTE[theme].strip, symbolColor: PALETTE[theme].symbol, height: 40 } });
+          titleBarOverlay: { color: PALETTE[theme].strip, symbolColor: PALETTE[theme].symbol, height: platform === 'win32' ? 39 : 40 } });
+        const heights: number[] = [];
+        applyChrome({ setTitleBarOverlay: ({ height }: { height: number }) => heights.push(height) }, { platform, theme });
+        expect(heights).toEqual([platform === 'win32' ? 39 : 40]);
       }
     }
     expect(titleBarInfo('darwin')).toEqual({ height: 40, controls: 'left' });
