@@ -139,11 +139,6 @@
 .models-model-row:has(input:focus-visible) { outline: 2px solid var(--focus-ring, var(--accent, #0a84ff)); outline-offset: 1px; }
 .models-model-label { color: var(--text-secondary, inherit); }
 .models-list li.is-disabled code, .models-list li.is-disabled .models-model-label { opacity: 0.55; }
-/* Native members of a grouped choice: reasoning level, native id and their own switch. */
-.models-members { list-style: none; margin: 0; padding: 0 0 0 28px; display: flex; flex-direction: column; gap: 2px; }
-.models-member-row { padding-block: 4px; font-size: var(--font-xs); }
-.models-member-level { min-width: 52px; color: var(--text-secondary, inherit); font-weight: 500; }
-.models-list li:not(.is-disabled) > .models-members li:not(.is-disabled) code { opacity: 1; }
 .models-save { margin-top: 8px; }
 .models-context { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 8px 6px 36px; font-size: var(--font-xs); }
 .models-context-field { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary, inherit); }

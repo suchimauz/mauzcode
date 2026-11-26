@@ -11,11 +11,15 @@ import {
   connectionAction, connectionClientVersion, connectionModels, connectionUsage, createConnection, setContextLimits, setModelEnabled, getModelsState, removeConnection, setConnectionEnabled, setProviderEnabled, testConnection, transportLabel, updateConnection,
   type ConnectionInput, type ConnectionModels, type ModelClientVersion, type ModelContextLimit, type ModelConnectionView, type ModelFieldSpec, type ModelInfo, type ModelProviderView, type ModelVariantMember, type ModelsState, type ModelTransportSpec, type ModelUsageReport,
 } from '../../lib/modelConnections';
-import { QUOTA_FAMILIES, quotaFamilyHeadline, quotaFamilyNote, quotaFamilyRowMeta, quotaFamilyValue, summarizeQuotaFamily, type QuotaFamily, type QuotaFamilySummary } from '../../lib/quotas';
+import { QUOTA_FAMILIES, QUOTA_PERIODS, quotaFamilyNote, quotaPeriodTitle, quotaResetText, quotaUsedValue, summarizeQuotaFamily, type QuotaFamily, type QuotaFamilySummary } from '../../lib/quotas';
 
 /** A connection (by id) and model family to bring into view, e.g. from a sidebar family quota card; `at` distinguishes repeated requests. */
 export type ModelsTarget = { account: string; family: QuotaFamily; at: number };
 import { SettingsField as Field } from './SettingsField';
+import { useVisiblePoll } from '../../hooks/useVisiblePoll';
+
+/** Visible usage refresh interval, shared with the sidebar quota poll. */
+const USAGE_POLL_MS = 60_000;
 import { SettingsGroup, SettingsRow, SettingsSwitch } from './SettingsGroup';
 
 type Feedback = { tone: 'success' | 'error'; text: string } | null;
@@ -25,7 +29,7 @@ const TRANSPORT_LABEL: Record<ModelTransportSpec['kind'], string> = { direct: 'D
 
 /** Human text for machine reason codes from test/usage; unknown codes are shown as-is. */
 const REASON_LABEL: Record<string, string> = {
-  'models-ok': 'Model list available', 'generation-ok': 'Test generation succeeded', 'usage-ok': 'Usage loaded',
+  'models-ok': 'Model list available', 'generation-ok': 'Test generation succeeded', 'usage-ok': 'Usage loaded', 'usage-stale': 'Latest usage read failed; showing the last success',
   'models-failed': 'Model list request failed', 'generation-failed': 'Test generation failed', 'usage-failed': 'Usage request failed',
   'test-failed': 'Connection test failed', 'request-failed': 'Provider request failed', 'transport-failed': 'Proxy or tunnel unavailable',
   'unknown-provider': 'Provider is not loaded; restart MauzCode', 'login-required': 'Log in required',
@@ -44,46 +48,52 @@ function formatTime(ms: number) { return new Date(ms).toLocaleString(undefined, 
 
 type UsageWindow = NonNullable<ModelUsageReport['windows']>[number];
 /**
- * Family summaries of a usage report, Gemini first: the same helper, grouping and units as the sidebar family cards.
+ * Family summaries of a usage report, Gemini first: the same helper, cells and units as the sidebar family cards.
  * A family appears when it has a window or the backend reports it as truncated; only the structured `family` decides.
  */
 export function usageFamilies(usage: ModelUsageReport | null): QuotaFamilySummary[] {
   const windows = usage?.windows ?? [];
+  const readings = windows.flatMap((w, i) => w.family ? [{ id: w.id ?? `window-${i + 1}`, label: w.label, family: w.family, scope: w.scope ?? 'unknown', period: w.period ?? null,
+    usedPercent: w.usedPercent ?? null, resetsAt: w.resetAt ?? null, observedAt: w.observedAt ?? null }] : []);
   return QUOTA_FAMILIES.flatMap(f => {
-    const own = windows.filter(w => w.family === f.key);
     const partial = usage?.partialFamilies?.includes(f.key) === true;
-    if (!own.length && !partial) return [];
-    return [summarizeQuotaFamily(f.key, own.map(w => ({ model: w.model ?? w.id ?? null, label: w.label, usedPercent: w.usedPercent ?? null, resetsAt: w.resetAt ?? null, observedAt: w.observedAt ?? null })), { partial, freshAt: usage?.checkedAt })];
+    if (!readings.some(r => r.family === f.key) && !partial) return [];
+    return [summarizeQuotaFamily(f.key, readings, { partial })];
   });
 }
 
-/** One model family: heading with the remaining figure, range or `no data`, then a row per model group with its reset. Text only. */
+/** One used-percent row: label, meter and `N% used · resets …` or explicit unknowns. Text only. */
+function UsedRow({ label, used, resetsAt }: { label: string; used: number | null; resetsAt: number | null }) {
+  return <li className="models-window">
+    <span className="models-window-label">{label}</span>
+    {used !== null ? <span className="models-meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(used)} aria-valuetext={quotaUsedValue(used, 'en')} aria-label={`${label} used`}><span style={{ width: `${used}%` }} /></span> : <span aria-hidden="true" />}
+    <span className="models-window-meta">{quotaUsedValue(used, 'en')} · {quotaResetText(resetsAt, 'en')}</span>
+  </li>;
+}
+
+/** One model family: heading with the shared pool, then the five-hour/weekly/monthly used share with local resets and the family's extra limits. */
 function FamilyUsage({ summary, selected }: { summary: QuotaFamilySummary; selected?: number }) {
   const note = quotaFamilyNote(summary, 'en');
   const ref = useRef<HTMLElement>(null);
   // Selected from a sidebar family card: bring this family into view and move focus to it, without animation.
   useEffect(() => { if (selected === undefined) return; ref.current?.scrollIntoView?.({ block: 'nearest' }); ref.current?.focus({ preventScroll: true }); }, [selected]);
   return <section ref={ref} tabIndex={selected === undefined ? undefined : -1} className="models-family" data-family={summary.family} data-state={summary.state} data-selected={selected === undefined ? undefined : 'true'} aria-label={`${summary.title} quota`}>
-    <h4 className="models-family-title"><span>{summary.title}</span><span className="models-family-figure">{quotaFamilyHeadline(summary, 'en')}</span></h4>
-    {summary.rows.length > 0 && <ul className="models-windows" aria-label={`${summary.title} models`}>{summary.rows.map(r => {
-      const models = r.models.join(', ');
-      return <li key={r.key} className="models-window">
-        <span className="models-window-label">{models}</span>
-        {r.remaining !== null ? <span className="models-meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(r.remaining)} aria-valuetext={quotaFamilyValue(r.figure, 'en')} aria-label={`${models} remaining`}><span style={{ width: `${r.remaining}%` }} /></span> : <span aria-hidden="true" />}
-        <span className="models-window-meta">{quotaFamilyValue(r.figure, 'en')} · {quotaFamilyRowMeta(r, 'en')}</span>
-      </li>;
-    })}</ul>}
+    <h4 className="models-family-title"><span>{summary.title}</span><span className="models-family-figure">{summary.pool} limits</span></h4>
+    <ul className="models-windows" aria-label={`${summary.title} periods`}>{QUOTA_PERIODS.map(p => { const w = summary.windows[p.key];
+      return <UsedRow key={p.key} label={quotaPeriodTitle(p.key, 'en')} used={w?.usedPercent ?? null} resetsAt={w?.resetsAt ?? null} />; })}</ul>
+    {summary.extra.length > 0 && <ul className="models-windows" aria-label={`${summary.title} additional limits`}>{summary.extra.map(w =>
+      <UsedRow key={w.id} label={`${w.label}${w.period ? ` (${quotaPeriodTitle(w.period, 'en')})` : ''}`} used={w.usedPercent} resetsAt={w.resetsAt} />)}</ul>}
     {note && <p className="settings-note">{note}</p>}
   </section>;
 }
 
-/** Shared renderer of a UsageReport: status and reason, then model-family remaining quota, other quota windows and balance when present. */
+/** Shared renderer of a UsageReport: status, reason and last success, then model-family period cells, other quota windows and balance when present. */
 export function UsageView({ usage, selected }: { usage: ModelUsageReport; /** Family to bring into view and when it was requested. */ selected?: { family: QuotaFamily; at: number } | null }) {
-  const tone = usage.status === 'available' ? 'is-success' : usage.status === 'unavailable' ? 'is-error' : 'is-pending';
+  const tone = usage.stale ? 'is-pending' : usage.status === 'available' ? 'is-success' : usage.status === 'unavailable' ? 'is-error' : 'is-pending';
   const families = usageFamilies(usage);
   const windows = (usage.windows ?? []).filter(w => !w.family);
-  return <div className="models-usage">
-    <p className="models-usage-status"><span className={`settings-badge ${tone}`}><i aria-hidden="true" />{STATUS_LABEL[usage.status] ?? usage.status}</span>{usage.reason && <span className="models-usage-reason" title={usage.reason}>{reasonLabel(usage.reason)}</span>}<span className="models-usage-time">checked {formatTime(usage.checkedAt)}</span></p>
+  return <div className="models-usage" data-stale={usage.stale || undefined}>
+    <p className="models-usage-status"><span className={`settings-badge ${tone}`}><i aria-hidden="true" />{usage.stale ? 'Stale' : STATUS_LABEL[usage.status] ?? usage.status}</span>{usage.reason && <span className="models-usage-reason" title={usage.reason}>{reasonLabel(usage.reason)}</span>}<span className="models-usage-time">{usage.stale ? 'last success' : 'checked'} {formatTime(usage.checkedAt)}</span></p>
     {families.map(s => <FamilyUsage key={s.family} summary={s} selected={selected?.family === s.family ? selected.at : undefined} />)}
     {windows.length > 0 && <ul className="models-windows" aria-label="Quota windows">{windows.map((w: UsageWindow, i) => {
       const used = typeof w.usedPercent === 'number' ? Math.max(0, Math.min(100, w.usedPercent)) : null;
@@ -272,45 +282,42 @@ function useClientVersion(connection: ModelConnectionView, provider: ModelProvid
   return { text, canDetect, loading, refresh };
 }
 
-/** Most used quota window as a short row summary, e.g. `5h 42%`; model families read as remaining, e.g. `Gemini 40–85% left`. */
+/** Most used quota window as a short row summary, e.g. `5h 42%`; model families name their most used period, e.g. `Gemini 5 hours 20%`. */
 function quotaSummary(usage: ModelUsageReport | null): { text: string; tone: string } | null {
   const families = usageFamilies(usage);
   const windows = (usage?.windows ?? []).filter(w => !w.family && typeof w.usedPercent === 'number');
   if (!windows.length && !families.length) return null;
   const top = windows.length ? windows.reduce((a, b) => (b.usedPercent! > a.usedPercent! ? b : a)) : null;
   const clamp = (v: number) => Math.max(0, Math.min(100, v));
-  // Severity follows the most used reading: the top window, or the family model with the least remaining.
-  const usedValues = [...(top ? [clamp(top.usedPercent!)] : []), ...families.flatMap(s => s.min === null ? [] : [100 - s.min])];
+  const familyTop = families.map(s => {
+    const cells = QUOTA_PERIODS.flatMap(p => { const w = s.windows[p.key]; return w && w.usedPercent !== null ? [{ period: p.key, used: w.usedPercent }] : []; });
+    return { s, top: cells.length ? cells.reduce((a, b) => b.used > a.used ? b : a) : null };
+  });
+  // Severity follows the most used reading: the top window or the most used family period.
+  const usedValues = [...(top ? [clamp(top.usedPercent!)] : []), ...familyTop.flatMap(f => f.top ? [f.top.used] : [])];
   const text = [...(top ? [`${top.label} ${Math.round(clamp(top.usedPercent!))}%`] : []),
-    ...families.map(s => s.figure === null ? `${s.title} ${quotaFamilyValue(null, 'en')}` : `${s.title} ${s.figure} left${s.partial ? ' (partial)' : ''}`)].join(' · ');
+    ...familyTop.map(({ s, top: t }) => t ? `${s.title} ${quotaPeriodTitle(t.period, 'en')} ${Math.round(t.used)}%` : `${s.title} ${quotaUsedValue(null, 'en')}`)].join(' · ');
   if (!usedValues.length) return { text, tone: 'is-unknown' };
   const used = Math.round(Math.max(...usedValues));
   return { text, tone: used >= 90 ? 'is-critical' : used >= 70 ? 'is-warning' : 'is-ok' };
 }
 
 /**
- * Ids the server holds as disabled, read from a catalogue reply: standalone models, group ids and group members.
- * A group also arrives disabled when no member is left, so its own id counts only while a member is still enabled,
- * or when the connection's disabled set is known to contain it.
+ * Catalogue choices the server reports as disabled. Availability is managed per choice: a grouped model is one
+ * entry, already marked by the server's group rule (off by its own id or when every legacy member flag is set).
  */
-function disabledIds(models: ModelInfo[], known?: readonly string[]): Set<string> {
-  const off = new Set<string>();
-  for (const m of models) {
-    const members = m.reasoning?.variants?.members;
-    if (!members) { if (m.disabled) off.add(m.id); continue; }
-    for (const x of members) if (x.disabled) off.add(x.id);
-    if (m.disabled && (members.some(x => !x.disabled) || known?.includes(m.id))) off.add(m.id);
-  }
-  return off;
+function disabledIds(models: ModelInfo[]): Set<string> {
+  return new Set(models.filter(m => m.disabled).map(m => m.id));
 }
-/** Applies a saved disabled set to cached catalogue rows the way the server marks them. */
+/** Applies a saved disabled set to cached catalogue rows the way the server's group rule marks them. */
 function markDisabled(models: ModelInfo[], off: Set<string>): ModelInfo[] {
   return models.map(m => {
     const v = m.reasoning?.variants;
     if (!v) return { ...m, disabled: off.has(m.id) };
-    const members: ModelVariantMember[] = v.members.map(x => off.has(x.id) ? { level: x.level, id: x.id, disabled: true } : { level: x.level, id: x.id });
-    const live = members.filter(x => !x.disabled);
-    return { ...m, reasoning: { ...m.reasoning, supported: live.map(x => x.level), variants: { ...v, members } }, disabled: off.has(m.id) || !live.length };
+    // A group is on or off as a whole; enabling it restores every provider-eligible level.
+    const groupOff = off.has(m.id) || v.members.every(x => off.has(x.id));
+    const members: ModelVariantMember[] = v.members.map(x => groupOff ? { level: x.level, id: x.id, disabled: true } : { level: x.level, id: x.id });
+    return { ...m, reasoning: { ...m.reasoning, supported: groupOff ? [] : members.map(x => x.level), variants: { ...v, members } }, disabled: groupOff };
   });
 }
 
@@ -333,10 +340,11 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle, targ
   const editReasonId = useId();
   const version = useClientVersion(connection, provider, actions);
   const loadUsage = useCallback(async (refresh: boolean, signal?: AbortSignal) => {
-    try { setUsage(await connectionUsage(actions.csrf, connection.id, refresh, signal)); setUsageError(null); }
-    catch (error) { if (!signal?.aborted) setUsageError(message(error, 'Usage unavailable')); }
+    try { setUsage(await connectionUsage(actions.csrf, connection.id, refresh, signal)); setUsageError(null); return true; }
+    catch (error) { if (!signal?.aborted) setUsageError(message(error, 'Usage unavailable')); return false; }
   }, [actions.csrf, connection.id]);
-  useEffect(() => { const c = new AbortController(); void loadUsage(false, c.signal); return () => c.abort(); }, [loadUsage, connection.updatedAt, connection.enabled]);
+  // Same one-minute visible cadence as the sidebar: the server shares one in-flight provider read and its snapshot.
+  useVisiblePoll(signal => loadUsage(false, signal), USAGE_POLL_MS, `${connection.id}:${connection.updatedAt}:${connection.enabled}`);
   useEffect(() => { if (open === 'remove') confirmRef.current?.querySelector<HTMLButtonElement>('.button--danger')?.focus(); }, [open]);
   useEffect(() => { if (!expanded) setOpen(null); }, [expanded]);
   // The model list is requested when the row expands, and only for a registered provider. It loads locally,
@@ -359,14 +367,10 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle, targ
   // Toggles only edit a local draft; Save sends the changed models, so a click never hits the server.
   const [draftOff, setDraftOff] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
-  // The connection's disabled set disambiguates a group that is off both by its own id and by all of its members.
-  const [knownOff, setKnownOff] = useState<readonly string[] | undefined>(connection.disabledModels);
-  // Compared by content: an unrelated reload of the panel state must not discard an unsaved draft.
-  useEffect(() => { setKnownOff(prev => (prev ?? []).join('\n') === (connection.disabledModels ?? []).join('\n') ? prev : connection.disabledModels); }, [connection.disabledModels]);
-  const baseOff = useMemo(() => disabledIds(models?.models ?? [], knownOff), [models, knownOff]);
-  useEffect(() => { setDraftOff(new Set(disabledIds(models?.models ?? [], knownOff))); }, [models, knownOff]);
-  // Every switchable id in list order: a model or group id, then the native members of a group.
-  const switchable = (models?.models ?? []).flatMap(m => [m.id, ...(m.reasoning?.variants?.members.map(x => x.id) ?? [])]);
+  const baseOff = useMemo(() => disabledIds(models?.models ?? []), [models]);
+  useEffect(() => { setDraftOff(new Set(disabledIds(models?.models ?? []))); }, [models]);
+  // One switch per catalogue choice: a grouped model is configured by its group id, never by its member efforts.
+  const switchable = (models?.models ?? []).map(m => m.id);
   const changed = [...new Set(switchable)].filter(id => baseOff.has(id) !== draftOff.has(id));
   const toggleDraft = (id: string) => setDraftOff(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const saveModels = async () => {
@@ -378,7 +382,7 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle, targ
         for (const id of changed) last = await setModelEnabled(actions.csrf, connection.id, id, !draftOff.has(id));
         return last!;
       }, () => `Saved ${changed.length} model ${changed.length === 1 ? 'change' : 'changes'}`);
-      if (saved) { const off = new Set(saved.disabledModels ?? []); setKnownOff(saved.disabledModels ?? []); setModels(prev => prev && { ...prev, models: markDisabled(prev.models, off) }); }
+      if (saved) { const off = new Set(saved.disabledModels ?? []); setModels(prev => prev && { ...prev, models: markDisabled(prev.models, off) }); }
     } finally { setSaving(false); }
   };
   // Context-limit drafts are keyed by model id and independent of the catalogue rows,
@@ -430,16 +434,11 @@ function ConnectionRow({ connection, provider, actions, expanded, onToggle, targ
       {models.error && <p className="settings-note" role="status">Discovery failed: {models.error}</p>}
       {models.models.length ? <ul className="models-list" aria-label={`Models of ${connection.accountName}`}>{models.models.map(m => {
         const members = m.reasoning?.variants?.members;
-        // A group is unavailable when its own id is off or no member is left enabled.
-        const empty = !!members && members.every(x => draftOff.has(x.id));
-        const off = draftOff.has(m.id) || empty;
+        // One switch per choice: a group's efforts are chosen in the chat pickers, not toggled here.
+        const off = draftOff.has(m.id);
         return <li key={m.id} className={off ? 'is-disabled' : undefined} data-model-disabled={off ? 'true' : undefined} data-model-group={members ? 'true' : undefined}>
           <label className="models-model-row"><input type="checkbox" role="switch" className="settings-switch" aria-label={`Enabled ${m.id}`} checked={!draftOff.has(m.id)} disabled={saving} onChange={() => toggleDraft(m.id)} />
-            <code>{m.id}</code>{m.label && m.label !== m.id && <span className="models-model-label">{m.label}</span>}{draftOff.has(m.id) ? <span className="settings-badge is-pending">Disabled</span> : empty && <span className="settings-badge is-pending">No enabled levels</span>}</label>
-          {members && <ul className="models-members" aria-label={`Levels of ${m.id}`}>{members.map(x => { const memberOff = draftOff.has(x.id); return <li key={x.id} className={memberOff ? 'is-disabled' : undefined} data-model-disabled={memberOff ? 'true' : undefined} data-model-member={x.id}>
-            <label className="models-model-row models-member-row"><input type="checkbox" role="switch" className="settings-switch" aria-label={`Enabled ${x.id}`} checked={!memberOff} disabled={saving} onChange={() => toggleDraft(x.id)} />
-              <span className="models-member-level">{x.level}</span><code>{x.id}</code>{x.id === m.reasoning?.variants?.default && <span className="models-model-label">default</span>}{memberOff && <span className="settings-badge is-pending">Disabled</span>}</label>
-          </li>; })}</ul>}
+            <code>{m.id}</code>{m.label && m.label !== m.id && <span className="models-model-label">{m.label}</span>}{off && <span className="settings-badge is-pending">Disabled</span>}</label>
           {contextControl(m.id, models.contextLimits?.[m.id])}
         </li>;
       })}</ul> : <p className="settings-note">No models.</p>}

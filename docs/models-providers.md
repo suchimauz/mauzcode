@@ -202,6 +202,8 @@ and `test(ctx, conn)`. `description` and `icon` (Lucide name or data URL) are op
 | `usage(ctx, conn)` | Optional `Promise<UsageReport>` |
 | `clientVersion(ctx, conn, { refresh })` | Optional `Promise<{ version: string; source: string; detail?: string }>`; effective wire identity, with source `override`, `detected`, `fallback` or `default`; no credentials, network requests or raw command output |
 | `usageRefreshMs` | Optional integer 10000–3600000 ms (default 60000): minimum interval between usage requests per connection; available and unavailable reports are cached this long, `refresh` bypasses |
+| `usageSnapshotVersion` | Optional safe identifier (≤ 40 chars): usage contract version; cached snapshots of another version are discarded, never reused or retained as stale |
+| `usageStaleOnFailure` | Optional boolean (default false): after a failed read, return the previous successful report of the same connection revision with `stale: true`, reason `usage-stale` and its original `checkedAt` |
 | `validate(ctx, config)` | Optional synchronous/async validation; throw to reject |
 | `stream(ctx, conn, req)` | Optional `Promise<StreamResult>`; streaming inference, reached only through `models.stream` |
 | `compact(ctx, conn, req)` | Optional `Promise<CompactResult>`; native compaction, reached only through `models.compact` |
@@ -254,8 +256,8 @@ calling the provider. `ModelInfo` contains a provider-native `id` with optional
 `windows` contain `label`, `usedPercent` (0–100), `remaining`, and `resetAt`
 (epoch milliseconds), plus optional classification metadata: a stable `id`,
 `period` (`fiveHour`, `weekly`, `monthly`), `scope` (`account`, `model`,
-`unknown`), `durationSeconds`, `model` and `observedAt` (epoch ms of the
-window's own observation). Only windows with `scope: "account"` and an explicit
+`group`, `unknown`), `bucket` (a provider bucket identity), `durationSeconds`,
+`model` and `observedAt` (epoch ms of the window's own observation). Only windows with `scope: "account"` and an explicit
 `period` fill the main quota columns; a period claimed by several distinct
 account windows fills none. **Every other window — including label-only windows
 from adapters that supply no metadata — is shown only as an additional limit.**
@@ -267,14 +269,19 @@ A model-scoped window may also carry a structured `family` (`gemini` or `claude`
 `usedPercent` is always the **used** share: a provider that reports a remaining
 fraction converts it (`usedPercent = 100 × (1 − remainingFraction)`, so `0.75`
 remaining is `25`), and the unitless `remaining` amount is never filled with a
-percentage. A missing measurement stays absent; it is not 0 or 100. Family windows
-have `scope: "model"`, the native model id in `model`, no `period`, and never fill
-the five-hour/weekly/monthly columns. When the 40-window cap drops windows of a
+percentage. A missing measurement stays absent; it is not 0 or 100. A family pool
+window has `scope: "group"`, a `family`, a `period` and its `bucket`; it is a
+family reading and never fills the account's five-hour/weekly/monthly columns, but
+its severity counts toward the account's level. A report may carry `stale: true`
+when a provider sets `usageStaleOnFailure`: the latest read failed and the windows
+are the previous success of the same connection revision, with its original
+`checkedAt`. When the 40-window cap drops windows of a
 family, `partialFamilies` names it so no view presents the rest as complete.
 
 `GET /api/v1/quotas` keeps **one account per connection**. Each entry of
-`additionalWindows` has `family` (`gemini`, `claude` or `null`) next to `model`,
-`usedPercent`, `resetsAt` and `observedAt`. An account whose cached catalogue names
+`additionalWindows` has `family` (`gemini`, `claude` or `null`) and `bucket` next to
+`scope`, `period`, `model`, `usedPercent`, `resetsAt` and `observedAt`; a stale report
+sets `quotaStatus: "stale"` with `quotaUpdatedAt` at the last success. An account whose cached catalogue names
 model families also has `families: [{ family, partial }]`: the families with at
 least one model the owner has not disabled, Gemini first. The sidebar draws one
 card per listed family and shows **remaining** (`100 − usedPercent`); ordinary
@@ -301,7 +308,9 @@ provider, they re-read the stored connection on **every** request
 
 - disabled connection → code `CONNECTION_DISABLED`;
 - model in the connection's `disabledModels` → `Model <model> is disabled by user`,
-  code `MODEL_DISABLED_BY_USER`, `retryable:false`, `replaySafe:false`;
+  code `MODEL_DISABLED_BY_USER`, `retryable:false`, `replaySafe:false` (for providers declaring
+  `capabilities.groupAvailability` the disabled set is read through the group rule of
+  `models.catalog.effectiveDisabled`, so a legacy member flag alone disables nothing);
 - provider without the operation → code `UNSUPPORTED`.
 
 None of these send a network request. `StreamRequest.messages` is the
@@ -357,7 +366,7 @@ through its configured protocol. One-shot callers use `models.call`.
 ### Additive SDK contracts
 
 Every field below is optional and opt-in. A provider declares support with
-`capabilities: { continuationState?, checkpoints?, reasoning?, variantCatalogue?, sampling?, structuredOutput? }` and, for
+`capabilities: { continuationState?, checkpoints?, reasoning?, variantCatalogue?, groupAvailability?, sampling?, structuredOutput? }` and, for
 reasoning, an optional `reasoningProfile(ctx, model)`. The loader rejects
 unknown flags and `checkpoints` without `compact`. `sampling` admits
 `temperature`/`maxTokens` and `structuredOutput` admits `responseFormat`;
@@ -402,7 +411,12 @@ the provider with `req.model = <member id>` and **no** `reasoningEffort` or
 fallbackReason }`. Retries of one `models.call` keep the member the first attempt
 chose. Delegation checks an explicit level against the same levels
 (`models.listModels` lists only levels of enabled members) and rejects an
-unsupported one before a child exists.
+unsupported one before a child exists. A provider declaring
+`capabilities.groupAvailability` (Antigravity) opts out of per-member disables:
+owner availability applies to the group as a whole, stored member disables of a
+proven member remove no level, and only the provider's own eligibility limits the
+levels; a group whose own ID or every member is disabled fails
+`MODEL_DISABLED_BY_USER`. Other variant providers keep the per-member rule.
 
 `MODEL_UNAVAILABLE` (`invalid_input`, acceptance `none`, not retryable,
 replay-safe) is raised before any provider request when a variant-backed model has
@@ -472,6 +486,30 @@ a header row too.
   and its groups `enabled: false, unavailable: false`, so every picker hides them without
   unavailable-catalogue notices; `modelUsage` omits its connections; `settings.modelDefault`
   skips them. Disabled providers are absent from the Add-connection selector.
+
+## Choosing a model and reasoning effort
+
+Requested reasoning effort belongs to the selected route, for every provider:
+
+- **Different model** (another provider or provider-native model slug): the effort resets to
+  **Default** (`auto`), even when the new model also supports the old level. In an existing
+  chat `agent.setModel` writes the new route and `auto` together in one guarded update (also for
+  each agent moved by a provider-scope switch and through both agent model POST routes), syncs
+  the live agent before unpark or the next inference, and rolls the pair back without
+  overwriting a newer edit if unpark fails. The picker sends one mutation and reads the
+  committed pair back.
+- **Same model slug on another connection** of the same provider: the effort is kept when the
+  target's cached catalogue lists it (read cache-only, never by discovery); otherwise, including a
+  cold catalogue or one without levels, it becomes Default.
+- **Same route** (reopening the picker, reselecting it, restoring a draft, or a legacy alias of
+  the same canonical route): nothing changes. Connection renames, route migrations and session
+  saves never touch effort.
+- **Manual choice**: picking a level after a switch replaces Default and uses the dedicated
+  effort operation (`agent.setReasoningEffort`, `/agent/:id/effort`).
+- **New-session drafts** follow the same rules locally (`effortAfterSwitch` in
+  `frontend/src/lib/models.ts`); a draft whose remembered route is unavailable and is replaced
+  by another route starts at Default. Nothing is written to an agent before submission, which
+  sends the final route and effort together.
 
 ## Choosing Codex response settings in chat
 
@@ -676,8 +714,27 @@ Antigravity account lists, on that account only. It is a separate route from Cus
   not migrated or rewritten: after a refresh an old native route simply fails and the owner
   picks a model. A failed refresh keeps the last valid catalogue. Sign-out, a revoked grant or a
   new sign-in forget the catalogue and bump its refresh ticket, so a discovery of the old
-  account that finishes later publishes nothing. Disabling a member removes its level at once;
-  disabling the group or its last member makes the route unavailable.
+  account that finishes later publishes nothing.
+- **Group availability.** The provider declares `capabilities.groupAvailability`: owner
+  availability applies to a catalogue choice (group or standalone model) as a whole, never to an
+  individual effort. Models settings shows one switch per choice; reasoning effort is chosen in
+  the chat and draft pickers. `models.setModelEnabled` refuses a native member ID of a known
+  group with `VALIDATION` (field `model`, `group` = the group ID) and writes nothing; the group
+  ID, standalone models and other providers still toggle. Disabling a group stores only the
+  group ID; enabling a group with a cached mapping also removes that group's member disables in
+  the same locked update, so all provider-eligible levels return at once. Every reader (picker,
+  `list_models`, inference, native search, Settings) applies one rule
+  (`models.catalog.effectiveDisabled`): a group is off when its own ID or every one of its
+  members is stored disabled, otherwise it offers all eligible levels.
+- **Legacy member disables (migration).** Older versions stored per-effort member IDs. They are
+  converted connection-locally by `models.catalog.convertLegacyDisables` after each successful
+  catalogue refresh and once at startup from trustworthy cached catalogues (never from a
+  cache-only read, never by name or suffix): an explicitly disabled group, or one whose every
+  member was disabled, keeps its group ID off; a partially disabled group comes back with all its
+  levels. Proven member flags are removed; unknown IDs, standalone models and other connections
+  are preserved. Conversion is idempotent and changes no observed availability, chat route or
+  effort preference. The previous per-effort selection cannot be reconstructed from the group
+  state; restore an authorized pre-upgrade backup of the connection settings if it is needed.
 - **Inference** (`stream`, `failure`). POST `v1internal:streamGenerateContent?alt=sse` on the
   daily Cloud Code host with `{ project, model, request, requestType: "agent", userAgent:
   "antigravity", requestId }` for both families. `model` is the exact native ID the SDK chose and
@@ -694,23 +751,45 @@ Antigravity account lists, on that account only. It is a separate route from Cus
   project, family or service failover. A listed model is not proof that generation works: the
   Claude tool round trip is covered only by protocol fixtures (`antigravityDispatch.test.ts`),
   not by a live account.
-- **Usage** (`usage`, `mapUsage`; refreshed at most every three minutes). Reads the same
-  authenticated `fetchAvailableModels`, never a generation, and reports one window per eligible
-  native ID **before** grouping: `scope: "model"`, id `antigravity:<native id>`, `family`,
-  `usedPercent = 100 × (1 − remainingFraction)` and `resetAt` from `resetTime`, each accepted
-  independently (fraction in `[0,1]`; anything else is unknown). Hiding a model locally does not
-  remove its measurement. No pool, period or Pro/Flash allowance is inferred from names, equal
-  values or reset times. The raw inventory is never stored. The quota API keeps one account and
-  lists the families to show; see `UsageReport` above.
-- **Sidebar and settings.** One connection shows adjacent **Gemini** and **Claude** cards, one
-  per family with an enabled model, labelled Antigravity and **remaining**: one percentage when
-  the known readings agree, a min–max range when they differ, `no data` when nothing is
-  measured. A family with some unmeasured or truncated readings is partial: the card marks its
-  figure with `*` (explained in the legend) and details name the missing models. Other
-  providers' cards show **used** percent per period, under their own legend. Details open by
-  pointer, keyboard focus or tap; activating a card opens Models settings on that connection
-  and family. Details and Models settings list the same observations per model with local
-  reset times; settings also lists a group's native members with a switch each.
+- **Usage** (`usage`, `mapUsage`; one-minute freshness). One authenticated, read-only
+  `POST v1internal:retrieveUserQuotaSummary` with `{ project }` on the fixed Cloud Code host —
+  the only control method added to the request allow-list for quota; it uses the connection's
+  resolved project, saved transport, Hub User-Agent, the same OAuth grant and scopes as
+  discovery and token refresh, no redirects, and never a generation, another project, account or
+  host. The response's `groups[].buckets[]` are read by structured `bucketId` and `window` only:
+  `gemini-5h`/`gemini-weekly` are Gemini and `3p-5h`/`3p-weekly` the shared Claude/GPT pool, as
+  `scope: "group"` windows with `bucket`, `family` and `period` (`5h` → `fiveHour`, `weekly`).
+  Units: `usedPercent = 100 × (1 − remainingFraction)` (fraction in `[0,1]`; `1` is 0 % used,
+  `0` is 100 % used) and `resetAt` from the RFC 3339 `resetTime`, each accepted independently;
+  anything else is unknown. Other identifiable buckets (for example a model-only weekly limit)
+  stay separate additional windows (`scope: "unknown"`) with their own identity and the family of
+  their group when it is unambiguous. A repeated bucket ID, a window that does not match the ID,
+  or a general bucket inside another family's group is conflicting and fills nothing. Names,
+  equal values and reset times never classify; inventory is used only for discovery. A malformed
+  envelope is a failed read. The raw summary is never stored. Usage snapshots are versioned
+  (`usageSnapshotVersion`), so pre-summary inventory snapshots cached before an upgrade are
+  discarded rather than shown as period readings or stale data.
+- **Sidebar and settings.** One connection shows adjacent **Gemini** then **Claude** cards, one
+  per family with an enabled catalogue choice (even when its quota is unknown). Each card shows
+  the provider icon (no provider name on the face), the family and account, and the standard
+  five-hour / weekly / monthly **used**-percent cells with their own severity; an unmeasured
+  period is `—` (Antigravity reports no month). Only a single `scope: "group"` reading of a
+  period fills its cell. A family reading's severity raises the account and the collapsed
+  indicator but never fills an account-wide cell. Details (pointer, keyboard focus or tap) name
+  the provider, account, family and shared pool (Gemini, Claude/GPT), each period's used share
+  with local reset time or an explicit unknown, the last successful check and stale status. A
+  family's extra bucket (for example a model-only weekly limit) is listed in that card's details
+  and the collapsed indicator, with a `+N` mark, never in a cell; an extra bucket of no eligible
+  family appears only in the collapsed indicator. Activating a card opens Models settings on that
+  connection and family, which shows the same periods, resets and extras.
+- **Freshness.** The sidebar (`useQuotas`) and the visible Models settings rows poll every 60 s
+  through the same visible-poll rule (`useVisiblePoll`): nothing is polled while the tab is
+  hidden, an expired snapshot is re-read on return, a fresh one is reused. The provider usage
+  TTL is 55 s, below the poll interval, so a due poll never receives an observation that is about
+  to expire; concurrent readers share one in-flight summary read per connection revision. A
+  failed read keeps the previous success of the same account as stale (`quotaStatus: "stale"`,
+  original success time); with no earlier success quota is unavailable. Sign-out, revoked
+  access or account replacement changes the revision, so an old snapshot is never reused.
 - **Disable.** Turn the provider off with `models.disabledProviders` (Models settings), or log out
   and delete the connection.
 

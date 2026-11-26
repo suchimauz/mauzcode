@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import { Check, ChevronDown, ChevronRight, Cpu } from 'lucide-react';
 import { NavigationChatIcon } from './NavigationChatIcon';
-import { connectionGroupLabel, effortLabel, modelGroup, modelGroupKey, modelSourceLabel, selectableModels, unavailableGroups, getDraftModelSettings, getModelSettings, setAgentEffort, setAgentModel, type ModelSettings } from '../../lib/models';
+import { connectionGroupLabel, effortAfterSwitch, effortLabel, modelGroup, modelGroupKey, modelSourceLabel, selectableModels, unavailableGroups, getDraftModelSettings, getModelSettings, setAgentEffort, setAgentModel, type ModelSettings } from '../../lib/models';
 import { rememberSessionSelection } from '../../lib/newSession';
 import { useChatControls, type Speed, type Verbosity } from './useChatControls';
 import './model-picker.css';
@@ -63,7 +63,9 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
     if (kind === 'model' && !choices.some(option => option.model === value)) return;
     if ((kind === 'model' ? data?.model : data?.effort.requested) === value) { setOpen(false); return; }
     if (draft) {
-      draft.onChange(kind === 'model' ? value : (draft.model || data?.model || ''), kind === 'effort' ? value : draft.effort);
+      // A different model starts at Default; an account-only switch keeps a level the target lists (normalized on fetch).
+      const effort = kind === 'effort' ? value : effortAfterSwitch(draft.model || data?.model || '', value, draft.effort);
+      draft.onChange(kind === 'model' ? value : (draft.model || data?.model || ''), effort);
       if (kind === 'model') rememberSessionSelection({ model: value });
       setError(''); setOpen(false);
       return;
@@ -74,12 +76,8 @@ export function ModelPicker({ agentId = '', running = false, busy = false, revis
     try {
       if (kind === 'model') { await setAgentModel(agentId, value); rememberSessionSelection({ model: value }); } else await setAgentEffort(agentId, value);
       if (generation.current !== current) return;
-      // Read back native normalization (including provider-specific effort downgrade).
-      let updated = await getModelSettings(agentId);
-      if (kind === 'model' && updated.effort.requested !== 'auto' && !updated.effort.supported.includes(updated.effort.requested)) {
-        await setAgentEffort(agentId, 'auto');
-        updated = await getModelSettings(agentId);
-      }
+      // Read back the committed pair: the server resets effort with a model change, so no second mutation is sent.
+      const updated = await getModelSettings(agentId);
       if (generation.current === current) { setData(updated); setOpen(false); onSaved?.(); }
     } catch (err) { if (generation.current === current) setError(err instanceof Error ? err.message : String(err)); }
     finally { lock.current = false; setSaving(false); onBusyChange?.(false); }

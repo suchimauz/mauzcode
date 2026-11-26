@@ -140,23 +140,28 @@ describe("catalogue cache (2.1, 2.2)", () => {
         expect((await w.ctx.fns.tools.listModels({})).models.some((m: any) => m.route.startsWith("antigravity/second:"))).toBe(false);
         expect((await w.ctx.fns.models.listModels({ id: b.id, cacheOnly: true })).models).toEqual([]);
 
-        await w.ctx.fns.models.setModelEnabled({ id: a.id, model: "gemini-4-neon-high", enabled: false });
+        // A legacy (unconverted) member flag does not remove a level from any reader; a member edit is refused.
+        await w.ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET disabled_models=?::text[] WHERE id=?", params: [["gemini-4-neon-high"], a.id] });
         const member = await views();
-        expect(member.tool[0]).toEqual([a.route("gemini-4-neon"), ["xhigh", "medium", "low"]]);
+        expect(member.tool[0]).toEqual([a.route("gemini-4-neon"), ["high", "xhigh", "medium", "low"]]);
         expect(member.picker).toEqual(member.tool);
         expect(member.settings).toEqual(member.tool);
-        // Auto can no longer land on the disabled default member.
-        expect((await w.ctx.fns.models.listModels({ id: a.id, cacheOnly: true })).models[0]!.reasoning!.default).toBe("xhigh");
-        for (const s of ["low", "medium", "high"]) await w.ctx.fns.models.setModelEnabled({ id: a.id, model: `claude-opus-5-5-${s}`, enabled: false });
+        // Auto still lands on the declared default member.
+        expect((await w.ctx.fns.models.listModels({ id: a.id, cacheOnly: true })).models[0]!.reasoning!.default).toBe("high");
+        await expect(w.ctx.fns.models.setModelEnabled({ id: a.id, model: "gemini-4-neon-low", enabled: false })).rejects.toMatchObject({ code: "VALIDATION", group: "gemini-4-neon" });
+        // Every member disabled (legacy) or the group id disabled: the whole group is off for every reader.
+        await w.ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET disabled_models=?::text[] WHERE id=?", params: [["gemini-4-neon-high", "claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high"], a.id] });
         await w.ctx.fns.models.setModelEnabled({ id: a.id, model: "gemini-3.8-flash", enabled: false });
         const gone = await views();
         expect(gone.tool.map((r: any) => r[0])).toEqual([a.route("gemini-4-neon"), a.route("gemini-3-flash"), a.route("gemini-3-pro-high"), a.route("gemini-2.5-flash-lite")]);
+        expect(gone.tool[0]).toEqual([a.route("gemini-4-neon"), ["high", "xhigh", "medium", "low"]]);
         expect(gone.picker).toEqual(gone.tool);
         expect(gone.settings).toEqual(gone.tool);
-        for (const route of ["claude-opus-5-5", "gemini-3.8-flash"]) await expect(w.ctx.fns.models.resolveRoute({ route: a.route(route) })).rejects.toMatchObject({ code: expect.stringMatching(/MODEL_UNAVAILABLE|MODEL_DISABLED_BY_USER/) });
-        // A legacy native member route cannot bypass the group or member disable.
+        for (const route of ["claude-opus-5-5", "gemini-3.8-flash"]) await expect(w.ctx.fns.models.resolveRoute({ route: a.route(route) })).rejects.toMatchObject({ code: "MODEL_DISABLED_BY_USER" });
+        // A legacy native member route cannot bypass the group disable, and an enabled group's member is no route.
         await expect(w.ctx.fns.models.resolveRoute({ route: a.route("claude-opus-5-5-high") })).rejects.toMatchObject({ code: "MODEL_DISABLED_BY_USER" });
-        await expect(w.ctx.fns.models.resolveRoute({ route: a.route("gemini-3.8-flash-high") })).rejects.toMatchObject({ code: "MODEL_UNAVAILABLE" });
+        await expect(w.ctx.fns.models.resolveRoute({ route: a.route("gemini-3.8-flash-high") })).rejects.toMatchObject({ code: "MODEL_DISABLED_BY_USER" });
+        await expect(w.ctx.fns.models.resolveRoute({ route: a.route("gemini-4-neon-low") })).rejects.toMatchObject({ code: "MODEL_UNAVAILABLE" });
         expect(w.calls.length).toBe(n);
     });
 

@@ -9,8 +9,12 @@ export type QuotaPeriod = 'fiveHour' | 'weekly' | 'monthly';
 export type QuotaFamily = 'gemini' | 'claude';
 /** A limit outside the main columns: model-specific, unknown period/scope, or conflicting. Null means not reported. */
 export type QuotaAdditionalWindow = {
-  id: string; label: string; scope: 'account' | 'model' | 'unknown'; period: QuotaPeriod | null; model: string | null;
-  /** Set on a family measurement: `model` is the stable native id, `usedPercent` the used share (remaining = 100 − used). */
+  id: string; label: string;
+  /** `group`: a provider family-pool reading (with `family`, `period` and `bucket`) shown in that family's period cells. */
+  scope: 'account' | 'model' | 'group' | 'unknown'; period: QuotaPeriod | null; model: string | null;
+  /** Stable provider bucket identity, when reported. */
+  bucket?: string | null;
+  /** Structured model family of the reading; never derived from a label. `usedPercent` is always the used share. */
   family?: QuotaFamily | null;
   usedPercent: number | null; remaining: number | null; resetsAt: number | null;
   /** Epoch ms of this window's own observation; may predate quotaUpdatedAt after a partial refresh. */
@@ -76,150 +80,114 @@ export function quotaProviderName(a: QuotaAccount): string {
   return a.label.split('·')[0]?.trim() || a.provider;
 }
 
-export const QUOTA_FAMILIES: { key: QuotaFamily; title: string }[] = [{ key: 'gemini', title: 'Gemini' }, { key: 'claude', title: 'Claude' }];
-/** One model's measurement inside a family. `usedPercent` is the USED share 0–100; null or non-finite means not measured. */
-export type QuotaFamilyReading = { model?: string | null; label: string; usedPercent?: number | null; resetsAt?: number | null; observedAt?: number | null; tone?: QuotaTone };
-/** One detail row: models are merged only when both the remaining value and the reset are known and equal. */
-export type QuotaFamilyRow = {
-  key: string; models: string[];
-  /** Unrounded remaining percent; null when not measured. */
-  remaining: number | null;
-  /** Rounded remaining for display, e.g. `40%`; null when not measured. */
-  figure: string | null;
-  resetsAt: number | null; observedAt: number | null;
-  /** The observation is older than the snapshot it is shown with, so its own time must be displayed. */
-  stale: boolean;
-  tone: QuotaTone | null;
+/** Display order of model families; `pool` names the shared provider pool a family's limits belong to. */
+export const QUOTA_FAMILIES: { key: QuotaFamily; title: string; pool: string }[] = [{ key: 'gemini', title: 'Gemini', pool: 'Gemini' }, { key: 'claude', title: 'Claude', pool: 'Claude/GPT' }];
+/** One family pool reading: a structured family window (`scope: "group"` with a `period`), or an extra limit of that family. */
+export type QuotaFamilyReading = {
+  id: string; label: string; family: QuotaFamily; scope: QuotaAdditionalWindow['scope']; period: QuotaPeriod | null;
+  usedPercent?: number | null; resetsAt?: number | null; observedAt?: number | null; tone?: QuotaTone;
 };
-/** Remaining quota of one model family of one connection, shared by the sidebar cards and the settings usage view. */
+/** Summary of one model family of one connection, shared by the sidebar family cards and the settings usage view. */
 export type QuotaFamilySummary = {
   family: QuotaFamily; title: string;
-  /** known: every reading measured; partial: some missing or truncated; none: nothing measured. */
-  state: 'known' | 'partial' | 'none';
-  /** Unrounded remaining bounds over the measured readings. */
-  min: number | null; max: number | null;
-  /** One figure when measured values agree, else a min–max range; null when nothing is measured. Never a mean. */
-  figure: string | null;
-  partial: boolean;
+  /** Shared provider pool the family's limits belong to, e.g. `Claude/GPT`. */
+  pool: string;
+  /** Standard used-percent cells: exactly one structured family window per period, else unmeasured (`—`). */
+  windows: Partial<Record<QuotaPeriod, QuotaWindow>>;
+  /** Other identified limits of this family (model-specific, unknown or conflicting periods); never a period cell. */
+  extra: QuotaAdditionalWindow[];
+  /** known: some period measured; none: nothing measured. */
+  state: 'known' | 'none';
   /** The backend dropped some of this family's readings. */
   truncated: boolean;
-  rows: QuotaFamilyRow[];
-  /** Names of models without a remaining value. */
-  missing: string[];
-  /** Worst backend tone among measured readings (used-percent severity). */
+  /** Worst tone among the period cells and extras. */
   tone: QuotaTone;
 };
 
 const known = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v);
-/** A reading this much older than its snapshot is shown with its own observation time; times display to the minute. */
-const STALE_AFTER_MS = 60_000;
-/** Use just enough decimal places to distinguish different measured percentages after localization. */
-function remainingFormat(values: number[], locale?: string): Intl.NumberFormat {
-  const unique = [...new Set(values)];
-  for (let digits = 0; ; digits++) {
-    const format = new Intl.NumberFormat(locale, { maximumFractionDigits: digits });
-    if (digits === 16 || new Set(unique.map(format.format)).size === unique.length) return format;
-  }
-}
-
-/** Keep the shared headline narrow. When finer precision won't fit, round the endpoints outwards, not to one value. */
-function remainingFigure(min: number, max: number, locale?: string): string {
-  const format = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
-  const whole = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
-  if (min === max) return `${whole.format(min)}%`;
-  if (whole.format(min) !== whole.format(max)) return `${whole.format(min)}–${whole.format(max)}%`;
-  const a = format.format(min), b = format.format(max);
-  if (a !== b) return `${a}–${b}%`;
-  return `${format.format(Math.floor(min * 10) / 10)}–${format.format(Math.ceil(max * 10) / 10)}%`;
-}
 
 /**
- * Summarizes one family's readings. Unrounded values are compared first; equal known values give one figure and
- * differing ones a min–max remaining range. Nothing measured is `none`, never 0% or 100%; an explicit zero is 0%.
- * `freshAt` is the time of the snapshot the readings are shown with; `stale` marks the whole snapshot as outdated.
+ * Summarizes one family's structured readings into the standard five-hour/weekly/monthly used-percent cells.
+ * A cell is filled only by a single `group` reading of that period; a missing or conflicting period stays `—`, never
+ * 0% or 100%. Every other reading of the family is an extra limit for its details. Labels never classify.
  */
-export function summarizeQuotaFamily(family: QuotaFamily, readings: QuotaFamilyReading[], opts: { partial?: boolean; locale?: string; stale?: boolean; freshAt?: number | null } = {}): QuotaFamilySummary {
-  const rows: QuotaFamilyRow[] = [];
-  const merged = new Map<string, QuotaFamilyRow>();
-  const missing: string[] = [];
-  const measured: number[] = [];
-  const tones: QuotaTone[] = [];
-  for (const [i, r] of readings.entries()) {
-    const name = r.label || r.model || `#${i + 1}`;
-    const remaining = known(r.usedPercent) ? 100 - Math.max(0, Math.min(100, r.usedPercent)) : null;
+export function summarizeQuotaFamily(family: QuotaFamily, readings: QuotaFamilyReading[], opts: { partial?: boolean } = {}): QuotaFamilySummary {
+  const own = readings.filter(r => r.family === family);
+  const claims = new Map<QuotaPeriod, number>();
+  for (const r of own) if (r.scope === 'group' && r.period) claims.set(r.period, (claims.get(r.period) ?? 0) + 1);
+  const windows: Partial<Record<QuotaPeriod, QuotaWindow>> = {};
+  const extra: QuotaAdditionalWindow[] = [];
+  for (const r of own) {
+    const used = known(r.usedPercent) ? Math.max(0, Math.min(100, r.usedPercent)) : null;
     const resetsAt = known(r.resetsAt) && r.resetsAt > 0 ? r.resetsAt : null;
-    const observedAt = known(r.observedAt) && r.observedAt > 0 ? r.observedAt : null;
-    const stale = opts.stale === true || (observedAt !== null && known(opts.freshAt) && opts.freshAt - observedAt > STALE_AFTER_MS);
-    const tone = remaining === null ? null : r.tone ?? 'neutral';
-    if (remaining === null) missing.push(name); else { measured.push(remaining); tones.push(tone!); }
-    // Unrounded value and reset must both be known and equal; anything else stays its own row.
-    const key = remaining !== null && resetsAt !== null ? `${remaining}@${resetsAt}` : null;
-    const same = key === null ? undefined : merged.get(key);
-    if (same) {
-      same.models.push(name);
-      if (observedAt !== null && (same.observedAt === null || observedAt < same.observedAt)) same.observedAt = observedAt;
-      same.stale = same.stale || stale;
-      same.tone = worstTone([same.tone ?? 'neutral', tone ?? 'neutral']);
-      continue;
-    }
-    const row: QuotaFamilyRow = { key: key ?? `${r.model ?? name}#${i}`, models: [name], remaining, figure: null, resetsAt, observedAt, stale, tone };
-    rows.push(row);
-    if (key !== null) merged.set(key, row);
+    const tone = r.tone ?? 'neutral';
+    if (r.scope === 'group' && r.period && claims.get(r.period) === 1) { windows[r.period] = { usedPercent: used, resetsAt, tone }; continue; }
+    extra.push({ id: r.id, label: r.label, scope: r.scope, period: r.period, model: null, family, usedPercent: used, remaining: null, resetsAt, observedAt: known(r.observedAt) ? r.observedAt : null, tone });
   }
-  const min = measured.length ? Math.min(...measured) : null, max = measured.length ? Math.max(...measured) : null;
-  const detailFormat = remainingFormat(measured, opts.locale);
-  for (const row of rows) if (row.remaining !== null) row.figure = `${detailFormat.format(row.remaining)}%`;
-  const truncated = opts.partial === true;
-  const partial = min !== null && (missing.length > 0 || truncated);
-  return {
-    family, title: QUOTA_FAMILIES.find(f => f.key === family)?.title ?? family,
-    state: min === null ? 'none' : partial ? 'partial' : 'known', min, max,
-    figure: min === null || max === null ? null : remainingFigure(min, max, opts.locale),
-    partial, truncated, rows, missing, tone: worstTone(tones),
-  };
+  const measured = [...Object.values(windows), ...extra].filter(w => w && w.usedPercent !== null) as { tone: QuotaTone }[];
+  const meta = QUOTA_FAMILIES.find(f => f.key === family);
+  return { family, title: meta?.title ?? family, pool: meta?.pool ?? family, windows, extra, state: measured.length ? 'known' : 'none', truncated: opts.partial === true, tone: worstTone(measured.map(w => w.tone)) };
+}
+
+/** Family readings of a quota account's additional windows (structured `family` only). */
+export function quotaFamilyReadings(a: QuotaAccount): QuotaFamilyReading[] {
+  return (a.additionalWindows ?? []).flatMap(w => w.family ? [{ id: w.id, label: w.label, family: w.family, scope: w.scope, period: w.period, usedPercent: w.usedPercent, resetsAt: w.resetsAt, observedAt: w.observedAt, tone: w.tone }] : []);
 }
 
 /** Family summaries of an account in display order (Gemini, then Claude); empty when the account shows no family. */
-export function quotaFamilySummaries(a: QuotaAccount, locale?: string): QuotaFamilySummary[] {
+export function quotaFamilySummaries(a: QuotaAccount): QuotaFamilySummary[] {
   const shown = a.families ?? [];
   if (!shown.length) return [];
+  const readings = quotaFamilyReadings(a);
   return QUOTA_FAMILIES.flatMap(f => {
     const entry = shown.find(x => x.family === f.key);
-    if (!entry) return [];
-    const windows = (a.additionalWindows ?? []).filter(w => w.family === f.key);
-    return [summarizeQuotaFamily(f.key, windows.map(w => ({ model: w.model, label: w.label, usedPercent: w.usedPercent, resetsAt: w.resetsAt, observedAt: w.observedAt, tone: w.tone })),
-      { partial: entry.partial === true, locale, stale: a.quotaStatus === 'stale', freshAt: a.quotaUpdatedAt })];
+    return entry ? [summarizeQuotaFamily(f.key, readings, { partial: entry.partial === true })] : [];
   });
+}
+
+/** Limits of an account that belong to no shown family card: non-family limits and extras of hidden families. */
+export function quotaAccountExtras(a: QuotaAccount): QuotaAdditionalWindow[] {
+  const shown = new Set((a.families ?? []).map(f => f.family));
+  const claims = new Map<string, number>();
+  for (const w of a.additionalWindows ?? []) if (w.family && w.scope === 'group' && w.period) claims.set(`${w.family}:${w.period}`, (claims.get(`${w.family}:${w.period}`) ?? 0) + 1);
+  // Everything except the readings that fill a shown family's period cells.
+  return (a.additionalWindows ?? []).filter(w => !(w.family && shown.has(w.family) && w.scope === 'group' && w.period && claims.get(`${w.family}:${w.period}`) === 1));
 }
 
 export type QuotaLang = 'ru' | 'en';
 const FAMILY_TEXT = {
-  ru: { remaining: (figure: string) => `осталось ${figure}`, none: 'нет данных', partial: 'частично', reset: 'сброс', noReset: 'сброс неизвестен', observed: 'данные', missing: 'Нет показаний', truncated: 'Часть показаний не получена' },
-  en: { remaining: (figure: string) => `${figure} remaining`, none: 'no data', partial: 'partial', reset: 'resets', noReset: 'reset unknown', observed: 'observed', missing: 'No reading for', truncated: 'Some readings were not received' },
+  ru: { used: 'использовано', none: 'нет данных', reset: 'сброс', noReset: 'сброс неизвестен', truncated: 'Часть показаний не получена', pool: 'лимиты', extra: 'Дополнительные лимиты' },
+  en: { used: 'used', none: 'no data', reset: 'resets', noReset: 'reset unknown', truncated: 'Some readings were not received', pool: 'limits', extra: 'Additional limits' },
 };
-/** Remaining value as words: `осталось 40–85%` / `40–85% remaining`, or an explicit unknown. Never a naked percentage. */
-export function quotaFamilyValue(figure: string | null, lang: QuotaLang = 'ru'): string {
-  return figure === null ? FAMILY_TEXT[lang].none : FAMILY_TEXT[lang].remaining(figure);
+const PERIOD_TEXT: Record<QuotaLang, Record<QuotaPeriod, string>> = {
+  ru: { fiveHour: '5 часов', weekly: 'Неделя', monthly: 'Месяц' },
+  en: { fiveHour: '5 hours', weekly: 'Weekly', monthly: 'Monthly' },
+};
+/** Name of a period in the given language. */
+export function quotaPeriodTitle(p: QuotaPeriod, lang: QuotaLang = 'ru'): string { return PERIOD_TEXT[lang][p]; }
+/** Used share as words, or an explicit unknown: `20% использовано` / `нет данных`. */
+export function quotaUsedValue(used: number | null | undefined, lang: QuotaLang = 'ru'): string {
+  return known(used) ? `${Math.round(used)}% ${FAMILY_TEXT[lang].used}` : FAMILY_TEXT[lang].none;
 }
-/** Family headline: the value plus a textual partial mark. */
+/** Local reset time or an explicit unknown. */
+export function quotaResetText(at: number | null | undefined, lang: QuotaLang = 'ru', locale?: string): string {
+  return known(at) && at > 0 ? `${FAMILY_TEXT[lang].reset} ${shortDate(at, locale)}` : FAMILY_TEXT[lang].noReset;
+}
+/** Family headline for accessible names: each standard period with its used share or `—`. */
 export function quotaFamilyHeadline(s: QuotaFamilySummary, lang: QuotaLang = 'ru'): string {
-  return `${quotaFamilyValue(s.figure, lang)}${s.partial ? `, ${FAMILY_TEXT[lang].partial}` : ''}`;
+  return QUOTA_PERIODS.map(p => { const w = s.windows[p.key]; return `${quotaPeriodTitle(p.key, lang)} ${w && known(w.usedPercent) ? `${Math.round(w.usedPercent)}%` : '—'}`; }).join(', ');
 }
-/** Reset of a row in the user's local timezone, or an explicit unknown; a stale row also names its observation time. */
-export function quotaFamilyRowMeta(row: QuotaFamilyRow, lang: QuotaLang = 'ru', locale?: string): string {
-  const t = FAMILY_TEXT[lang];
-  return `${row.resetsAt === null ? t.noReset : `${t.reset} ${shortDate(row.resetsAt, locale)}`}${row.stale && row.observedAt !== null ? ` · ${t.observed} ${shortDate(row.observedAt, locale)}` : ''}`;
-}
-/** What is incomplete in a family: models without a reading and readings the backend dropped; null when complete. */
+/** What is incomplete in a family; null when complete. */
 export function quotaFamilyNote(s: QuotaFamilySummary, lang: QuotaLang = 'ru'): string | null {
-  const t = FAMILY_TEXT[lang];
-  const parts = [s.missing.length && s.state !== 'none' ? `${t.missing}: ${s.missing.join(', ')}` : '', s.truncated ? t.truncated : ''].filter(Boolean);
-  return parts.length ? parts.join('. ') : null;
+  return s.truncated ? FAMILY_TEXT[lang].truncated : null;
 }
-/** Plain-text details of a family: one sentence per row with models, remaining value and reset, then the note. */
+/** Plain-text details: pool, each measured period with its reset, extra limits, then the note. */
 export function quotaFamilyDetails(s: QuotaFamilySummary, lang: QuotaLang = 'ru', locale?: string): string {
+  const t = FAMILY_TEXT[lang];
+  const periods = QUOTA_PERIODS.flatMap(p => { const w = s.windows[p.key]; return w ? [`${quotaPeriodTitle(p.key, lang)}: ${quotaUsedValue(w.usedPercent, lang)}, ${quotaResetText(w.resetsAt, lang, locale)}`] : []; });
+  const extra = s.extra.map(w => `${w.label}${w.period ? ` (${quotaPeriodTitle(w.period, lang)})` : ''}: ${quotaUsedValue(w.usedPercent, lang)}, ${quotaResetText(w.resetsAt, lang, locale)}`);
   const note = quotaFamilyNote(s, lang);
-  return [...s.rows.map(r => `${r.models.join(', ')}: ${quotaFamilyValue(r.figure, lang)}, ${quotaFamilyRowMeta(r, lang, locale)}`), ...(note ? [note] : [])].join('; ');
+  return [`${s.pool} ${t.pool}`, ...(periods.length ? periods : [t.none]), ...(extra.length ? [`${t.extra}: ${extra.join('; ')}`] : []), ...(note ? [note] : [])].join('; ');
 }
 
 /** Measured value of an additional limit: percent, else remaining amount, else an explicit unknown. */
@@ -230,9 +198,9 @@ export function additionalQuotaValue(w: QuotaAdditionalWindow): string {
 /** Multiline tooltip: periods with local reset time, additional limits, plan and parked agents. */
 export function quotaTooltip(a: QuotaAccount, locale?: string): string {
   const lines = [a.label];
-  const families = quotaFamilySummaries(a, locale);
-  const extra = (a.additionalWindows ?? []).filter(w => !families.length || !w.family);
-  for (const s of families) lines.push(`${s.title}: ${quotaFamilyHeadline(s)}`);
+  const families = quotaFamilySummaries(a);
+  const extra = families.length ? quotaAccountExtras(a) : a.additionalWindows ?? [];
+  for (const s of families) lines.push(`${s.title} (${s.pool}): ${quotaFamilyHeadline(s)}`);
   if (a.kind === 'status') { if (!families.length) lines.push(`Статус: ${a.status ?? 'unknown'}`); }
   else for (const p of QUOTA_PERIODS) {
     const w = a.windows?.[p.key];

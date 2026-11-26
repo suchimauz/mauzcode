@@ -74,7 +74,7 @@ test("another model switch between preflight and CAS is not overwritten", async 
     f.ctx.fns.procs.db.run = async ({ sql, params }: any) => {
         f.calls.push("update");
         expect(sql.includes("model IS NOT DISTINCT FROM ?")).toBe(true);
-        expect(params[3]).toBe("mock/default:old");
+        expect(params[4]).toBe("mock/default:old");
         return { changes: 0 };
     };
     await expect(setModel(f.ctx, null, { id: "a", model: "mock/default:new" })).rejects.toThrow(/changed/);
@@ -82,3 +82,37 @@ test("another model switch between preflight and CAS is not overwritten", async 
     expect(f.live.model).toBe("mock/default:old");
 });
 
+
+test("a manual effort edit between preflight and CAS is not overwritten by the route's auto reset", async () => {
+    const f = fixture();
+    let storedEffort = "high";
+    f.ctx.fns.procs.db.select = async ({ sql }: any) => sql.includes("WHERE id") ? [{ id: "a", model: f.model(), run_state: "idle", scratchpad: "{}", reasoning_effort: storedEffort }] : [];
+    f.ctx.fns.models.listModels = async () => ({ models: [], source: "manual", cachedAt: null });
+    f.ctx.fns.procs.db.run = async ({ sql, params }: any) => {
+        f.calls.push("update");
+        // The owner picked low after the switch read high: the pair guard rejects the stale write.
+        storedEffort = "low";
+        expect(sql).toContain("reasoning_effort = ?");
+        expect(params.slice(0, 2)).toEqual(["mock/default:new", "auto"]);
+        expect(params.at(-1)).toBe("high");
+        return { changes: 0 };
+    };
+    await expect(setModel(f.ctx, null, { id: "a", model: "mock/default:new" })).rejects.toThrow(/changed/);
+    expect(f.calls).toEqual(["update"]);
+    expect(f.live.model).toBe("mock/default:old");
+});
+
+test("a failed unpark restores the previous pair only while the switch's pair is current", async () => {
+    const f = fixture();
+    f.live.reasoningEffort = "high";
+    f.ctx.fns.procs.db.select = async ({ sql }: any) => sql.includes("WHERE id") ? [{ id: "a", model: "mock/default:old", run_state: "idle", scratchpad: "{}", reasoning_effort: "high" }] : [];
+    const writes: any[] = [];
+    f.ctx.fns.procs.db.run = async ({ sql, params }: any) => { writes.push({ sql, params }); return { changes: writes.length === 1 ? 1 : 0 }; };
+    f.ctx.fns.agent.unpark = async () => { throw new Error("unpark failed"); };
+    await expect(setModel(f.ctx, null, { id: "a", model: "mock/other:new" })).rejects.toThrow(/unpark failed/);
+    expect(writes[0].params.slice(0, 2)).toEqual(["mock/other:new", "auto"]);
+    // Rollback is guarded by the committed pair; a later edit (changes 0) keeps its own live state.
+    expect(writes[1].sql).toContain("model IS NOT DISTINCT FROM ?");
+    expect(writes[1].params).toEqual(["mock/default:old", "high", expect.any(Number), "a", "mock/other:new", "auto"]);
+    expect([f.live.model, f.live.reasoningEffort]).toEqual(["mock/other:new", "auto"]);
+});

@@ -67,7 +67,7 @@ test("original public model signatures, async declarations, types and HTTP route
         if (name === "ModelInfo.ts") actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "").replace('protocol?:types.models.ProtocolRoute["protocol"];', "");
         // group-antigravity-models-and-quotas: optional variant-backed levels, model family and catalogue-bound routing.
         if (name === "ModelInfo.ts") actual = actual.replace("variants?:{members:{level:types.models.ReasoningLevel;id:string;disabled?:boolean}[];default?:string};", "").replace('family?:"gemini"|"claude";', "");
-        if (name === "ProviderDefinition.ts") actual = actual.replace("variantCatalogue?:boolean;", "");
+        if (name === "ProviderDefinition.ts") actual = actual.replace("variantCatalogue?:boolean;", "").replace("groupAvailability?:boolean;", "");
         if (name === "UsageReport.ts") actual = actual.replace('family?:"gemini"|"claude";', "").replace('partialFamilies?:("gemini"|"claude")[];', "");
         if (name === "ModelInfo.ts") actual = actual.replace("default:types.models.ReasoningLevel;}", "default:types.models.ReasoningLevel}");
         if (name === "ReasoningCapabilities.ts") actual = actual.replace("default?:types.models.ReasoningLevel", "default:types.models.ReasoningLevel").replace("wire?:Partial<Record<types.models.ReasoningLevel,string>>;", "").replace("disable?:boolean;", "").replace("adaptive?:boolean;", "").replace("effort?:boolean;", "");
@@ -81,6 +81,9 @@ test("original public model signatures, async declarations, types and HTTP route
         if (name === 'State.ts') actual = actual.replace('types.models.NativeWebSearchState&', '').replace('native?:types.models.NativeWebSearchOperation;', '');
         // usageRefreshMs is an intentional optional SDK addition (provider-paced usage cache).
         if (name === "ProviderDefinition.ts") actual = actual.replace("usageRefreshMs?:number;", "");
+        // fix-antigravity-quotas-and-model-selection: optional usage snapshot version, stale retention and group-scoped buckets.
+        if (name === "ProviderDefinition.ts") actual = actual.replace("usageSnapshotVersion?:string;usageStaleOnFailure?:boolean;", "");
+        if (name === "UsageReport.ts") actual = actual.replace('scope?:"account"|"model"|"group"|"unknown";bucket?:string;', 'scope?:"account"|"model"|"unknown";').replace("stale?:boolean;", "");
         // extend-models-sdk-for-anthropic-routes: optional native reasoning block capture.
         // add-gemini-code-assist-provider: optional gemini function-call signature per tool call.
         if (name === "StreamResult.ts") actual = actual.replace("args:unknown;thoughtSignature?:string}[];", "args:unknown}[];");

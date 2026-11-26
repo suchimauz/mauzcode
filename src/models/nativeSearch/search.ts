@@ -38,8 +38,13 @@ export default async function (
         return ctx.fns.procs.db.transaction({ fn: async () => {
             const [row] = await ctx.fns.procs.db.select({ sql: 'SELECT * FROM llm_connections WHERE id=? FOR SHARE', params: [decision.connectionId] });
             const view = row && ctx.fns.models.connections.toView({row});
+            // Same group availability rule as inference: a legacy member flag alone does not revoke a grouped route.
+            const grouped = !!view && state.providers?.[view.provider]?.definition.capabilities?.groupAvailability === true;
+            const off = !view ? [] : grouped
+                ? ctx.fns.models.catalog.effectiveDisabled({ models: (await ctx.fns.models.catalog.listModels({ id: view.id, cacheOnly: true })).models, disabled: view.disabledModels, groupLevel: true }).off
+                : view.disabledModels;
             if (!view?.enabled || view.provider !== decision.provider || view.accountName !== decision.accountName ||
-                view.disabledModels.includes(decision.model) || !Bun.deepEquals(view.transport, decision.transport)) throw stale();
+                off.includes(decision.model) || !Bun.deepEquals(view.transport, decision.transport)) throw stale();
             const [agentRow] = await ctx.fns.procs.db.select({ sql: 'SELECT model,run_state,run_token FROM agents WHERE id=? AND archived_at IS NULL FOR SHARE', params: [origin.agent.id] });
             if (agentRow?.model !== origin.route || (origin.claim && (agentRow.run_state !== 'running' || agentRow.run_token !== origin.claim))) throw stale();
             const binding = operation.binding;

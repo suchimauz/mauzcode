@@ -19,11 +19,14 @@ export async function getDraftModelSettings(model: string, effort: string, signa
   const available = selectableModels(catalogue);
   // Legacy aliases of a remembered or requested route still select the canonical catalogue entry.
   const same = (value: string) => (option: ModelOption) => !!value && (option.model === value || parseModelRoute(option.model).route === parseModelRoute(value).route);
-  const selected = available.find(same(model))?.model
+  const restored = available.find(same(model))?.model;
+  const selected = restored
     ?? available.find(same(readSessionSelection().model ?? ''))?.model ?? available[0]?.model ?? '';
   if (!selected) throw new Error('Нет доступных моделей');
   const config = selected === catalogue.model ? catalogue : await requestJson<Config>(`/ui-lab-api/new-session?${new URLSearchParams({ model: selected })}`, { signal });
-  const requested = normalizeEffort(effort, config.effort.supported);
+  // Restoring the same canonical route (aliases included) keeps a supported effort; replacing an unavailable
+  // draft route with another one starts at Default even when the replacement supports the old level.
+  const requested = model && !restored ? 'auto' : normalizeEffort(effort, config.effort.supported);
   return { ...config, agentId: '', model: selected, effort: { ...config.effort, requested, applied: requested === 'auto' ? config.effort.applied : requested } };
 }
 export const setAgentModel = (id: string, model: string) => requestJson<{ ok: boolean; model: string }>(`/api/v1/agents/${encodeURIComponent(id)}/model`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model }) });
@@ -34,6 +37,17 @@ export async function setAgentEffort(id: string, effort: string) {
   if (response.status !== 204) throw new Error('MauzCode не подтвердил сохранение настройки. Обновите список моделей.');
 }
 export const normalizeEffort = (effort: string, supported: string[]) => supported.includes(effort) ? effort : 'auto';
+/**
+ * Requested effort after an explicit model choice. A different provider or provider-native model slug starts at
+ * Default (`auto`); the same slug on another connection of that provider keeps the effort, which the target's
+ * catalogue then normalizes (`normalizeEffort`: Default when unsupported or when it lists no levels). Selecting the
+ * same route never calls this. Mirrors the server rule of agent.setModel for live chats.
+ */
+export const effortAfterSwitch = (from: string, to: string, effort: string) => {
+  if (!from || effort === 'auto') return 'auto';
+  const a = parseModelRoute(from), b = parseModelRoute(to);
+  return a.host === b.host && a.provider === b.provider && a.model === b.model ? effort : 'auto';
+};
 export const effortLabel = (value: string) => ({ auto: 'Default', off: 'Off', minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' }[value] ?? value);
 // Canonical route template shared with the server (llm.parseModelRoute): `[ssh/<host>:]<provider>/<account>:<model>`.
 export type ModelRoute = { host: string | null; provider: string; account: string; model: string; route: string };

@@ -8,8 +8,11 @@
  * Group metadata (`reasoning.variants`, `family`) is validated and preserved: members must be unique
  * native ids matching the supported levels, distinct from every listed model id; an invalid link drops the
  * model's levels. Providers declaring `capabilities.variantCatalogue` keep levels only when backed by variants.
- * Owner disables are applied on read: a disabled member loses its level and a group without an enabled
- * member is reported disabled.
+ * Owner disables are applied on read through models.catalog.effectiveDisabled: a disabled member loses its level
+ * and a group without an enabled member is reported disabled. For providers declaring
+ * `capabilities.groupAvailability` (Antigravity) availability applies to the group as a whole: legacy member
+ * flags remove no level unless every member is disabled. After each successful refresh publication the
+ * connection's legacy member disables are converted (models.catalog.convertLegacyDisables); cache-only reads never write.
  * @param opts.id Connection UUID.
  * @param opts.refresh Ask the provider now and update the cache.
  * @param opts.cacheOnly Read cache or manual ids only, including on a cold cache.
@@ -29,8 +32,10 @@ export default async function (
     type Model = types.models.ModelInfo;
     const view = await ctx.fns.models.connections.get({ id: opts.id });
     const codex = view.provider === "codex";
-    const off = new Set(view.disabledModels);
-    const mark = (models: Model[]) => models.map(m => {
+    const def = Object.hasOwn(ctx.state.models?.providers ?? {}, view.provider) ? ctx.state.models!.providers![view.provider]!.definition : undefined;
+    const groupLevel = def?.capabilities?.groupAvailability === true;
+    // One shared rule for every reader: with group-level availability a group is on or off as a whole.
+    const mark = (models: Model[]) => { const off = new Set(groupLevel ? ctx.fns.models.catalog.effectiveDisabled({ models, disabled: view.disabledModels, groupLevel }).off : view.disabledModels); return models.map(m => {
         const v = m.reasoning?.variants;
         if (!v) return { ...m, disabled: off.has(m.id) };
         // A disabled member no longer backs its level; a group with no enabled member is unavailable.
@@ -39,8 +44,7 @@ export default async function (
         // What auto applies: the declared default member when eligible, else the first eligible one in provider order.
         const auto = live.find(x => x.id === v.default) ?? live[0];
         return { ...m, reasoning: { supported: live.map(x => x.level), ...(auto ? { default: auto.level } : {}), variants: { ...v, members } }, disabled: off.has(m.id) || !live.length };
-    });
-    const def = Object.hasOwn(ctx.state.models?.providers ?? {}, view.provider) ? ctx.state.models!.providers![view.provider]!.definition : undefined;
+    }); };
     const variantOnly = def?.capabilities?.variantCatalogue === true;
     const manual = (Array.isArray(view.config.models) ? view.config.models : []).filter((m): m is string => typeof m === "string" && !!m).map(id => ({ id }));
     const sanitize = (raw: Model[], legacy = false): Model[] => {
@@ -121,6 +125,8 @@ export default async function (
         // The provider bumps the ticket when it forgets the account's catalogue; a late result of the old account is discarded.
         const published = await ctx.fns.procs.db.select({ sql: "UPDATE llm_connections SET models_cache=?::jsonb, models_cached_at=? WHERE id=? AND models_refresh_ticket=?::bigint RETURNING id", params: [JSON.stringify(models), now, view.id, first?.ticket ?? "0"] });
         if (!published.length) return current(await read(), false, "Account binding changed or unavailable");
+        // A successful publication proves group membership: convert legacy member disables (observed availability is unchanged).
+        if (groupLevel) await ctx.fns.models.catalog.convertLegacyDisables({ id: view.id });
         return { models: mark(models), source: "provider", cachedAt: now };
     } catch (error) {
         return current(await read(), false, ctx.fns.models.connections.safeMessage({ message: error, secrets: seen, fallback: "Model discovery failed" }));

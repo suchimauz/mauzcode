@@ -1,7 +1,8 @@
 /**
  * Send one authenticated Antigravity control request and return its JSON body
  *
- * Discovery helper of the antigravity provider for `loadCodeAssist` and `fetchAvailableModels`. Adds a fresh
+ * Control helper of the antigravity provider for `loadCodeAssist`, `fetchAvailableModels` and the read-only quota
+ * read `retrieveUserQuotaSummary`. Adds a fresh
  * bearer token and the Hub User-Agent and sends through the connection transport only. A 401 marks the token stale
  * and repeats the request once with the refreshed token of the same account; a second 401 fails AUTH. A 403 fails
  * ACCESS_DENIED, other statuses PROVIDER_ERROR and an unreadable body INVALID_RESPONSE — with fixed messages outside inference.
@@ -19,7 +20,7 @@ export default async function (
         /** Resolved antigravity connection. */
         conn: types.models.ResolvedConnection;
         /** Control operation name. */
-        method: "loadCodeAssist" | "fetchAvailableModels";
+        method: "loadCodeAssist" | "fetchAvailableModels" | "retrieveUserQuotaSummary";
         /** JSON request body. */
         body: Record<string, unknown>;
         /** Optional cancellation signal. */

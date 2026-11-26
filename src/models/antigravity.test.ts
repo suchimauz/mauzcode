@@ -256,6 +256,27 @@ describe("antigravity project and Gemini discovery (3.x)", () => {
         expect((await mkTestCtx()).fns.models.provider.antigravity.mapModels({ response: { models: { "gemini-3-flash": { supportsThinking: false, modelProvider: G }, "gemini-x": { modelProvider: G } }, agentModelSorts: [{ groups: [{ modelIds: ["gemini-3-flash", "gemini-x"] }] }] } })).toEqual([{ id: "gemini-3-flash", family: "gemini" }, { id: "gemini-x", family: "gemini" }]);
     });
 
+    test("quota summary is the only added control method: fixed URL, POST, project payload, saved transport, no redirect", async () => {
+        const { ctx, calls, conn } = await setup(call => call.url === API + ":retrieveUserQuotaSummary" ? Response.json({ groups: [] }) : api(call));
+        const c = await conn();
+        await store(ctx, c);
+        const project = await ctx.fns.models.provider.antigravity.project({ conn: c });
+        const inits: RequestInit[] = [];
+        const fetch0 = c.fetch;
+        const spy = { ...c, fetch: (url: string, init?: RequestInit) => { inits.push(init ?? {}); return fetch0(url, init); } } as types.models.ResolvedConnection;
+        expect(await ctx.fns.models.provider.antigravity.api({ conn: spy, method: "retrieveUserQuotaSummary", body: { project } })).toEqual({ groups: [] });
+        const call = calls.at(-1)!;
+        expect([call.url, call.method, json(call.body), call.headers.authorization, call.headers["user-agent"], call.transport]).toEqual([
+            API + ":retrieveUserQuotaSummary", "POST", { project: "proj-1" }, "Bearer " + ACCESS, ctx.fns.models.provider.antigravity.constants({}).userAgent, { kind: "direct" }]);
+        expect(inits.map(i => i.redirect)).toEqual(["error"]);
+        const n = calls.length;
+        const refused = (url: string, method = "POST") => ctx.fns.models.provider.antigravity.request({ conn: c, url, init: { method } }).then(() => null, (e: any) => e.code);
+        for (const url of [API + ":retrieveUserQuota", API + ":retrieveUserQuotaSummary?x=1", API + ":onboardUser", API + ":generateContent", "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary", "http://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"]) expect(await refused(url)).toBe("PROXY_CONFIG");
+        expect(await refused(API + ":retrieveUserQuotaSummary", "GET")).toBe("PROXY_CONFIG");
+        expect(calls).toHaveLength(n);
+        expect(calls.some(x => x.url.includes("streamGenerateContent"))).toBe(false);
+    });
+
     test("a new account sign-in exposes no stale models", async () => {
         const { ctx, view, conn } = await setup(api);
         const c = await conn();

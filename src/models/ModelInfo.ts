@@ -19,7 +19,7 @@ export type ModelInfo = {
         adaptive?: boolean;
         /** False means the model only switches thinking on or off and no effort value is sent. @default true */
         effort?: boolean;
-        /** Variant-backed levels: each level is a separate provider-native model id of this connection, in provider listing order. models.stream sends the chosen member id as the model and no effort value; never a wire parameter. `default` is the member id used for auto when it is eligible. models.listModels marks members the owner disabled. */
+        /** Variant-backed levels: each level is a separate provider-native model id of this connection, in provider listing order. models.stream sends the chosen member id as the model and no effort value; never a wire parameter. `default` is the member id used for auto when it is eligible. models.listModels marks members the owner disabled (with provider group-level availability: all members when the group is off, none otherwise). */
         variants?: { members: { level: types.models.ReasoningLevel; id: string; disabled?: boolean }[]; default?: string };
     };
     /** Discovery explicitly supplied no usable reasoning levels. Do not fall back to a profile. Mutually exclusive with reasoning. */

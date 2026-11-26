@@ -92,10 +92,12 @@ export default async function (ctx: Context, _session: Session | null, opts: { e
             if (definition[key] !== undefined && typeof definition[key] !== "function") fail(`modelProvider ${key} must be a function`);
         }
         if (definition.usageRefreshMs !== undefined && (!Number.isInteger(definition.usageRefreshMs) || definition.usageRefreshMs < 10000 || definition.usageRefreshMs > 3600000)) fail("modelProvider usageRefreshMs must be an integer from 10000 to 3600000");
+        if (definition.usageSnapshotVersion !== undefined && (typeof definition.usageSnapshotVersion !== "string" || !/^[a-zA-Z0-9._-]{1,40}$/.test(definition.usageSnapshotVersion))) fail("modelProvider usageSnapshotVersion must be a safe identifier of at most 40 characters");
+        if (definition.usageStaleOnFailure !== undefined && typeof definition.usageStaleOnFailure !== "boolean") fail("modelProvider usageStaleOnFailure must be boolean");
         if (definition.stream && definition.route) fail("modelProvider declares either stream or route, not both");
         if (definition.capabilities !== undefined) {
             const caps = definition.capabilities as Record<string, unknown>;
-            if (!caps || typeof caps !== "object" || Array.isArray(caps) || Object.entries(caps).some(([k, v]) => !["continuationState", "checkpoints", "reasoning", "variantCatalogue", "sampling", "structuredOutput"].includes(k) || typeof v !== "boolean")) fail("modelProvider capabilities must be known boolean flags");
+            if (!caps || typeof caps !== "object" || Array.isArray(caps) || Object.entries(caps).some(([k, v]) => !["continuationState", "checkpoints", "reasoning", "variantCatalogue", "groupAvailability", "sampling", "structuredOutput"].includes(k) || typeof v !== "boolean")) fail("modelProvider capabilities must be known boolean flags");
             if (caps.checkpoints && !definition.compact) fail("modelProvider checkpoints capability requires compact");
         }
         if (definition.actions !== undefined) {

@@ -56,17 +56,23 @@ it('allows inspection while running but prevents mutations',async()=>{
  expect(screen.getByText('Смена доступна после завершения ответа.')).toBeVisible();expect(props.onSaved).not.toHaveBeenCalled();
 });
 
-it('keeps draft model and effort local without agent writes', async () => {
+it('keeps draft model and effort local without agent writes; a model switch resets effort to Default', async () => {
  const fetcher = vi.fn(async () => json({ ...original, defaultModel: original.model })); vi.stubGlobal('fetch', fetcher);
  const onChange = vi.fn();
  const view = render(<ModelPicker draft={{ model: original.model, effort: 'high', onChange }} />);
  await userEvent.click(await screen.findByRole('button', { name: 'Выбрать модель: gpt-5, openai' }));
  await userEvent.click(await screen.findByRole('menuitem', { name: /Model gpt-5/ }));
+ // Reselecting the same route keeps the explicit effort and emits nothing.
+ await userEvent.click(screen.getByRole('menuitemradio', { name: 'gpt-5' }));
+ expect(onChange).not.toHaveBeenCalledWith(original.model, 'auto');
+ await userEvent.click(await screen.findByRole('button', { name: 'Выбрать модель: gpt-5, openai' }));
+ await userEvent.click(await screen.findByRole('menuitem', { name: /Model gpt-5/ }));
  await userEvent.click(screen.getByRole('menuitemradio', { name: 'claude' }));
- expect(onChange).toHaveBeenLastCalledWith('ssh/host:anthropic:claude', 'high');
- view.rerender(<ModelPicker draft={{ model: 'ssh/host:anthropic:claude', effort: 'high', onChange }} />);
+ expect(onChange).toHaveBeenLastCalledWith('ssh/host:anthropic:claude', 'auto');
+ view.rerender(<ModelPicker draft={{ model: 'ssh/host:anthropic:claude', effort: 'auto', onChange }} />);
  await userEvent.click(await screen.findByRole('button', { name: 'Выбрать модель: claude, host · anthropic' }));
- await userEvent.click(await screen.findByRole('menuitem', { name: 'Effort High' }));
+ // The draft shows Default; a manual level after the switch replaces it.
+ await userEvent.click(await screen.findByRole('menuitem', { name: 'Effort Default' }));
  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Low' }));
  expect(onChange).toHaveBeenLastCalledWith('ssh/host:anthropic:claude', 'low');
  expect(fetcher.mock.calls.every(call => !((call as unknown as [string, RequestInit?])[1]?.method))).toBe(true);
@@ -249,4 +255,64 @@ it('shows an explicitly unset model as unselected without substituting a default
  const trigger=await screen.findByRole('button',{name:'Выбрать модель: Model'});
  expect(trigger).toHaveAttribute('title','Выбрать модель');
  expect(trigger.textContent).not.toContain('gpt');
+});
+it('a live model switch is one mutation and reads back the committed Default effort', async () => {
+ let state = structuredClone(original); state.effort = { ...state.effort, requested: 'high', applied: 'high' };
+ const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+  if (init?.method === 'POST' && url.endsWith('/model')) { const { model } = JSON.parse(init.body as string); state = { ...state, model, label: 'claude', effort: { ...state.effort, requested: 'auto', applied: 'medium' } }; return json({ ok: true, model }); }
+  if (init?.method === 'POST') throw new Error('unexpected second mutation ' + url);
+  return json(state);
+ }); vi.stubGlobal('fetch', fetcher);
+ render(<ModelPicker {...props} />);
+ await userEvent.click(await screen.findByRole('button', { name: 'Выбрать модель: gpt-5, openai' }));
+ await userEvent.click(await screen.findByRole('menuitem', { name: /Model gpt-5/ }));
+ await userEvent.click(screen.getByRole('menuitemradio', { name: 'claude' }));
+ await waitFor(() => expect(props.onSaved).toHaveBeenCalledOnce());
+ expect(fetcher.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'POST')).toHaveLength(1);
+ await userEvent.click(screen.getByRole('button', { name: 'Выбрать модель: claude, host · anthropic' }));
+ expect(await screen.findByRole('menuitem', { name: 'Effort Default' })).toBeVisible();
+});
+it('reselecting the live route or a failed switch keeps the explicit effort; manual effort uses its own endpoint', async () => {
+ let state = structuredClone(original); state.effort = { ...state.effort, requested: 'high', applied: 'high' };
+ const posts: string[] = [];
+ const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+  if (init?.method === 'POST') { posts.push(url); if (url.endsWith('/model')) return json({ message: 'Agent is running' }, 400); state.effort = { ...state.effort, requested: 'low', applied: 'low' }; return new Response(null, { status: 204 }); }
+  return json(state);
+ }); vi.stubGlobal('fetch', fetcher);
+ render(<ModelPicker {...props} />);
+ await userEvent.click(await screen.findByRole('button', { name: 'Выбрать модель: gpt-5, openai' }));
+ await userEvent.click(await screen.findByRole('menuitem', { name: /Model gpt-5/ }));
+ await userEvent.click(screen.getByRole('menuitemradio', { name: 'gpt-5' }));
+ expect(posts).toEqual([]);
+ await userEvent.click(await screen.findByRole('button', { name: 'Выбрать модель: gpt-5, openai' }));
+ await userEvent.click(await screen.findByRole('menuitem', { name: /Model gpt-5/ }));
+ await userEvent.click(screen.getByRole('menuitemradio', { name: 'claude' }));
+ expect(await screen.findByRole('alert')).toHaveTextContent('Agent is running');
+ expect(posts).toEqual(['/api/v1/agents/fixture/model']);
+ await userEvent.keyboard('{Escape}');
+ expect(screen.getByRole('menuitem', { name: 'Effort High' })).toBeVisible();
+ await userEvent.click(screen.getByRole('menuitem', { name: 'Effort High' }));
+ await userEvent.click(screen.getByRole('menuitemradio', { name: 'Low' }));
+ await waitFor(() => expect(props.onSaved).toHaveBeenCalledOnce());
+ expect(posts).toEqual(['/api/v1/agents/fixture/model', '/agent/fixture/effort']);
+});
+it('a draft account-only switch keeps the effort; a different slug resets to Default', async () => {
+ const accounts: ModelSettings = { ...original, model: 'openai/work:gpt-5', label: 'gpt-5', models: [
+  { provider: 'openai', model: 'openai/work:gpt-5', label: 'gpt-5', groupLabel: 'work', icon, disabled: false },
+  { provider: 'openai', model: 'openai/home:gpt-5', label: 'gpt-5 home', groupLabel: 'home', icon, disabled: false },
+  { provider: 'openai', model: 'openai/work:gpt-4', label: 'gpt-4', groupLabel: 'work', icon, disabled: false }] };
+ const fetcher = vi.fn(async () => json({ ...accounts, defaultModel: accounts.model })); vi.stubGlobal('fetch', fetcher);
+ const onChange = vi.fn();
+ const view = render(<ModelPicker draft={{ model: 'openai/work:gpt-5', effort: 'high', onChange }} />);
+ await userEvent.click(await screen.findByRole('button', { name: /Выбрать модель: gpt-5/ }));
+ await userEvent.click(await screen.findByRole('menuitem', { name: /Model gpt-5/ }));
+ await userEvent.click(screen.getByRole('menuitemradio', { name: 'gpt-5 home' }));
+ // Same slug on another account keeps the level; the target catalogue normalizes it on fetch.
+ expect(onChange).toHaveBeenLastCalledWith('openai/home:gpt-5', 'high');
+ view.rerender(<ModelPicker draft={{ model: 'openai/home:gpt-5', effort: 'high', onChange }} />);
+ await userEvent.click(await screen.findByRole('button', { name: /Выбрать модель: gpt-5 home/ }));
+ await userEvent.click(await screen.findByRole('menuitem', { name: /Model gpt-5 home/ }));
+ await userEvent.click(screen.getByRole('menuitemradio', { name: 'gpt-4' }));
+ expect(onChange).toHaveBeenLastCalledWith('openai/work:gpt-4', 'auto');
+ expect(fetcher.mock.calls.every(call => !((call as unknown as [string, RequestInit?])[1]?.method))).toBe(true);
 });

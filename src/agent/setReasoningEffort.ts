@@ -1,7 +1,7 @@
 /**
  * Changes the durable reasoning effort preference of one agent
  *
- * Validate and persist one agent reasoning effort preference, update the live agent object, record a visible event and refresh the chat. The stored preference is retained across model switches and the connection normalizes it during inference. Unsupported explicit levels fail before any state change.
+ * Validate and persist one agent reasoning effort preference, update the live agent object, record a visible event and refresh the chat. Use for an explicit owner choice on the current route. The preference belongs to that route: agent.setModel resets it to `auto` in the same write when the provider or model slug changes, keeps it on a same-slug connection switch only when the target's cached catalogue lists it, and leaves it untouched on same-route selection and connection renames; the connection normalizes it during inference. Unsupported explicit levels fail before any state change.
  * @param opts.id Agent identifier.
  * @param opts.effort Requested reasoning preference.
  * @param opts.now Current timestamp in milliseconds, for testing.
