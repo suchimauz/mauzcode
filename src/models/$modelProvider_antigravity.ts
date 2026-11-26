@@ -9,8 +9,11 @@ export default {
     async test(ctx, conn) { return ctx.fns.models.provider.antigravity.test({ conn }); },
     async listModels(ctx, conn) { return ctx.fns.models.provider.antigravity.listModels({ conn }); },
     async usage(ctx, conn) { return ctx.fns.models.provider.antigravity.usage({ conn }); },
-    usageRefreshMs: 180000,
-    capabilities: { reasoning: true, variantCatalogue: true, sampling: true, structuredOutput: true },
+    // Shorter than the 60 s UI poll, so a due poll never receives an observation that expires right after it.
+    usageRefreshMs: 55000,
+    usageSnapshotVersion: "quota-summary-1",
+    usageStaleOnFailure: true,
+    capabilities: { reasoning: true, variantCatalogue: true, groupAvailability: true, sampling: true, structuredOutput: true },
     reasoningProfile: (ctx, model) => ctx.fns.models.provider.antigravity.reasoningProfile({ model }),
     async stream(ctx, conn, req) { return ctx.fns.models.provider.antigravity.stream({ conn, req }); },
     actions: {

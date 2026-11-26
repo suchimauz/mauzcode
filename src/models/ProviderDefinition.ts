@@ -32,6 +32,10 @@ export type ProviderDefinition = {
     clientVersion?: (ctx: Context, conn: types.models.ResolvedConnection, opts: { refresh?: boolean }) => Promise<{ version: string; source: string; detail?: string }>;
     /** Minimum interval between usage requests for one connection; available and unavailable reports are reused this long unless refresh is requested. Integer milliseconds. @default 60000 @minimum 10000 @maximum 3600000 */
     usageRefreshMs?: number;
+    /** Usage contract version; cached and retained snapshots of another version are discarded instead of reused. Safe identifier, at most 40 characters. */
+    usageSnapshotVersion?: string;
+    /** After a failed usage read, keep the previous successful snapshot of the same connection revision, marked `stale` with its original `checkedAt`, instead of reporting unavailable. @default false */
+    usageStaleOnFailure?: boolean;
     /** Additional provider-specific validation after core field validation. Throw to reject. */
     validate?: (ctx: Context, config: types.models.ResolvedConnection["config"]) => void | Promise<void>;
     /** Optional streaming inference; called only through models.stream after the enabled checks. Send traffic only through conn.fetch. */
@@ -54,6 +58,8 @@ export type ProviderDefinition = {
         reasoning?: boolean;
         /** Routes resolve only against the cached catalogue and reasoning levels exist only as ModelInfo.reasoning.variants: models.stream and route resolution fail MODEL_UNAVAILABLE for a model absent from the cache (including a cold cache, without discovery), and cached reasoning metadata without variants offers no levels. */
         variantCatalogue?: boolean;
+        /** Owner availability applies to each `reasoning.variants` group as a whole (models.catalog.effectiveDisabled): a group is off by its own id or when every member id is stored disabled (unconverted legacy flags); otherwise all its provider-eligible levels stay offered. Member ids of a known group cannot be toggled individually (models.setModelEnabled fails VALIDATION), and legacy member disables are converted to group-only flags after each successful catalogue refresh and at startup. Without it, a disabled member removes only its own level. */
+        groupAvailability?: boolean;
         /** Accepts StreamRequest.temperature and maxTokens; without it models.stream drops them. */
         sampling?: boolean;
         /** Accepts StreamRequest.responseFormat and maps it to native structured output; without it models.call uses an instruction fallback. */

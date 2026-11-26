@@ -18,8 +18,14 @@ export type UsageReport = {
         id?: string;
         /** Standard period established from provider evidence; absent when unknown. */
         period?: "fiveHour" | "weekly" | "monthly";
-        /** Whether the limit applies to the whole account, one model, or is unknown. Absent means unknown. */
-        scope?: "account" | "model" | "unknown";
+        /**
+         * Whether the limit applies to the whole account, one model, one provider-reported model-family pool
+         * (`group`, with `family`, `period` and `bucket`), or is unknown. Absent means unknown. A `group` window never
+         * fills an account-wide period column.
+         */
+        scope?: "account" | "model" | "group" | "unknown";
+        /** Stable provider bucket identity of a summary bucket (e.g. `gemini-5h`), when the provider reports one. */
+        bucket?: string;
         /** Provider-reported window length in seconds, when reported. */
         durationSeconds?: number;
         /** Model name the limit applies to, when the provider names it. */
@@ -35,6 +41,11 @@ export type UsageReport = {
         resetAt?: number;
     }[];
     balance?: { amount: number; currency: string };
+    /**
+     * A later read failed and this is the previous successful observation of the same connection revision, kept for a
+     * provider whose policy retains it (`usageStaleOnFailure`); `checkedAt` stays the time of that last success.
+     */
+    stale?: boolean;
     /** Families whose measurements are incomplete because safety caps dropped some of their windows. */
     partialFamilies?: ("gemini" | "claude")[];
 };

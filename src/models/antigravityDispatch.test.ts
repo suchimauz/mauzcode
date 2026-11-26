@@ -44,9 +44,12 @@ describe("variant resolution in models.stream (3.1)", () => {
         noThinking(w.gens().at(-1)!.body);
     });
 
-    test("a disabled member is never sent; no eligible member and an absent route fail before the transport", async () => {
+    test("another variant provider without group-level availability never sends a disabled member", async () => {
         const w = await world({ stream: () => text("ok") });
-        const c = await w.connect("disabled");
+        // Same SDK variant path, but without group-level availability member disables filter levels.
+        const reg = w.ctx.state.models!.providers!.antigravity!;
+        reg.definition = { ...reg.definition, capabilities: { ...reg.definition.capabilities, groupAvailability: false } };
+        const c = await w.connect("per-member");
         await w.ctx.fns.models.setModelEnabled({ id: c.id, model: "gemini-4-neon-high", enabled: false });
         const r = await ask(w.ctx, c.id, "gemini-4-neon", "high");
         expect(w.gens().at(-1)!.body.model).toBe("gemini-4-neon-medium");
@@ -55,13 +58,37 @@ describe("variant resolution in models.stream (3.1)", () => {
         await ask(w.ctx, c.id, "gemini-4-neon");
         expect(w.gens().at(-1)!.body.model).toBe("gemini-4-neon-xhigh");
         for (const s of ["xhigh", "medium", "low"]) await w.ctx.fns.models.setModelEnabled({ id: c.id, model: `gemini-4-neon-${s}`, enabled: false });
+        const err = await ask(w.ctx, c.id, "gemini-4-neon", "high").then(() => null, (e: any) => e);
+        expect(err.failure).toMatchObject({ code: "MODEL_UNAVAILABLE" });
+    });
+
+    test("Antigravity: legacy member disables keep every level; a disabled group and absent routes fail before the transport", async () => {
+        const w = await world({ stream: () => text("ok") });
+        const c = await w.connect("disabled");
+        const legacy = (ids: string[]) => w.ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET disabled_models=?::text[] WHERE id=?", params: [ids, c.id] });
+        // An unconverted legacy flag on the high member: the group stays whole and high sends the exact high member.
+        await legacy(["gemini-4-neon-high"]);
+        const r = await ask(w.ctx, c.id, "gemini-4-neon", "high");
+        expect(w.gens().at(-1)!.body.model).toBe("gemini-4-neon-high");
+        expect(r.reasoning).toMatchObject({ requested: "high", applied: "high", fallbackReason: null });
+        noThinking(w.gens().at(-1)!.body);
+        // Auto keeps the declared default member.
+        await ask(w.ctx, c.id, "gemini-4-neon");
+        expect(w.gens().at(-1)!.body.model).toBe("gemini-4-neon-high");
+        // Every eligible member disabled: the whole group is off by the owner.
+        await legacy(["gemini-4-neon-high", "gemini-4-neon-xhigh", "gemini-4-neon-medium", "gemini-4-neon-low"]);
+        expect(await ask(w.ctx, c.id, "gemini-4-neon", "high").then(() => null, (e: any) => e.code)).toBe("MODEL_DISABLED_BY_USER");
+        // An explicit group disable behaves the same.
+        await legacy([]);
+        await w.ctx.fns.models.setModelEnabled({ id: c.id, model: "gemini-4-neon", enabled: false });
+        expect((await w.ctx.fns.models.get({ id: c.id })).disabledModels).toEqual(["gemini-4-neon"]);
         const n = w.calls.length;
         const saved = async () => (await w.ctx.fns.procs.db.select({ sql: "SELECT disabled_models FROM llm_connections WHERE id=?", params: [c.id] }))[0];
         const before = await saved();
         for (const [model, effort] of [["gemini-4-neon", "high"], ["gemini-4-neon", undefined], ["gemini-4-neon-xhigh", undefined], ["gemini-9-missing", "low"], ["claude-opus-5-5-high", undefined]] as const) {
             const err = await ask(w.ctx, c.id, model, effort).then(() => null, (e: any) => e);
-            // An owner-disabled id keeps its own code; everything else is the catalogue failure.
-            if (model === "gemini-4-neon-xhigh") { expect(err.code).toBe("MODEL_DISABLED_BY_USER"); continue; }
+            // The disabled group and its legacy member route keep the owner's code; everything else is the catalogue failure.
+            if (model.startsWith("gemini-4-neon")) { expect(err.code).toBe("MODEL_DISABLED_BY_USER"); continue; }
             expect(err.failure).toEqual({ code: "MODEL_UNAVAILABLE", classification: "invalid_input", acceptance: "none", retryable: false, replaySafe: true });
             expect(err.message).toContain(c.route(model));
         }
@@ -120,8 +147,13 @@ describe("variant resolution in models.stream (3.1)", () => {
         await expect(pick(undefined, "minimal", c.route("gemini-3.8-flash"))).rejects.toThrow(/does not support reasoning effort minimal/);
         expect(await pick(undefined, "medium", c.route("gemini-3.8-flash"))).toEqual({ model: c.route("gemini-3.8-flash"), reasoningEffort: "medium" });
         await expect(pick(c.route("gemini-4-neon-xhigh"))).rejects.toMatchObject({ code: "MODEL_UNAVAILABLE" });
-        await w.ctx.fns.models.setModelEnabled({ id: c.id, model: "gemini-4-neon-xhigh", enabled: false });
-        await expect(pick(c.route("gemini-4-neon"), "xhigh")).rejects.toThrow(/does not support reasoning effort xhigh/);
+        // A legacy member flag removes no level: delegation sees the same whole group as the picker; a member edit is refused.
+        await w.ctx.fns.procs.db.run({ sql: "UPDATE llm_connections SET disabled_models=?::text[] WHERE id=?", params: [["gemini-4-neon-xhigh"], c.id] });
+        expect(await pick(c.route("gemini-4-neon"), "xhigh")).toEqual({ model: c.route("gemini-4-neon"), reasoningEffort: "xhigh" });
+        await expect(w.ctx.fns.models.setModelEnabled({ id: c.id, model: "gemini-4-neon-xhigh", enabled: false })).rejects.toMatchObject({ code: "VALIDATION", group: "gemini-4-neon" });
+        await w.ctx.fns.models.setModelEnabled({ id: c.id, model: "gemini-4-neon", enabled: false });
+        await expect(pick(c.route("gemini-4-neon"), "xhigh")).rejects.toMatchObject({ code: "MODEL_DISABLED_BY_USER" });
+        await w.ctx.fns.models.setModelEnabled({ id: c.id, model: "gemini-4-neon", enabled: true });
 
         const parent = await w.ctx.fns.agent.start({ model: c.route("gemini-4-neon") });
         const count = async () => Number((await w.ctx.fns.procs.db.select({ sql: "SELECT count(*)::int AS n FROM agents", params: [] }))[0]!.n);

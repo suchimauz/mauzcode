@@ -10,9 +10,12 @@ export type ModelUsageReport = {
   reason?: string;
   /** Subscription plan reported by the provider, when available. */
   plan?: string;
+  /** Epoch ms of this check, or of the last success when `stale`. */
   checkedAt: number;
-  /** `family` marks a per-model measurement of a model family: `usedPercent` is the used share (remaining = 100 − used). Never classified by label. */
-  windows?: { label: string; id?: string; model?: string; family?: 'gemini' | 'claude'; usedPercent?: number; remaining?: number; resetAt?: number; observedAt?: number }[];
+  /** The latest read failed; windows are the previous successful observation of this account. */
+  stale?: boolean;
+  /** `family` marks a model-family reading (`scope: "group"` with a `period` fills that family's period cell); `usedPercent` is the used share. Never classified by label. */
+  windows?: { label: string; id?: string; bucket?: string; scope?: 'account' | 'model' | 'group' | 'unknown'; period?: 'fiveHour' | 'weekly' | 'monthly'; model?: string; family?: 'gemini' | 'claude'; usedPercent?: number; remaining?: number; resetAt?: number; observedAt?: number }[];
   /** Families whose measurements are incomplete because the backend dropped some of their windows. */
   partialFamilies?: ('gemini' | 'claude')[];
   balance?: { amount: number; currency: string };

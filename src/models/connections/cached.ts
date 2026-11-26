@@ -8,6 +8,7 @@
  * @param opts.reuse Return a fresh cached result instead of running again. @default true
  * @param opts.ttlMs Cache lifetime in milliseconds. @default 60000 @minimum 0
  * @param opts.preserveExpiry Keep the previous entry's expiry instead of starting a new TTL (a new TTL is used only when nothing was cached). @default false
+ * @param opts.version Result contract version; an entry of the same revision and kind cached under another version is discarded, never reused or passed to `run`.
  */
 export default async function (
     ctx: Context,
@@ -25,13 +26,16 @@ export default async function (
         ttlMs?: number;
         /** Keep the previous entry's expiry instead of starting a new TTL (a new TTL is used only when nothing was cached). @default false */
         preserveExpiry?: boolean;
+        /** Result contract version; an entry of the same revision and kind cached under another version is discarded, never reused or passed to `run`. */
+        version?: string;
     },
 ): Promise<types.models.UsageReport | types.models.TestResult> {
     const health = ((ctx.state.models ??= {}).health ??= {});
     const { id, updatedAt } = opts.connection;
     const revision = `${id}:${Bun.hash(`${id}:${updatedAt}`).toString(36)}`;
     for (const k of Object.keys(health)) if (k.startsWith(`${id}:`) && !k.startsWith(`${revision}:`)) delete health[k];
-    const key = `${revision}:${opts.kind}`;
+    const key = `${revision}:${opts.kind}${opts.version ? `@${opts.version}` : ""}`;
+    for (const k of Object.keys(health)) if (k !== key && (k === `${revision}:${opts.kind}` || k.startsWith(`${revision}:${opts.kind}@`))) delete health[k];
     const hit = health[key];
     if (hit?.pending) return await hit.pending;
     if (opts.reuse !== false && hit?.result && hit.expiresAt > Date.now()) return hit.result;

@@ -17,8 +17,10 @@ export type ModelUsageView = {
         status: types.models.UsageReport["status"];
         reason?: string;
         plan?: string;
-        /** Unix epoch milliseconds. */
+        /** Unix epoch milliseconds of the last successful observation when `stale`, else of this check. */
         checkedAt: number;
+        /** The latest read failed; windows are the previous successful observation of this account, kept as stale. */
+        stale?: boolean;
         /** Quota windows (with their classification metadata) and level; additional windows are included and count toward `level`. Empty for status-only and balance-only connections. */
         windows: (NonNullable<types.models.UsageReport["windows"]>[number] & { level: types.frontendBridge.UsageLevel })[];
         balance?: { amount: number; currency: string };

@@ -42,3 +42,61 @@ it('keeps the last snapshot when a later read fails', async () => {
   expect(result.current.accounts).toHaveLength(1);
   expect(result.current.error).toBe('down');
 });
+
+const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+const hidden = (value: boolean) => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => value }); document.dispatchEvent(new Event('visibilitychange')); };
+const account = (used: number | null, updatedAt: number, status: 'fresh' | 'stale' = 'fresh') => ({ ...body.accounts[0], id: 'ag:work', provider: 'antigravity', quotaStatus: status, quotaUpdatedAt: updatedAt,
+  families: [{ family: 'gemini', partial: false }], additionalWindows: [{ id: 'antigravity:gemini-5h', label: 'gemini-5h', scope: 'group', bucket: 'gemini-5h', period: 'fiveHour', model: null, family: 'gemini', usedPercent: used, remaining: null, resetsAt: null, observedAt: updatedAt, tone: 'neutral' }] });
+
+it('pauses while hidden, re-reads an expired snapshot on return and reuses a fresh one', async () => {
+  vi.useFakeTimers();
+  try {
+    const reads: number[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('provider-icons') ? json({ icons: {} }) : (reads.push(Date.now()), json(body))));
+    renderHook(() => useQuotas());
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(reads).toHaveLength(1);
+    // Hidden after 20 s: nothing is polled in the background, however long it stays hidden.
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    hidden(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    expect(reads).toHaveLength(1);
+    // Back after expiry: one immediate read.
+    hidden(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(reads).toHaveLength(2);
+    // Hidden and back within the interval: the fresh snapshot is reused; the next read comes when it is due.
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    hidden(true); hidden(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(reads).toHaveLength(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(50_000); });
+    expect(reads).toHaveLength(3);
+    expect(reads[2]! - reads[1]!).toBe(60_000);
+  } finally { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); }
+});
+
+it('shows a changed value on the next poll, keeps a stale snapshot with its success time and recovers', async () => {
+  vi.useFakeTimers();
+  let n = 0;
+  const replies = [json({ updatedAt: 1, accounts: [account(20, 1_000)] }), json({ updatedAt: 2, accounts: [account(70, 61_000)] }), json({ error: 'down' }, 500),
+    json({ updatedAt: 3, accounts: [account(70, 61_000, 'stale')] }), json({ updatedAt: 4, accounts: [account(null, 181_000)] })];
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('provider-icons') ? json({ icons: {} }) : replies[Math.min(n++, replies.length - 1)]!));
+  const { result } = renderHook(() => useQuotas());
+  const shown = () => [result.current.accounts?.[0]?.additionalWindows?.[0]?.usedPercent, result.current.accounts?.[0]?.quotaStatus, result.current.accounts?.[0]?.quotaUpdatedAt];
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(shown()).toEqual([20, 'fresh', 1_000]);
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(shown()).toEqual([70, 'fresh', 61_000]);
+  // A failed request keeps the last good snapshot and its success time.
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(shown()).toEqual([70, 'fresh', 61_000]);
+  expect(result.current.error).toBe('down');
+  // The server reports its own failed read as stale, with the original success time.
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(shown()).toEqual([70, 'stale', 61_000]);
+  expect(result.current.error).toBeNull();
+  // Recovery clears stale, advances the time and replaces a now-missing value instead of showing the old one.
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(shown()).toEqual([null, 'fresh', 181_000]);
+});
