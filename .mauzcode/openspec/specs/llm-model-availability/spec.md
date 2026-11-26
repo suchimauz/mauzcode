@@ -64,6 +64,18 @@ A disabled model MUST fail with `Model <model> is disabled by user`, code `MODEL
 - **WHEN** an inference request targets a globally disabled provider under any retry policy
 - **THEN** it fails with `Provider <provider> is disabled`, code `PROVIDER_DISABLED`, and is never retried
 
+### Requirement: Antigravity groups are configured as a whole
+A native member ID of a known Antigravity group on a connection SHALL NOT be an individually configurable model: disabling or enabling it MUST fail with a validation error naming the group ID and MUST NOT change stored settings; the group ID itself and standalone models remain configurable. Models settings SHALL manage an Antigravity group as one entry, not as its member efforts.
+
+#### Scenario: Member of an Antigravity group
+- **WHEN** the owner disables or enables a native member ID that the connection's current catalogue assigns to an Antigravity group
+- **THEN** the request fails with a validation error naming that group ID, and the disabled set and updated time stay unchanged
+- **AND** disabling the group ID, a standalone Antigravity model or a model of another provider still succeeds as before
+
+#### Scenario: Disabled group in settings
+- **WHEN** the owner opens the Models settings list with a disabled Antigravity group
+- **THEN** the group appears as one disabled entry with a single switch, without separate entries for its member efforts
+
 ### Requirement: Sole model availability policy
 Per-connection disabled models, connection enablement and global provider enablement SHALL be the only policy that decides whether a model may be selected or called. Model pickers MUST hide disabled models, models of disabled connections and models of disabled providers, and every agent turn, model change, compaction and one-shot call MUST refuse them before any provider request. Models settings MUST retain disabled entries for management.
 

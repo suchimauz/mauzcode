@@ -480,7 +480,7 @@ For every native provider the SDK SHALL bind credential reads and transport to t
 - **THEN** the resolver supplies no unrestricted native callback, and direct invocation is rejected before reading search credentials or issuing a provider request
 
 ### Requirement: Variant-backed reasoning levels
-A cached model MAY declare reasoning variants: a level-to-native-ID map in provider order with an optional default member. For such a model `models.stream` SHALL normalize the preference against the levels of currently eligible members with the existing rules, then pass the chosen member's native ID as the model and no separate effort value. Members disabled by the owner MUST NOT be chosen. Providers without variants SHALL be unchanged.
+A cached model MAY declare reasoning variants: a level-to-native-ID map in provider order with an optional default member. For such a model `models.stream` SHALL normalize the preference against the levels of currently eligible members with the existing rules, then pass the chosen member's native ID as the model and no separate effort value. Members disabled by the owner MUST NOT be chosen unless the provider declares group-level availability. Providers without variants SHALL be unchanged.
 
 #### Scenario: Saved level above the group's range
 - **GIVEN** a group whose eligible members back `low`, `medium` and `high`
@@ -496,12 +496,20 @@ A cached model MAY declare reasoning variants: a level-to-native-ID map in provi
 - **THEN** the declared default member is used when it is eligible, otherwise the first eligible member in provider order
 
 #### Scenario: Owner disables the member for a level
-- **WHEN** the owner disables the member backing `high` and a request asks for `high`
+- **WHEN** on a provider without group-level availability the owner disables the member backing `high` and a request asks for `high`
 - **THEN** that level is no longer supported for normalization and the nearest remaining eligible member is chosen; the disabled native ID is never sent
 
 #### Scenario: Explicit unsupported level at an entry point
 - **WHEN** a delegation explicitly requests a level that no eligible member of the target group backs
 - **THEN** delegation rejects it with its existing unsupported-effort failure before creating a child, using the same variant levels the picker shows
+
+### Requirement: Group-level availability of variant members
+When a provider declares group-level availability, owner availability SHALL apply to a variant group as a whole: stored disables of a proven member MUST NOT remove its level, and only the provider's own eligibility limits the levels. Antigravity declares group-level availability.
+
+#### Scenario: Legacy member disable under group-level availability
+- **GIVEN** an Antigravity group whose stored settings still disable the member backing `high`, while not every eligible member is disabled
+- **WHEN** a request on that group asks for `high`
+- **THEN** the `high` member's native ID is sent, as the picker and `list_models` offer `high`; when every eligible member is disabled or the group ID is disabled, the request fails `MODEL_DISABLED_BY_USER` before any provider request
 
 ### Requirement: Unavailable variant model
 When a variant-backed route has no eligible member, or the provider requires a cached catalogue and the route's model is absent from it, `models.stream` SHALL fail with code `MODEL_UNAVAILABLE`, classification `invalid_input`, acceptance `none`, not retryable and replay-safe, before any provider request. It MUST NOT send the route's model key upstream or substitute another model.
