@@ -121,10 +121,10 @@ test('React Canvas retains unsaved draft across tabs and sends exact optimistic 
   } finally { await tab.close(); }
 }, 20_000);
 
-test('a pointer can enter and scroll a family preview, switch to the adjacent card and leave', async () => {
+test('a pointer can enter and scroll a pool preview, switch to the adjacent card and leave', async () => {
   const tab = await open('quotas');
   try {
-    await tab.command('Emulation.setDeviceMetricsOverride', { width: 640, height: 300, deviceScaleFactor: 1, mobile: false });
+    await tab.command('Emulation.setDeviceMetricsOverride', { width: 640, height: 170, deviceScaleFactor: 1, mobile: false });
     const tip = `[role="tooltip"]`, card = (family: string) => `.quota-card[data-family="${family}"]`;
     const point = (selector: string) => tab.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return {x:r.left + 20, y:r.top + r.height / 2}; })()`);
     const move = (p: { x: number; y: number }) => tab.command('Input.dispatchMouseEvent', { type: 'mouseMoved', ...p });
@@ -138,10 +138,10 @@ test('a pointer can enter and scroll a family preview, switch to the adjacent ca
     await move(popup);
     await tab.command('Input.dispatchMouseEvent', { type: 'mouseWheel', ...popup, deltaX: 0, deltaY: 999 });
     await tab.wait(`document.querySelector('${tip}')?.scrollTop > 0`);
-    expect(await tab.evaluate(`document.elementFromPoint(${popup.x}, ${popup.y})?.closest('${tip}')?.textContent.includes('Antigravity · Gemini')`)).toBe(true);
+    expect(await tab.evaluate(`document.elementFromPoint(${popup.x}, ${popup.y})?.closest('${tip}')?.textContent.includes('Gemini · work')`)).toBe(true);
     await move(claude);
-    await tab.wait(`document.querySelectorAll('${tip}').length === 1 && document.querySelector('${tip} .navigation-tooltip-title')?.textContent === 'Antigravity · Claude'`);
-    await move({ x: 620, y: 290 });
+    await tab.wait(`document.querySelectorAll('${tip}').length === 1 && document.querySelector('${tip} .navigation-tooltip-title')?.textContent === 'Claude · work'`);
+    await move({ x: 620, y: 160 });
     await tab.wait(`!document.querySelector('${tip}')`);
   } finally { await tab.close(); }
 }, 20_000);

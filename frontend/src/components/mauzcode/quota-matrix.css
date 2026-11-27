@@ -26,27 +26,10 @@
 .quota-card-status { display: block; border-radius: 2px; font-size: 12px; line-height: 14px; font-weight: 600; color: var(--text-tertiary); background: var(--hover); }
 .quota-card-status[data-status="available"] { color: var(--success); background: var(--success-soft); }
 .quota-card-status[data-status="unavailable"] { color: var(--tool-error); background: color-mix(in srgb, var(--tool-error) 14%, transparent); }
-/* Family cards: provider name, family and a REMAINING figure in the same 46px geometry. Unknown and partial are words, not only a colour. */
-.quota-card--family .quota-card-provider { gap: 2px; justify-content: center; padding: 0 1px; }
-.quota-card--family .quota-card-logo, .quota-card--family .quota-card-logo .navigation-chat-icon, .quota-card--family .quota-card-logo .navigation-chat-icon img, .quota-card--family .quota-card-logo .navigation-provider-icon, .quota-card--family .quota-card-logo svg { width: 9px; height: 9px; min-width: 9px; flex-basis: 9px; }
-.quota-card-provider-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 7px; line-height: 12px; font-weight: 600; letter-spacing: -.25px; color: var(--text-secondary); }
-.quota-card-remaining { display: flex; align-items: baseline; justify-content: center; gap: 2px; min-width: 0; overflow: hidden; white-space: nowrap; border-radius: 2px; padding: 0 1px; font-size: 9px; line-height: 14px; font-weight: 600; letter-spacing: -.2px; color: var(--success); background: var(--success-soft); }
-/* The unit never yields: a long range shrinks, so the figure is never left as a naked percentage. */
-.quota-card-remaining-figure { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.quota-card-remaining-unit { flex: none; font-size: 7px; font-weight: 500; letter-spacing: 0; opacity: .85; }
-/* Ranges are longer than one figure: step the size down so both bounds and the unit stay readable in a 46px-high, quarter-width card. */
-.quota-card-remaining[data-long] { gap: 1px; font-size: 8px; letter-spacing: -.35px; }
-.quota-card-remaining[data-long="xl"] { font-size: 6.5px; letter-spacing: -.4px; }
-.quota-card-remaining[data-long] .quota-card-remaining-unit { font-size: 6px; letter-spacing: -.2px; }
-.quota-card-remaining-partial { font-weight: 700; }
-/* The family name never truncates; the account after it gives way first. */
+/* Pool caption: the family name never truncates; the account after it gives way first. */
 .quota-card-family { display: flex; align-items: baseline; justify-content: center; gap: 2px; }
 .quota-card-family-name { flex: none; }
 .quota-card-family-note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 7px; letter-spacing: -.2px; color: var(--text-secondary); }
-.quota-card-remaining[data-tone="none"] { color: var(--text-tertiary); background: var(--hover); font-size: 8px; font-weight: 500; letter-spacing: -.1px; }
-.quota-card-remaining[data-tone="warning"] { color: #a87f00; background: color-mix(in srgb, #e0b000 18%, transparent); }
-.quota-card-remaining[data-tone="critical"] { color: var(--tool-stopped); background: color-mix(in srgb, var(--tool-stopped) 16%, transparent); }
-.quota-card-remaining[data-tone="error"] { color: var(--tool-error); background: color-mix(in srgb, var(--tool-error) 14%, transparent); }
 .quota-card-spacer { display: block; min-width: 0; height: 46px; pointer-events: none; }
 .quota-matrix-legend + .quota-matrix-legend { margin-top: -5px; }
 .quota-card-cell { display: flex; min-width: 0; }
@@ -82,11 +65,8 @@
 .quota-tooltip-extra { display: flex; flex-direction: column; gap: 4px; max-height: min(240px, 45vh); overflow-y: auto; overscroll-behavior: contain; }
 .quota-tooltip-extra-title { color: #fff; font-weight: 600; }
 /* Scroll the whole quota preview, including the status below a long list, inside the space left by the positioner. */
-.navigation-tooltip:has(.quota-tooltip-periods, .quota-tooltip-family) { max-height: var(--available-height, calc(100vh - 16px)); overflow-y: auto; overscroll-behavior: contain; }
-.navigation-tooltip:has(.quota-tooltip-periods, .quota-tooltip-family) > * { flex-shrink: 0; }
-.quota-tooltip-family { max-height: none; overflow: visible; }
-.quota-tooltip-family .quota-tooltip-period > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.quota-tooltip-family-total strong { white-space: nowrap; }
+.navigation-tooltip:has(.quota-tooltip-periods) { max-height: var(--available-height, calc(100vh - 16px)); overflow-y: auto; overscroll-behavior: contain; }
+.navigation-tooltip:has(.quota-tooltip-periods) > * { flex-shrink: 0; }
 .quota-tooltip-note { color: #f2c94c; font-size: 11px; line-height: 14px; overflow-wrap: anywhere; }
 .quota-tooltip-account-extra { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid #ffffff1f; }
 /* Collapsible Usage header: collapsed by default, worst-tone dot stays visible. */

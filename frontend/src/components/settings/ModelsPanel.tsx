@@ -11,9 +11,9 @@ import {
   connectionAction, connectionClientVersion, connectionModels, connectionUsage, createConnection, setContextLimits, setModelEnabled, getModelsState, removeConnection, setConnectionEnabled, setProviderEnabled, testConnection, transportLabel, updateConnection,
   type ConnectionInput, type ConnectionModels, type ModelClientVersion, type ModelContextLimit, type ModelConnectionView, type ModelFieldSpec, type ModelInfo, type ModelProviderView, type ModelVariantMember, type ModelsState, type ModelTransportSpec, type ModelUsageReport,
 } from '../../lib/modelConnections';
-import { QUOTA_FAMILIES, QUOTA_PERIODS, quotaFamilyNote, quotaPeriodTitle, quotaResetText, quotaUsedValue, summarizeQuotaFamily, type QuotaFamily, type QuotaFamilySummary } from '../../lib/quotas';
+import { QUOTA_FAMILIES, type QuotaFamily } from '../../lib/quotas';
 
-/** A connection (by id) and model family to bring into view, e.g. from a sidebar family quota card; `at` distinguishes repeated requests. */
+/** A connection (by id) and model family to bring into view, e.g. from a sidebar pool quota card; `at` distinguishes repeated requests. */
 export type ModelsTarget = { account: string; family: QuotaFamily; at: number };
 import { SettingsField as Field } from './SettingsField';
 import { useVisiblePoll } from '../../hooks/useVisiblePoll';
@@ -47,62 +47,48 @@ export function ProviderLogo({ logo, providerId, icon }: { logo?: NavigationIcon
 function formatTime(ms: number) { return new Date(ms).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }); }
 
 type UsageWindow = NonNullable<ModelUsageReport['windows']>[number];
-/**
- * Family summaries of a usage report, Gemini first: the same helper, cells and units as the sidebar family cards.
- * A family appears when it has a window or the backend reports it as truncated; only the structured `family` decides.
- */
-export function usageFamilies(usage: ModelUsageReport | null): QuotaFamilySummary[] {
+/** Model-family pools of a usage report in display order (Gemini, then Claude/GPT): a pool appears when it has a window or was truncated; only the structured `family` decides. */
+export function usagePools(usage: ModelUsageReport | null): { family: QuotaFamily; title: string; windows: UsageWindow[]; partial: boolean }[] {
   const windows = usage?.windows ?? [];
-  const readings = windows.flatMap((w, i) => w.family ? [{ id: w.id ?? `window-${i + 1}`, label: w.label, family: w.family, scope: w.scope ?? 'unknown', period: w.period ?? null,
-    usedPercent: w.usedPercent ?? null, resetsAt: w.resetAt ?? null, observedAt: w.observedAt ?? null }] : []);
   return QUOTA_FAMILIES.flatMap(f => {
+    const own = windows.filter(w => w.family === f.key);
     const partial = usage?.partialFamilies?.includes(f.key) === true;
-    if (!readings.some(r => r.family === f.key) && !partial) return [];
-    return [summarizeQuotaFamily(f.key, readings, { partial })];
+    return own.length || partial ? [{ family: f.key, title: f.pool, windows: own, partial }] : [];
   });
 }
 
-/** One used-percent row: label, meter and `N% used · resets …` or explicit unknowns. Text only. */
-function UsedRow({ label, used, resetsAt }: { label: string; used: number | null; resetsAt: number | null }) {
-  return <li className="models-window">
-    <span className="models-window-label">{label}</span>
-    {used !== null ? <span className="models-meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(used)} aria-valuetext={quotaUsedValue(used, 'en')} aria-label={`${label} used`}><span style={{ width: `${used}%` }} /></span> : <span aria-hidden="true" />}
-    <span className="models-window-meta">{quotaUsedValue(used, 'en')} · {quotaResetText(resetsAt, 'en')}</span>
-  </li>;
+/** The standard quota window list: label, meter and `N% used · resets …`, the same for every provider. Text only. */
+function UsageWindows({ windows, label }: { windows: UsageWindow[]; label: string }) {
+  return <ul className="models-windows" aria-label={label}>{windows.map((w, i) => {
+    const used = typeof w.usedPercent === 'number' ? Math.max(0, Math.min(100, w.usedPercent)) : null;
+    return <li key={`${w.id ?? w.label}-${i}`} className="models-window">
+      <span className="models-window-label">{w.label}</span>
+      {used !== null && <span className="models-meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(used)} aria-label={`${w.label} used`}><span style={{ width: `${used}%` }} /></span>}
+      <span className="models-window-meta">{used !== null ? `${Math.round(used)}% used` : typeof w.remaining === 'number' ? `${w.remaining} left` : 'no data'}{w.resetAt ? ` · resets ${formatTime(w.resetAt)}` : ''}</span>
+    </li>;
+  })}</ul>;
 }
 
-/** One model family: heading with the shared pool, then the five-hour/weekly/monthly used share with local resets and the family's extra limits. */
-function FamilyUsage({ summary, selected }: { summary: QuotaFamilySummary; selected?: number }) {
-  const note = quotaFamilyNote(summary, 'en');
+/** One model-family pool: its title, then the standard window list. Opened from a sidebar pool card it is scrolled into view and focused, without a lasting highlight. */
+function PoolUsage({ pool, selected }: { pool: ReturnType<typeof usagePools>[number]; selected?: number }) {
   const ref = useRef<HTMLElement>(null);
-  // Selected from a sidebar family card: bring this family into view and move focus to it, without animation.
   useEffect(() => { if (selected === undefined) return; ref.current?.scrollIntoView?.({ block: 'nearest' }); ref.current?.focus({ preventScroll: true }); }, [selected]);
-  return <section ref={ref} tabIndex={selected === undefined ? undefined : -1} className="models-family" data-family={summary.family} data-state={summary.state} data-selected={selected === undefined ? undefined : 'true'} aria-label={`${summary.title} quota`}>
-    <h4 className="models-family-title"><span>{summary.title}</span><span className="models-family-figure">{summary.pool} limits</span></h4>
-    <ul className="models-windows" aria-label={`${summary.title} periods`}>{QUOTA_PERIODS.map(p => { const w = summary.windows[p.key];
-      return <UsedRow key={p.key} label={quotaPeriodTitle(p.key, 'en')} used={w?.usedPercent ?? null} resetsAt={w?.resetsAt ?? null} />; })}</ul>
-    {summary.extra.length > 0 && <ul className="models-windows" aria-label={`${summary.title} additional limits`}>{summary.extra.map(w =>
-      <UsedRow key={w.id} label={`${w.label}${w.period ? ` (${quotaPeriodTitle(w.period, 'en')})` : ''}`} used={w.usedPercent} resetsAt={w.resetsAt} />)}</ul>}
-    {note && <p className="settings-note">{note}</p>}
+  return <section ref={ref} tabIndex={selected === undefined ? undefined : -1} className="models-family" data-family={pool.family} aria-label={`${pool.title} quota`}>
+    <h4 className="models-family-title">{pool.title}</h4>
+    {pool.windows.length > 0 ? <UsageWindows windows={pool.windows} label={`${pool.title} quota windows`} /> : <p className="settings-note">No data</p>}
+    {pool.partial && <p className="settings-note">Some readings were not received</p>}
   </section>;
 }
 
-/** Shared renderer of a UsageReport: status, reason and last success, then model-family period cells, other quota windows and balance when present. */
+/** Shared renderer of a UsageReport: status, reason and last success, then the quota windows (grouped by model-family pool when reported) and balance when present. */
 export function UsageView({ usage, selected }: { usage: ModelUsageReport; /** Family to bring into view and when it was requested. */ selected?: { family: QuotaFamily; at: number } | null }) {
   const tone = usage.stale ? 'is-pending' : usage.status === 'available' ? 'is-success' : usage.status === 'unavailable' ? 'is-error' : 'is-pending';
-  const families = usageFamilies(usage);
+  const pools = usagePools(usage);
   const windows = (usage.windows ?? []).filter(w => !w.family);
   return <div className="models-usage" data-stale={usage.stale || undefined}>
     <p className="models-usage-status"><span className={`settings-badge ${tone}`}><i aria-hidden="true" />{usage.stale ? 'Stale' : STATUS_LABEL[usage.status] ?? usage.status}</span>{usage.reason && <span className="models-usage-reason" title={usage.reason}>{reasonLabel(usage.reason)}</span>}<span className="models-usage-time">{usage.stale ? 'last success' : 'checked'} {formatTime(usage.checkedAt)}</span></p>
-    {families.map(s => <FamilyUsage key={s.family} summary={s} selected={selected?.family === s.family ? selected.at : undefined} />)}
-    {windows.length > 0 && <ul className="models-windows" aria-label="Quota windows">{windows.map((w: UsageWindow, i) => {
-      const used = typeof w.usedPercent === 'number' ? Math.max(0, Math.min(100, w.usedPercent)) : null;
-      return <li key={`${w.label}-${i}`} className="models-window">
-        <span className="models-window-label">{w.label}</span>
-        {used !== null && <span className="models-meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(used)} aria-label={`${w.label} used`}><span style={{ width: `${used}%` }} /></span>}
-        <span className="models-window-meta">{used !== null ? `${Math.round(used)}% used` : typeof w.remaining === 'number' ? `${w.remaining} left` : ''}{w.resetAt ? ` · resets ${formatTime(w.resetAt)}` : ''}</span>
-      </li>;
-    })}</ul>}
+    {pools.map(p => <PoolUsage key={p.family} pool={p} selected={selected?.family === p.family ? selected.at : undefined} />)}
+    {windows.length > 0 && <UsageWindows windows={windows} label="Quota windows" />}
     {usage.plan && <p className="settings-note">Plan: {usage.plan}</p>}
     {usage.balance && <p className="settings-note">Balance: {usage.balance.amount} {usage.balance.currency}</p>}
   </div>;
@@ -282,21 +268,15 @@ function useClientVersion(connection: ModelConnectionView, provider: ModelProvid
   return { text, canDetect, loading, refresh };
 }
 
-/** Most used quota window as a short row summary, e.g. `5h 42%`; model families name their most used period, e.g. `Gemini 5 hours 20%`. */
+/** Most used quota window as a short row summary, e.g. `Session (5h) 42%`; a pool window is prefixed by its pool, e.g. `Claude/GPT Weekly (7d) 75%`. */
 function quotaSummary(usage: ModelUsageReport | null): { text: string; tone: string } | null {
-  const families = usageFamilies(usage);
-  const windows = (usage?.windows ?? []).filter(w => !w.family && typeof w.usedPercent === 'number');
-  if (!windows.length && !families.length) return null;
-  const top = windows.length ? windows.reduce((a, b) => (b.usedPercent! > a.usedPercent! ? b : a)) : null;
+  const windows = (usage?.windows ?? []).filter(w => typeof w.usedPercent === 'number');
+  if (!windows.length) return usagePools(usage).length ? { text: 'no data', tone: 'is-unknown' } : null;
   const clamp = (v: number) => Math.max(0, Math.min(100, v));
-  const familyTop = families.map(s => {
-    const cells = QUOTA_PERIODS.flatMap(p => { const w = s.windows[p.key]; return w && w.usedPercent !== null ? [{ period: p.key, used: w.usedPercent }] : []; });
-    return { s, top: cells.length ? cells.reduce((a, b) => b.used > a.used ? b : a) : null };
-  });
-  // Severity follows the most used reading: the top window or the most used family period.
-  const usedValues = [...(top ? [clamp(top.usedPercent!)] : []), ...familyTop.flatMap(f => f.top ? [f.top.used] : [])];
-  const text = [...(top ? [`${top.label} ${Math.round(clamp(top.usedPercent!))}%`] : []),
-    ...familyTop.map(({ s, top: t }) => t ? `${s.title} ${quotaPeriodTitle(t.period, 'en')} ${Math.round(t.used)}%` : `${s.title} ${quotaUsedValue(null, 'en')}`)].join(' · ');
+  const top = windows.reduce((a, b) => (b.usedPercent! > a.usedPercent! ? b : a));
+  const pool = QUOTA_FAMILIES.find(f => f.key === top.family)?.pool;
+  const text = `${pool ? `${pool} ` : ''}${top.label} ${Math.round(clamp(top.usedPercent!))}%`;
+  const usedValues = [clamp(top.usedPercent!)];
   if (!usedValues.length) return { text, tone: 'is-unknown' };
   const used = Math.round(Math.max(...usedValues));
   return { text, tone: used >= 90 ? 'is-critical' : used >= 70 ? 'is-warning' : 'is-ok' };

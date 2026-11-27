@@ -57,19 +57,18 @@ test("discovery, restart, chat and delegation selection, generation and quota vi
     expect(claude.text).toBe("done claude-opus-5-5-medium");
     expect(w.gens().at(-1)!.headers.authorization).toBe("Bearer " + ACCESS);
 
-    // Quota views: one account, two families, group/period summary readings shared by the API and settings.
+    // Quota views: one standard account per family pool, filled from the same summary readings as settings.
     const usage = await w.ctx.fns.models.usage({ id: c.id });
     const accounts = ((await (await quotasRoute(w.ctx, null, { req: new Request("http://x/api/v1/quotas"), params: {} })).json()) as any).accounts.filter((a: any) => a.provider === "antigravity");
-    expect(accounts).toHaveLength(1);
-    expect(accounts[0]).toMatchObject({ id: c.id, label: "Antigravity · work", kind: "quota", windows: {}, families: [{ family: "gemini", partial: false }, { family: "claude", partial: false }] });
-    const of = (family: string) => accounts[0].additionalWindows.filter((x: any) => x.family === family).map((x: any) => [x.bucket, x.period, x.usedPercent, x.resetsAt]);
-    expect(of("gemini")).toEqual([["gemini-5h", "fiveHour", 20, RESET], ["gemini-weekly", "weekly", 60, Date.parse("2031-01-08T00:00:00Z")]]);
-    expect(of("claude")).toEqual([["3p-5h", "fiveHour", 10, Date.parse("2031-01-02T05:00:00Z")], ["3p-weekly", "weekly", 75, Date.parse("2031-01-09T00:00:00Z")]]);
-    expect(accounts[0].additionalWindows.map((x: any) => [x.bucket, x.usedPercent])).toEqual(usage.windows!.map((x: any) => [x.bucket, x.usedPercent ?? null]));
+    expect(accounts.map((a: any) => [a.id, a.connectionId, a.family, a.label, a.kind])).toEqual([[`${c.id}:gemini`, c.id, "gemini", "Antigravity · work", "quota"], [`${c.id}:claude`, c.id, "claude", "Antigravity · work", "quota"]]);
+    const cells = (a: any) => Object.entries(a.windows).map(([p, x]: [string, any]) => [p, x.usedPercent, x.resetsAt]);
+    expect(cells(accounts[0])).toEqual([["fiveHour", 20, RESET], ["weekly", 60, Date.parse("2031-01-08T00:00:00Z")]]);
+    expect(cells(accounts[1])).toEqual([["fiveHour", 10, Date.parse("2031-01-02T05:00:00Z")], ["weekly", 75, Date.parse("2031-01-09T00:00:00Z")]]);
+    expect(accounts.flatMap((a: any) => Object.values(a.windows).map((x: any) => x.usedPercent))).toEqual(usage.windows!.map((x: any) => x.usedPercent ?? null));
 
-    // The same account, with volatile fields fixed, is the fixture the sidebar test renders as two cards
+    // The same accounts, with volatile fields fixed, are the fixture the sidebar test renders as two cards
     // (frontend/src/test/quota-antigravity-acceptance.test.tsx): the views are checked against real API output.
-    expect({ ...accounts[0], id: "antigravity-work", icon: null, quotaUpdatedAt: 1, additionalWindows: accounts[0].additionalWindows.map((x: any) => ({ ...x, observedAt: 1 })) }).toEqual(QUOTA_ACCOUNT as any);
+    expect(accounts.map((a: any) => ({ ...a, id: `antigravity-work:${a.family}`, connectionId: "antigravity-work", icon: null, quotaUpdatedAt: 1 }))).toEqual(QUOTA_ACCOUNT as any);
 
     // Fixtures carry no credentials or account dump, and nothing secret reached a catalogue, quota view or model request.
     expect(JSON.stringify([INVENTORY, SUMMARY_BODY])).not.toMatch(/_token|bearer|secret|ya29|1\/\/|@|email|project|experiment|prompt/i);

@@ -119,10 +119,8 @@
 /* Model-family remaining quota: heading with the figure in words, then a row per model group. */
 .models-family { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .models-family-title { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--space-2); font-size: var(--font-sm); font-weight: 600; color: var(--text); }
-.models-family-figure { font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
-.models-family[data-state="none"] .models-family-figure { color: var(--text-tertiary); }
 .models-family:focus { outline: none; }
-.models-family:focus-visible, .models-family[data-selected]:focus { outline: 2px solid var(--focus-ring); outline-offset: 4px; border-radius: var(--radius-sm); }
+.models-family:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 4px; border-radius: var(--radius-sm); }
 .models-family .models-window-label { min-width: 0; overflow-wrap: anywhere; }
 .models-family .models-window-meta { white-space: normal; text-align: right; }
 .models-secret { display: flex; flex-direction: column; gap: var(--space-2); }

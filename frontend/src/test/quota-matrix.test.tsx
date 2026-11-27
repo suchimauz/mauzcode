@@ -150,198 +150,155 @@ it('compact mode marks extras and describes them for assistive technology', asyn
   await userEvent.click(btn); expect(onOpen).toHaveBeenCalled();
 });
 
-// Antigravity: one account, one card per shown model family with the standard USED-percent period cells.
+// Antigravity: one standard quota account per model-family pool, captioned by family, with the shared card, tooltip and compact row.
 const RESET_A = Date.UTC(2026, 0, 15, 9, 0), RESET_B = Date.UTC(2026, 0, 16, 18, 30);
 type Extra = NonNullable<QuotaAccount['additionalWindows']>[number];
-const pool = (family: 'gemini' | 'claude', period: 'fiveHour' | 'weekly', usedPercent: number | null, over: Partial<Extra> = {}): Extra => {
-  const bucket = `${family === 'gemini' ? 'gemini' : '3p'}-${period === 'fiveHour' ? '5h' : 'weekly'}`;
-  return { id: `antigravity:${bucket}`, label: bucket, scope: 'group', bucket, period, model: null, family, usedPercent, remaining: null, resetsAt: period === 'fiveHour' ? RESET_A : RESET_B, observedAt: 1794000000000, tone: 'neutral', ...over };
-};
-const FOUR = [pool('gemini', 'fiveHour', 20), pool('gemini', 'weekly', 60, { tone: 'warning' }), pool('claude', 'fiveHour', 10), pool('claude', 'weekly', 75, { tone: 'error' })];
-const BOTH = [{ family: 'gemini' as const, partial: false }, { family: 'claude' as const, partial: false }];
-const anti = (over: Partial<QuotaAccount> = {}): QuotaAccount => ({ id: 'ag:work', provider: 'antigravity', account: 'work', label: 'Antigravity · work', model: 'antigravity/work', connection: 'mauzcode', kind: 'quota', windows: {},
-  additionalWindows: FOUR, families: BOTH, quotaStatus: 'fresh', quotaUpdatedAt: 1794000000000, tone: 'error', parkedAgents: 0, icon: { src: 'data:image/svg+xml,%3Csvg%2F%3E', custom: false }, ...over });
+type Cell = NonNullable<QuotaAccount['windows']>['fiveHour'];
+const cell = (usedPercent: number | null, resetsAt: number | null, tone: 'neutral' | 'warning' | 'critical' | 'error' = 'neutral'): Cell => ({ usedPercent, resetsAt, tone });
+const ICON = { src: 'data:image/svg+xml,%3Csvg%2F%3E', custom: false };
+const agPool = (family: 'gemini' | 'claude', over: Partial<QuotaAccount> = {}): QuotaAccount => ({ id: `ag:work:${family}`, connectionId: 'ag:work', family, provider: 'antigravity', account: 'work', label: 'Antigravity · work', model: 'antigravity/work', connection: 'mauzcode', kind: 'quota',
+  windows: family === 'gemini' ? { fiveHour: cell(20, RESET_A), weekly: cell(60, RESET_B, 'warning') } : { fiveHour: cell(10, RESET_A), weekly: cell(75, RESET_B, 'error') },
+  additionalWindows: [], quotaStatus: 'fresh', quotaUpdatedAt: 1794000000000, tone: family === 'gemini' ? 'warning' : 'error', parkedAgents: 0, icon: ICON, ...over });
+const anti = (over: Partial<QuotaAccount> = {}) => [agPool('gemini', over), agPool('claude', over)];
 const slots = () => [...document.querySelector('.quota-matrix-grid')!.children].map(c => c.classList.contains('quota-card-spacer') ? 'spacer' : c.querySelector('.quota-card')!.getAttribute('data-family') ?? c.querySelector('.quota-card')!.getAttribute('data-kind'));
-const familyCards = () => [...document.querySelectorAll<HTMLElement>('.quota-card--family')];
+const poolCards = () => [...document.querySelectorAll<HTMLElement>('.quota-card[data-family]')];
 const periodCells = (card: Element) => [...card.querySelectorAll('[data-period]')].map(e => [e.textContent, e.getAttribute('data-tone')]);
 const local = (at: number) => new Date(at).toLocaleString('ru', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-it('shows adjacent Gemini and Claude cards with their own used-percent period cells, icon and no provider text', () => {
-  render(<QuotaMatrix accounts={[anti()]} />);
+it('shows adjacent Gemini and Claude standard cards captioned by family and account', () => {
+  render(<QuotaMatrix accounts={anti()} />);
   expect(slots()).toEqual(['gemini', 'claude']);
-  const [gemini, claudeCard] = familyCards();
+  const [gemini, claudeCard] = poolCards();
   expect(periodCells(gemini!)).toEqual([['20', 'neutral'], ['60', 'warning'], ['—', 'none']]);
   expect(periodCells(claudeCard!)).toEqual([['10', 'neutral'], ['75', 'error'], ['—', 'none']]);
-  // Provider identity is the icon and the accessible name, not text on the card face.
-  for (const card of [gemini!, claudeCard!]) { expect(card).not.toHaveTextContent('Antigravity'); expect(card.querySelector('.quota-card-logo img, .quota-card-logo svg, .quota-card-logo *')).not.toBeNull(); expect(card).not.toHaveTextContent('ост.'); }
-  expect(gemini!.querySelector('.quota-card-account')).toHaveTextContent('Gemini· work');
-  expect(claudeCard!.querySelector('.quota-card-family-name')).toHaveTextContent('Claude');
-  expect(gemini).toHaveAccessibleName('Antigravity · work: Gemini, 5 часов 20%, Неделя 60%, Месяц —');
+  expect([gemini!.className, claudeCard!.className]).toEqual(['quota-card', 'quota-card']);
+  expect(gemini!.getAttribute('data-kind')).toBe('quota');
+  expect(gemini!.querySelector('.quota-card-account')).toHaveTextContent('Gemini · work');
+  expect(claudeCard!.querySelector('.quota-card-account')).toHaveTextContent('Claude · work');
+  for (const card of [gemini!, claudeCard!]) { expect(card).not.toHaveTextContent('Antigravity'); expect(card.querySelector('.quota-card-logo *')).not.toBeNull(); }
+  // The accessible name is the same text tooltip as every other card.
+  expect(gemini!.getAttribute('aria-label')).toBe(quotaTooltip(agPool('gemini')).replace(/\n/g, '; '));
   expect(gemini).toHaveAttribute('data-tone', 'warning'); expect(claudeCard).toHaveAttribute('data-tone', 'error');
-  // One shared used-percent legend; the old remaining legend is gone.
   expect(screen.getByText('использовано, %')).toBeInTheDocument();
-  expect(screen.queryByText(/осталось/)).toBeNull();
 });
 
 it('keeps the pair on one row: a spacer moves it when a single slot remains', () => {
-  const { rerender } = render(<QuotaMatrix accounts={[kimi, codex, gate, anti()]} />);
+  const { rerender } = render(<QuotaMatrix accounts={[kimi, codex, gate, ...anti()]} />);
   expect(slots()).toEqual(['quota', 'quota', 'status', 'spacer', 'gemini', 'claude']);
   const spacer = document.querySelector('.quota-card-spacer')!;
   expect(spacer).toHaveAttribute('aria-hidden', 'true'); expect(spacer.querySelector('button')).toBeNull();
-  rerender(<QuotaMatrix accounts={[kimi, codex, anti(), gate]} />);
+  rerender(<QuotaMatrix accounts={[kimi, codex, ...anti(), gate]} />);
   expect(slots()).toEqual(['quota', 'quota', 'gemini', 'claude', 'status']);
-  rerender(<QuotaMatrix accounts={[kimi, codex, gate, anti({ families: [BOTH[0]!] })]} />);
+  rerender(<QuotaMatrix accounts={[kimi, codex, gate, agPool('gemini')]} />);
   expect(slots()).toEqual(['quota', 'quota', 'status', 'gemini']);
 });
 
-it('two Antigravity accounts each keep their own distinguishable pair', () => {
-  const second = anti({ id: 'ag:home', account: 'home', label: 'Antigravity · home', additionalWindows: [pool('gemini', 'fiveHour', 40), pool('claude', 'weekly', 90, { tone: 'error' })] });
-  render(<QuotaMatrix accounts={[kimi, anti(), second]} />);
+it('two Antigravity connections each keep their own distinguishable pair', () => {
+  const home = (family: 'gemini' | 'claude') => agPool(family, { id: `ag:home:${family}`, connectionId: 'ag:home', account: 'home', label: 'Antigravity · home' });
+  render(<QuotaMatrix accounts={[kimi, ...anti(), home('gemini'), home('claude')]} />);
   expect(slots()).toEqual(['quota', 'gemini', 'claude', 'spacer', 'gemini', 'claude']);
-  expect(familyCards().map(c => c.getAttribute('aria-label'))).toEqual([
-    'Antigravity · work: Gemini, 5 часов 20%, Неделя 60%, Месяц —', 'Antigravity · work: Claude, 5 часов 10%, Неделя 75%, Месяц —',
-    'Antigravity · home: Gemini, 5 часов 40%, Неделя —, Месяц —', 'Antigravity · home: Claude, 5 часов —, Неделя 90%, Месяц —']);
-  expect(familyCards().map(c => c.querySelector('.quota-card-account')!.textContent)).toEqual(['Gemini· work', 'Claude· work', 'Gemini· home', 'Claude· home']);
+  expect(poolCards().map(c => c.querySelector('.quota-card-account')!.textContent)).toEqual(['Gemini · work', 'Claude · work', 'Gemini · home', 'Claude · home']);
 });
 
-it('mixed providers: ordinary cards are unchanged next to family cards', () => {
-  render(<QuotaMatrix accounts={[codex, anti(), claude, gate]} />);
+it('mixed providers: ordinary cards are unchanged next to pool cards', () => {
+  render(<QuotaMatrix accounts={[codex, ...anti(), claude, gate]} />);
   expect(slots()).toEqual(['quota', 'gemini', 'claude', 'quota', 'status']);
   expect([...cells('codex').querySelectorAll('[data-period]')].map(e => e.textContent)).toEqual(['—', '93', '—']);
-  expect([...cells('Claude').querySelectorAll('[data-period]')].map(e => e.textContent)).toEqual(['10', '20', '—']);
-  expect(cells('Claude').querySelector('.quota-card-extra')).toHaveTextContent('+2');
-  expect(document.querySelector('[data-kind="status"] [data-status="available"]')?.textContent).toBe('✓');
+  expect(cells('Claude · me').querySelector('.quota-card-account')).toHaveTextContent('me');
   expect(cells('codex').getAttribute('aria-label')).toBe(quotaTooltip(codex).replace(/\n/g, '; '));
 });
 
-it('distinguishes 0% used, 100% used and no data; all-unknown is never 0% or 100%', () => {
-  const { rerender } = render(<QuotaMatrix accounts={[anti({ additionalWindows: [pool('gemini', 'fiveHour', 0), pool('gemini', 'weekly', 100, { tone: 'error' }), pool('claude', 'fiveHour', null)] })]} />);
-  const [gemini, claudeCard] = familyCards();
+it('distinguishes 0% used, 100% used and no data on pool cards like on any card', () => {
+  render(<QuotaMatrix accounts={[agPool('gemini', { windows: { fiveHour: cell(0, RESET_A), weekly: cell(100, RESET_B, 'error') } }), agPool('claude', { windows: { fiveHour: cell(null, RESET_A) } })]} />);
+  const [gemini, claudeCard] = poolCards();
   expect(periodCells(gemini!)).toEqual([['0', 'neutral'], ['100', 'error'], ['—', 'none']]);
   expect(periodCells(claudeCard!)).toEqual([['—', 'none'], ['—', 'none'], ['—', 'none']]);
-  expect(claudeCard).toHaveAttribute('data-state', 'none');
-  expect(claudeCard).toHaveAccessibleDescription(/^Claude\/GPT лимиты; 5 часов: нет данных, сброс \d/);
-  // Usage unavailable: a status account with shown families and no windows still renders the family cards.
-  rerender(<QuotaMatrix accounts={[anti({ kind: 'status', status: 'unavailable', windows: undefined, additionalWindows: undefined, quotaStatus: 'unavailable', tone: 'error' })]} />);
-  expect(slots()).toEqual(['gemini', 'claude']);
-  for (const card of familyCards()) expect(periodCells(card).map(c => c[0])).toEqual(['—', '—', '—']);
-  expect(document.querySelector('.quota-card-status')).toBeNull();
 });
 
-it('shows only the families with an enabled model, and the ordinary card when none is shown', () => {
-  const { rerender } = render(<QuotaMatrix accounts={[anti({ families: [BOTH[0]!] })]} />);
-  expect(slots()).toEqual(['gemini']);
-  expect(document.body.textContent).not.toContain('Claude');
-  rerender(<QuotaMatrix accounts={[anti({ additionalWindows: [], families: BOTH })]} />);
-  // An eligible family with an unknown quota still has its card.
-  expect(slots()).toEqual(['gemini', 'claude']);
-  rerender(<QuotaMatrix accounts={[anti({ kind: 'status', status: 'available', windows: undefined, additionalWindows: undefined, families: [] })]} />);
-  expect(slots()).toEqual(['status']);
-  expect(document.querySelector('[data-status="available"]')?.textContent).toBe('✓');
-});
-
-it('classifies windows only by the structured family and scope, never by label or provider id', () => {
-  render(<QuotaMatrix accounts={[anti({ provider: 'someone-else', label: 'Workbench · team', account: 'team', additionalWindows: [pool('claude', 'fiveHour', 10, { label: 'Gemini lookalike' }), { ...pool('gemini', 'weekly', 99), family: null }] })]} />);
-  const [gemini, claudeCard] = familyCards();
-  expect(periodCells(gemini!).map(c => c[0])).toEqual(['—', '—', '—']);
-  expect(periodCells(claudeCard!).map(c => c[0])).toEqual(['10', '—', '—']);
-  expect(gemini).toHaveAccessibleName('Workbench · team: Gemini, 5 часов —, Неделя —, Месяц —');
-});
-
-it('family details open by pointer: provider, account, shared pool, each period with local reset, the family extra', async () => {
-  const extra: Extra = { ...pool('gemini', 'weekly', 70), id: 'antigravity:gemini-pro-weekly', bucket: 'gemini-pro-weekly', label: '<i>Gemini Pro weekly</i>', scope: 'unknown', tone: 'warning' };
-  render(<QuotaMatrix accounts={[anti({ planType: 'ultra', additionalWindows: [...FOUR, extra] })]} />);
-  // The extra raises a mark on its own family card, never fills a cell.
-  expect(periodCells(familyCards()[0]!).map(c => c[0])).toEqual(['20', '60', '—']);
-  expect(familyCards()[0]!.querySelector('.quota-card-extra')).toHaveTextContent('+1');
-  expect(familyCards()[1]!.querySelector('.quota-card-extra')).toBeNull();
-  await userEvent.hover(familyCards()[0]!);
+it('pool details use the standard tooltip: title, account with pool, periods with reset, the pool extra', async () => {
+  const extra: Extra = { id: 'antigravity:gemini-pro-weekly', label: '<i>Gemini Pro weekly</i>', scope: 'unknown', bucket: 'gemini-pro-weekly', period: 'weekly', model: null, family: 'gemini', usedPercent: 70, remaining: null, resetsAt: RESET_B, observedAt: 1794000000000, tone: 'warning' };
+  render(<QuotaMatrix accounts={[agPool('gemini', { planType: 'ultra', additionalWindows: [extra] }), agPool('claude')]} />);
+  expect(poolCards()[0]!.querySelector('.quota-card-extra')).toHaveTextContent('+1');
+  expect(poolCards()[1]!.querySelector('.quota-card-extra')).toBeNull();
+  await userEvent.hover(poolCards()[0]!);
   const tip = await screen.findByRole('tooltip');
-  expect(tip.querySelector('.navigation-tooltip-title')?.textContent).toBe('Antigravity · Gemini');
-  expect(tip.textContent).toContain('Antigravity · work · ultra');
-  expect(tip.querySelector('.quota-tooltip-pool')?.textContent).toBe('Лимиты Gemini');
-  const rows = [...tip.querySelectorAll('.quota-tooltip-family .quota-tooltip-period')].map(r => [...r.children].map(c => c.textContent));
-  expect(rows).toEqual([['5 часов · использовано', '20%', `сброс ${local(RESET_A)}`], ['Неделя · использовано', '60%', `сброс ${local(RESET_B)}`], ['Месяц · использовано', '—']]);
+  expect(tip.querySelector('.navigation-tooltip-title')?.textContent).toBe('Gemini · work');
+  expect(tip.textContent).toContain('Antigravity · work · Gemini · ultra');
+  const rows = [...tip.querySelectorAll(':scope > .quota-tooltip-periods > .quota-tooltip-period')].map(r => [...r.children].map(c => c.textContent));
+  expect(rows).toEqual([['5 часов', '20%', `сброс ${local(RESET_A)}`], ['Неделя', '60%', `сброс ${local(RESET_B)}`]]);
+  expect(tip.textContent).not.toContain('использовано');
   expect(tip.textContent).toContain('Дополнительные лимиты · 1'); expect(tip.textContent).toContain('<i>Gemini Pro weekly</i>');
   expect(tip.querySelector('i')).toBeNull();
-  expect(tip.textContent).not.toContain('3p-5h');
-  expect(tip.querySelector('.navigation-tooltip-status')?.textContent).toBe(`Updated ${local(1794000000000)}`);
 });
 
-it('family details open on keyboard focus, Escape dismisses and keeps focus, activation opens the same target', async () => {
+it('pool details open on keyboard focus, Escape dismisses and keeps focus, activation opens the connection and family', async () => {
   const onOpen = vi.fn();
-  render(<QuotaMatrix accounts={[kimi, anti()]} onOpen={onOpen} />);
+  render(<QuotaMatrix accounts={[kimi, ...anti()]} onOpen={onOpen} />);
   await userEvent.tab(); await userEvent.tab(); await userEvent.tab();
-  const claudeCard = familyCards()[1]!;
+  const claudeCard = poolCards()[1]!;
   expect(claudeCard).toHaveFocus();
   const tip = await screen.findByRole('tooltip');
-  expect(tip.querySelector('.navigation-tooltip-title')?.textContent).toBe('Antigravity · Claude');
-  expect(tip.querySelector('.quota-tooltip-pool')?.textContent).toBe('Лимиты Claude/GPT');
-  expect(tip.textContent).toContain('75%');
+  expect(tip.querySelector('.navigation-tooltip-title')?.textContent).toBe('Claude · work');
+  expect(tip.textContent).toContain('Antigravity · work · Claude/GPT');
   await userEvent.keyboard('{Escape}');
   await vi.waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
   expect(claudeCard).toHaveFocus();
   expect(onOpen).not.toHaveBeenCalled();
   await userEvent.keyboard('{Enter}');
   expect(onOpen).toHaveBeenLastCalledWith({ account: 'ag:work', family: 'claude' });
-  await userEvent.click(familyCards()[0]!);
+  await userEvent.click(poolCards()[0]!);
   expect(onOpen).toHaveBeenLastCalledWith({ account: 'ag:work', family: 'gemini' });
   await userEvent.click(cells('kimi'));
   expect(onOpen).toHaveBeenCalledTimes(3);
-  expect(onOpen).toHaveBeenLastCalledWith();
+  expect(onOpen).toHaveBeenLastCalledWith(undefined);
 });
 
-it('stale family data keeps its values, marks the card and names the last success time; a truncated family says so', async () => {
-  render(<QuotaMatrix accounts={[anti({ quotaStatus: 'stale', families: [{ family: 'gemini', partial: true }, BOTH[1]!] })]} />);
-  const [gemini] = familyCards();
+it('stale pool data keeps its values and marks the card; a truncated pool says so', async () => {
+  render(<QuotaMatrix accounts={[agPool('gemini', { quotaStatus: 'stale', partial: true })]} />);
+  const [gemini] = poolCards();
   expect(gemini).toHaveAttribute('data-stale', 'true');
   expect(periodCells(gemini!).map(c => c[0])).toEqual(['20', '60', '—']);
-  expect(gemini).toHaveAccessibleDescription(new RegExp(`Часть показаний не получена; Данные устарели, обновлено ${local(1794000000000).replace(/[.]/g, '\\.')}$`));
   await userEvent.hover(gemini!);
   const tip = await screen.findByRole('tooltip');
   expect(tip.querySelector('.quota-tooltip-note')?.textContent).toBe('Часть показаний не получена');
-  expect(tip.querySelector('.navigation-tooltip-status')?.textContent).toBe(`Stale · updated ${local(1794000000000)}`);
+  expect(tip.querySelector('.navigation-tooltip-status')?.textContent).toBe(`Updated ${local(1794000000000)}`);
 });
 
 it('the expanded mobile Usage section shows the same pair with the same values', async () => {
   const onOpen = vi.fn();
-  render(<QuotaMatrix accounts={[kimi, codex, gate, anti()]} collapsible onOpen={onOpen} />);
+  render(<QuotaMatrix accounts={[kimi, codex, gate, ...anti()]} collapsible onOpen={onOpen} />);
   const toggle = screen.getByRole('button', { name: 'Usage' });
-  expect(familyCards()).toHaveLength(0);
+  expect(poolCards()).toHaveLength(0);
   await userEvent.click(toggle);
   expect(slots()).toEqual(['quota', 'quota', 'status', 'spacer', 'gemini', 'claude']);
-  expect(familyCards().map(c => periodCells(c).map(x => x[0]))).toEqual([['20', '60', '—'], ['10', '75', '—']]);
-  await userEvent.click(familyCards()[1]!);
+  expect(poolCards().map(c => periodCells(c).map(x => x[0]))).toEqual([['20', '60', '—'], ['10', '75', '—']]);
+  await userEvent.click(poolCards()[1]!);
   expect(onOpen).toHaveBeenLastCalledWith({ account: 'ag:work', family: 'claude' });
 });
 
-it('the compact rail names each family with its separate periods and lists extras without hover', async () => {
+it('the compact rail lists each pool as an ordinary row and its extras without hover', async () => {
   const onOpen = vi.fn();
-  const extra: Extra = { ...pool('gemini', 'weekly', 70), id: 'antigravity:gemini-pro-weekly', bucket: 'gemini-pro-weekly', label: 'Gemini Pro weekly', scope: 'unknown' };
-  const orphan: Extra = { ...pool('gemini', 'weekly', 50), id: 'antigravity:other', bucket: 'other', label: 'Other daily', scope: 'unknown', period: null, family: null };
-  const { rerender } = render(<QuotaMatrix accounts={[kimi, anti()]} compact onOpen={onOpen} />);
+  const extra: Extra = { id: 'antigravity:gemini-pro-weekly', label: 'Gemini Pro weekly', scope: 'unknown', bucket: 'gemini-pro-weekly', period: 'weekly', model: null, family: 'gemini', usedPercent: 70, remaining: null, resetsAt: null, observedAt: null, tone: 'neutral' };
+  const { rerender } = render(<QuotaMatrix accounts={[kimi, ...anti()]} compact onOpen={onOpen} />);
   expect(screen.getAllByRole('button')).toHaveLength(1);
   const btn = screen.getByRole('button', { name: 'Лимиты моделей' });
-  expect(btn).toHaveAccessibleDescription(/Antigravity · work; Gemini \(Gemini\): 5 часов 20%, Неделя 60%, Месяц —; Claude \(Claude\/GPT\): 5 часов 10%, Неделя 75%, Месяц —/);
   expect(btn).toHaveAttribute('data-tone', 'error');
   expect(btn.querySelector('.quota-compact-extra')).toBeNull();
   await userEvent.hover(btn);
   const tip = await screen.findByRole('tooltip');
-  expect([...tip.querySelectorAll('[data-family]')].map(r => [...r.children].map(c => c.textContent))).toEqual([
-    ['Antigravity · work · Gemini (Gemini)', '20 · 60 · —'], ['Antigravity · work · Claude (Claude/GPT)', '10 · 75 · —']]);
+  expect([...tip.querySelectorAll('[data-family]')].map(r => [...r.children].map(c => c.textContent))).toEqual([['Gemini · work', '20 · 60 · —'], ['Claude · work', '10 · 75 · —']]);
   await userEvent.click(btn); expect(onOpen).toHaveBeenLastCalledWith();
-  // A family extra and an extra of no eligible family both appear in the indicator details, never as a period.
-  rerender(<QuotaMatrix accounts={[anti({ additionalWindows: [...FOUR, extra, orphan] })]} compact />);
+  rerender(<QuotaMatrix accounts={[agPool('gemini', { additionalWindows: [extra] }), agPool('claude')]} compact />);
   const btn2 = screen.getByRole('button', { name: 'Лимиты моделей' });
   expect(btn2.querySelector('.quota-compact-extra')).not.toBeNull();
-  expect(btn2).toHaveAccessibleDescription(/Дополнительные лимиты: 2; Gemini Pro weekly: 70%.*; Other daily: 50%/);
+  expect(btn2).toHaveAccessibleDescription(/Дополнительные лимиты: 1; Gemini Pro weekly: 70%/);
 });
 
-it('a family reading at alert raises the account and compact indicator without an account-wide cell', () => {
-  const hot = anti({ additionalWindows: [pool('claude', 'fiveHour', 90, { tone: 'error' })], tone: 'error' });
-  const { rerender } = render(<QuotaMatrix accounts={[kimi, hot]} compact />);
+it('a pool reading at alert raises only that card and the compact indicator', () => {
+  const hot = [agPool('gemini', { tone: 'neutral', windows: { fiveHour: cell(5, null) } }), agPool('claude', { windows: { fiveHour: cell(90, null, 'error') }, tone: 'error' })];
+  const { rerender } = render(<QuotaMatrix accounts={[kimi, ...hot]} compact />);
   expect(screen.getByRole('button', { name: 'Лимиты моделей' })).toHaveAttribute('data-tone', 'error');
-  rerender(<QuotaMatrix accounts={[hot]} />);
-  expect(periodCells(familyCards()[1]!)[0]).toEqual(['90', 'error']);
-  expect(document.querySelectorAll('.quota-card:not(.quota-card--family)')).toHaveLength(0);
+  rerender(<QuotaMatrix accounts={hot} />);
+  expect(poolCards().map(c => c.getAttribute('data-tone'))).toEqual(['neutral', 'error']);
+  expect(periodCells(poolCards()[1]!)[0]).toEqual(['90', 'error']);
 });

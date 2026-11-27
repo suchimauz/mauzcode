@@ -45,8 +45,8 @@ it('keeps the last snapshot when a later read fails', async () => {
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 const hidden = (value: boolean) => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => value }); document.dispatchEvent(new Event('visibilitychange')); };
-const account = (used: number | null, updatedAt: number, status: 'fresh' | 'stale' = 'fresh') => ({ ...body.accounts[0], id: 'ag:work', provider: 'antigravity', quotaStatus: status, quotaUpdatedAt: updatedAt,
-  families: [{ family: 'gemini', partial: false }], additionalWindows: [{ id: 'antigravity:gemini-5h', label: 'gemini-5h', scope: 'group', bucket: 'gemini-5h', period: 'fiveHour', model: null, family: 'gemini', usedPercent: used, remaining: null, resetsAt: null, observedAt: updatedAt, tone: 'neutral' }] });
+const account = (used: number | null, updatedAt: number, status: 'fresh' | 'stale' = 'fresh') => ({ ...body.accounts[0], id: 'ag:work:gemini', connectionId: 'ag:work', family: 'gemini', provider: 'antigravity', quotaStatus: status, quotaUpdatedAt: updatedAt,
+  windows: { fiveHour: { usedPercent: used, resetsAt: null, tone: 'neutral' } }, additionalWindows: [] });
 
 it('pauses while hidden, re-reads an expired snapshot on return and reuses a fresh one', async () => {
   vi.useFakeTimers();
@@ -83,7 +83,7 @@ it('shows a changed value on the next poll, keeps a stale snapshot with its succ
     json({ updatedAt: 3, accounts: [account(70, 61_000, 'stale')] }), json({ updatedAt: 4, accounts: [account(null, 181_000)] })];
   vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('provider-icons') ? json({ icons: {} }) : replies[Math.min(n++, replies.length - 1)]!));
   const { result } = renderHook(() => useQuotas());
-  const shown = () => [result.current.accounts?.[0]?.additionalWindows?.[0]?.usedPercent, result.current.accounts?.[0]?.quotaStatus, result.current.accounts?.[0]?.quotaUpdatedAt];
+  const shown = () => [result.current.accounts?.[0]?.windows?.fiveHour?.usedPercent, result.current.accounts?.[0]?.quotaStatus, result.current.accounts?.[0]?.quotaUpdatedAt];
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(shown()).toEqual([20, 'fresh', 1_000]);
   await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });

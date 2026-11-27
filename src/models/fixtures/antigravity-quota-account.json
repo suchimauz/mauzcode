@@ -1,85 +1,64 @@
-{
-  "id": "antigravity-work",
-  "provider": "antigravity",
-  "account": "work",
-  "label": "Antigravity · work",
-  "model": "antigravity/work",
-  "icon": null,
-  "connection": "mauzcode",
-  "kind": "quota",
-  "windows": {},
-  "additionalWindows": [
-    {
-      "id": "antigravity:gemini-5h",
-      "label": "Gemini 5h",
-      "scope": "group",
-      "bucket": "gemini-5h",
-      "period": "fiveHour",
-      "model": null,
-      "family": "gemini",
-      "usedPercent": 20,
-      "remaining": null,
-      "resetsAt": 1925089445000,
-      "observedAt": 1,
-      "tone": "neutral"
+[
+  {
+    "id": "antigravity-work:gemini",
+    "connectionId": "antigravity-work",
+    "family": "gemini",
+    "provider": "antigravity",
+    "account": "work",
+    "label": "Antigravity · work",
+    "model": "antigravity/work",
+    "icon": null,
+    "connection": "mauzcode",
+    "status": "available",
+    "quotaStatus": "fresh",
+    "quotaUpdatedAt": 1,
+    "planType": null,
+    "parkedAgents": 0,
+    "kind": "quota",
+    "windows": {
+      "fiveHour": {
+        "usedPercent": 20,
+        "resetsAt": 1925089445000,
+        "tone": "neutral"
+      },
+      "weekly": {
+        "usedPercent": 60,
+        "resetsAt": 1925596800000,
+        "tone": "critical"
+      }
     },
-    {
-      "id": "antigravity:gemini-weekly",
-      "label": "Gemini weekly",
-      "scope": "group",
-      "bucket": "gemini-weekly",
-      "period": "weekly",
-      "model": null,
-      "family": "gemini",
-      "usedPercent": 60,
-      "remaining": null,
-      "resetsAt": 1925596800000,
-      "observedAt": 1,
-      "tone": "critical"
+    "additionalWindows": [],
+    "tone": "critical"
+  },
+  {
+    "id": "antigravity-work:claude",
+    "connectionId": "antigravity-work",
+    "family": "claude",
+    "provider": "antigravity",
+    "account": "work",
+    "label": "Antigravity · work",
+    "model": "antigravity/work",
+    "icon": null,
+    "connection": "mauzcode",
+    "status": "available",
+    "quotaStatus": "fresh",
+    "quotaUpdatedAt": 1,
+    "planType": null,
+    "parkedAgents": 0,
+    "kind": "quota",
+    "windows": {
+      "fiveHour": {
+        "usedPercent": 10,
+        "resetsAt": 1925096400000,
+        "tone": "neutral"
+      },
+      "weekly": {
+        "usedPercent": 75,
+        "resetsAt": 1925683200000,
+        "tone": "error"
+      }
     },
-    {
-      "id": "antigravity:3p-5h",
-      "label": "3p-5h",
-      "scope": "group",
-      "bucket": "3p-5h",
-      "period": "fiveHour",
-      "model": null,
-      "family": "claude",
-      "usedPercent": 10,
-      "remaining": null,
-      "resetsAt": 1925096400000,
-      "observedAt": 1,
-      "tone": "neutral"
-    },
-    {
-      "id": "antigravity:3p-weekly",
-      "label": "3p-weekly",
-      "scope": "group",
-      "bucket": "3p-weekly",
-      "period": "weekly",
-      "model": null,
-      "family": "claude",
-      "usedPercent": 75,
-      "remaining": null,
-      "resetsAt": 1925683200000,
-      "observedAt": 1,
-      "tone": "error"
-    }
-  ],
-  "families": [
-    {
-      "family": "gemini",
-      "partial": false
-    },
-    {
-      "family": "claude",
-      "partial": false
-    }
-  ],
-  "status": "available",
-  "quotaStatus": "fresh",
-  "quotaUpdatedAt": 1,
-  "tone": "error",
-  "planType": null,
-  "parkedAgents": 0
-}
+    "additionalWindows": [],
+    "tone": "error"
+  }
+]

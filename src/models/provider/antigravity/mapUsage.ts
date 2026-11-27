@@ -4,6 +4,7 @@
  * Pure. Reads `groups[].buckets[]` by structured identity only: the general buckets `gemini-5h`/`gemini-weekly`
  * (family `gemini`) and `3p-5h`/`3p-weekly` (family `claude`, the shared Claude/GPT pool) become `scope: "group"`
  * windows with `period` `fiveHour`/`weekly`, but only when their structured `window` (`5h`/`weekly`) matches the ID.
+ * General windows carry the shared standard labels `Session (5h)` / `Weekly (7d)`; other buckets keep their display name.
  * Every other bucket with a usable `bucketId` is kept as an additional window (`scope: "unknown"`) with its own
  * identity; it carries the family of its group only when that group's general buckets name exactly one family.
  * `remainingFraction` in [0,1] becomes `usedPercent = 100 × (1 − fraction)` (binary rounding noise removed) and a valid `resetTime` becomes
@@ -64,7 +65,7 @@ export default function (
         const values = { observedAt: opts.observedAt, ...(b.fraction !== undefined ? { usedPercent: Math.round(1e9 * 100 * (1 - b.fraction)) / 1e9 } : {}), ...(b.resetAt !== undefined ? { resetAt: b.resetAt } : {}) };
         if (g) {
             if (b.window !== g.window || groupFamily.get(b.group) !== g.family) continue;
-            out.push({ label: b.label ?? b.id, id: "antigravity:" + b.id, bucket: b.id, scope: "group", family: g.family, period: g.period, ...values });
+            out.push({ label: g.period === "fiveHour" ? "Session (5h)" : "Weekly (7d)", id: "antigravity:" + b.id, bucket: b.id, scope: "group", family: g.family, period: g.period, ...values });
             continue;
         }
         const family = groupFamily.get(b.group) ?? undefined;

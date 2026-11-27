@@ -20,7 +20,7 @@ describe("summary buckets become group/period readings (1.2)", () => {
             ["3p-5h", "group", "claude", "fiveHour", 10, T("2031-01-02T05:00:00Z")],
             ["3p-weekly", "group", "claude", "weekly", 75, T("2031-01-09T00:00:00Z")],
         ]);
-        expect(windows[0]).toEqual({ label: "Gemini 5h", id: "antigravity:gemini-5h", bucket: "gemini-5h", scope: "group", family: "gemini", period: "fiveHour", observedAt: 1000, usedPercent: 20, resetAt: T("2031-01-02T03:04:05Z") });
+        expect(windows[0]).toEqual({ label: "Session (5h)", id: "antigravity:gemini-5h", bucket: "gemini-5h", scope: "group", family: "gemini", period: "fiveHour", observedAt: 1000, usedPercent: 20, resetAt: T("2031-01-02T03:04:05Z") });
         expect(windows.every(w => w.model === undefined && w.remaining === undefined)).toBe(true);
     });
 
@@ -103,7 +103,7 @@ describe("the usage path reads the summary (1.1)", () => {
 });
 
 describe("grouped readings through normalization and the quota API (1.3)", () => {
-    test("one connection, two families, four periods, one extra and no invented account windows", async () => {
+    test("one connection becomes two standard pool accounts with their own periods and extra", async () => {
         const body = structuredClone(SUMMARY_BODY) as any;
         body.groups[0].buckets.push(bucket("gemini-pro-weekly", "weekly", 0.3, "2031-02-01T00:00:00Z", "Gemini Pro weekly"));
         const w = await world({ summary: () => body });
@@ -111,39 +111,35 @@ describe("grouped readings through normalization and the quota API (1.3)", () =>
         const report = await w.ctx.fns.models.usage({ id: c.id });
         expect(report.windows!.map((x: W) => x.bucket)).toEqual(["gemini-5h", "gemini-weekly", "gemini-pro-weekly", "3p-5h", "3p-weekly"]);
         const accounts = (await quotas(w.ctx)).filter(a => a.provider === "antigravity");
-        expect(accounts).toHaveLength(1);
-        const [account] = accounts;
-        expect(account).toMatchObject({ id: c.id, account: "one", kind: "quota", windows: {}, quotaStatus: "fresh", families: [{ family: "gemini", partial: false }, { family: "claude", partial: false }] });
-        expect(account.additionalWindows.map((x: any) => [x.bucket, x.scope, x.family, x.period, x.usedPercent, x.resetsAt])).toEqual([
-            ["gemini-5h", "group", "gemini", "fiveHour", 20, T("2031-01-02T03:04:05Z")],
-            ["gemini-weekly", "group", "gemini", "weekly", 60, T("2031-01-08T00:00:00Z")],
-            ["gemini-pro-weekly", "unknown", "gemini", "weekly", 70, T("2031-02-01T00:00:00Z")],
-            ["3p-5h", "group", "claude", "fiveHour", 10, T("2031-01-02T05:00:00Z")],
-            ["3p-weekly", "group", "claude", "weekly", 75, T("2031-01-09T00:00:00Z")],
-        ]);
-        expect(account.additionalWindows.every((x: any) => x.model === null && x.remaining === null && x.observedAt === report.windows![0]!.observedAt && x.observedAt <= report.checkedAt)).toBe(true);
+        expect(accounts.map(a => [a.id, a.connectionId, a.family, a.account, a.kind, a.quotaStatus])).toEqual([
+            [`${c.id}:gemini`, c.id, "gemini", "one", "quota", "fresh"], [`${c.id}:claude`, c.id, "claude", "one", "quota", "fresh"]]);
+        const [gemini, claude] = accounts;
+        expect(gemini.families).toBeUndefined();
+        expect(gemini.windows).toEqual({ fiveHour: { usedPercent: 20, resetsAt: T("2031-01-02T03:04:05Z"), tone: "neutral" }, weekly: { usedPercent: 60, resetsAt: T("2031-01-08T00:00:00Z"), tone: "critical" } });
+        expect(claude.windows).toEqual({ fiveHour: { usedPercent: 10, resetsAt: T("2031-01-02T05:00:00Z"), tone: "neutral" }, weekly: { usedPercent: 75, resetsAt: T("2031-01-09T00:00:00Z"), tone: "error" } });
+        expect(gemini.additionalWindows.map((x: any) => [x.bucket, x.scope, x.family, x.period, x.usedPercent, x.resetsAt])).toEqual([["gemini-pro-weekly", "unknown", "gemini", "weekly", 70, T("2031-02-01T00:00:00Z")]]);
+        expect(gemini.additionalWindows.every((x: any) => x.model === null && x.remaining === null && x.observedAt === report.windows![0]!.observedAt && x.observedAt <= report.checkedAt)).toBe(true);
+        expect(claude.additionalWindows).toEqual([]);
     });
 
-    test("identical family readings are two distinguishable readings, not two accounts or an account limit", async () => {
+    test("identical family readings stay two distinguishable pool accounts; labels never classify", async () => {
         const same = { groups: [{ displayName: "Близнецы", buckets: [bucket("gemini-5h", "5h", 0.5, "2031-01-02T03:04:05Z", "Пять часов")] }, { buckets: [bucket("3p-5h", "5h", 0.5, "2031-01-02T03:04:05Z", "Пять часов")] }] };
         const w = await world({ summary: () => same });
         const c = await w.connect("twin");
-        const [account] = (await quotas(w.ctx)).filter(a => a.id === c.id);
-        expect(account.windows).toEqual({});
-        expect(account.additionalWindows.map((x: any) => [x.id, x.family, x.period])).toEqual([["antigravity:gemini-5h", "gemini", "fiveHour"], ["antigravity:3p-5h", "claude", "fiveHour"]]);
+        const pools = (await quotas(w.ctx)).filter(a => a.connectionId === c.id);
+        expect(pools.map(a => [a.family, a.windows.fiveHour?.usedPercent, a.additionalWindows.length])).toEqual([["gemini", 50, 0], ["claude", 50, 0]]);
     });
 
-    test("a family reading above the alert threshold raises the account's severity without filling an account cell", async () => {
+    test("a pool reading above the alert threshold marks only that pool's account and cell", async () => {
         const w = await world({ summary: () => ({ groups: [{ buckets: [bucket("gemini-5h", "5h", 0.9)] }, { buckets: [bucket("3p-5h", "5h", 0.1)] }] }) });
         const c = await w.connect("hot");
         const view = await w.ctx.fns.frontendBridge.modelUsage({});
         const conn = view.connections.find((x: types.frontendBridge.ModelUsageView["connections"][number]) => x.id === c.id)!;
         expect(conn.level).toBe("alert");
         expect(conn.windows.find((x: W) => x.bucket === "3p-5h")!.level).toBe("alert");
-        const [account] = (await quotas(w.ctx)).filter(a => a.id === c.id);
-        expect(account.tone).toBe("error");
-        expect(account.windows).toEqual({});
-        expect(account.additionalWindows.find((x: any) => x.bucket === "3p-5h")).toMatchObject({ tone: "error", usedPercent: 90 });
+        const [gemini, claude] = (await quotas(w.ctx)).filter(a => a.connectionId === c.id);
+        expect([gemini.tone, claude.tone]).toEqual(["neutral", "error"]);
+        expect(claude.windows.fiveHour).toMatchObject({ tone: "error", usedPercent: 90 });
     });
 
     test("other providers' main columns are unchanged by the group scope", async () => {
@@ -176,9 +172,9 @@ describe("grouped readings through normalization and the quota API (1.3)", () =>
         const rev2 = `${c2.id}:${Bun.hash(`${c2.id}:${v2.updatedAt}`).toString(36)}`;
         w2.ctx.state.models!.health![`${rev2}:usage`] = { expiresAt: 0, result: old };
         expect(await w2.ctx.fns.models.usage({ id: c2.id })).toEqual({ status: "unavailable", reason: "usage-failed", checkedAt: expect.any(Number) });
-        const [account] = (await quotas(w2.ctx)).filter(a => a.id === c2.id);
-        expect(account).toMatchObject({ kind: "status", quotaStatus: "unavailable" });
-        expect(JSON.stringify(account)).not.toContain("gemini-4-neon-high");
+        const pools = (await quotas(w2.ctx)).filter(a => a.connectionId === c2.id);
+        expect(pools.map(a => [a.kind, a.quotaStatus])).toEqual([["status", "unavailable"], ["status", "unavailable"]]);
+        expect(JSON.stringify(pools)).not.toContain("gemini-4-neon-high");
         fail = false;
         expect((await w2.ctx.fns.models.usage({ id: c2.id, refresh: true })).windows).toHaveLength(4);
     });
@@ -192,7 +188,7 @@ describe("one snapshot per connection, stale on failure (1.3, 2.1)", () => {
         const [again, api] = await Promise.all([w.ctx.fns.models.connections.usage({ id: c.id }), quotas(w.ctx)]);
         expect(w.summaries()).toHaveLength(1);
         expect(again).toEqual(first);
-        const account = api.find(a => a.id === c.id);
+        const account = api.find(a => a.connectionId === c.id);
         expect(account.quotaUpdatedAt).toBe(first.checkedAt);
         expect(new Set(first.windows!.map((x: W) => x.observedAt)).size).toBe(1);
         await w.ctx.fns.models.usage({ id: c.id, refresh: true });
@@ -208,27 +204,28 @@ describe("one snapshot per connection, stale on failure (1.3, 2.1)", () => {
         mode = "fail";
         const stale = await w.ctx.fns.models.usage({ id: c.id, refresh: true });
         expect(stale).toEqual({ ...ok, stale: true, reason: "usage-stale" });
-        const [account] = (await quotas(w.ctx)).filter(a => a.id === c.id);
-        expect(account).toMatchObject({ quotaStatus: "stale", quotaUpdatedAt: ok.checkedAt, kind: "quota" });
-        expect(account.additionalWindows).toHaveLength(4);
-        expect(JSON.stringify(account)).not.toMatch(/SECRET|ya29/);
+        const pools = (await quotas(w.ctx)).filter(a => a.connectionId === c.id);
+        for (const a of pools) expect(a).toMatchObject({ quotaStatus: "stale", quotaUpdatedAt: ok.checkedAt, kind: "quota" });
+        expect(pools.map(a => Object.keys(a.windows))).toEqual([["fiveHour", "weekly"], ["fiveHour", "weekly"]]);
+        expect(JSON.stringify(pools)).not.toMatch(/SECRET|ya29/);
         await Bun.sleep(2);
         mode = "partial";
         const recovered = await w.ctx.fns.models.usage({ id: c.id, refresh: true });
         expect(recovered.stale).toBeUndefined();
         expect(recovered.checkedAt).toBeGreaterThan(ok.checkedAt);
         expect(recovered.windows!.map((x: W) => x.bucket)).toEqual(["gemini-5h"]);
-        const [after] = (await quotas(w.ctx)).filter(a => a.id === c.id);
+        const [after, afterClaude] = (await quotas(w.ctx)).filter(a => a.connectionId === c.id);
         expect(after).toMatchObject({ quotaStatus: "fresh", quotaUpdatedAt: recovered.checkedAt });
-        expect(after.additionalWindows.map((x: any) => x.bucket)).toEqual(["gemini-5h"]);
+        expect(Object.keys(after.windows)).toEqual(["fiveHour"]);
+        expect(afterClaude.windows).toEqual({});
     });
 
     test("a first failure without a success shows no data", async () => {
         const w = await world({ summary: () => new Response("", { status: 500 }) });
         const c = await w.connect("cold");
         expect(await w.ctx.fns.models.usage({ id: c.id })).toEqual({ status: "unavailable", reason: "usage-failed", checkedAt: expect.any(Number) });
-        const [account] = (await quotas(w.ctx)).filter(a => a.id === c.id);
-        expect(account).toMatchObject({ kind: "status", status: "unavailable", quotaStatus: "unavailable", families: [{ family: "gemini", partial: false }, { family: "claude", partial: false }] });
+        const pools = (await quotas(w.ctx)).filter(a => a.connectionId === c.id);
+        expect(pools.map(a => [a.family, a.kind, a.status, a.quotaStatus])).toEqual([["gemini", "status", "unavailable", "unavailable"], ["claude", "status", "unavailable", "unavailable"]]);
         expect((await w.ctx.fns.models.listModels({ id: c.id, cacheOnly: true })).models).toHaveLength(6);
     });
 
@@ -243,7 +240,7 @@ describe("one snapshot per connection, stale on failure (1.3, 2.1)", () => {
         const out = await w.ctx.fns.models.usage({ id: c.id });
         expect(out).toMatchObject({ status: "configured", reason: "login-required" });
         expect(out.windows).toBeUndefined();
-        const account = (await quotas(w.ctx)).find(a => a.id === c.id);
+        const account = (await quotas(w.ctx)).find(a => a.id === c.id || a.connectionId === c.id);
         expect(account).toMatchObject({ kind: "status", status: "unknown" });
         expect(account.additionalWindows).toBeUndefined();
         expect(w.calls.length).toBe(n);
@@ -255,11 +252,11 @@ describe("one snapshot per connection, stale on failure (1.3, 2.1)", () => {
         await w.ctx.fns.models.update({ id: c.id, enabled: false });
         const n = w.calls.length;
         expect(await w.ctx.fns.models.usage({ id: c.id, refresh: true })).toMatchObject({ status: "disabled" });
-        expect((await quotas(w.ctx)).some(a => a.id === c.id)).toBe(false);
+        expect((await quotas(w.ctx)).some(a => a.id === c.id || a.connectionId === c.id)).toBe(false);
         await w.ctx.fns.models.update({ id: c.id, enabled: true });
         await w.ctx.fns.settings.set({ module: "models", scopeType: "global", key: "disabledProviders", value: ["antigravity"] });
         expect(await w.ctx.fns.models.usage({ id: c.id, refresh: true })).toMatchObject({ status: "disabled" });
-        expect((await quotas(w.ctx)).some(a => a.id === c.id)).toBe(false);
+        expect((await quotas(w.ctx)).some(a => a.id === c.id || a.connectionId === c.id)).toBe(false);
         expect(w.calls.length).toBe(n);
     });
 });

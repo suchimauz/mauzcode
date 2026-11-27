@@ -6,8 +6,7 @@ import type { ExtensionModelProviderProps, UiExtension } from '../extensions/typ
 const pluginUi = vi.hoisted(() => ({ current: null as unknown }));
 vi.mock('../extensions/pluginRuntime', () => ({ usePluginUi: () => pluginUi.current }));
 
-import { ModelsPanel, UsageView, usageFamilies } from '../components/settings/ModelsPanel';
-import { quotaFamilyDetails, quotaFamilySummaries, type QuotaAccount } from '../lib/quotas';
+import { ModelsPanel, UsageView } from '../components/settings/ModelsPanel';
 import { SETTINGS_TABS, SettingsDialog } from '../components/settings/SettingsDialog';
 
 const custom = { id: 'custom', label: 'Custom', description: 'Compatible API', fields: [
@@ -789,86 +788,67 @@ const FAMILY_RESET = Date.UTC(2026, 0, 15, 9, 0), FAMILY_RESET_LATER = Date.UTC(
 /** A family pool period reading; `undefined` used percent and `null` reset mean the provider did not report them. */
 const familyWindow = (family: 'gemini' | 'claude', label: string, usedPercent: number | undefined, resetAt: number | null = FAMILY_RESET, period: 'fiveHour' | 'weekly' = 'fiveHour', scope: 'group' | 'unknown' = 'group') =>
   ({ label, id: `antigravity:${label}`, bucket: label, scope, period, family, observedAt: 5_000, ...(usedPercent === undefined ? {} : { usedPercent }), ...(resetAt === null ? {} : { resetAt }) });
-const local = (at: number) => new Date(at).toLocaleString(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const fmt = (at: number) => new Date(at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
 
-it('renders family pools as used-percent period rows and leaves other windows as used percentages', () => {
+it('renders each family pool with the same window list as ungrouped windows', () => {
   render(<UsageView usage={{ status: 'available', checkedAt: 5_000, partialFamilies: ['claude'], windows: [
-    { label: '5h', usedPercent: 42, resetAt: 2 },
-    familyWindow('gemini', 'gemini-5h', 20), familyWindow('gemini', 'gemini-weekly', 60, FAMILY_RESET_LATER, 'weekly'),
+    { label: 'Session (5h)', usedPercent: 42, resetAt: FAMILY_RESET },
+    familyWindow('gemini', 'Session (5h)', 20), familyWindow('gemini', 'Weekly (7d)', 60, FAMILY_RESET_LATER, 'weekly'),
     familyWindow('gemini', '<b>Gemini Pro weekly</b>', 70, FAMILY_RESET_LATER, 'weekly', 'unknown'),
-    familyWindow('claude', '3p-5h', 100), familyWindow('claude', '3p-weekly', undefined, null, 'weekly'),
+    familyWindow('claude', 'Session (5h)', 100), familyWindow('claude', 'Weekly (7d)', undefined, null, 'weekly'),
   ] }} />);
-  // Non-family windows keep the flat used-percent list, without the family readings in it.
+  const rows = (list: HTMLElement) => within(list).getAllByRole('listitem').map(li => li.textContent);
   const flat = screen.getByRole('list', { name: 'Quota windows' });
-  expect(within(flat).getAllByRole('listitem')).toHaveLength(1);
-  expect(within(flat).getByRole('meter', { name: '5h used' })).toHaveAttribute('aria-valuenow', '42');
+  expect(rows(flat)).toEqual([`Session (5h)42% used · resets ${fmt(FAMILY_RESET)}`]);
   const gemini = screen.getByRole('region', { name: 'Gemini quota' });
-  expect(within(gemini).getByRole('heading', { level: 4 })).toHaveTextContent('GeminiGemini limits');
-  expect(within(within(gemini).getByRole('list', { name: 'Gemini periods' })).getAllByRole('listitem').map(li => li.textContent)).toEqual([
-    `5 hours20% used · resets ${local(FAMILY_RESET)}`, `Weekly60% used · resets ${local(FAMILY_RESET_LATER)}`, 'Monthlyno data · reset unknown']);
-  // The model-specific bucket is listed apart, never in a period row; labels are text.
-  expect(within(within(gemini).getByRole('list', { name: 'Gemini additional limits' })).getByRole('listitem').textContent).toBe(`<b>Gemini Pro weekly</b> (Weekly)70% used · resets ${local(FAMILY_RESET_LATER)}`);
+  expect(within(gemini).getByRole('heading', { level: 4 }).textContent).toBe('Gemini');
+  // Same label, meter and `N% used · resets …` format as any provider; extra buckets in the same list, labels as text.
+  expect(rows(within(gemini).getByRole('list'))).toEqual([`Session (5h)20% used · resets ${fmt(FAMILY_RESET)}`, `Weekly (7d)60% used · resets ${fmt(FAMILY_RESET_LATER)}`, `<b>Gemini Pro weekly</b>70% used · resets ${fmt(FAMILY_RESET_LATER)}`]);
   expect(gemini.querySelector('b')).toBeNull();
-  const meter = within(gemini).getByRole('meter', { name: '5 hours used' });
-  expect(meter).toHaveAttribute('aria-valuenow', '20'); expect(meter).toHaveAttribute('aria-valuetext', '20% used');
-  const claudeFamily = screen.getByRole('region', { name: 'Claude quota' });
-  expect(within(claudeFamily).getByRole('heading', { level: 4 })).toHaveTextContent('ClaudeClaude/GPT limits');
-  expect(within(claudeFamily).getAllByRole('listitem').map(li => li.textContent)).toEqual([
-    `5 hours100% used · resets ${local(FAMILY_RESET)}`, 'Weeklyno data · reset unknown', 'Monthlyno data · reset unknown']);
-  expect(within(claudeFamily).getAllByRole('meter')).toHaveLength(1);
+  expect(within(gemini).getByRole('meter', { name: 'Session (5h) used' })).toHaveAttribute('aria-valuenow', '20');
+  const claudeFamily = screen.getByRole('region', { name: 'Claude/GPT quota' });
+  expect(within(claudeFamily).getByRole('heading', { level: 4 }).textContent).toBe('Claude/GPT');
+  expect(rows(within(claudeFamily).getByRole('list'))).toEqual([`Session (5h)100% used · resets ${fmt(FAMILY_RESET)}`, 'Weekly (7d)no data']);
   expect(within(claudeFamily).getByText('Some readings were not received')).toBeVisible();
-  // Gemini is listed before Claude regardless of window order.
-  expect(screen.getAllByRole('region').map(r => r.getAttribute('aria-label'))).toEqual(['Gemini quota', 'Claude quota']);
+  expect(screen.queryByText(/limits$/)).toBeNull();
+  // Gemini is listed before Claude/GPT regardless of window order.
+  expect(screen.getAllByRole('region').map(r => r.getAttribute('aria-label'))).toEqual(['Gemini quota', 'Claude/GPT quota']);
 });
 
-it('shows no data for an unmeasured family and nothing family-specific without family windows', () => {
-  const { rerender } = render(<UsageView usage={{ status: 'available', checkedAt: 5_000, windows: [familyWindow('claude', '3p-5h', undefined)] }} />);
-  const claudeFamily = screen.getByRole('region', { name: 'Claude quota' });
-  expect(claudeFamily).toHaveAttribute('data-state', 'none');
+it('shows the standard unknown for an unmeasured pool and nothing pool-specific without family windows', () => {
+  const { rerender } = render(<UsageView usage={{ status: 'available', checkedAt: 5_000, windows: [familyWindow('claude', 'Session (5h)', undefined)] }} />);
+  const claudeFamily = screen.getByRole('region', { name: 'Claude/GPT quota' });
   expect(within(claudeFamily).queryByRole('meter')).toBeNull();
   // A known reset stays visible without a percentage; nothing reads as 0% or 100%.
-  expect(within(claudeFamily).getAllByRole('listitem')[0]!.textContent).toMatch(/^5 hoursno data · resets \S+/);
-  expect(claudeFamily.textContent).not.toMatch(/\d+%/);
+  expect(within(claudeFamily).getByRole('listitem').textContent).toBe(`Session (5h)no data · resets ${fmt(FAMILY_RESET)}`);
   expect(screen.queryByRole('list', { name: 'Quota windows' })).toBeNull();
   expect(screen.queryByRole('region', { name: 'Gemini quota' })).toBeNull();
-  // A window is a family reading only by its structured field, never by its label.
+  // A window belongs to a pool only by its structured family, never by its label.
   rerender(<UsageView usage={{ status: 'available', checkedAt: 5_000, windows: [{ label: 'Gemini weekly', usedPercent: 30 }] }} />);
   expect(screen.queryByRole('region')).toBeNull();
   expect(screen.getByRole('meter', { name: 'Gemini weekly used' })).toHaveAttribute('aria-valuenow', '30');
 });
 
 it('a stale report keeps its values, says so and shows the last success time', () => {
-  render(<UsageView usage={{ status: 'available', reason: 'usage-stale', stale: true, checkedAt: FAMILY_RESET, windows: [familyWindow('gemini', 'gemini-5h', 20)] }} />);
+  render(<UsageView usage={{ status: 'available', reason: 'usage-stale', stale: true, checkedAt: FAMILY_RESET, windows: [familyWindow('gemini', 'Session (5h)', 20)] }} />);
   expect(screen.getByText('Stale')).toBeVisible();
-  expect(screen.getByText(`last success ${new Date(FAMILY_RESET).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}`)).toBeVisible();
+  expect(screen.getByText(`last success ${fmt(FAMILY_RESET)}`)).toBeVisible();
   expect(screen.getByText('Latest usage read failed; showing the last success')).toBeVisible();
-  expect(within(screen.getByRole('region', { name: 'Gemini quota' })).getAllByRole('listitem')[0]!.textContent).toMatch(/^5 hours20% used/);
+  expect(within(screen.getByRole('region', { name: 'Gemini quota' })).getByRole('listitem').textContent).toMatch(/^Session \(5h\)20% used/);
 });
 
-it('settings and the sidebar describe the same observation with the same cells and units', () => {
-  const observed = [['gemini', 'gemini-5h', 20, FAMILY_RESET, 'fiveHour'], ['gemini', 'gemini-weekly', 60, FAMILY_RESET_LATER, 'weekly'], ['claude', '3p-weekly', 25, FAMILY_RESET, 'weekly']] as const;
-  const settings = usageFamilies({ status: 'available', checkedAt: 5_000, windows: observed.map(([family, label, used, reset, period]) => familyWindow(family, label, used, reset, period)) });
-  const account: QuotaAccount = { id: 'c1', provider: 'antigravity', account: 'work', label: 'Antigravity · work', model: 'antigravity/work', connection: 'mauzcode', kind: 'quota', windows: {}, quotaStatus: 'fresh', quotaUpdatedAt: 5_000, tone: 'neutral', parkedAgents: 0,
-    families: [{ family: 'gemini', partial: false }, { family: 'claude', partial: false }],
-    additionalWindows: observed.map(([family, label, used, reset, period]) => ({ id: `antigravity:${label}`, label, scope: 'group' as const, bucket: label, period, model: null, family, usedPercent: used, remaining: null, resetsAt: reset, observedAt: 5_000, tone: 'neutral' as const })) };
-  const sidebar = quotaFamilySummaries(account);
-  expect(settings.map(s => [s.family, s.windows.fiveHour?.usedPercent ?? null, s.windows.weekly?.usedPercent ?? null])).toEqual([['gemini', 20, 60], ['claude', null, 25]]);
-  expect(sidebar.map(s => [s.family, s.windows])).toEqual(settings.map(s => [s.family, s.windows]));
-  expect(sidebar.map(s => quotaFamilyDetails(s, 'en'))).toEqual(settings.map(s => quotaFamilyDetails(s, 'en')));
-});
-
-it('summarizes family quota on the collapsed connection row by its most used period', async () => {
-  mockApi([stored], [custom], { status: 'available', checkedAt: 5_000, windows: [familyWindow('gemini', 'gemini-5h', 25), familyWindow('gemini', 'gemini-weekly', 95, FAMILY_RESET, 'weekly'), familyWindow('claude', '3p-5h', undefined)] });
+it('summarizes pool quota on the collapsed connection row by its most used window', async () => {
+  mockApi([stored], [custom], { status: 'available', checkedAt: 5_000, windows: [familyWindow('gemini', 'Session (5h)', 25), familyWindow('gemini', 'Weekly (7d)', 95, FAMILY_RESET, 'weekly'), familyWindow('claude', 'Session (5h)', undefined)] });
   render(<ModelsPanel context={context} />);
   const row = await screen.findByRole('article', { name: 'Work' });
-  const summary = await within(row).findByText('Gemini Weekly 95% · Claude no data');
+  const summary = await within(row).findByText('Gemini Weekly (7d) 95%');
   expect(summary).toHaveClass('llm-quota', 'is-critical');
 });
 
 it('visible settings refresh usage every minute and pause while hidden', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   try {
-    const posts = mockApi([stored], [custom], { status: 'available', checkedAt: 5_000, windows: [familyWindow('gemini', 'gemini-5h', 25)] });
+    const posts = mockApi([stored], [custom], { status: 'available', checkedAt: 5_000, windows: [familyWindow('gemini', 'Session (5h)', 25)] });
     render(<ModelsPanel context={context} />);
     await screen.findByRole('article', { name: 'Work' });
     const usageReads = () => posts.filter(p => p.body.action === 'usage').length;
@@ -966,7 +946,7 @@ it('opens a group the server reports off (legacy member flags) as one disabled s
 
 it('opens the requested connection with its family in view, once per request', async () => {
   const other = { ...stored, id: 'c9', accountName: 'Home' };
-  mockApi([other, stored], [custom], { status: 'available', checkedAt: 5_000, windows: [familyWindow('gemini', 'gemini-5h', 25), familyWindow('claude', '3p-5h', 0)] });
+  mockApi([other, stored], [custom], { status: 'available', checkedAt: 5_000, windows: [familyWindow('gemini', 'Session (5h)', 25), familyWindow('claude', 'Session (5h)', 0)] });
   const fetchMock = vi.mocked(fetch);
   const base = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation(async (url: any, init: RequestInit = {}) => {
@@ -976,12 +956,10 @@ it('opens the requested connection with its family in view, once per request', a
   const { rerender } = render(<ModelsPanel context={context} target={{ account: 'c1', family: 'claude', at: 1 }} />);
   const work = await screen.findByRole('article', { name: 'Work' });
   // Only the targeted connection expands, on the selected family.
-  const claudeFamily = await within(work).findByRole('region', { name: 'Claude quota' });
+  const claudeFamily = await within(work).findByRole('region', { name: 'Claude/GPT quota' });
   expect(screen.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-expanded', 'false');
-  expect(claudeFamily).toHaveAttribute('data-selected', 'true');
   await waitFor(() => expect(claudeFamily).toHaveFocus());
-  expect(within(work).getByRole('region', { name: 'Gemini quota' })).not.toHaveAttribute('data-selected');
   // The owner can collapse it; an unrelated re-render does not reopen it.
   fireEvent.click(screen.getByRole('button', { name: 'Work' }));
   rerender(<ModelsPanel context={context} target={{ account: 'c1', family: 'claude', at: 1 }} />);
@@ -989,7 +967,7 @@ it('opens the requested connection with its family in view, once per request', a
   // Activating the other family card is a new request for the same account.
   rerender(<ModelsPanel context={context} target={{ account: 'c1', family: 'gemini', at: 2 }} />);
   await waitFor(() => expect(within(work).getByRole('region', { name: 'Gemini quota' })).toHaveFocus());
-  expect(within(work).getByRole('region', { name: 'Claude quota' })).not.toHaveAttribute('data-selected');
+  expect(within(work).getByRole('region', { name: 'Claude/GPT quota' })).not.toHaveAttribute('data-selected');
   // An unknown account changes nothing.
   rerender(<ModelsPanel context={context} target={{ account: 'gone', family: 'gemini', at: 3 }} />);
   expect(screen.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-expanded', 'true');

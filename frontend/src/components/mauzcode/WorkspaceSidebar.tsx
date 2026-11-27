@@ -36,7 +36,7 @@ export type WorkspaceSidebarProps = {
   theme: 'light' | 'dark'; themeMode?: ThemeMode; onTheme: (mode: ThemeMode) => void; onToggle: () => void;
   onSelect: (id: string) => void; searchInputRef?: React.Ref<HTMLInputElement>; onRetry: () => void;
   /** Unified model quotas shown above the account bar; omitted or empty hides the block. */
-  quotas?: QuotaAccount[] | null; /** A family card passes its connection and family; other quota triggers pass nothing. */ onOpenQuotas?: (target?: QuotaOpenTarget) => void;
+  quotas?: QuotaAccount[] | null; /** A pool card passes its connection and family; other quota triggers pass nothing. */ onOpenQuotas?: (target?: QuotaOpenTarget) => void;
 };
 
 function WorkspaceSection({ project, selected, query, onSelect, archivedView, pendingChats, onAction, initiallyOpen, draftRow, onNewSession, onProjectAction, pendingProject }: { onNewSession?: (projectId?: string) => void; onProjectAction?: (id: string, action: ProjectAction) => void; pendingProject?: boolean; draftRow?: React.ReactNode; project: NavigationProject; selected: string; query: string; onSelect: (id: string) => void; archivedView: boolean; pendingChats?: Record<string, boolean>; onAction?: (id: string, action: ChatAction) => void; initiallyOpen: boolean }) {

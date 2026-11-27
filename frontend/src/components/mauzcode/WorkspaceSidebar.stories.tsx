@@ -19,25 +19,27 @@ const quotas = [
   { id: 'oneapi:default', provider: 'oneapi', account: 'default', label: 'Asoft LLM Gate', model: 'oneapi/default:', connection: 'local', kind: 'status', status: 'available', tone: 'neutral', parkedAgents: 0 },
   { id: 'claude-code:x@srv', provider: 'claude-code', account: 'brailyn', label: 'claude-code · ssh', model: 'claude-code/brailyn:', connection: 'ssh', host: 'aeza', kind: 'quota', windows: {}, quotaStatus: 'unavailable', tone: 'neutral', parkedAgents: 0 },
 ] satisfies import('../../lib/quotas').QuotaAccount[];
-/** One Antigravity connection: a card per model family with the standard used-percent period cells. */
-const familyWindow = (family: 'gemini' | 'claude', bucket: string, period: 'fiveHour' | 'weekly', usedPercent: number | null, resetsAt: number | null, tone: 'neutral' | 'warning' | 'critical' | 'error' = 'neutral', scope: 'group' | 'unknown' = 'group') =>
-  ({ id: `antigravity:${bucket}`, label: bucket, scope, bucket, period, model: null, family, usedPercent, remaining: null, resetsAt, observedAt: Date.now(), tone });
-const antigravity = {
-  id: 'antigravity:work', provider: 'antigravity', account: 'work', label: 'Antigravity · work', model: 'antigravity/work', connection: 'mauzcode', kind: 'quota', windows: {},
-  additionalWindows: [familyWindow('gemini', 'gemini-5h', 'fiveHour', 20, Date.now() + 3 * 3600e3), familyWindow('gemini', 'gemini-weekly', 'weekly', 60, Date.now() + 5 * 86400e3, 'warning'),
-    familyWindow('claude', '3p-5h', 'fiveHour', 10, null), familyWindow('claude', '3p-weekly', 'weekly', 75, Date.now() + 4 * 86400e3, 'error')],
-  families: [{ family: 'gemini', partial: false }, { family: 'claude', partial: false }], quotaStatus: 'fresh', quotaUpdatedAt: Date.now(), tone: 'warning', parkedAgents: 0,
-} satisfies import('../../lib/quotas').QuotaAccount;
-/** Gemini with an extra model-only weekly bucket, an unmeasured Claude/GPT pool and an extra bucket of no family. */
-const antigravityUnknown = {
-  ...antigravity, id: 'antigravity:home', account: 'home', label: 'Antigravity · home', model: 'antigravity/home', tone: 'neutral',
-  additionalWindows: [familyWindow('gemini', 'gemini-5h', 'fiveHour', 100, Date.now() + 2 * 3600e3, 'error'), familyWindow('gemini', 'gemini-weekly', 'weekly', null, null),
-    familyWindow('gemini', 'gemini-pro-weekly', 'weekly', 40, Date.now() + 6 * 86400e3, 'neutral', 'unknown'), familyWindow('claude', '3p-5h', 'fiveHour', null, Date.now() + 86400e3),
-    { ...familyWindow('claude', 'other-daily', 'fiveHour', 30, null, 'neutral', 'unknown'), family: null, period: null }],
-} satisfies import('../../lib/quotas').QuotaAccount;
-export const WithQuotas: Story = { args: { quotas: [...quotas, antigravity] } };
+/** One Antigravity connection: one standard card per model-family pool, captioned `Gemini · work` / `Claude · work`. */
+type Win = { usedPercent: number | null; resetsAt: number | null; tone: 'neutral' | 'warning' | 'critical' | 'error' };
+const extraWindow = (family: 'gemini' | 'claude' | null, bucket: string, period: 'fiveHour' | 'weekly' | null, usedPercent: number | null, resetsAt: number | null) =>
+  ({ id: `antigravity:${bucket}`, label: bucket, scope: 'unknown' as const, bucket, period, model: null, family, usedPercent, remaining: null, resetsAt, observedAt: Date.now(), tone: 'neutral' as const });
+const pool = (connection: string, account: string, family: 'gemini' | 'claude', windows: { fiveHour?: Win; weekly?: Win }, tone: Win['tone'], additionalWindows: ReturnType<typeof extraWindow>[] = []) => ({
+  id: `${connection}:${family}`, connectionId: connection, family, provider: 'antigravity', account, label: `Antigravity · ${account}`, model: `antigravity/${account}`, connection: 'mauzcode' as const, kind: 'quota' as const,
+  windows, additionalWindows, quotaStatus: 'fresh' as const, quotaUpdatedAt: Date.now(), tone, parkedAgents: 0,
+}) satisfies import('../../lib/quotas').QuotaAccount;
+const antigravity = [
+  pool('ag-work', 'work', 'gemini', { fiveHour: { usedPercent: 20, resetsAt: Date.now() + 3 * 3600e3, tone: 'neutral' }, weekly: { usedPercent: 60, resetsAt: Date.now() + 5 * 86400e3, tone: 'warning' } }, 'warning'),
+  pool('ag-work', 'work', 'claude', { fiveHour: { usedPercent: 10, resetsAt: null, tone: 'neutral' }, weekly: { usedPercent: 75, resetsAt: Date.now() + 4 * 86400e3, tone: 'error' } }, 'error'),
+];
+/** Gemini with an extra model-only weekly bucket and one of no family, and an unmeasured Claude/GPT pool. */
+const antigravityUnknown = [
+  pool('ag-home', 'home', 'gemini', { fiveHour: { usedPercent: 100, resetsAt: Date.now() + 2 * 3600e3, tone: 'error' }, weekly: { usedPercent: null, resetsAt: null, tone: 'neutral' } }, 'error',
+    [extraWindow('gemini', 'gemini-pro-weekly', 'weekly', 40, Date.now() + 6 * 86400e3), extraWindow(null, 'other-daily', null, 30, null)]),
+  pool('ag-home', 'home', 'claude', { fiveHour: { usedPercent: null, resetsAt: Date.now() + 86400e3, tone: 'neutral' } }, 'neutral'),
+];
+export const WithQuotas: Story = { args: { quotas: [...quotas, ...antigravity] } };
 /** Three ordinary cards leave one slot, so the first pair moves to the next row; the second account keeps its own pair. */
-export const WithFamilyQuotaPairs: Story = { args: { quotas: [...quotas.slice(0, 3), antigravity, antigravityUnknown] } };
-export const CompactWithQuotas: Story = { args: { quotas: [...quotas, antigravity, antigravityUnknown], compact: true } };
-/** Phone layout: the collapsible Usage section (expanded by default here) with the same family cards. */
-export const MobileWithQuotas: Story = { args: { quotas: [...quotas.slice(0, 3), antigravity, antigravityUnknown], mobile: true }, decorators: [Story => { try { localStorage.setItem('mauzcode.quotaMatrix.expanded', '1'); } catch { /* storage unavailable */ } return <Story />; }] };
+export const WithFamilyQuotaPairs: Story = { args: { quotas: [...quotas.slice(0, 3), ...antigravity, ...antigravityUnknown] } };
+export const CompactWithQuotas: Story = { args: { quotas: [...quotas, ...antigravity, ...antigravityUnknown], compact: true } };
+/** Phone layout: the collapsible Usage section (expanded by default here) with the same pool cards. */
+export const MobileWithQuotas: Story = { args: { quotas: [...quotas.slice(0, 3), ...antigravity, ...antigravityUnknown], mobile: true }, decorators: [Story => { try { localStorage.setItem('mauzcode.quotaMatrix.expanded', '1'); } catch { /* storage unavailable */ } return <Story />; }] };
